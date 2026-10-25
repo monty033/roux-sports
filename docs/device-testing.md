@@ -83,9 +83,8 @@ STAGE="/var/lib/hermes/workspace/apk-share/$APK"
    ```
 
 7. **Tell Patrick the round name and what to check.** He accepts the file in the Tailscale app
-   and installs it. A delivery should name the checklist item it serves; a delivery without a
-   named item is a delivery nobody can sign off. The per-stage device checklist arrives with the
-   Stage 0 documentation step, not with this file.
+   and installs it. Name the checks from the sign-off list below, plus any check the current
+   stage added. A delivery without named checks is a delivery nobody can sign off.
 
 ## Signing, and "App not installed"
 
@@ -96,8 +95,9 @@ other in place.
 
 Before blaming the build, compare certificates:
 
-```
-bash "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs roux-R<n>.apk | grep 'SHA-256 digest'
+```sh
+bash "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$STAGE" \
+  | grep 'SHA-256 digest'
 ```
 
 against the certificate of the build already on the phone. If they differ, rebuild from the
@@ -116,6 +116,26 @@ if invoking directly.
 If `local-proxy` is unreachable, a temporary HTTP server on the tailnet is the documented
 fallback — not the first resort. Reaching for it before checking the relay costs a round trip
 and a correction.
+
+## Sign-off checks
+
+Every round runs these, whatever the stage. A stage that adds behaviour adds its own checks on
+top; these are the floor.
+
+1. **It installs over the previous build** — no uninstall prompt, no "App not installed".
+2. **It launches and reaches the primary screen** without a crash or an empty frame.
+3. **The screen the round touched renders the expected data**, not a placeholder or a spinner
+   that never resolves.
+4. **Rotation and large font** — turn the device sideways, then set the system font to its
+   largest setting; nothing clips, overlaps, or becomes unreachable.
+5. **Back navigation behaves** — the system back gesture leaves the app from the top level and
+   never traps the user on a screen with no way out.
+6. **One-handed reach** — the controls the round added can be touched with the right thumb while
+   holding the phone normally, without shifting grip.
+7. **No crash in the log** — for anything touching live data, a crash the UI hides still counts
+   as a failed round.
+
+Report each as pass or fail with a one-line note. "Looks fine" is not a sign-off.
 
 ## What this route cannot prove
 
