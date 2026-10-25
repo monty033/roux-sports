@@ -85,6 +85,47 @@ class KmpBoundaryTest {
     }
 
     @Test
+    fun scanSourceLocalAndroidValueWithDotCallHasSizeZero() {
+        // Round-4 false positive: `android` resolves to the local value, so the
+        // dot is a member access, not the Android package.
+        val source = "val android = Any(); val t = \"\${android.toString()}\""
+        assertEquals(0, scanSource(source).size)
+    }
+
+    @Test
+    fun scanSourceAndroidParameterWithDotCallHasSizeZero() {
+        assertEquals(0, scanSource("fun f(android: Any) { val t = android.toString() }").size)
+    }
+
+    @Test
+    fun scanSourceLocalAndroidLambdaParameterHasSizeZero() {
+        assertEquals(0, scanSource("val f = { android: Any -> android.toString() }").size)
+    }
+
+    @Test
+    fun scanSourceUndeclaredAndroidReferenceHasSizeOne() {
+        assertEquals(1, scanSource("val t = android.os.Build.MODEL").size)
+    }
+
+    @Test
+    fun scanSourceAndroidImportIsNotShadowedByLocalValueHasSizeOne() {
+        val source = "val android = 1\nimport android.os.Bundle"
+        assertEquals(1, scanSource(source).size)
+    }
+
+    @Test
+    fun scanSourceWildcardAndroidImportIsNotShadowedByLocalValueHasSizeOne() {
+        val source = "val android = 1\nimport android.*"
+        assertEquals(1, scanSource(source).size)
+    }
+
+    @Test
+    fun scanSourceUndeclaredAndroidReferenceInInterpolationHasSizeOne() {
+        val source = "val s = \"\${android.os.Build.MODEL}\""
+        assertEquals(1, scanSource(source).size)
+    }
+
+    @Test
     fun scanSourceEscapedIdentifierAfterAndroidDotHasSizeOne() {
         assertEquals(1, scanSource("val x = android.`when`.Foo").size)
     }
@@ -307,6 +348,7 @@ private fun tokenize(text: String): List<Token> {
 
 fun scanSource(text: String): List<String> {
     val tokens = tokenize(text)
+    val androidIsLocalValue = "android" in declaredNames(tokens)
     val violations = mutableListOf<String>()
     var index = 0
     while (index < tokens.size) {
@@ -319,7 +361,7 @@ fun scanSource(text: String): List<String> {
             index = parsed.nextIndex
             continue
         }
-        if (isAndroidReference(tokens, index)) {
+        if (isAndroidReference(tokens, index, androidIsLocalValue)) {
             violations.add("line ${token.line}: forbidden android reference: ${referencePath(tokens, index)}")
         }
         index++
@@ -412,9 +454,101 @@ private fun importPart(token: Token): String? =
         else -> null
     }
 
+/**
+ * Keywords whose following identifier names a declaration.
+ */
+private val declarationKeywords = setOf("val", "var", "fun", "class")
+
+/**
+ * Tokens that may appear between lambda parameter names and their `->`.
+ */
+private val lambdaParameterSeparators = setOf(",", ":", "?", "<", ">", "*")
+
+/**
+ * Identifiers declared in a single source file, so the bare `android.` rule can
+ * be scoped to that file.
+ *
+ * Collected declarations: names after `val`/`var`/`fun`/`class`, names followed
+ * by a `:` (function, constructor and catch parameters), lambda parameters
+ * before `->`, and `for` loop variables.
+ *
+ * Residual trade-off: a file that both declares a value named `android` and
+ * references the Android package would not be reported. That is accepted
+ * because `:domain` has no `android.jar`, so such a file cannot compile there
+ * at all, whereas a false positive on a legitimate local value named `android`
+ * would break otherwise valid builds on every run of this gate. Imports are
+ * unaffected: they are namespace references, cannot be shadowed by a local
+ * value, and are reported before this scope is consulted.
+ */
+private fun declaredNames(tokens: List<Token>): Set<String> {
+    val names = mutableSetOf<String>()
+    for (index in tokens.indices) {
+        val token = tokens[index]
+        if (token.text == "for") {
+            forVariableName(tokens, index)?.let { names.add(it) }
+            continue
+        }
+        if (token.text == "->") {
+            names.addAll(lambdaParameterNames(tokens, index))
+            continue
+        }
+        if (token.text in declarationKeywords) {
+            val name = tokens.getOrNull(index + 1)
+            if (name?.kind == TokenKind.IDENTIFIER) {
+                names.add(unquote(name.text))
+            }
+            continue
+        }
+        if (token.kind == TokenKind.IDENTIFIER && tokens.getOrNull(index + 1)?.text == ":") {
+            names.add(unquote(token.text))
+        }
+    }
+    return names
+}
+
+private fun forVariableName(
+    tokens: List<Token>,
+    forIndex: Int,
+): String? {
+    var cursor = forIndex + 1
+    if (tokens.getOrNull(cursor)?.text == "(") {
+        cursor++
+    }
+    val variable = tokens.getOrNull(cursor) ?: return null
+    if (variable.kind != TokenKind.IDENTIFIER || tokens.getOrNull(cursor + 1)?.text != "in") {
+        return null
+    }
+    return unquote(variable.text)
+}
+
+/**
+ * Parameter names immediately before the `->` at [arrowIndex]. A dot in the
+ * scanned range means this arrow follows an expression rather than a parameter
+ * list, so nothing is collected.
+ */
+private fun lambdaParameterNames(
+    tokens: List<Token>,
+    arrowIndex: Int,
+): Set<String> {
+    val names = mutableSetOf<String>()
+    var index = arrowIndex - 1
+    while (index >= 0) {
+        val token = tokens[index]
+        when {
+            token.kind == TokenKind.DOT -> return emptySet()
+            token.kind == TokenKind.IDENTIFIER -> names.add(unquote(token.text))
+            token.text in lambdaParameterSeparators -> Unit
+            else -> return names
+        }
+        index--
+    }
+    return names
+}
+
 private fun isAndroidReference(
     tokens: List<Token>,
     index: Int,
+    androidIsLocalValue: Boolean,
 ): Boolean {
     val token = tokens[index]
     if (token.kind != TokenKind.IDENTIFIER || unquote(token.text) != "android") {
@@ -423,7 +557,13 @@ private fun isAndroidReference(
     if (tokens.getOrNull(index - 1)?.kind == TokenKind.DOT) {
         return false
     }
-    return tokens.getOrNull(index + 1)?.kind == TokenKind.DOT
+    if (tokens.getOrNull(index + 1)?.kind != TokenKind.DOT) {
+        return false
+    }
+    // A bare `android` root that the same file declares is that local value, not
+    // the Android package. Imports never reach this check: scanSource consumes
+    // them first and always reports them.
+    return !androidIsLocalValue
 }
 
 private fun referencePath(
