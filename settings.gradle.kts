@@ -20,3 +20,4 @@ dependencyResolutionManagement {
 }
 
 include(":domain")
+include(":data")
