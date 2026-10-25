@@ -25,6 +25,7 @@ lint {
 
 dependencies {
     testImplementation(libs.junit)
+    testImplementation(libs.kotlin.compiler.embeddable)
 }
 
 tasks.withType<Test>().configureEach {

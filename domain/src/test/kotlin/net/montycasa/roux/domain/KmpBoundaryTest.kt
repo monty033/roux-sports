@@ -1,5 +1,7 @@
 package net.montycasa.roux.domain
 
+import org.jetbrains.kotlin.lexer.KotlinLexer
+import org.jetbrains.kotlin.lexer.KtTokens
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeFalse
@@ -53,6 +55,32 @@ class KmpBoundaryTest {
         // The nested string is a literal, not executable code, so the import-like
         // text inside it stays stripped: the expected violation count is zero.
         val source = "val s = \"\${listOf(\"import android.os.Bundle\")}\""
+        assertEquals(0, scanSource(source).size)
+    }
+
+    @Test
+    fun scanSourceEscapedAndroidRootHasSizeOne() {
+        assertEquals(1, scanSource("val x = `android`.os.Build.MODEL").size)
+    }
+
+    @Test
+    fun scanSourceWhitespaceSeparatedAndroidReferenceHasSizeOne() {
+        assertEquals(1, scanSource("val y = android . os . Build.MODEL").size)
+    }
+
+    @Test
+    fun scanSourceCommentSplicedJavaImportHasSizeOne() {
+        assertEquals(1, scanSource("import/*c*/java.time.Instant").size)
+    }
+
+    @Test
+    fun scanSourceEscapedAndroidImportRootHasSizeOne() {
+        assertEquals(1, scanSource("import `android`.os.Bundle").size)
+    }
+
+    @Test
+    fun scanSourceLocalAndroidVariableInInterpolationHasSizeZero() {
+        val source = "val android = Any(); val r = \"\${android}\".toString()"
         assertEquals(0, scanSource(source).size)
     }
 
@@ -213,33 +241,88 @@ private val allowedAndroidxPaths =
         "androidx.annotation",
     )
 
-private val importPattern = Regex("""\bimport\s+([^\s;]+)""")
+private enum class TokenKind {
+    IDENTIFIER,
+    DOT,
+    MUL,
+    SEMICOLON,
+    IMPORT,
+    OTHER,
+}
 
-// Kotlin allows backtick-quoted identifiers after `android.` (e.g. android.`when`.Foo),
-// so accept either form at every segment position.
-private val androidSegmentPattern = """(?:`[^`\n]+`|[A-Za-z_][A-Za-z0-9_]*)"""
+private data class Token(
+    val kind: TokenKind,
+    val text: String,
+    val line: Int,
+)
 
-private val androidReferencePattern = Regex("""\bandroid\.$androidSegmentPattern(?:\.$androidSegmentPattern)*""")
+private data class ParsedImport(
+    val path: String,
+    val nextIndex: Int,
+)
+
+/**
+ * Tokenizes [text] with the Kotlin compiler's own lexer and keeps only the
+ * significant tokens. Comments, whitespace and the literal parts of strings and
+ * char literals are dropped as tokens in their own right, so text that merely
+ * looks like an import or a reference can never be mistaken for code.
+ */
+private fun tokenize(text: String): List<Token> {
+    val lexer = KotlinLexer()
+    lexer.start(text, 0, text.length, 0)
+    val tokens = mutableListOf<Token>()
+    var line = 1
+    while (true) {
+        val type = lexer.tokenType ?: break
+        val tokenText = text.substring(lexer.tokenStart, lexer.tokenEnd)
+        val kind =
+            when (type) {
+                KtTokens.WHITE_SPACE,
+                KtTokens.EOL_COMMENT,
+                KtTokens.BLOCK_COMMENT,
+                KtTokens.DOC_COMMENT,
+                KtTokens.SHEBANG_COMMENT,
+                -> null
+
+                KtTokens.IMPORT_KEYWORD -> TokenKind.IMPORT
+
+                KtTokens.IDENTIFIER -> TokenKind.IDENTIFIER
+
+                KtTokens.DOT -> TokenKind.DOT
+
+                KtTokens.MUL -> TokenKind.MUL
+
+                KtTokens.SEMICOLON, KtTokens.EOL_OR_SEMICOLON -> TokenKind.SEMICOLON
+
+                else -> TokenKind.OTHER
+            }
+        if (kind != null) {
+            tokens.add(Token(kind, tokenText, line))
+        }
+        line += tokenText.count { it == '\n' }
+        lexer.advance()
+    }
+    return tokens
+}
 
 fun scanSource(text: String): List<String> {
-    val cleaned = stripCommentsAndStrings(text)
+    val tokens = tokenize(text)
     val violations = mutableListOf<String>()
-    val withoutImports = StringBuilder(cleaned)
-    for (match in importPattern.findAll(cleaned)) {
-        val importPath = match.groupValues[1]
-        if (isForbiddenImport(importPath)) {
-            val line = lineNumberAt(cleaned, match.range.first)
-            violations.add("line $line: forbidden import: $importPath")
-        }
-        for (index in match.range) {
-            if (withoutImports[index] != '\n') {
-                withoutImports.setCharAt(index, ' ')
+    var index = 0
+    while (index < tokens.size) {
+        val token = tokens[index]
+        if (isImportKeyword(tokens, index)) {
+            val parsed = parseImportPath(tokens, index + 1)
+            if (parsed.path.isNotEmpty() && isForbiddenImport(parsed.path)) {
+                violations.add("line ${token.line}: forbidden import: ${parsed.path}")
             }
+            index = parsed.nextIndex
+            continue
         }
-    }
-    for (match in androidReferencePattern.findAll(withoutImports)) {
-        val line = lineNumberAt(withoutImports, match.range.first)
-        violations.add("line $line: forbidden android reference: ${match.value}")
+        if (isAndroidReference(tokens, index)) {
+            violations.add("line ${token.line}: forbidden android reference: ${referencePath(tokens, index)}")
+        }
+        index++
     }
     return violations
 }
@@ -284,13 +367,99 @@ fun scanTree(vararg dirs: File): List<String> {
     return violations
 }
 
+/**
+ * Kotlin 2.4's lexer does not emit [KtTokens.IMPORT_KEYWORD] for `import`; it
+ * comes back as an ordinary IDENTIFIER. Treat an unquoted `import` that starts a
+ * statement as the import keyword, so both token shapes are handled.
+ */
+private fun isImportKeyword(
+    tokens: List<Token>,
+    index: Int,
+): Boolean {
+    val token = tokens[index]
+    if (token.kind == TokenKind.IMPORT) {
+        return true
+    }
+    if (token.kind != TokenKind.IDENTIFIER || token.text != "import") {
+        return false
+    }
+    val previous = tokens.getOrNull(index - 1) ?: return true
+    return previous.kind == TokenKind.SEMICOLON || previous.line < token.line
+}
+
+private fun parseImportPath(
+    tokens: List<Token>,
+    startIndex: Int,
+): ParsedImport {
+    val parts = mutableListOf<String>()
+    var index = startIndex
+    while (index < tokens.size) {
+        val part = importPart(tokens[index]) ?: break
+        parts.add(part)
+        index++
+        if (tokens.getOrNull(index)?.kind != TokenKind.DOT) {
+            break
+        }
+        index++
+    }
+    return ParsedImport(parts.joinToString("."), index)
+}
+
+private fun importPart(token: Token): String? =
+    when (token.kind) {
+        TokenKind.IDENTIFIER -> unquote(token.text)
+        TokenKind.MUL -> "*"
+        else -> null
+    }
+
+private fun isAndroidReference(
+    tokens: List<Token>,
+    index: Int,
+): Boolean {
+    val token = tokens[index]
+    if (token.kind != TokenKind.IDENTIFIER || unquote(token.text) != "android") {
+        return false
+    }
+    if (tokens.getOrNull(index - 1)?.kind == TokenKind.DOT) {
+        return false
+    }
+    return tokens.getOrNull(index + 1)?.kind == TokenKind.DOT
+}
+
+private fun referencePath(
+    tokens: List<Token>,
+    startIndex: Int,
+): String {
+    val parts = mutableListOf(unquote(tokens[startIndex].text))
+    var index = startIndex
+    while (true) {
+        if (tokens.getOrNull(index + 1)?.kind != TokenKind.DOT) {
+            break
+        }
+        val segment = tokens.getOrNull(index + 2) ?: break
+        if (segment.kind != TokenKind.IDENTIFIER) {
+            break
+        }
+        parts.add(unquote(segment.text))
+        index += 2
+    }
+    return parts.joinToString(".")
+}
+
+private fun unquote(text: String): String =
+    if (text.length >= 2 && text.startsWith('`') && text.endsWith('`')) {
+        text.substring(1, text.length - 1)
+    } else {
+        text
+    }
+
 private fun isForbiddenImport(importPath: String): Boolean {
-    val forbiddenAndroid = importPath == "android" || importPath.startsWith("android.")
-    val forbiddenJava = importPath == "java" || importPath.startsWith("java.")
-    val forbiddenJavax = importPath == "javax" || importPath.startsWith("javax.")
-    val isAndroidx = importPath == "androidx" || importPath.startsWith("androidx.")
-    val forbiddenAndroidx = isAndroidx && !isAllowedAndroidx(importPath)
-    return forbiddenAndroid || forbiddenJava || forbiddenJavax || forbiddenAndroidx
+    val root = importPath.substringBefore('.')
+    if (root == "android" || root == "java" || root == "javax") {
+        return true
+    }
+    val isAndroidx = root == "androidx"
+    return isAndroidx && !isAllowedAndroidx(importPath)
 }
 
 private fun isAllowedAndroidx(importPath: String): Boolean =
@@ -298,179 +467,4 @@ private fun isAllowedAndroidx(importPath: String): Boolean =
         importPath == allowed || importPath.startsWith("$allowed.")
     }
 
-private fun lineNumberAt(
-    text: CharSequence,
-    offset: Int,
-): Int {
-    var line = 1
-    for (index in 0 until offset) {
-        if (text[index] == '\n') {
-            line++
-        }
-    }
-    return line
-}
-
 private fun reason(exception: Throwable): String = "${exception.javaClass.simpleName}: ${exception.message ?: "no message"}"
-
-private fun stripCommentsAndStrings(text: String): String {
-    val result = StringBuilder(text.length)
-    stripCode(text, 0, result)
-    return result.toString()
-}
-
-/**
- * Copies executable code from [text], starting at [start], into [result]. Comments
- * and the literal text of string/char literals are dropped, but the code inside
- * `${...}` string templates is kept because Kotlin evaluates it as an expression.
- * Newlines are preserved everywhere so reported line numbers still match the
- * original source.
- *
- * When [stopAtClosingBrace] is true this scans the inside of an interpolation and
- * returns the index just past the `}` that closes it. Braces are matched by
- * counting, and strings, chars and comments inside the expression are consumed by
- * the same scanner, so `${ if (x) { foo("bar") } else { "" } }` is handled.
- *
- * Limitation: this is a lexical scanner, not a Kotlin parser. Only the `${...}`
- * template form is scanned. A bare `$name` template is skipped along with the
- * literal text because it cannot contain a dotted `android.*` reference of its
- * own (`"$android.os"` evaluates `android` and treats `.os` as literal text).
- */
-private fun stripCode(
-    text: String,
-    start: Int,
-    result: StringBuilder,
-    stopAtClosingBrace: Boolean = false,
-): Int {
-    var index = start
-    var braceDepth = if (stopAtClosingBrace) 1 else 0
-    while (index < text.length) {
-        when {
-            text.startsWith("//", index) -> {
-                while (index < text.length && text[index] != '\n') {
-                    index++
-                }
-            }
-
-            text.startsWith("/*", index) -> {
-                var depth = 1
-                index += 2
-                while (index < text.length && depth > 0) {
-                    when {
-                        text.startsWith("/*", index) -> {
-                            depth++
-                            index += 2
-                        }
-
-                        text.startsWith("*/", index) -> {
-                            depth--
-                            index += 2
-                        }
-
-                        else -> {
-                            if (text[index] == '\n') {
-                                result.append('\n')
-                            }
-                            index++
-                        }
-                    }
-                }
-            }
-
-            text.startsWith("\"\"\"", index) || text[index] == '"' -> {
-                index = stripStringLiteral(text, index, result)
-            }
-
-            text[index] == '\'' -> {
-                index = stripCharLiteral(text, index, result)
-            }
-
-            stopAtClosingBrace && text[index] == '{' -> {
-                braceDepth++
-                result.append('{')
-                index++
-            }
-
-            stopAtClosingBrace && text[index] == '}' -> {
-                braceDepth--
-                index++
-                if (braceDepth == 0) {
-                    return index
-                }
-                result.append('}')
-            }
-
-            else -> {
-                result.append(text[index])
-                index++
-            }
-        }
-    }
-    return index
-}
-
-private fun stripStringLiteral(
-    text: String,
-    start: Int,
-    result: StringBuilder,
-): Int {
-    val triple = text.startsWith("\"\"\"", start)
-    var index = start + if (triple) 3 else 1
-    while (index < text.length) {
-        when {
-            triple && text.startsWith("\"\"\"", index) -> {
-                return index + 3
-            }
-
-            !triple && text[index] == '\\' -> {
-                if (index + 1 < text.length && text[index + 1] == '\n') {
-                    result.append('\n')
-                }
-                index += 2
-            }
-
-            !triple && text[index] == '"' -> {
-                return index + 1
-            }
-
-            text[index] == '$' && index + 1 < text.length && text[index + 1] == '{' -> {
-                index = stripCode(text, index + 2, result, stopAtClosingBrace = true)
-            }
-
-            else -> {
-                if (text[index] == '\n') {
-                    result.append('\n')
-                }
-                index++
-            }
-        }
-    }
-    return index
-}
-
-private fun stripCharLiteral(
-    text: String,
-    start: Int,
-    result: StringBuilder,
-): Int {
-    var index = start + 1
-    while (index < text.length) {
-        when {
-            text[index] == '\\' -> {
-                index += 2
-            }
-
-            text[index] == '\'' -> {
-                return index + 1
-            }
-
-            else -> {
-                if (text[index] == '\n') {
-                    result.append('\n')
-                }
-                index++
-            }
-        }
-    }
-    return index
-}
