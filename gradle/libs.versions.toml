@@ -6,6 +6,11 @@
 # The Gradle version is authoritative in gradle/wrapper/gradle-wrapper.properties,
 # which pins the distribution and its checksum. This entry records the same
 # version so the catalog carries every pin the plan lists; the two must agree.
+# Kotlin's published compatibility table lists KGP 2.4.21 as fully supported
+# through Gradle 9.7.0, while this project builds on 9.8.2 - chosen because AGP
+# 9.4.1 requires at least 9.6.0. The pairing is accepted deliberately and tested
+# by the first Kotlin compile in S0.5; if that fails, step the wrapper back to
+# 9.7.0, which still satisfies AGP, and record it here.
 gradle = "9.8.2"
 agp = "9.4.1"
 kotlin = "2.4.21"
