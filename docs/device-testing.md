@@ -142,10 +142,17 @@ nix shell nixpkgs#python3 --command python3 -m http.server 8099 \
   --bind "$TSIP" --directory /var/lib/hermes/workspace/apk-share
 ```
 
-Patrick then opens `http://hermes:8099/$APK` on the phone, or the same URL with `$TSIP` in place
-of the name if MagicDNS does not resolve on the device. When the round is over, stop the server
-with Ctrl-C and delete the staged file with `rm -f "$STAGE"` — a fallback server left running is
-how a build artifact ends up on an open port for a week.
+Print the URL to open — a phone browser cannot expand a shell variable, so hand Patrick the
+literal address rather than a template:
+
+```sh
+printf 'http://hermes:8099/%s\n' "$APK"
+printf 'http://%s:8099/%s\n' "$TSIP" "$APK"
+```
+
+Give him the first line, or the second if MagicDNS does not resolve on the device. When the
+round is over, stop the server with Ctrl-C and delete the staged file with `rm -f "$STAGE"` — a
+fallback server left running is how a build artifact ends up on an open port for a week.
 
 Verified on this host: the server starts, serves the directory with HTTP 200, and `tailscale ip
 -4` reports the tailnet address. If `8099` is taken, pick another port and say which one.
