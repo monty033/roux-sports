@@ -21,11 +21,39 @@ java {
 lint {
     abortOnError = true
     warningsAsErrors = true
+    // Catalog pins are deliberate and reviewed; dependency currency is handled by deciding
+    // to bump versions in the catalog rather than failing a build. Disabling only these
+    // two checks keeps the remaining lint checks enforcing correctness issues as errors.
+    disable += setOf("GradleDependency", "NewerVersionAvailable")
 }
 
 dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.compiler.embeddable)
+}
+
+// Protect G4's compiler lock against android.*; :data must adopt this check when S0.6 creates it.
+val verifyNoAndroidOnClasspath =
+    tasks.register("verifyNoAndroidOnClasspath") {
+        group = "verification"
+        description = "Verifies that Android platform jars cannot enable android.* references."
+        // Configuration cache restores configuration providers as file-collection providers.
+        val compileClasspath: Provider<out FileCollection> = configurations.compileClasspath
+        doLast {
+            val androidJars =
+                compileClasspath.get().files.filter {
+                    it.name == "android.jar" || (it.name.startsWith("android-") && it.name.endsWith(".jar"))
+                }
+            check(androidJars.isEmpty()) {
+                "Android platform jar(s) on :domain compileClasspath: ${androidJars.joinToString { it.absolutePath }}. " +
+                    "The G4 guard relies on android.* being uncompilable here; an Android jar on this classpath " +
+                    "silently disables the lock."
+            }
+        }
+    }
+
+tasks.check {
+    dependsOn(verifyNoAndroidOnClasspath)
 }
 
 tasks.withType<Test>().configureEach {
