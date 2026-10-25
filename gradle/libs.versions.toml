@@ -3,6 +3,10 @@
 # If a pin later fails checkAarMetadata, step down one minor and record the reason here.
 
 [versions]
+# The Gradle version is authoritative in gradle/wrapper/gradle-wrapper.properties,
+# which pins the distribution and its checksum. This entry records the same
+# version so the catalog carries every pin the plan lists; the two must agree.
+gradle = "9.8.2"
 agp = "9.4.1"
 kotlin = "2.4.21"
 composeBom = "2026.09.00"
@@ -24,6 +28,9 @@ junit = "4.13.2"
 turbine = "1.2.1"
 spotless = "8.10.4"
 ktlint = "1.8.0"
+# Android toolchain pins below are read by the module build files added in S0.5
+# onward (:domain, :data, :app). They live here from the start so the SDK levels
+# and the bytecode target are decided once, in one file, rather than per module.
 compileSdk = "37"
 targetSdk = "36"
 minSdk = "31"
