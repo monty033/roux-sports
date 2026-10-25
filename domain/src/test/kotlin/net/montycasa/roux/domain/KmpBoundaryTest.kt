@@ -19,6 +19,54 @@ class KmpBoundaryTest {
     }
 
     @Test
+    fun scanSourceAndroidReferenceInStringInterpolationHasSizeOne() {
+        assertEquals(1, scanSource("val s = \"\${android.os.Build.MODEL}\"").size)
+    }
+
+    @Test
+    fun scanSourceAndroidReferenceInInterpolationWithNestedBracesHasSizeOne() {
+        val source = "val s = \"\${if (true) { android.os.Build.MODEL } else { \"\" }}\""
+        assertEquals(1, scanSource(source).size)
+    }
+
+    @Test
+    fun scanSourceAndroidReferenceAfterNestedStringInInterpolationHasSizeOne() {
+        val source = "val s = \"\${foo(\"bar\") + android.os.Build.MODEL}\""
+        assertEquals(1, scanSource(source).size)
+    }
+
+    @Test
+    fun scanSourceAndroidReferenceInTripleQuotedInterpolationHasSizeOne() {
+        val source = "val s = \"\"\"x\${android.os.Build.MODEL}\"\"\""
+        assertEquals(1, scanSource(source).size)
+    }
+
+    @Test
+    fun scanSourceEscapedDollarBeforeBraceIsNotInterpolationHasSizeZero() {
+        // The `\$` escape makes `${...}` literal text inside the string.
+        val source = "val s = \"\\\${android.os.Build.MODEL}\""
+        assertEquals(0, scanSource(source).size)
+    }
+
+    @Test
+    fun scanSourceForbiddenImportTextInNestedStringInsideInterpolationHasSizeZero() {
+        // The nested string is a literal, not executable code, so the import-like
+        // text inside it stays stripped: the expected violation count is zero.
+        val source = "val s = \"\${listOf(\"import android.os.Bundle\")}\""
+        assertEquals(0, scanSource(source).size)
+    }
+
+    @Test
+    fun scanSourceEscapedIdentifierAfterAndroidDotHasSizeOne() {
+        assertEquals(1, scanSource("val x = android.`when`.Foo").size)
+    }
+
+    @Test
+    fun scanSourceForbiddenImportTextInPlainStringHasSizeZero() {
+        assertEquals(0, scanSource("val s = \"import android.os.Bundle\"").size)
+    }
+
+    @Test
     fun scanSourceJavaImportHasSizeOne() {
         assertEquals(1, scanSource("import java.time.Instant").size)
     }
@@ -167,7 +215,11 @@ private val allowedAndroidxPaths =
 
 private val importPattern = Regex("""\bimport\s+([^\s;]+)""")
 
-private val androidReferencePattern = Regex("""\bandroid\.[A-Za-z_][A-Za-z0-9_.]*""")
+// Kotlin allows backtick-quoted identifiers after `android.` (e.g. android.`when`.Foo),
+// so accept either form at every segment position.
+private val androidSegmentPattern = """(?:`[^`\n]+`|[A-Za-z_][A-Za-z0-9_]*)"""
+
+private val androidReferencePattern = Regex("""\bandroid\.$androidSegmentPattern(?:\.$androidSegmentPattern)*""")
 
 fun scanSource(text: String): List<String> {
     val cleaned = stripCommentsAndStrings(text)
@@ -263,7 +315,35 @@ private fun reason(exception: Throwable): String = "${exception.javaClass.simple
 
 private fun stripCommentsAndStrings(text: String): String {
     val result = StringBuilder(text.length)
-    var index = 0
+    stripCode(text, 0, result)
+    return result.toString()
+}
+
+/**
+ * Copies executable code from [text], starting at [start], into [result]. Comments
+ * and the literal text of string/char literals are dropped, but the code inside
+ * `${...}` string templates is kept because Kotlin evaluates it as an expression.
+ * Newlines are preserved everywhere so reported line numbers still match the
+ * original source.
+ *
+ * When [stopAtClosingBrace] is true this scans the inside of an interpolation and
+ * returns the index just past the `}` that closes it. Braces are matched by
+ * counting, and strings, chars and comments inside the expression are consumed by
+ * the same scanner, so `${ if (x) { foo("bar") } else { "" } }` is handled.
+ *
+ * Limitation: this is a lexical scanner, not a Kotlin parser. Only the `${...}`
+ * template form is scanned. A bare `$name` template is skipped along with the
+ * literal text because it cannot contain a dotted `android.*` reference of its
+ * own (`"$android.os"` evaluates `android` and treats `.os` as literal text).
+ */
+private fun stripCode(
+    text: String,
+    start: Int,
+    result: StringBuilder,
+    stopAtClosingBrace: Boolean = false,
+): Int {
+    var index = start
+    var braceDepth = if (stopAtClosingBrace) 1 else 0
     while (index < text.length) {
         when {
             text.startsWith("//", index) -> {
@@ -297,66 +377,27 @@ private fun stripCommentsAndStrings(text: String): String {
                 }
             }
 
-            text.startsWith("\"\"\"", index) -> {
-                index += 3
-                while (index < text.length && !text.startsWith("\"\"\"", index)) {
-                    if (text[index] == '\n') {
-                        result.append('\n')
-                    }
-                    index++
-                }
-                if (index < text.length) {
-                    index += 3
-                }
-            }
-
-            text[index] == '"' -> {
-                index++
-                while (index < text.length) {
-                    when {
-                        text[index] == '\\' -> {
-                            if (index + 1 < text.length && text[index + 1] == '\n') {
-                                result.append('\n')
-                            }
-                            index += 2
-                        }
-
-                        text[index] == '"' -> {
-                            index++
-                            break
-                        }
-
-                        else -> {
-                            if (text[index] == '\n') {
-                                result.append('\n')
-                            }
-                            index++
-                        }
-                    }
-                }
+            text.startsWith("\"\"\"", index) || text[index] == '"' -> {
+                index = stripStringLiteral(text, index, result)
             }
 
             text[index] == '\'' -> {
+                index = stripCharLiteral(text, index, result)
+            }
+
+            stopAtClosingBrace && text[index] == '{' -> {
+                braceDepth++
+                result.append('{')
                 index++
-                while (index < text.length) {
-                    when {
-                        text[index] == '\\' -> {
-                            index += 2
-                        }
+            }
 
-                        text[index] == '\'' -> {
-                            index++
-                            break
-                        }
-
-                        else -> {
-                            if (text[index] == '\n') {
-                                result.append('\n')
-                            }
-                            index++
-                        }
-                    }
+            stopAtClosingBrace && text[index] == '}' -> {
+                braceDepth--
+                index++
+                if (braceDepth == 0) {
+                    return index
                 }
+                result.append('}')
             }
 
             else -> {
@@ -365,5 +406,71 @@ private fun stripCommentsAndStrings(text: String): String {
             }
         }
     }
-    return result.toString()
+    return index
+}
+
+private fun stripStringLiteral(
+    text: String,
+    start: Int,
+    result: StringBuilder,
+): Int {
+    val triple = text.startsWith("\"\"\"", start)
+    var index = start + if (triple) 3 else 1
+    while (index < text.length) {
+        when {
+            triple && text.startsWith("\"\"\"", index) -> {
+                return index + 3
+            }
+
+            !triple && text[index] == '\\' -> {
+                if (index + 1 < text.length && text[index + 1] == '\n') {
+                    result.append('\n')
+                }
+                index += 2
+            }
+
+            !triple && text[index] == '"' -> {
+                return index + 1
+            }
+
+            text[index] == '$' && index + 1 < text.length && text[index + 1] == '{' -> {
+                index = stripCode(text, index + 2, result, stopAtClosingBrace = true)
+            }
+
+            else -> {
+                if (text[index] == '\n') {
+                    result.append('\n')
+                }
+                index++
+            }
+        }
+    }
+    return index
+}
+
+private fun stripCharLiteral(
+    text: String,
+    start: Int,
+    result: StringBuilder,
+): Int {
+    var index = start + 1
+    while (index < text.length) {
+        when {
+            text[index] == '\\' -> {
+                index += 2
+            }
+
+            text[index] == '\'' -> {
+                return index + 1
+            }
+
+            else -> {
+                if (text[index] == '\n') {
+                    result.append('\n')
+                }
+                index++
+            }
+        }
+    }
+    return index
 }
