@@ -47,7 +47,26 @@ case "${GRADLE_OPTS:-}" in
   *) fail "GRADLE_OPTS does not contain $aapt2_override" ;;
 esac
 
-# (g) This script must never invoke the legacy SDK package manager.
+# (g) AGP prefers sdk.dir from local.properties over the environment, so an
+# environment agreeing with itself proves nothing about what Gradle will use.
+# If local.properties pins a different SDK, this check must fail.
+script_dir="$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")" || fail "could not resolve the script directory"
+project_root="$(dirname -- "$script_dir")"
+local_properties="$project_root/local.properties"
+if [ -f "$local_properties" ]; then
+  sdk_dir_line="$(grep -E '^[[:space:]]*sdk\.dir[[:space:]]*=' "$local_properties" | tail -n 1 || true)"
+  if [ -n "$sdk_dir_line" ]; then
+    sdk_dir_value="${sdk_dir_line#*=}"
+    sdk_dir_value="${sdk_dir_value#"${sdk_dir_value%%[![:space:]]*}"}"
+    sdk_dir_value="${sdk_dir_value%"${sdk_dir_value##*[![:space:]]}"}"
+    [ -n "$sdk_dir_value" ] || fail "local.properties has an empty sdk.dir but ANDROID_HOME is '$ANDROID_HOME'"
+    sdk_dir_real="$(realpath -m -- "$sdk_dir_value")" || fail "could not resolve sdk.dir '$sdk_dir_value' from $local_properties"
+    android_home_real="$(realpath -m -- "$ANDROID_HOME")" || fail "could not resolve ANDROID_HOME '$ANDROID_HOME'"
+    [ "$sdk_dir_real" = "$android_home_real" ] || fail "local.properties sdk.dir ('$sdk_dir_value' -> '$sdk_dir_real') does not match ANDROID_HOME ('$ANDROID_HOME' -> '$android_home_real')"
+  fi
+fi
+
+# (h) This script must never invoke the legacy SDK package manager.
 forbidden_tool=sdk''manager
 if grep -qF -- "$forbidden_tool" "$0"; then
   fail "check-toolchain.sh must not reference $forbidden_tool"

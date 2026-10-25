@@ -6,6 +6,8 @@
   outputs =
     { nixpkgs, ... }:
     let
+      # Validated on x86_64-linux only. Other systems are not supported and
+      # would need their own androidenv composition.
       system = "x86_64-linux";
 
       pkgs = import nixpkgs {
