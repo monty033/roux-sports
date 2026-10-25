@@ -190,11 +190,13 @@ on the stage checklist as explicit items.
 
 ## Status of this procedure
 
-Steps 3, 4 and 6 were executed against `root@local-proxy` with a throwaway file: the transfer,
-the digest comparison, and the cleanup all succeed, and a deliberately mismatched digest is
-rejected rather than reported as a match. Step 5 (the actual Taildrop send to `pixel-9`) is the
-only step not exercised here, because it puts a file on Patrick's phone and is done as part of a
-real round.
+Verified against the real relay with throwaway files: staging a build output, hashing it, the
+transfer to `root@local-proxy`, the digest comparison, and the cleanup. Corrupting the relay copy
+after transfer makes the comparison fail rather than pass, which is the case that matters. The
+fallback server was started and answered HTTP 200 from the tailnet address.
+
+Not verified: the Taildrop send itself, because it puts a file on Patrick's phone and belongs to a
+real round. Everything up to that point is exercised.
 
 Two things were learned by running it rather than writing it down: `scp` cannot reach this relay
 because the login shell is `fish`, and the relay rejects any user other than `root`. Both are
