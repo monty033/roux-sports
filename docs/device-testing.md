@@ -15,9 +15,10 @@ cloud bucket as the primary path.
 | Staging directory on the build host | `/var/lib/hermes/workspace/apk-share/` |
 
 The build host's own Taildrop send is not the route. The send is relayed from `local-proxy` as
-root, and that is the path verified end to end. A refusal when sending from the build host is
-expected and is not a reason to invent another channel — an HTTP server or a cloud bucket is the
-fallback below, not a substitute for fixing the relay.
+root, and that is the path whose transfer, digest comparison and cleanup have been verified — the
+final hand-off to the phone has not (see Status of this procedure). A refusal when sending from
+the build host is expected and is not a reason to invent another channel — an HTTP server or a
+cloud bucket is the fallback below, not a substitute for fixing the relay.
 
 ## Procedure
 
@@ -98,8 +99,9 @@ STAGE="/var/lib/hermes/workspace/apk-share/$APK"
    echo "relay copy removed"
    ```
 
-8. **Tell Patrick the round name and what to check.** He accepts the file in the Tailscale app
-   and installs it. Name the checks from the sign-off list below, plus any check the current
+8. **Tell Patrick the round name and what to check.** Taildrop does not ask him to accept anything:
+   the file arrives as a notification on the phone, and opening it puts the APK in Downloads,
+   where he installs it. Name the checks from the sign-off list below, plus any check the current
    stage added. A delivery without named checks is a delivery nobody can sign off.
 
 ## Signing, and "App not installed"
@@ -112,13 +114,18 @@ other in place.
 Before blaming the build, compare certificates:
 
 ```sh
-bash "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$STAGE" \
-  | grep 'SHA-256 digest'
+CERT_OUT=$(bash "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$STAGE") \
+  || { echo "apksigner could not verify $STAGE"; exit 1; }
+printf '%s\n' "$CERT_OUT" | grep 'SHA-256 digest'
 ```
 
 against the certificate of the build already on the phone. If they differ, rebuild from the
 host that produced the installed build rather than asking Patrick to uninstall — uninstalling
 costs his stored data.
+
+Check `apksigner`'s own exit status before filtering its output, as above: piping it straight into
+`grep` reports `grep`'s status, so a verifier failure would look like a success whenever the
+pattern happened to match earlier output.
 
 Call out a deliberate signing-identity change *before* delivery, never after he reports the
 install failure.
