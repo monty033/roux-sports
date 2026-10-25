@@ -47,28 +47,14 @@ case "${GRADLE_OPTS:-}" in
   *) fail "GRADLE_OPTS does not contain $aapt2_override" ;;
 esac
 
-# (g) AGP prefers sdk.dir from local.properties over the environment, so an
-# environment agreeing with itself proves nothing about what Gradle will use.
-# If local.properties pins a different SDK, this check must fail.
+# (g) local.properties must not exist in this workflow: the SDK comes from the
+# devShell. Any semantics-sensitive parse of a Java properties file can fail
+# open, and a file that must never exist here only needs a presence test.
 script_dir="$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")" || fail "could not resolve the script directory"
 project_root="$(dirname -- "$script_dir")"
 local_properties="$project_root/local.properties"
 if [ -f "$local_properties" ]; then
-  # Java properties accept '=', ':' or whitespace as the key/value separator.
-  sdk_dir_line="$(grep -E '^[[:space:]]*sdk\.dir([[:space:]]*[=:][[:space:]]*|[[:space:]]+|$)' "$local_properties" | tail -n 1 || true)"
-  if [ -n "$sdk_dir_line" ]; then
-    sdk_dir_value="$(printf '%s\n' "$sdk_dir_line" | sed -E 's/^[[:space:]]*sdk\.dir[[:space:]]*[=:]?[[:space:]]*//')"
-    sdk_dir_value="${sdk_dir_value%"${sdk_dir_value##*[![:space:]]}"}"
-    [ -n "$sdk_dir_value" ] || fail "local.properties has an empty sdk.dir but ANDROID_HOME is '$ANDROID_HOME'"
-    # AGP resolves a relative sdk.dir against the Gradle project root.
-    case "$sdk_dir_value" in
-      /*) sdk_dir_path="$sdk_dir_value" ;;
-      *) sdk_dir_path="$project_root/$sdk_dir_value" ;;
-    esac
-    sdk_dir_real="$(realpath -m -- "$sdk_dir_path")" || fail "could not resolve sdk.dir '$sdk_dir_value' from $local_properties"
-    android_home_real="$(realpath -m -- "$ANDROID_HOME")" || fail "could not resolve ANDROID_HOME '$ANDROID_HOME'"
-    [ "$sdk_dir_real" = "$android_home_real" ] || fail "local.properties sdk.dir ('$sdk_dir_value' -> '$sdk_dir_real') does not match ANDROID_HOME ('$ANDROID_HOME' -> '$android_home_real')"
-  fi
+  fail "local.properties exists at '$local_properties': the Android SDK for this project comes from the Nix devShell; local.properties is not part of the workflow. Delete the file. If a tool created it, the SDK is still supplied by ANDROID_HOME."
 fi
 
 # (h) This script must never invoke the legacy SDK package manager.
