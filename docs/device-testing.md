@@ -38,25 +38,41 @@ STAGE="/var/lib/hermes/workspace/apk-share/$APK"
    on, so the phone's Downloads list stays legible and a later round is never confused with an
    earlier one.
 
-3. **Record the artifact's identity** before it leaves the host:
+3. **Stage the built APK at the round path.** The build writes somewhere else entirely
+   (`app/build/outputs/apk/debug/app-debug.apk`); everything below reads `$STAGE`, so copy it
+   deliberately and refuse to continue if the build did not produce one:
 
    ```sh
-   LOCAL_SHA=$(sha256sum "$STAGE" | cut -d' ' -f1) || { echo "cannot read $STAGE"; exit 1; }
+   BUILT=app/build/outputs/apk/debug/app-debug.apk
+   mkdir -p /var/lib/hermes/workspace/apk-share
+   cp "$BUILT" "$STAGE" || { echo "no APK at $BUILT - did the build succeed?"; exit 1; }
+   test -s "$STAGE" || { echo "staged APK is empty"; exit 1; }
+   ```
+
+4. **Record the artifact's identity** before it leaves the host. Capture the output and check the
+   exit status *before* parsing: piping straight into `cut` would report `cut`'s status and could
+   turn a failed `sha256sum` into a silent empty string.
+
+   ```sh
+   LOCAL_RAW=$(sha256sum "$STAGE") || { echo "cannot hash $STAGE"; exit 1; }
+   LOCAL_SHA=${LOCAL_RAW%% *}
+   [ -n "$LOCAL_SHA" ] || { echo "empty local digest"; exit 1; }
    echo "local  $LOCAL_SHA"
    ```
 
-4. **Copy to the relay, then compare the full digest and fail on mismatch** — not a prefix, and
+5. **Copy to the relay, then compare the full digest and fail on mismatch** — not a prefix, and
    not merely printed. `scp` does not work against this relay: its login shell is `fish`, so the
-   connection closes as soon as `scp` starts. Pipe the file through a remote `bash` instead. An
-   `scp`-style transfer that fails partway still leaves a stale file at the destination, so the
-   copy is checked before the hash is trusted, and the comparison must be able to stop the
-   procedure:
+   connection closes as soon as `scp` starts. Pipe the file through a remote `bash` instead. A
+   transfer that fails partway still leaves a stale file at the destination, so the copy is
+   checked before the hash is trusted, and the comparison must be able to stop the procedure:
 
    ```sh
    ssh root@local-proxy "bash -c 'cat > /tmp/$APK'" < "$STAGE" \
      || { echo "transfer to relay FAILED"; exit 1; }
-   REMOTE_SHA=$(ssh root@local-proxy "bash -c 'sha256sum /tmp/$APK'" | cut -d' ' -f1)
-   [ -n "$REMOTE_SHA" ] || { echo "could not hash relay copy"; exit 1; }
+   REMOTE_RAW=$(ssh root@local-proxy "bash -c 'sha256sum /tmp/$APK'") \
+     || { echo "ssh failed while hashing the relay copy"; exit 1; }
+   REMOTE_SHA=${REMOTE_RAW%% *}
+   [ -n "$REMOTE_SHA" ] || { echo "empty remote digest"; exit 1; }
    [ "$LOCAL_SHA" = "$REMOTE_SHA" ] || {
      echo "DIGEST MISMATCH local=$LOCAL_SHA remote=$REMOTE_SHA"; exit 1; }
    echo "digest match"
@@ -65,14 +81,14 @@ STAGE="/var/lib/hermes/workspace/apk-share/$APK"
    The relay's login shell is `fish`, which rejects `$?`. Wrap every remote command in
    `bash -c '...'`, and expand `$APK` on the local side as shown, not inside the remote quotes.
 
-5. **Send from the relay and require success:**
+6. **Send from the relay and require success:**
 
    ```sh
    ssh root@local-proxy "bash -c 'tailscale file cp /tmp/$APK pixel-9:'" \
      || { echo "TAILDROP SEND FAILED - do not report as delivered"; exit 1; }
    ```
 
-6. **Delete the relay copy and prove it is gone.** The check must keep the exit status meaningful:
+7. **Delete the relay copy and prove it is gone.** The check must keep the exit status meaningful:
    `rm -f` succeeding does not mean the file is gone, and `ls … || echo gone` turns a permissions
    error into a false all-clear.
 
@@ -82,7 +98,7 @@ STAGE="/var/lib/hermes/workspace/apk-share/$APK"
    echo "relay copy removed"
    ```
 
-7. **Tell Patrick the round name and what to check.** He accepts the file in the Tailscale app
+8. **Tell Patrick the round name and what to check.** He accepts the file in the Tailscale app
    and installs it. Name the checks from the sign-off list below, plus any check the current
    stage added. A delivery without named checks is a delivery nobody can sign off.
 
@@ -113,9 +129,26 @@ if invoking directly.
 
 ## Fallback
 
-If `local-proxy` is unreachable, a temporary HTTP server on the tailnet is the documented
-fallback — not the first resort. Reaching for it before checking the relay costs a round trip
-and a correction.
+If `local-proxy` is unreachable, serve the staged APK from the build host over the tailnet. This
+is the fallback, not the first resort — reaching for it before checking the relay costs a round
+trip and a correction.
+
+Bind to the tailnet address only, never to `0.0.0.0`, so the file is not offered to the whole
+LAN:
+
+```sh
+TSIP=$(tailscale ip -4)                 # 100.x.y.z, this host
+nix shell nixpkgs#python3 --command python3 -m http.server 8099 \
+  --bind "$TSIP" --directory /var/lib/hermes/workspace/apk-share
+```
+
+Patrick then opens `http://hermes:8099/$APK` on the phone, or the same URL with `$TSIP` in place
+of the name if MagicDNS does not resolve on the device. When the round is over, stop the server
+with Ctrl-C and delete the staged file with `rm -f "$STAGE"` — a fallback server left running is
+how a build artifact ends up on an open port for a week.
+
+Verified on this host: the server starts, serves the directory with HTTP 200, and `tailscale ip
+-4` reports the tailnet address. If `8099` is taken, pick another port and say which one.
 
 ## Sign-off checks
 
@@ -132,8 +165,12 @@ top; these are the floor.
    never traps the user on a screen with no way out.
 6. **One-handed reach** — the controls the round added can be touched with the right thumb while
    holding the phone normally, without shifting grip.
-7. **No crash in the log** — for anything touching live data, a crash the UI hides still counts
-   as a failed round.
+7. **No crash the UI hides** — for anything touching live data, the app must not visibly close,
+   freeze, or bounce back to the launcher. The build host has no `adb`, so the check the phone
+   operator can actually perform is visual. If a machine with `adb` is at hand (a laptop, not the
+   build host), confirm with `adb logcat -d | grep -i 'FATAL EXCEPTION'` after the round and say
+   whether you did. Otherwise record "no visible crash" and state plainly that the log was not
+   inspected — do not imply it was.
 
 Report each as pass or fail with a one-line note. "Looks fine" is not a sign-off.
 
