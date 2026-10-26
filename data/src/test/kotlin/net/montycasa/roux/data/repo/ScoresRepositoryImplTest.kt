@@ -9,6 +9,9 @@ import io.ktor.client.request.HttpResponseData
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import net.montycasa.roux.data.Fixtures
 import net.montycasa.roux.data.cache.CacheKey
@@ -38,27 +41,51 @@ import kotlin.time.Instant
  * the caller is told when a request fails. Fixtures are the real captured NHL responses.
  */
 class ScoresRepositoryImplTest {
-    private val date = "2026-10-26"
-    private val fixture = Fixtures.bytes("score-gameday.json")
+    private val fixtureText = Fixtures.text("score-gameday.json")
+    private val fixtureBytes = Fixtures.bytes("score-gameday.json")
+
+    /**
+     * The slate's own date, read from the fixture rather than assumed from its directory name.
+     *
+     * The captured corpus lives under `fx/2026-10-26/` but the body says `currentDate` is
+     * `2026-10-24`, so a hardcoded date here silently made every test in this class exercise a
+     * mismatched response - the very bug one of the tests now pins.
+     */
+    private val date =
+        requireNotNull(Regex("\"currentDate\":\"([0-9]{4}-[0-9]{2}-[0-9]{2})\"").find(fixtureText)) {
+            "the fixture must carry currentDate"
+        }.groupValues[1]
 
     private class Harness(
         val repository: ScoresRepositoryImpl,
         val requests: List<String>,
         val cache: ResponseCache,
         val clock: MutableClock,
+        /** Every body handed to the engine, so a test can compare one with what was cached. */
+        val bodies: MutableList<ByteArray>,
     )
 
-    private fun harness(responder: ((MockRequestHandleScope.(HttpRequestData) -> HttpResponseData?)?) = null): Harness {
+    /** The same real slate, but labelled with the requested date, as a matching answer would be. */
+    private fun slateFor(requested: String): ByteArray =
+        fixtureText.replace(Regex("\"currentDate\":\"[0-9-]+\""), "\"currentDate\":\"$requested\"").toByteArray()
+
+    private fun harness(responder: (suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData?)? = null): Harness {
         val requests = mutableListOf<String>()
+        val lastBody = mutableListOf<ByteArray>()
         val engine =
             MockEngine { request ->
                 requests += request.url.encodedPath
                 responder?.invoke(this, request)
-                    ?: respond(
-                        fixture,
-                        HttpStatusCode.OK,
-                        headersOf(HttpHeaders.ContentType, "application/json"),
-                    )
+                    ?: run {
+                        val requested = request.url.encodedPath.substringAfterLast('/')
+                        val body = slateFor(requested)
+                        lastBody += body
+                        respond(
+                            body,
+                            HttpStatusCode.OK,
+                            headersOf(HttpHeaders.ContentType, "application/json"),
+                        )
+                    }
             }
         val clock = MutableClock()
         val fileSystem = FakeFileSystem(clock)
@@ -69,6 +96,7 @@ class ScoresRepositoryImplTest {
             requests,
             cache,
             clock,
+            lastBody,
         )
     }
 
@@ -161,7 +189,7 @@ class ScoresRepositoryImplTest {
             assertNotNull(stored)
             // The raw body, not a re-encoding of the parsed model: this is what survives an
             // adapter change without invalidating every cached day.
-            assertArrayEquals(fixture, stored!!.bytes)
+            assertArrayEquals(harness.bodies.last(), stored!!.bytes)
         }
 
     @Test
@@ -220,6 +248,113 @@ class ScoresRepositoryImplTest {
             harness.repository.prefetchAdjacent("2026-10-15", "2026-10-26")
         }
 
+    @Test
+    fun aSlateForAnotherDayIsNeitherReturnedNorCached() =
+        runBlocking {
+            // Answers the requested date with the fixture's own date, which is what the API did to
+            // this very suite: a well-formed body for the wrong day.
+            val harness =
+                harness { _ ->
+                    respond(
+                        fixtureBytes,
+                        HttpStatusCode.OK,
+                        headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+
+            val result = harness.repository.loadDay("2026-11-01", "2026-11-01")
+
+            assertNull("another day's scores must not be shown as this day's", result.data)
+            assertEquals(LoadError.MismatchedDay("2026-11-01", date), result.error)
+            assertNull(
+                "another day's slate must never be filed under this key",
+                harness.cache.get(CacheKey(CacheKind.Score, "2026-11-01")),
+            )
+        }
+
+    @Test
+    fun anEmptySlateIsNotTreatedAsAMismatch() =
+        runBlocking {
+            // A quiet date is answered with today's date beside an empty list; refusing that would
+            // turn a genuinely game-free night into an error.
+            val harness =
+                harness { _ ->
+                    respond(
+                        "{\"currentDate\":\"$date\",\"games\":[]}",
+                        HttpStatusCode.OK,
+                        headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+
+            val result = harness.repository.loadDay("2026-11-01", "2026-11-01")
+
+            assertEquals(Freshness.Fresh, result.freshness)
+            assertNotNull(result.data)
+            assertEquals(0, result.data!!.games.size)
+        }
+
+    @Test
+    fun prefetchSurvivesAnImpossibleDate() =
+        runBlocking {
+            val harness = harness()
+
+            // The interface promises no escaping exception; the day shift throws on this input.
+            harness.repository.prefetchAdjacent("2026-02-30", date)
+
+            assertEquals(emptyList<String>(), harness.requests)
+        }
+
+    @Test
+    fun cancellingPrefetchStopsBeforeTheSecondNeighbour() =
+        runBlocking {
+            val harness =
+                harness { request ->
+                    delay(5_000)
+                    respond(
+                        slateFor(request.url.encodedPath.substringAfterLast('/')),
+                        HttpStatusCode.OK,
+                        headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+
+            val job = launch { harness.repository.prefetchAdjacent("2026-10-15", date) }
+            while (harness.requests.isEmpty()) delay(10)
+            job.cancelAndJoin()
+
+            // This pins the observable behaviour, not the mechanism: whether the guarded block
+            // rethrows or swallows, a cancelled coroutine still stops at its next suspension, so a
+            // mutant that replaces the rethrow with Unit passes this test. Keeping the rethrow is a
+            // structured-concurrency rule, and it is deliberately not claimed as proven here.
+            assertTrue("prefetch must stop when its caller cancels", job.isCancelled)
+            assertEquals("the second neighbour must not be requested", 1, harness.requests.size)
+        }
+
+    @Test
+    fun aSlowFetchIsStampedWhenItCompletesNotWhenItStarted() =
+        runBlocking {
+            var built: Harness? = null
+            built =
+                harness { _ ->
+                    built!!.clock.advance(2.hours)
+                    respond(
+                        slateFor(date),
+                        HttpStatusCode.OK,
+                        headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+            val h = requireNotNull(built)
+
+            h.repository.loadDay(date, date)
+
+            val stored = h.cache.get(CacheKey(CacheKind.Score, date))
+            assertNotNull(stored)
+            assertEquals(
+                "the stamp is the moment the bytes arrived, not the moment the load began",
+                h.clock.now(),
+                stored!!.fetchedAt,
+            )
+        }
+
     private class MutableClock : Clock {
         private var instant: Instant = Instant.parse("2026-10-26T20:00:00Z")
 
@@ -272,9 +407,20 @@ class IsoDateTest {
         assertThrowsIllegalArgument("not-a-date")
     }
 
-    private fun assertThrowsIllegalArgument(date: String) {
+    @Test
+    fun refusesToShiftOutsideTheFourDigitRange() {
+        // A shift off the end of the supported range must fail loudly rather than produce a
+        // five-digit year the API would reject.
+        assertThrowsIllegalArgument("9999-12-31", 1)
+        assertThrowsIllegalArgument("0001-01-01", -1)
+    }
+
+    private fun assertThrowsIllegalArgument(
+        date: String,
+        days: Int = 1,
+    ) {
         try {
-            IsoDate.shift(date, 1)
+            IsoDate.shift(date, days)
         } catch (_: IllegalArgumentException) {
             return
         }

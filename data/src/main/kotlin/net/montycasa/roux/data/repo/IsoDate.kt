@@ -29,6 +29,7 @@ internal object IsoDate {
         require(day in 1..daysInMonth(year, month)) { "day out of range: $date" }
 
         val (y, m, d) = civilFromDays(daysFromCivil(year, month, day) + days)
+        require(y in 1..9999) { "date out of the four-digit range: $date shifted by $days" }
         return buildString {
             append(y.toString().padStart(4, '0'))
             append('-')

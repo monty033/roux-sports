@@ -1,5 +1,6 @@
 package net.montycasa.roux.data.repo
 
+import kotlinx.coroutines.CancellationException
 import net.montycasa.roux.data.cache.CacheKey
 import net.montycasa.roux.data.cache.CacheKind
 import net.montycasa.roux.data.cache.ResponseCache
@@ -46,10 +47,9 @@ internal class ScoresRepositoryImpl(
         date: String,
         today: String,
     ): Loadable<ScoreDay> {
-        val now = clock.now()
         val cached = readCached(date)
 
-        if (cached != null && !isStale(cached, now, today)) {
+        if (cached != null && !isStale(cached, clock.now(), today)) {
             return Loadable(cached.day, Freshness.Fresh, null)
         }
 
@@ -57,10 +57,19 @@ internal class ScoresRepositoryImpl(
             is ApiResult.Success -> {
                 when (val parsed = adapter.parseScore(result.bytes.decodeToString())) {
                     is ParseResult.Success -> {
-                        // Write the bytes the server sent, not a re-encoding of the parsed model:
-                        // that is what lets the cache survive an adapter change.
-                        cache.put(CacheKey(CacheKind.Score, date), result.bytes, now)
-                        Loadable(parsed.value, Freshness.Fresh, null)
+                        if (isWrongDay(date, parsed.value)) {
+                            // Caching this would file another day's slate under this key, and a
+                            // finished slate never expires - the wrong day would then be permanent.
+                            fallBack(cached, LoadError.MismatchedDay(date, parsed.value.date))
+                        } else {
+                            // Write the bytes the server sent, not a re-encoding of the parsed
+                            // model: that is what lets the cache survive an adapter change. The
+                            // stamp is taken when the bytes arrived, not when the load began, so a
+                            // slow request cannot install an entry that is already past its own
+                            // lifetime and so refetch immediately.
+                            cache.put(CacheKey(CacheKind.Score, date), result.bytes, clock.now())
+                            Loadable(parsed.value, Freshness.Fresh, null)
+                        }
                     }
 
                     is ParseResult.Failure -> {
@@ -84,24 +93,29 @@ internal class ScoresRepositoryImpl(
         today: String,
     ) {
         // Paging is one day at a time, so warming both neighbours is the whole working set.
-        for (neighbour in listOf(IsoDate.shift(date, -1), IsoDate.shift(date, 1))) {
-            val now = clock.now()
-            val cached = readCached(neighbour)
-            if (cached != null && !isStale(cached, now, today)) continue
-            // Deliberately ignores the outcome: this is speculative work and a failure here must
-            // not surface as an error the user did not ask for.
-            runCatching { fetchAndStore(neighbour, now) }
+        for (offset in intArrayOf(-1, 1)) {
+            try {
+                val neighbour = IsoDate.shift(date, offset)
+                val cached = readCached(neighbour)
+                if (cached != null && !isStale(cached, clock.now(), today)) continue
+                fetchAndStore(neighbour)
+            } catch (cancellation: CancellationException) {
+                // Cancellation is the caller's decision, not a failure of speculative work.
+                throw cancellation
+            } catch (_: Exception) {
+                // Speculative work never surfaces. The date shift is inside the guard because it
+                // throws on impossible input, and that must not escape a method promising it will not.
+            }
         }
     }
 
-    private suspend fun fetchAndStore(
-        date: String,
-        now: Instant,
-    ) {
+    private suspend fun fetchAndStore(date: String) {
         val result = api.score(date)
         if (result !is ApiResult.Success) return
-        if (adapter.parseScore(result.bytes.decodeToString()) !is ParseResult.Success) return
-        cache.put(CacheKey(CacheKind.Score, date), result.bytes, now)
+        val parsed = adapter.parseScore(result.bytes.decodeToString())
+        if (parsed !is ParseResult.Success) return
+        if (isWrongDay(date, parsed.value)) return
+        cache.put(CacheKey(CacheKind.Score, date), result.bytes, clock.now())
     }
 
     /** A cached body that no longer parses is treated as absent; it is not evidence of a failure. */
@@ -109,8 +123,21 @@ internal class ScoresRepositoryImpl(
         val entry = cache.get(CacheKey(CacheKind.Score, date)) ?: return null
         val parsed = adapter.parseScore(entry.bytes.decodeToString())
         if (parsed !is ParseResult.Success) return null
+        if (isWrongDay(date, parsed.value)) return null
         return CachedDay(parsed.value, entry.fetchedAt)
     }
+
+    /**
+     * Whether a slate belongs to a day other than the one asked for.
+     *
+     * An empty slate is not a mismatch: the scoreboard endpoint answers a quiet date by repeating
+     * today's date beside an empty list, and refusing that would turn a legitimately game-free night
+     * into an error. Only a slate that actually carries games for another day is wrong.
+     */
+    private fun isWrongDay(
+        requested: String,
+        day: ScoreDay,
+    ): Boolean = day.games.isNotEmpty() && day.date != requested
 
     private fun isStale(
         cached: CachedDay,
