@@ -157,6 +157,10 @@ perfectly in debug.
 - [ ] Upgrade path: install the release APK **over the previous release signed with the same
       release key**, and confirm favourites and settings survive. This is the only in-place
       upgrade Android actually permits, and it is the one real users will perform.
+      **Prerequisite:** this needs a release signing configuration and a documented path for
+      delivering a signed release to the phone. Neither exists yet — they arrive with Stage 10
+      itself, and `device-testing.md` currently documents debug APKs only. Until both exist,
+      record this check as not yet applicable rather than skipping it quietly.
 - [ ] Do not expect the release APK to install over a debug build. Android refuses to replace
       an app whose signing certificate differs, and a debug build is signed with the build
       host's debug key. An install failure there is a signature mismatch, not data loss —
@@ -178,4 +182,6 @@ perfectly in debug.
       reflectively, and the symptom is a parse failure that never appears in debug. If the
       release build is not minified, record that and skip the check rather than implying it
       passed.
-- [ ] Tag the release only after every line above passes.
+- [ ] Tag the release only when every **applicable** check above has passed and every
+      non-applicable or uninspected one has been explicitly recorded as such. A check that
+      could not be performed is a known gap, not a pass; the record should read like one.

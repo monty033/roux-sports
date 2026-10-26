@@ -1,16 +1,25 @@
 # Roux Sports
 
-An ad-free, open-source NHL scores app for Android.
+An ad-free, open-source NHL scores app for Android, in development.
 
-NHL scores, live game state, and standings. No ads, no trackers, no telemetry.
+The goal is NHL scores, live game state, and standings. No ads, no trackers, no
+telemetry.
 
 Kotlin and Jetpack Compose. GPL-3.0-or-later.
 
+**Current state: Stage 0 of 11 — the skeleton.** The app builds, installs and launches, and
+shows its own name on a blank screen. None of the screens described above exist yet. What
+Stage 0 does establish is the pipeline: the module split, the boundary and dependency gates,
+the device-size test harness, and the render baseline that the real screens will be checked
+against.
+
 ## Building
 
-You need [Nix](https://nixos.org/) with flakes enabled. Everything else — JDK, Android
-SDK, build tools — is pinned by the flake and realised into your local Nix store. Nothing
-is installed system-wide and no Android tooling needs to exist on your machine first.
+You need [Nix](https://nixos.org/) with flakes enabled, on **x86_64-linux**. The flake
+declares that system only and says so; macOS, Windows and ARM Linux are not supported and
+would need their own `androidenv` composition. Everything else — JDK, Android SDK, build
+tools — is pinned by the flake and realised into your local Nix store. Nothing is installed
+system-wide and no Android tooling needs to exist on your machine first.
 
 The single build command:
 
@@ -62,7 +71,9 @@ Beyond compiling, it enforces:
   It raises the cost of adding such an SDK rather than making it impossible.
 - **Module boundaries** — `:domain` and `:data` are plain Kotlin/JVM modules with no Android
   types, asserted structurally rather than by convention, so they can move to Kotlin
-  Multiplatform later without a rewrite. The guards are wired into each module's `check`
+  Multiplatform later. That is a credible path rather than a guarantee — the guard keeps
+  Android platform jars off the compile classpaths, which is necessary for such a move but
+  not sufficient on its own. The guards are wired into each module's `check`
   task, which is why `:domain:check` and `:data:check` are named in the gate above:
   `testDebugUnitTest` runs those modules' tests but not their `check` tasks, so without them
   the boundary assertion would never run.
