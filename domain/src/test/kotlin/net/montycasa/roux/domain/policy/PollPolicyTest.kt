@@ -28,6 +28,63 @@ class PollPolicyTest {
         assertEquals(25.seconds, delay(game(GameState.Live())))
     }
 
+    /**
+     * The broadcast starts before the puck drops, so the live cadence is wasted inside that gap.
+     * These four tests pin the boundary at the scheduled start plus five minutes.
+     */
+    @Test
+    fun liveGameThreeMinutesAfterScheduledStartStillWarms() {
+        assertEquals(60.seconds, delay(game(GameState.Live(), now - 3.minutes)))
+    }
+
+    @Test
+    fun liveGameJustUnderFiveMinutesAfterStartStillWarms() {
+        assertEquals(60.seconds, delay(game(GameState.Live(), now - (5.minutes - 1.seconds))))
+    }
+
+    @Test
+    fun liveGameExactlyFiveMinutesAfterStartPollsLive() {
+        assertEquals(25.seconds, delay(game(GameState.Live(), now - 5.minutes)))
+    }
+
+    @Test
+    fun liveGameWellAfterStartPollsLive() {
+        assertEquals(25.seconds, delay(game(GameState.Live(), now - 20.minutes)))
+    }
+
+    @Test
+    fun liveGameWhoseStartIsStillInTheFutureWarms() {
+        // A feed can contradict its own clock; the gap rule wins over a premature Live token.
+        assertEquals(60.seconds, delay(game(GameState.Live(), now + 2.minutes)))
+    }
+
+    /**
+     * A game already under way outranks a second game still inside its own puck-drop gap. Without
+     * this case, an implementation that returns warming whenever ANY live game is inside the gap
+     * passes every other test while slowing a genuinely active game to sixty seconds.
+     */
+    @Test
+    fun liveGameOutsideTheGapOutranksALiveGameInsideIt() {
+        val underWay = game(GameState.Live(), now - 20.minutes)
+        val justStarted = game(GameState.Live(), now - 2.minutes)
+
+        for (games in listOf(listOf(underWay, justStarted), listOf(justStarted, underWay))) {
+            assertEquals(25.seconds, PollPolicy.nextDelay(now, today, today, games))
+        }
+    }
+
+    @Test
+    fun unknownStateWithRunningClockBeforePuckDropWarms() {
+        val game = game(GameState.Unknown("unreadable"), now - 2.minutes, PeriodInfo(1, "REG", "20:00", running = true))
+        assertEquals(60.seconds, delay(game))
+    }
+
+    @Test
+    fun liveGameWithoutAStartTimeTrustsTheFeed() {
+        // With no start there is no gap to measure, so holding the slow cadence could be indefinite.
+        assertEquals(25.seconds, delay(game(GameState.Live(), null)))
+    }
+
     @Test
     fun preGamePollsEvery60Seconds() {
         assertEquals(60.seconds, delay(game(GameState.Pre)))
