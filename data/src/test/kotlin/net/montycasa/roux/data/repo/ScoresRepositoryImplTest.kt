@@ -273,10 +273,10 @@ class ScoresRepositoryImplTest {
         }
 
     @Test
-    fun anEmptySlateIsNotTreatedAsAMismatch() =
+    fun aQuietDateThatEchoesTodayIsAccepted() =
         runBlocking {
-            // A quiet date is answered with today's date beside an empty list; refusing that would
-            // turn a genuinely game-free night into an error.
+            // Browsing a date with no games: the endpoint echoes today beside an empty list. This
+            // is the only empty answer that is trusted, and the echo is what earns the exemption.
             val harness =
                 harness { _ ->
                     respond(
@@ -286,11 +286,52 @@ class ScoresRepositoryImplTest {
                     )
                 }
 
-            val result = harness.repository.loadDay("2026-11-01", "2026-11-01")
+            val result = harness.repository.loadDay("2026-11-01", date)
 
             assertEquals(Freshness.Fresh, result.freshness)
             assertNotNull(result.data)
             assertEquals(0, result.data!!.games.size)
+        }
+
+    @Test
+    fun anEmptySlateDatedSomeOtherDayIsRefusedRatherThanCached() =
+        runBlocking {
+            // A past empty slate never expires, so accepting this would file 2026-10-20's empty
+            // answer under 2026-11-01 permanently, with no error to notice.
+            val harness =
+                harness { _ ->
+                    respond(
+                        "{\"currentDate\":\"2026-10-20\",\"games\":[]}",
+                        HttpStatusCode.OK,
+                        headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+
+            val result = harness.repository.loadDay("2026-11-01", date)
+
+            assertNull(result.data)
+            assertEquals(LoadError.MismatchedDay("2026-11-01", "2026-10-20"), result.error)
+            assertNull(harness.cache.get(CacheKey(CacheKind.Score, "2026-11-01")))
+        }
+
+    @Test
+    fun aBodyWhoseRowsAllFailedToMapIsNotMistakenForAQuietDay() =
+        runBlocking {
+            // One unusable row next to a date that is not the requested one: the slate is empty
+            // after mapping, but it is emphatically not a quiet day.
+            val harness =
+                harness { _ ->
+                    respond(
+                        "{\"currentDate\":\"$date\",\"games\":[{\"id\":1}]}",
+                        HttpStatusCode.OK,
+                        headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+
+            val result = harness.repository.loadDay("2026-11-01", date)
+
+            assertNull(result.data)
+            assertTrue(result.error is LoadError.MismatchedDay)
         }
 
     @Test

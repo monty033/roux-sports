@@ -47,7 +47,7 @@ internal class ScoresRepositoryImpl(
         date: String,
         today: String,
     ): Loadable<ScoreDay> {
-        val cached = readCached(date)
+        val cached = readCached(date, today)
 
         if (cached != null && !isStale(cached, clock.now(), today)) {
             return Loadable(cached.day, Freshness.Fresh, null)
@@ -57,7 +57,7 @@ internal class ScoresRepositoryImpl(
             is ApiResult.Success -> {
                 when (val parsed = adapter.parseScore(result.bytes.decodeToString())) {
                     is ParseResult.Success -> {
-                        if (isWrongDay(date, parsed.value)) {
+                        if (isWrongDay(date, parsed.value, today)) {
                             // Caching this would file another day's slate under this key, and a
                             // finished slate never expires - the wrong day would then be permanent.
                             fallBack(cached, LoadError.MismatchedDay(date, parsed.value.date))
@@ -96,9 +96,9 @@ internal class ScoresRepositoryImpl(
         for (offset in intArrayOf(-1, 1)) {
             try {
                 val neighbour = IsoDate.shift(date, offset)
-                val cached = readCached(neighbour)
+                val cached = readCached(neighbour, today)
                 if (cached != null && !isStale(cached, clock.now(), today)) continue
-                fetchAndStore(neighbour)
+                fetchAndStore(neighbour, today)
             } catch (cancellation: CancellationException) {
                 // Cancellation is the caller's decision, not a failure of speculative work.
                 throw cancellation
@@ -109,35 +109,55 @@ internal class ScoresRepositoryImpl(
         }
     }
 
-    private suspend fun fetchAndStore(date: String) {
+    private suspend fun fetchAndStore(
+        date: String,
+        today: String,
+    ) {
         val result = api.score(date)
         if (result !is ApiResult.Success) return
         val parsed = adapter.parseScore(result.bytes.decodeToString())
         if (parsed !is ParseResult.Success) return
-        if (isWrongDay(date, parsed.value)) return
+        if (isWrongDay(date, parsed.value, today)) return
         cache.put(CacheKey(CacheKind.Score, date), result.bytes, clock.now())
     }
 
     /** A cached body that no longer parses is treated as absent; it is not evidence of a failure. */
-    private suspend fun readCached(date: String): CachedDay? {
+    private suspend fun readCached(
+        date: String,
+        today: String,
+    ): CachedDay? {
         val entry = cache.get(CacheKey(CacheKind.Score, date)) ?: return null
         val parsed = adapter.parseScore(entry.bytes.decodeToString())
         if (parsed !is ParseResult.Success) return null
-        if (isWrongDay(date, parsed.value)) return null
+        if (isWrongDay(date, parsed.value, today)) return null
         return CachedDay(parsed.value, entry.fetchedAt)
     }
 
     /**
      * Whether a slate belongs to a day other than the one asked for.
      *
-     * An empty slate is not a mismatch: the scoreboard endpoint answers a quiet date by repeating
-     * today's date beside an empty list, and refusing that would turn a legitimately game-free night
-     * into an error. Only a slate that actually carries games for another day is wrong.
+     * A quiet date is answered by echoing a date beside an empty list, so an empty slate cannot be
+     * judged by its date alone - but it cannot be waved through either. A past, all-final, empty
+     * slate never expires under the freshness policy, so an empty body dated 2026-10-24 filed under
+     * 2026-11-01 would become permanently fresh: the wrong day, forever, with no error to notice.
+     *
+     * The exemption is therefore narrow. An empty slate is accepted only when it echoes *today*,
+     * which is the documented shape of a quiet-day answer; any other date, or any body that carried
+     * rows the adapter could not map, is a slate about a different day and is refused.
      */
     private fun isWrongDay(
         requested: String,
         day: ScoreDay,
-    ): Boolean = day.games.isNotEmpty() && day.date != requested
+        today: String,
+    ): Boolean =
+        when {
+            day.date == requested -> false
+
+            // Rows for another day - including rows that were all dropped as unusable.
+            day.games.isNotEmpty() || day.droppedCount > 0 -> true
+
+            else -> day.date != today
+        }
 
     private fun isStale(
         cached: CachedDay,
