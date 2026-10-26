@@ -48,6 +48,15 @@ interface PreferencesRepository {
         entry: NotificationLedgerEntry,
     )
 
+    /**
+     * False when the stored file was written by a newer build and cannot be interpreted here.
+     *
+     * Reads still answer with defaults in that case, so a caller that cares about the difference -
+     * a settings screen that should not show "no favourites" as if the user had chosen that - asks
+     * this first. Writes throw rather than silently lowering the file's version marker.
+     */
+    suspend fun isWritable(): Boolean
+
     /** Remove ledger entries timestamped strictly before [olderThan]. */
     suspend fun pruneNotificationLedger(olderThan: Instant)
 }

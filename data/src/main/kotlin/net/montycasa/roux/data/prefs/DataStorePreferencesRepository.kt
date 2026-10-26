@@ -153,6 +153,8 @@ class DataStorePreferencesRepository(
         }
     }
 
+    override suspend fun isWritable(): Boolean = readablePreferences() != null
+
     /** Null when the file was written by a newer build and cannot be interpreted by this one. */
     private suspend fun readablePreferences(): Preferences? {
         val preferences = store.data.first()

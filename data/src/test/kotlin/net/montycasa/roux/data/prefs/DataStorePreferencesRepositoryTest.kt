@@ -1,6 +1,8 @@
 package net.montycasa.roux.data.prefs
 
+import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
@@ -57,6 +59,21 @@ class DataStorePreferencesRepositoryTest {
         return DataStorePreferencesRepository(directory, scope)
     }
 
+    /** Raw store for assertions on the file itself, with the same release retry the repository uses. */
+    private suspend fun openRawStore(
+        directory: Path,
+        scope: CoroutineScope,
+    ): DataStore<Preferences> {
+        repeat(100) {
+            try {
+                return PreferenceDataStoreFactory.create(scope = scope, produceFile = { fileIn(directory) })
+            } catch (_: IllegalStateException) {
+                delay(10)
+            }
+        }
+        return PreferenceDataStoreFactory.create(scope = scope, produceFile = { fileIn(directory) })
+    }
+
     /** Writes ledger fields directly, so a test can produce the half-written states a crash leaves. */
     private suspend fun writeRawLedgerEntry(
         directory: Path,
@@ -70,8 +87,7 @@ class DataStorePreferencesRepositoryTest {
     ) {
         val scope = newScope()
         try {
-            PreferenceDataStoreFactory
-                .create(scope = scope, produceFile = { fileIn(directory) })
+            openRawStore(directory, scope)
                 .edit { preferences ->
                     version?.let { preferences[intPreferencesKey("prefs_version")] = it }
                     favourites?.let { preferences[stringSetPreferencesKey("favourites_abbreviations")] = it }
@@ -279,16 +295,33 @@ class DataStorePreferencesRepositoryTest {
             assertEquals(true, repository.getFavouritesOnly())
             assertEquals(TeamAlertPreferences(), repository.getTeamAlertPreferences(TeamKey("TOR")))
             assertEquals(null, repository.getNotificationLedgerEntry("2024020001"))
-            assertThrows(UnsupportedPreferencesVersionException::class.java) {
-                runBlocking { repository.setFavouritesOnly(false) }
+            assertEquals(false, repository.isWritable())
+            // Every mutator must refuse, not just the one this test used to check: a write that
+            // slipped through would stamp the marker back to 1 and strand the newer file.
+            val refusals: List<suspend () -> Unit> =
+                listOf(
+                    { repository.setFavourites(setOf(TeamKey("MTL"))) },
+                    { repository.setFavouritesOnly(false) },
+                    { repository.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(start = false, goals = false)) },
+                    {
+                        repository.setNotificationLedgerEntry(
+                            "2024020002",
+                            NotificationLedgerEntry(1, startNotified = true, updatedAt = Instant.fromEpochMilliseconds(2_000L)),
+                        )
+                    },
+                    { repository.pruneNotificationLedger(Instant.fromEpochMilliseconds(Long.MAX_VALUE)) },
+                )
+            for (refusal in refusals) {
+                assertThrows(UnsupportedPreferencesVersionException::class.java) {
+                    runBlocking { refusal() }
+                }
             }
             scope.cancel()
 
             // The file and its marker must still be intact afterwards.
             val readerScope = newScope()
             val stored =
-                PreferenceDataStoreFactory
-                    .create(scope = readerScope, produceFile = { fileIn(directory) })
+                openRawStore(directory, readerScope)
                     .data
                     .first()
             assertEquals(99, stored[intPreferencesKey("prefs_version")])
@@ -319,8 +352,7 @@ class DataStorePreferencesRepositoryTest {
 
             val readerScope = newScope()
             val stored =
-                PreferenceDataStoreFactory
-                    .create(scope = readerScope, produceFile = { fileIn(directory) })
+                openRawStore(directory, readerScope)
                     .data
                     .first()
             assertEquals(null, stored[intPreferencesKey("prefs_version")])
@@ -338,8 +370,7 @@ class DataStorePreferencesRepositoryTest {
 
             val readerScope = newScope()
             val stored =
-                PreferenceDataStoreFactory
-                    .create(scope = readerScope, produceFile = { fileIn(directory) })
+                openRawStore(directory, readerScope)
                     .data
                     .first()
             assertEquals(1, stored[intPreferencesKey("prefs_version")])
