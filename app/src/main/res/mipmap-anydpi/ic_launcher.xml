@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Placeholder launcher icon. Stage 3 replaces it with the real one.
+
+  Deliberately unqualified (`mipmap-anydpi`, not `-v26`): minSdk is 31, so every
+  supported platform understands adaptive icons and a v26 qualifier would be dead
+  configuration (lint's ObsoleteSdkInt flags exactly that). The `monochrome` layer
+  is ignored below API 33 and used for themed icons from API 33 up.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>
