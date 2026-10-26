@@ -9,7 +9,8 @@ Kotlin and Jetpack Compose. GPL-3.0-or-later.
 ## Building
 
 You need [Nix](https://nixos.org/) with flakes enabled. Everything else — JDK, Android
-SDK, build tools — comes from the flake. Nothing is installed on your host.
+SDK, build tools — is pinned by the flake and realised into your local Nix store. Nothing
+is installed system-wide and no Android tooling needs to exist on your machine first.
 
 The single build command:
 
@@ -19,11 +20,12 @@ nix develop --command ./gradlew :app:assembleDebug
 
 Output: `app/build/outputs/apk/debug/app-debug.apk`
 
-The first `nix develop` is slow, because it builds the Android SDK from source on your
-machine; expect several minutes and a lot of disk. Later runs reuse the store path and
-start in seconds.
+The first `nix develop` is slow: it fetches the pinned JDK and Android SDK packages into
+your Nix store, which takes a while and a lot of disk. How long depends on your network and
+what you already have cached, so treat the first run as a one-off setup step rather than
+something that has hung. Later runs reuse the store path and start quickly.
 
-If your Nix does not have flakes enabled, prefix any command with the flag rather than
+If your Nix does not have flakes enabled, pass the flag to the Nix invocation rather than
 changing your global config:
 
 ```
@@ -44,7 +46,7 @@ There is no `sdkmanager` binary available in the dev shell on purpose.
 Every change must pass this before review:
 
 ```
-nix develop --command ./gradlew spotlessCheck lint testDebugUnitTest :app:assembleDebug
+nix develop --command ./gradlew spotlessCheck lint testDebugUnitTest :app:assembleDebug :domain:check :data:check
 ```
 
 Beyond compiling, it enforces:
@@ -54,10 +56,16 @@ Beyond compiling, it enforces:
   dependency-info blob is switched off.
 - **No proprietary code** — `verifyNoProprietaryDeps` fails the build if a resolved runtime
   dependency belongs to a banned group, or if a runtime artifact's origin cannot be
-  identified at all. Ads, trackers and telemetry SDKs are refused by name.
+  identified at all. It is a denylist, and worth understanding as one: known ad, tracker and
+  telemetry SDK groups are refused by name, and anything whose provenance cannot be
+  determined is refused outright, but a dependency from a group nobody has listed will pass.
+  It raises the cost of adding such an SDK rather than making it impossible.
 - **Module boundaries** — `:domain` and `:data` are plain Kotlin/JVM modules with no Android
   types, asserted structurally rather than by convention, so they can move to Kotlin
-  Multiplatform later without a rewrite.
+  Multiplatform later without a rewrite. The guards are wired into each module's `check`
+  task, which is why `:domain:check` and `:data:check` are named in the gate above:
+  `testDebugUnitTest` runs those modules' tests but not their `check` tasks, so without them
+  the boundary assertion would never run.
 - **Tests at real device size** — Robolectric tests run at Pixel 9 dimensions, and the render
   smoke compares against a committed screenshot baseline.
 

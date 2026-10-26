@@ -17,11 +17,13 @@ seconds" is useful later; "scores fine" is not.
 This stage proves the pipeline, not the product. The app is a blank screen showing its own
 name, and that is the correct outcome.
 
-- [ ] Build the APK with `nix develop --command ./gradlew :app:assembleDebug`.
-- [ ] Install it on the device.
+- [ ] Install the APK on the device.
 - [ ] The app appears in the launcher with its icon and the name **Roux Sports**. The icon is
-      a deliberate placeholder at this stage.
-- [ ] Launching it shows a blank screen with the app name and does not crash.
+      a deliberate placeholder at this stage. Launcher rendering is the one thing no test
+      here can see.
+- [ ] Launching it shows the app name without a blank window or a visible stall first. The
+      content itself is covered by the Robolectric smoke test and the render baseline — this
+      check is about real-device cold start, not about what is drawn.
 - [ ] Rotate the device. Nothing crashes and the text stays on screen.
 - [ ] The status bar and navigation bar are readable against the app, in both light and dark
       system themes.
@@ -148,19 +150,32 @@ hand, because that is how it will be used.
 
 ## Stage 10 — Release readiness
 
-The release build differs from debug in ways that only show up on a device: R8 has shrunk and
-obfuscated the code, and signing has changed.
+The release build differs from debug in ways that only show up on a device: signing has
+changed, and Stage 10 enables R8 minification and shrinking. Both can break things that work
+perfectly in debug.
 
-- [ ] Install the release APK **over** the debug build without uninstalling. Existing
-      favourites and settings survive. This checks that signing and storage agree; a failure
-      here means users lose their data on upgrade.
+- [ ] Upgrade path: install the release APK **over the previous release signed with the same
+      release key**, and confirm favourites and settings survive. This is the only in-place
+      upgrade Android actually permits, and it is the one real users will perform.
+- [ ] Do not expect the release APK to install over a debug build. Android refuses to replace
+      an app whose signing certificate differs, and a debug build is signed with the build
+      host's debug key. An install failure there is a signature mismatch, not data loss —
+      see [device-testing.md](device-testing.md). For the first release there is no previous
+      release, so there is no upgrade to test; say so in the record rather than skipping
+      silently.
 - [ ] Cold start time is acceptable and the app does not show a blank window for a noticeable
       period.
 - [ ] Run through the smoke checklist: scores load, a game opens, standings render, favourites
       persist, a notification arrives.
-- [ ] No debug-only UI, banner, or log output appears in the release build.
+- [ ] No debug-only UI or banner appears in the release build. Checking log output needs
+      `adb`, which the build host does not have; if no adb-equipped machine is available,
+      record logs as uninspected rather than as clean — see
+      [device-testing.md](device-testing.md).
 - [ ] The app requests only the permissions it needs. Anything unexpected is a defect to fix,
       not a note to keep.
-- [ ] Airplane mode behaves as in Stage 4 — R8 has been known to break reflection-based
-      serialisation that worked in debug.
+- [ ] With R8 enabled, re-run the Stage 4 aeroplane-mode checks against the release build.
+      Minification and shrinking can strip or rename what a serialisation layer looks up
+      reflectively, and the symptom is a parse failure that never appears in debug. If the
+      release build is not minified, record that and skip the check rather than implying it
+      passed.
 - [ ] Tag the release only after every line above passes.
