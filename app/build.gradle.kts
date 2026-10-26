@@ -82,6 +82,7 @@ dependencies {
     implementation(libs.coil.network.ktor3)
 
     testImplementation(libs.junit)
+    testImplementation("androidx.compose.ui:ui-test-junit4")
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.work.testing)
     testImplementation(libs.kotlinx.coroutines.test)
