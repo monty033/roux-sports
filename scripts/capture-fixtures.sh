@@ -2,11 +2,12 @@
 # To bump fixtures, edit Fixtures.CURRENT in Fixtures.kt first, then run this script.
 #
 # These fixtures are a point-in-time snapshot, not a stable artifact: a recapture
-# always produces a diff, because responses carry volatile fields (HTTP date, etag,
-# cf-ray, and standingsDateTimeUtc). The data itself is stable; the metadata is not.
-# So do not recapture casually, and when you do, read the diff rather than assuming
-# it is noise. No LIVE sample exists yet - capturing one needs a game actually in
-# progress, so take it when one is on.
+# will produce a diff. Responses carry volatile metadata (HTTP date, etag, cf-ray,
+# standingsDateTimeUtc), and any fixture containing games that have not yet been
+# played can also carry changing data, because their state advances. Fixtures about
+# dates already in the past are effectively fixed. So do not recapture casually, and
+# read the diff rather than assuming it is noise. No LIVE sample exists yet -
+# capturing one needs a game actually in progress, so take it when one is on.
 set -euo pipefail
 
 # These are the dates the committed fixtures were captured from.
@@ -66,12 +67,20 @@ mkdir -- "$CAPTURE"
 validate_body() {
     local name=$1 file=$2 shape
     case "$name" in
-        # Ordered before the score-* glob on purpose: this fixture exists to sample
-        # upcoming games, so it must stay non-empty and entirely FUT. Games on a pinned
-        # date eventually start, and without this invariant a recapture would quietly
-        # replace the future-state sample with live or final states and still pass.
-        # If this fails, re-pin FUTURE_DAY to a genuinely future date.
-        score-futuredate.json) shape='((.games | length) > 0) and ([.games[].gameState] | unique == ["FUT"])' ;;
+        # Each score fixture encodes the contract its tests rely on, not merely "this is
+        # an array". A recapture that broke a contract would otherwise replace a good
+        # corpus with one that fails later, at a point where nobody remembers the cause.
+        # Ordered before the score-* glob so they actually apply.
+        score-gameday.json) shape='(.games | type == "array") and ((.games | length) > 0) and (.gameWeek | type == "array") and (([.gameWeek[].numberOfGames] | map(. // 0) | add // 0) > 0)' ;;
+        # No `// []` fallback here on purpose: a response that omits `games` entirely is a
+        # different failure from an off-season day with zero games, and treating a missing
+        # field as an empty list would let that response replace the capture.
+        score-emptyday.json) shape='(.games | type == "array") and ((.games | length) == 0) and (.gameWeek | type == "array")' ;;
+        # This fixture exists to sample upcoming games, so it must stay non-empty and
+        # entirely FUT. A pinned date eventually arrives, and without this invariant a
+        # recapture would quietly replace the future-state sample with live or final
+        # states. If this fails, re-pin FUTURE_DAY to a genuinely future date.
+        score-futuredate.json) shape='(.games | type == "array") and ((.games | length) > 0) and ([.games[].gameState] | unique == ["FUT"]) and (.gameWeek | type == "array")' ;;
         score-*.json) shape='(.games | type == "array") and (.gameWeek | type == "array")' ;;
         schedule-gameday.json) shape='.gameWeek | type == "array"' ;;
         standings.json) shape='.standings | type == "array"' ;;
