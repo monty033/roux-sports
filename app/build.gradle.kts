@@ -1,4 +1,5 @@
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.component.ProjectComponentIdentifier
 
 plugins {
     alias(libs.plugins.android.application)
@@ -115,6 +116,9 @@ abstract class VerifyNoProprietaryDeps : DefaultTask() {
     @get:Input
     abstract val coordinates: SetProperty<String>
 
+    @get:Input
+    abstract val unidentifiedArtifacts: SetProperty<String>
+
     @TaskAction
     fun verify() {
         val bannedGroups =
@@ -136,13 +140,16 @@ abstract class VerifyNoProprietaryDeps : DefaultTask() {
                 "com.google.ads", // Google advertising SDKs.
                 "com.applovin", // AppLovin ads and mediation.
                 "com.facebook.ads", // Facebook advertising.
+                // Blocks the Facebook Android SDK and Audience Network wholesale: this app has no
+                // Facebook login or sharing requirement and does not want their event collection.
+                "com.facebook.android",
                 "com.ironsource", // ironSource ads and mediation.
                 "com.unity3d.ads", // Unity Ads.
                 "com.vungle", // Vungle advertising.
                 "com.chartboost", // Chartboost advertising.
                 "com.inmobi", // InMobi advertising.
                 "com.startapp", // StartApp advertising.
-                "com.mopub.mobileads", // MoPub mobile ads.
+                "com.mopub", // MoPub ads and mediation (root covers com.mopub.mobileads).
                 "com.tapjoy", // Tapjoy advertising.
                 "com.adcolony", // AdColony advertising.
                 "com.smaato", // Smaato advertising.
@@ -152,11 +159,13 @@ abstract class VerifyNoProprietaryDeps : DefaultTask() {
                 "com.mixpanel", // Mixpanel analytics.
                 "com.segment", // Segment event collection.
                 "com.amplitude", // Amplitude analytics.
+                "com.braze", // Braze marketing automation and analytics.
+                "com.posthog", // PostHog product analytics.
                 "com.crashlytics", // Crashlytics crash reporting.
-                // Real Datadog Android SDK is com.datadoghq, not com.datadog.
-                "com.datadoghq",
-                "io.sentry",
-                "com.microsoft.appcenter", // Datadog telemetry.
+                // Datadog publishes its Android SDK under com.datadoghq, not com.datadog.
+                "com.datadoghq", // Datadog RUM and telemetry.
+                "io.sentry", // Sentry crash reporting and telemetry.
+                "com.microsoft.appcenter", // Microsoft App Center analytics and crash reporting.
                 "com.bugsnag", // Bugsnag crash reporting.
                 "com.newrelic.agent", // New Relic telemetry.
                 "com.optimizely", // Optimizely experimentation and analytics.
@@ -170,8 +179,18 @@ abstract class VerifyNoProprietaryDeps : DefaultTask() {
                     .map { bannedGroup -> "$coordinate (matched banned group $bannedGroup)" }
             }
         violations.forEach { logger.error(it) }
-        if (violations.isNotEmpty()) {
-            throw GradleException("Proprietary runtime dependencies found: ${violations.size} banned group match(es).")
+        val unidentified = unidentifiedArtifacts.get().sorted()
+        unidentified.forEach {
+            logger.error(
+                "VIOLATION: Runtime artifact '$it' has an origin that could not be resolved; " +
+                    "it cannot be verified as free of proprietary code.",
+            )
+        }
+        if (violations.isNotEmpty() || unidentified.isNotEmpty()) {
+            throw GradleException(
+                "Proprietary runtime dependency verification failed: " +
+                    "${violations.size} banned group match(es), ${unidentified.size} unidentified runtime artifact(s).",
+            )
         }
         logger.lifecycle("Verified ${resolvedCoordinates.size} runtime/probe coordinates: no proprietary dependencies.")
     }
@@ -190,6 +209,18 @@ val verifyNoProprietaryDeps =
                         val component = artifact.id.componentIdentifier as? ModuleComponentIdentifier
                         component?.let { "${it.group}:${it.module}:${it.version}" }
                     }
+                },
+            )
+            // A local file AAR/JAR has no module identity, so it cannot be matched against the
+            // denylist. Collect it instead of dropping it, so it fails loudly rather than being
+            // silently skipped - an artifact whose origin is unknown is not a verified one.
+            unidentifiedArtifacts.addAll(
+                configurations.named(classpath).flatMap { it.incoming.artifacts.resolvedArtifacts }.map { artifacts ->
+                    artifacts
+                        .filter { artifact ->
+                            val component = artifact.id.componentIdentifier
+                            component !is ModuleComponentIdentifier && component !is ProjectComponentIdentifier
+                        }.map { it.file.absolutePath }
                 },
             )
         }
