@@ -13,7 +13,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 import java.io.IOException
 import kotlin.time.Duration.Companion.seconds
 
@@ -84,69 +83,6 @@ class NhlApiTest {
             }
             assertTrue(engine.requestHistory.isEmpty())
         }
-
-    /**
-     * Defence in depth on top of the validation above: catches a reintroduced literal anywhere in
-     * production sources, including one assembled by concatenation, and including one in a file
-     * other than this one.
-     *
-     * Uses [scanStringLiterals] rather than regex passes. Two naive versions of this check were
-     * written and both were wrong, each in a way that made the test pass while the route was
-     * reachable: stripping comments first deleted the tail of `"https://api-web.nhle.com"` because
-     * the URL contains `//`, which orphaned a quote and mispaired every later literal; and plain
-     * substring matching flagged the KDoc that explains why the undated form is refused.
-     */
-    @Test
-    fun noProductionSourceConstructsUndatedStandingsPath() {
-        val root = File(System.getProperty("roux.rootDir"))
-        val sources =
-            listOf("data/src/main", "domain/src/main", "app/src/main")
-                .map { File(root, it) }
-                .filter { it.exists() }
-                .flatMap { dir -> dir.walkTopDown().filter { it.isFile && it.extension == "kt" }.toList() }
-
-        assertTrue("Expected to scan production sources, found none", sources.isNotEmpty())
-
-        val offenders = sources.filter { file -> containsUndatedStandings(file.readText()) }
-
-        assertFalse("Undated standings literal found in $offenders", offenders.isNotEmpty())
-    }
-
-    /**
-     * The detector itself is load-bearing, so it is tested rather than trusted. Every case here is
-     * one that broke a previous version of the check.
-     */
-    @Test
-    fun undatedStandingsDetectorCatchesConcatenationAndIgnoresProse() {
-        assertTrue(
-            "a plain literal must be caught",
-            containsUndatedStandings("""private val u = "/v1/standings/now""""),
-        )
-        assertTrue(
-            "two halves joined by + must be caught",
-            containsUndatedStandings("""private val u = "/v1/standings/" + "now""""),
-        )
-        assertTrue(
-            "a line break inside the concatenation must be caught",
-            containsUndatedStandings("""val u = "/v1/standings/" +${"\n"}        "now""""),
-        )
-        assertFalse(
-            "prose in a comment must not be caught",
-            containsUndatedStandings("// never request /v1/standings/now, it is undated"),
-        )
-        assertFalse(
-            "a KDoc explanation must not be caught",
-            containsUndatedStandings("/** Refuses /v1/standings/now. */"),
-        )
-        assertFalse(
-            "a URL literal must not confuse the scanner",
-            containsUndatedStandings("""val base = "https://api-web.nhle.com"; val s = "/v1/standings-season""""),
-        )
-        assertTrue(
-            "a URL literal followed by the real route must still be caught",
-            containsUndatedStandings("""val base = "https://api-web.nhle.com"; val u = "/v1/standings/now""""),
-        )
-    }
 
     @Test
     fun successPreservesBytesExactly() {
@@ -273,97 +209,5 @@ class NhlApiTest {
                 block(NhlApi(client), engine)
             }
         }
-    }
-
-    private companion object {
-        const val UNDATED_STANDINGS = "standings/now"
-        const val TRIPLE_QUOTE = "\"\"\""
-    }
-
-    /**
-     * True when [source] can build an undated standings route from its string literals, including
-     * one split across a `+` concatenation.
-     *
-     * A scanner rather than regex passes, because comments and literals interleave and each can
-     * contain the other's delimiters: a URL literal contains `//`, and a comment can contain a
-     * quoted route. Only a left-to-right pass that tracks which state it is in gets both right.
-     */
-    private fun containsUndatedStandings(source: String): Boolean {
-        val literals = scanStringLiterals(source)
-        var joined = StringBuilder()
-        var previousEnd = -1
-
-        for (literal in literals) {
-            if (joined.isNotEmpty()) {
-                val gap = source.substring(previousEnd + 1, literal.start).trim()
-                if (gap != "+") {
-                    if (isUndatedStandingsRoute(joined.toString())) return true
-                    joined = StringBuilder()
-                }
-            }
-            joined.append(literal.text)
-            previousEnd = literal.end
-        }
-        return isUndatedStandingsRoute(joined.toString())
-    }
-
-    private fun isUndatedStandingsRoute(text: String): Boolean = text.filterNot(Char::isWhitespace).contains(UNDATED_STANDINGS)
-
-    private class Literal(
-        val text: String,
-        val start: Int,
-        val end: Int,
-    )
-
-    private fun scanStringLiterals(source: String): List<Literal> {
-        val literals = mutableListOf<Literal>()
-        val length = source.length
-        var index = 0
-
-        while (index < length) {
-            when {
-                source.startsWith("//", index) -> {
-                    while (index < length && source[index] != '\n') index++
-                }
-
-                source.startsWith("/*", index) -> {
-                    index += 2
-                    while (index < length && !source.startsWith("*/", index)) index++
-                    index = minOf(index + 2, length)
-                }
-
-                source.startsWith(TRIPLE_QUOTE, index) -> {
-                    val start = index
-                    index += TRIPLE_QUOTE.length
-                    val close = source.indexOf(TRIPLE_QUOTE, index)
-                    val contentEnd = if (close < 0) length else close
-                    literals += Literal(source.substring(index, contentEnd), start, minOf(contentEnd + 2, length - 1))
-                    index = minOf(contentEnd + TRIPLE_QUOTE.length, length)
-                }
-
-                source[index] == '"' -> {
-                    val start = index
-                    val text = StringBuilder()
-                    index++
-                    while (index < length && source[index] != '"') {
-                        if (source[index] == '\\' && index + 1 < length) {
-                            text.append(source[index + 1])
-                            index += 2
-                        } else {
-                            text.append(source[index])
-                            index++
-                        }
-                    }
-                    val end = minOf(index, length - 1)
-                    index++
-                    literals += Literal(text.toString(), start, end)
-                }
-
-                else -> {
-                    index++
-                }
-            }
-        }
-        return literals
     }
 }

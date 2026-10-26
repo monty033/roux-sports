@@ -64,6 +64,15 @@ class NhlApi(
             if (response.status.value in 200..299) {
                 ApiResult.Success(response.readRawBytes())
             } else {
+                // Drain the error body. An unread body keeps the exchange open, so repeated error
+                // polls would hold connections instead of reusing them. A failure while draining
+                // must not change the outcome: the status is the answer, and turning a drained-
+                // body IOException into NetworkError would report a server error as a dead link.
+                try {
+                    response.readRawBytes()
+                } catch (_: IOException) {
+                    // The status still stands.
+                }
                 ApiResult.HttpError(response.status.value)
             }
             // HostNotAllowedException must propagate: a bug or attack must not become an
