@@ -1,0 +1,12 @@
+Capture label (Fixtures.CURRENT): 2026-10-26
+Pinned request dates: game day 2026-10-24; empty day 2026-07-15; future day 2026-10-26
+transfer_bytes: curl size_download (body before decompression), or size_header for the headers artifact.
+stored_bytes: bytes on disk after decompression. SIZES.txt is generated locally, not transferred.
+
+score-gameday.json transfer_bytes=13147 stored_bytes=94540 url=https://api-web.nhle.com/v1/score/2026-10-24
+score-emptyday.json transfer_bytes=824 stored_bytes=2498 url=https://api-web.nhle.com/v1/score/2026-07-15
+score-futuredate.json transfer_bytes=2623 stored_bytes=12682 url=https://api-web.nhle.com/v1/score/2026-10-26
+schedule-gameday.json transfer_bytes=9777 stored_bytes=94191 url=https://api-web.nhle.com/v1/schedule/2026-10-24
+standings-now.headers transfer_bytes=300 stored_bytes=300 url=https://api-web.nhle.com/v1/standings/now
+standings.json transfer_bytes=6748 stored_bytes=58203 url=https://api-web.nhle.com/v1/standings/2026-10-25
+standings-season.json transfer_bytes=1943 stored_bytes=25382 url=https://api-web.nhle.com/v1/standings-season
