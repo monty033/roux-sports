@@ -158,19 +158,7 @@ class ResponseCacheTest {
     fun failedTouchAfterReplacementDoesNotLeaveAStaleRecord() =
         withCache { fs, cache, clock ->
             var failAccessWrites = false
-            val flaky =
-                object : ForwardingFileSystem(fs) {
-                    override fun sink(
-                        file: Path,
-                        mustCreate: Boolean,
-                    ): Sink {
-                        if (failAccessWrites && file.name.endsWith(".access")) {
-                            throw IOException("access record write failed")
-                        }
-                        return super.sink(file, mustCreate)
-                    }
-                }
-            val guarded = ResponseCache(flaky, DIRECTORY, clock)
+            val guarded = ResponseCache(flakyAccessWrites(fs) { failAccessWrites }, DIRECTORY, clock)
 
             guarded.put(CacheKey(CacheKind.Standings, "a"), RAW, FETCHED_AT)
             clock.advance()
@@ -189,6 +177,40 @@ class ResponseCacheTest {
 
             assertNotNull("the replaced entry is the newest write, not the oldest", guarded.get(CacheKey(CacheKind.Standings, "a")))
             assertNull("b is the least recently used", guarded.get(CacheKey(CacheKind.Standings, "b")))
+        }
+
+    /**
+     * The other direction of the same reconciliation: a read whose stamp cannot be written is still
+     * a read, so an earlier record must survive rather than be discarded in favour of a stale mtime.
+     */
+    @Test
+    fun failedTouchOnReadKeepsTheRecencyTheEntryAlreadyHad() =
+        withCache { fs, cache, clock ->
+            var failAccessWrites = false
+            val guarded = ResponseCache(flakyAccessWrites(fs) { failAccessWrites }, DIRECTORY, clock)
+
+            guarded.put(CacheKey(CacheKind.Standings, "a"), RAW, FETCHED_AT)
+            clock.advance()
+            guarded.put(CacheKey(CacheKind.Standings, "b"), RAW, FETCHED_AT)
+            clock.advance()
+            guarded.put(CacheKey(CacheKind.Standings, "c"), RAW, FETCHED_AT)
+            clock.advance()
+
+            // A read that lands: "a" is now the most recently used entry.
+            guarded.get(CacheKey(CacheKind.Standings, "a"))
+            clock.advance()
+
+            // A second read that cannot be stamped. Dropping the record here would push "a" back to
+            // its write mtime and make it the eviction candidate despite two reads.
+            failAccessWrites = true
+            assertNotNull(guarded.get(CacheKey(CacheKind.Standings, "a")))
+            failAccessWrites = false
+            clock.advance()
+
+            guarded.put(CacheKey(CacheKind.Standings, "d"), RAW, FETCHED_AT)
+
+            assertNotNull("read twice, so not the oldest", guarded.get(CacheKey(CacheKind.Standings, "a")))
+            assertNull("b was only written once", guarded.get(CacheKey(CacheKind.Standings, "b")))
         }
 
     /**
@@ -412,6 +434,22 @@ class ResponseCacheTest {
             instant += 1.seconds
         }
     }
+
+    private fun flakyAccessWrites(
+        fs: FileSystem,
+        shouldFail: () -> Boolean,
+    ): FileSystem =
+        object : ForwardingFileSystem(fs) {
+            override fun sink(
+                file: Path,
+                mustCreate: Boolean,
+            ): Sink {
+                if (shouldFail() && file.name.endsWith(".access")) {
+                    throw IOException("access record write failed")
+                }
+                return super.sink(file, mustCreate)
+            }
+        }
 
     private companion object {
         val DIRECTORY = "/cache".toPath()

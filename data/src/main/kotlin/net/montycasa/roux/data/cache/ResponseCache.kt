@@ -140,7 +140,15 @@ class ResponseCache(
         )
     }
 
-    /** Records "this entry was used now". Best effort: recency must never fail a cache hit. */
+    /**
+     * Records "this entry was used now". Best effort: recency must never fail a cache hit, and a
+     * failed write must not erase the recency an earlier one established, because a read that could
+     * not be stamped is still a read.
+     *
+     * [lastUsedAt] reconciles the two timestamps by taking the newer, which covers both ways they
+     * can disagree: a record left over from before a replacement loses to the freshly rewritten
+     * entry's mtime, and a read that could only be stamped earlier keeps its earlier evidence.
+     */
     private fun touch(target: Path) {
         try {
             fileSystem.createDirectories(directory)
@@ -148,14 +156,17 @@ class ResponseCache(
                 writeUtf8(clock.now().toEpochMilliseconds().toString())
             }
         } catch (_: IOException) {
-            // A stale record is worse than none: lastUsedAt prefers the record over the entry's
-            // fresh mtime, so after a replacement whose touch failed, the entry just written would
-            // carry its predecessor's old timestamp and be evicted ahead of older entries. Drop the
-            // record so eviction falls back to the mtime of the bytes that are actually on disk.
-            deleteQuietly(accessRecordFor(target))
+            // Leave the existing record alone; lastUsedAt resolves a stale one against the mtime.
         }
     }
 
+    /**
+     * The later of the access record and the entry's own mtime.
+     *
+     * Neither timestamp alone is trustworthy: the record can predate a replacement, and the mtime
+     * cannot capture a hit because Okio cannot set it. Taking the newer is correct in both
+     * directions - an entry is never evicted while a newer piece of evidence says it was used.
+     */
     private fun lastUsedAt(target: Path): Long {
         val recorded =
             try {
@@ -163,9 +174,13 @@ class ResponseCache(
             } catch (_: IOException) {
                 null
             }
-        return recorded
-            ?: fileSystem.metadataOrNull(target)?.lastModifiedAtMillis
-            ?: Long.MIN_VALUE
+        val modified = fileSystem.metadataOrNull(target)?.lastModifiedAtMillis
+        return when {
+            recorded != null && modified != null -> maxOf(recorded, modified)
+            recorded != null -> recorded
+            modified != null -> modified
+            else -> Long.MIN_VALUE
+        }
     }
 
     private fun evict(kind: CacheKind) {
