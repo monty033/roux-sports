@@ -39,8 +39,14 @@ internal val RouxDarkSignature = Color(0xFFFF4B12)
 internal val RouxDarkFill = Color(0xFFFF4B12)
 internal val RouxDarkStroke = Color(0xFFFF4B12)
 
-/** Text that sits on the live fill. White on `#FF4B12` measures 3.35:1, which clears its floor. */
-internal val RouxOnFill = Color(0xFFFFFFFF)
+/**
+ * Text that sits on the live fill.
+ *
+ * This is the design's own `--onsig` value, not white: white on `#FF4B12` measures only 3.35:1, which
+ * clears the 3:1 bar for a large shape but fails the 4.5:1 a small LIVE label needs. `#0B0C0E` on the
+ * same orange measures 5.84:1 and passes as text.
+ */
+internal val RouxOnFill = Color(0xFF0B0C0E)
 
 /**
  * The tokens Material's [ColorScheme] has no slot for.

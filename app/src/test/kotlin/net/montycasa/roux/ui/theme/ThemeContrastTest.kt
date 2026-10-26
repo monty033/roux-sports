@@ -29,7 +29,10 @@ class ThemeContrastTest {
     fun bodyTextMeetsTheContrastFloor() {
         for (scheme in listOf(RouxLightColors, RouxDarkColors)) {
             assertAtLeast(4.5, scheme.onSurface, scheme.surface, "onSurface on surface")
+            // Muted text is painted on the card as well as the page, and in the dark theme the card is
+            // the lighter of the two - so it is the harder case and must be asserted in its own right.
             assertAtLeast(4.5, scheme.onSurfaceVariant, scheme.surface, "onSurfaceVariant on surface")
+            assertAtLeast(4.5, scheme.onSurfaceVariant, scheme.surfaceVariant, "onSurfaceVariant on the card")
         }
     }
 
@@ -42,8 +45,17 @@ class ThemeContrastTest {
     @Test
     fun theLiveFillClearsThreeToOneWhereItIsPainted() {
         for ((scheme, accents) in listOf(RouxLightColors to RouxLightAccents, RouxDarkColors to RouxDarkAccents)) {
+            // A fill is a shape, so 3:1 applies - but against the card it is painted on.
             assertAtLeast(3.0, accents.fill, scheme.surfaceVariant, "live fill on the card")
-            assertAtLeast(3.0, accents.signature, scheme.surface, "signature orange on the page")
+        }
+    }
+
+    /** The signature orange is TYPE, not a shape, so it owes the 4.5:1 text floor - on page and card. */
+    @Test
+    fun theSignatureOrangeMeetsTheTextFloor() {
+        for ((scheme, accents) in listOf(RouxLightColors to RouxLightAccents, RouxDarkColors to RouxDarkAccents)) {
+            assertAtLeast(4.5, accents.signature, scheme.surface, "signature orange on the page")
+            assertAtLeast(4.5, accents.signature, scheme.surfaceVariant, "signature orange on the card")
         }
     }
 
@@ -51,7 +63,9 @@ class ThemeContrastTest {
     @Test
     fun theLiveFillCarriesItsOwnForeground() {
         for (accents in listOf(RouxLightAccents, RouxDarkAccents)) {
-            assertAtLeast(3.0, accents.onFill, accents.fill, "onFill on the live fill")
+            // Text inside the capsule: 4.5:1, not 3:1. White on this orange is 3.35:1 and would slip
+            // through a 3:1 check while being unreadable as a small LIVE label.
+            assertAtLeast(4.5, accents.onFill, accents.fill, "onFill on the live fill")
         }
     }
 
