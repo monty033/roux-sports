@@ -21,3 +21,4 @@ dependencyResolutionManagement {
 
 include(":domain")
 include(":data")
+include(":app")
