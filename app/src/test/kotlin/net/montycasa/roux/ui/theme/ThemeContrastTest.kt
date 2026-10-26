@@ -1,6 +1,7 @@
 package net.montycasa.roux.ui.theme
 
 import androidx.compose.material3.ColorScheme
+import androidx.compose.ui.graphics.Color
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -10,93 +11,93 @@ import org.junit.Test
  * The palette's numeric rules, asserted rather than eyeballed.
  *
  * These are the numbers the design was chosen on. A colour picked "by feel" later would break them
- * silently - which is exactly what happened once already: `#FF4B12` measures 2.99:1 on the light page,
- * a hundredth under the 3:1 floor, so light-theme orange type has to be `#C93A06` instead.
+ * silently - which happened once already: `#FF4B12` measures 2.99:1 on the light page, a hundredth
+ * under the 3:1 floor, so light-theme orange type has to be `#C93A06` instead.
+ *
+ * The text pairs are one enumerated table rather than a test each. Three review rounds found three
+ * separate unasserted pairs (`onFill`, `onPrimary`, `onBackground`), and every one of them was a pair
+ * nobody had listed - so the list itself is the thing to make visible.
  */
 class ThemeContrastTest {
-    private fun assertAtLeast(
-        minimum: Double,
-        a: androidx.compose.ui.graphics.Color,
-        b: androidx.compose.ui.graphics.Color,
-        what: String,
-    ) {
-        val actual = contrastRatio(a, b).toDouble()
-        assertTrue("$what measured ${"%.2f".format(actual)}:1, needs $minimum", actual >= minimum)
-    }
+    /** A foreground painted on a background, and the floor its role requires. */
+    private data class Pair(
+        val fg: Color,
+        val bg: Color,
+        val min: Double,
+        val what: String,
+    )
 
-    /** Body text on the page. Both themes clear this comfortably, which is why they can be read. */
+    private val schemes = listOf(RouxLightColors, RouxDarkColors)
+    private val themed = listOf(RouxLightColors to RouxLightAccents, RouxDarkColors to RouxDarkAccents)
+
+    /**
+     * Every pair where text sits on a colour.
+     *
+     * `onSurfaceVariant` appears twice because muted text is painted on the card as well as the page,
+     * and in the dark theme the card is the lighter of the two - so it is the harder case. The
+     * signature orange appears twice for the same reason.
+     */
+    private fun textPairs(
+        scheme: ColorScheme,
+        accents: RouxAccents,
+    ): List<Pair> =
+        listOf(
+            Pair(scheme.onSurface, scheme.surface, 4.5, "onSurface on surface"),
+            Pair(scheme.onBackground, scheme.background, 4.5, "onBackground on background"),
+            Pair(scheme.onSurfaceVariant, scheme.surface, 4.5, "onSurfaceVariant on the page"),
+            Pair(scheme.onSurfaceVariant, scheme.surfaceVariant, 4.5, "onSurfaceVariant on the card"),
+            Pair(scheme.onPrimary, scheme.primary, 4.5, "onPrimary on primary"),
+            Pair(accents.onFill, accents.fill, 4.5, "onFill on the live fill"),
+            Pair(accents.signature, scheme.surface, 4.5, "signature orange on the page"),
+            Pair(accents.signature, scheme.surfaceVariant, 4.5, "signature orange on the card"),
+        )
+
     @Test
-    fun bodyTextMeetsTheContrastFloor() {
-        for (scheme in listOf(RouxLightColors, RouxDarkColors)) {
-            assertAtLeast(4.5, scheme.onSurface, scheme.surface, "onSurface on surface")
-            // Muted text is painted on the card as well as the page, and in the dark theme the card is
-            // the lighter of the two - so it is the harder case and must be asserted in its own right.
-            assertAtLeast(4.5, scheme.onSurfaceVariant, scheme.surface, "onSurfaceVariant on surface")
-            assertAtLeast(4.5, scheme.onSurfaceVariant, scheme.surfaceVariant, "onSurfaceVariant on the card")
+    fun everyPaintedTextPairMeetsItsFloor() {
+        for ((scheme, accents) in themed) {
+            for (pair in textPairs(scheme, accents)) {
+                val actual = contrastRatio(pair.fg, pair.bg)
+                assertTrue(
+                    "${pair.what} measured ${"%.2f".format(actual)}:1, needs ${pair.min}",
+                    actual >= pair.min,
+                )
+            }
         }
     }
 
     /**
-     * The accent used as a UI shape.
+     * The live fill as a shape, which owes 3:1 rather than the text floor.
      *
-     * The live capsule's fill is measured against the card it is painted on - that is the surface it
-     * actually sits on - and it clears 3.35:1 there and 5.94:1 in the dark theme.
+     * Measured against the card it is painted on - the surface it actually sits on - where it clears
+     * 3.35:1 in the light theme and 5.63:1 in the dark.
      */
     @Test
     fun theLiveFillClearsThreeToOneWhereItIsPainted() {
-        for ((scheme, accents) in listOf(RouxLightColors to RouxLightAccents, RouxDarkColors to RouxDarkAccents)) {
-            // A fill is a shape, so 3:1 applies - but against the card it is painted on.
-            assertAtLeast(3.0, accents.fill, scheme.surfaceVariant, "live fill on the card")
-        }
-    }
-
-    /** The signature orange is TYPE, not a shape, so it owes the 4.5:1 text floor - on page and card. */
-    @Test
-    fun theSignatureOrangeMeetsTheTextFloor() {
-        for ((scheme, accents) in listOf(RouxLightColors to RouxLightAccents, RouxDarkColors to RouxDarkAccents)) {
-            assertAtLeast(4.5, accents.signature, scheme.surface, "signature orange on the page")
-            assertAtLeast(4.5, accents.signature, scheme.surfaceVariant, "signature orange on the card")
-        }
-    }
-
-    /** Text inside the capsule is the near-black on orange; that pair is what a reader looks at. */
-    @Test
-    fun theLiveFillCarriesItsOwnForeground() {
-        for (accents in listOf(RouxLightAccents, RouxDarkAccents)) {
-            // Text inside the capsule: 4.5:1, not 3:1. White on this orange is 3.35:1 and would slip
-            // through a 3:1 check while being unreadable as a small LIVE label.
-            assertAtLeast(4.5, accents.onFill, accents.fill, "onFill on the live fill")
+        for ((scheme, accents) in themed) {
+            assertTrue(
+                "live fill on the card measured ${contrastRatio(accents.fill, scheme.surfaceVariant)}:1, needs 3.0",
+                contrastRatio(accents.fill, scheme.surfaceVariant) >= 3.0f,
+            )
         }
     }
 
     /**
-     * The specific trap the design warns about: `#FF4B12` as small type on the light page.
+     * The trap the design warns about, kept as a documented deficit rather than a pass.
      *
-     * Asserted as a documented deficit rather than a pass, because the design's remedy is "never do
-     * this" and the theme enforces it by keeping the fill and the signature orange as separate tokens.
+     * `#FF4B12` as small type on the light page is legal by no reading of WCAG, and the theme's remedy
+     * is to keep it out of the type role entirely - so it is asserted to FAIL, which also catches a
+     * future "tidy-up" that makes the fill and the signature the same value.
      */
     @Test
     fun theBrightFillIsNotUsableAsLightThemeType() {
-        val ratio = contrastRatio(RouxLightFill, RouxLightPage)
-        assertTrue("expected #FF4B12 to fall short of 3:1 on the page, measured $ratio", ratio < 3.0f)
         assertTrue(
-            "the signature orange must be the one that clears the floor",
+            "#FF4B12 should fall short of 3:1 on the page",
+            contrastRatio(RouxLightFill, RouxLightPage) < 3.0f,
+        )
+        assertTrue(
+            "the signature orange must be the one that clears the text floor",
             contrastRatio(RouxLightSignature, RouxLightPage) >= 4.5f,
         )
-    }
-
-    /**
-     * A Material primary button: `onPrimary` on `primary`.
-     *
-     * Asserted separately from the accents because it is a different pairing. The light primary is the
-     * darker `#C93A06`, where white measures 5.13:1 and the capsule's near-black only 3.81:1 - so the
-     * two schemes take different inks and one shared constant would fail one of them.
-     */
-    @Test
-    fun thePrimaryPairMeetsTheTextFloor() {
-        for (scheme in listOf(RouxLightColors, RouxDarkColors)) {
-            assertAtLeast(4.5, scheme.onPrimary, scheme.primary, "onPrimary on primary")
-        }
     }
 
     /** No dynamic colour: the scheme is a constant selected by a flag. */
@@ -109,7 +110,7 @@ class ThemeContrastTest {
     /** Background and surface are deliberately the same colour; a mismatch shows as a seam. */
     @Test
     fun pageColoursAgreeAcrossBackgroundAndSurface() {
-        for (scheme: ColorScheme in listOf(RouxLightColors, RouxDarkColors)) {
+        for (scheme in schemes) {
             assertEquals(scheme.background, scheme.surface)
         }
     }
