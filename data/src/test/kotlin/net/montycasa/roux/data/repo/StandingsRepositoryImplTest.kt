@@ -89,11 +89,14 @@ class StandingsRepositoryImplTest {
             afterChange.repository.standings(anyGameLive = false)
             assertEquals(listOf("/v1/standings/2026-11-01"), afterChange.requests)
 
-            // The same wall-clock hour in July is -4, so the previous day stays the 14th.
+            // The summer case has to sit between 04:00Z and 05:00Z to be worth anything: at 03:30Z a
+            // fixed -5 offset also yields the 14th, so the pair would pass a fixed-offset
+            // implementation. At 04:30Z on 15 July New York is 00:30 on the 15th (-4) while a fixed
+            // -5 would still say 23:30 on the 14th - that is the hour that discriminates.
             val summer = harness()
-            summer.clock.set("2026-07-15T03:30:00Z")
+            summer.clock.set("2026-07-15T04:30:00Z")
             summer.repository.standings(anyGameLive = false)
-            assertEquals(listOf("/v1/standings/2026-07-14"), summer.requests)
+            assertEquals(listOf("/v1/standings/2026-07-15"), summer.requests)
         }
 
     @Test
@@ -172,7 +175,7 @@ class StandingsRepositoryImplTest {
         }
 
     @Test
-    fun seasonsAreFetchedAtMostOncePerDay() =
+    fun aSeasonListIsTrustedForADay() =
         runBlocking {
             val harness = harness()
             harness.repository.seasons()
@@ -184,6 +187,29 @@ class StandingsRepositoryImplTest {
             harness.clock.advance(2.hours)
             harness.repository.seasons()
             assertEquals("past the day it is checked again", 2, harness.requests.size)
+        }
+
+    @Test
+    fun aFailedSeasonFetchIsRetriedOnTheNextCall() =
+        runBlocking {
+            // The name of the neighbouring test says "at most once per day", and this is its limit:
+            // a failure caches nothing, so the next call tries again. Pinning it because a reader who
+            // takes the other name literally would expect a backoff that does not exist.
+            var fail = true
+            val harness =
+                harness {
+                    if (fail) throw IOException("offline") else null
+                }
+
+            val first = harness.repository.seasons()
+            assertNull(first.data)
+
+            fail = false
+            val second = harness.repository.seasons()
+
+            assertEquals(2, harness.requests.size)
+            assertNotNull(second.data)
+            assertEquals(Freshness.Fresh, second.freshness)
         }
 
     @Test
