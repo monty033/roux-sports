@@ -153,7 +153,10 @@ abstract class VerifyNoProprietaryDeps : DefaultTask() {
                 "com.segment", // Segment event collection.
                 "com.amplitude", // Amplitude analytics.
                 "com.crashlytics", // Crashlytics crash reporting.
-                "com.datadog", // Datadog telemetry.
+                // Real Datadog Android SDK is com.datadoghq, not com.datadog.
+                "com.datadoghq",
+                "io.sentry",
+                "com.microsoft.appcenter", // Datadog telemetry.
                 "com.bugsnag", // Bugsnag crash reporting.
                 "com.newrelic.agent", // New Relic telemetry.
                 "com.optimizely", // Optimizely experimentation and analytics.
