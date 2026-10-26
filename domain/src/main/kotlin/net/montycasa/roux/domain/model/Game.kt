@@ -1,5 +1,7 @@
 package net.montycasa.roux.domain.model
 
+import kotlin.time.Instant
+
 /** An opaque identifier for a game in the NHL feed. */
 @JvmInline
 value class GameId(
@@ -80,8 +82,8 @@ data class Game(
     val awayScore: Int? = null,
     val finalKind: FinalKind? = null,
     val period: PeriodInfo? = null,
-    /** Feed startTimeUTC ISO-8601 UTC instant; a String keeps this module stdlib-only. */
-    val startTimeUtc: String? = null,
+    /** Parsed feed startTimeUTC instant; null when the start time is absent or unreadable. */
+    val startTimeUtc: Instant? = null,
 ) {
     // Validation of feed identifiers, dates, and missing or unexpected values belongs
     // to the adapter layer; these value types do not reject messy NHL data.

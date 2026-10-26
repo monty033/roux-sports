@@ -15,6 +15,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.time.Instant
 
 /** Captured payloads guard against silently rendering a populated day as empty. */
 class ScoreAdapterTest {
@@ -212,7 +213,7 @@ class ScoreAdapterTest {
         assertEquals("2026-10-24", day.date)
         assertEquals("2026020168", game.id.value)
         assertEquals("2026-10-24", game.date)
-        assertEquals("2026-10-24T17:00:00Z", game.startTimeUtc)
+        assertEquals(Instant.parse("2026-10-24T17:00:00Z"), game.startTimeUtc)
         assertEquals(GameState.Final, game.state)
         assertEquals(4, game.homeScore)
         assertEquals(5, game.awayScore)
@@ -221,6 +222,18 @@ class ScoreAdapterTest {
         assertEquals("Flyers", game.home.name)
         assertEquals("https://assets.nhle.com/logos/nhl/svg/PHI_light.svg", game.home.logoUrl)
         assertTrue(day.games.all { it.home.darkLogoUrl == null && it.away.darkLogoUrl == null })
+    }
+
+    @Test
+    fun unparseableStartTimeKeepsGameWithNullStartTime() {
+        val baseline = (NhlAdapter.parseScore(Fixtures.text("score-gameday.json")) as ParseResult.Success).value
+        val json = mutateGame(0) { JsonObject(it + ("startTimeUTC" to JsonPrimitive("not-a-timestamp"))) }
+        val day = (NhlAdapter.parseScore(json) as ParseResult.Success).value
+
+        assertEquals(EXPECTED_GAMES, day.games.size)
+        assertEquals(0, day.droppedCount)
+        assertNull(day.games.first().startTimeUtc)
+        assertEquals(baseline.copy(games = listOf(baseline.games.first().copy(startTimeUtc = null)) + baseline.games.drop(1)), day)
     }
 
     @Test

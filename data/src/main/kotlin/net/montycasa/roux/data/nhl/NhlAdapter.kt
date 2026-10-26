@@ -21,6 +21,7 @@ import net.montycasa.roux.domain.model.Season
 import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
+import kotlin.time.Instant
 
 /** A failed response must remain distinguishable from a successfully fetched empty day. */
 internal sealed interface ParseResult<out T> {
@@ -226,7 +227,8 @@ internal object NhlAdapter {
             awayScore = awayTeam.score,
             finalKind = FinalKind.from(gameOutcome?.lastPeriodType),
             period = period,
-            startTimeUtc = startTimeUTC,
+            // A bad or absent timestamp must never drop a game: its score is still useful.
+            startTimeUtc = startTimeUTC?.let { Instant.parseOrNull(it) },
         )
     }
 
