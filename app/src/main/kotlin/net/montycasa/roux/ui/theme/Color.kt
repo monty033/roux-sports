@@ -12,7 +12,8 @@ import androidx.compose.ui.graphics.Color
  * Orange carries three different jobs in that design and they are NOT interchangeable, which is why
  * there are three constants instead of one accent:
  *
- * - [RouxLightFill] paints the live capsule and is only ever seen behind white text.
+ * - [RouxLightFill] paints the live capsule and is only ever seen behind [RouxOnFill], the near-black
+ *   the design specifies as its on-signature ink.
  * - [RouxLightSignature] is orange as type and as the winner's name; on the light page it must be the
  *   darker `#C93A06` because `#FF4B12` there measures 2.99:1 - under the 3:1 floor for anything that
  *   is not a large shape. This was measured, not assumed: the design's own note says `#FF4B12` on
@@ -84,6 +85,16 @@ val RouxDarkAccents =
     )
 
 /**
+ * Text on the two oranges, which need different inks - this is not one value for both.
+ *
+ * White on the light `#C93A06` is 5.13:1 while the near-black is 3.81:1; on the bright `#FF4B12` it is
+ * the other way round (white 3.35:1, near-black 5.84:1). A single on-primary ink would leave one of the
+ * two themes with an unreadable button label, so each scheme states its own.
+ */
+internal val RouxLightOnPrimary = Color(0xFFFFFFFF)
+internal val RouxDarkOnPrimary = Color(0xFF0B0C0E)
+
+/**
  * Light scheme. [ColorScheme.surfaceVariant] holds the card colour, because a card is the raised
  * surface a list row sits on; the page colour stays in [ColorScheme.surface] and
  * [ColorScheme.background].
@@ -91,7 +102,7 @@ val RouxDarkAccents =
 val RouxLightColors: ColorScheme =
     lightColorScheme(
         primary = RouxLightSignature,
-        onPrimary = RouxOnFill,
+        onPrimary = RouxLightOnPrimary,
         background = RouxLightPage,
         onBackground = RouxLightInk,
         surface = RouxLightPage,
@@ -106,7 +117,7 @@ val RouxLightColors: ColorScheme =
 val RouxDarkColors: ColorScheme =
     darkColorScheme(
         primary = RouxDarkSignature,
-        onPrimary = RouxOnFill,
+        onPrimary = RouxDarkOnPrimary,
         background = RouxDarkPage,
         onBackground = RouxDarkInk,
         surface = RouxDarkPage,

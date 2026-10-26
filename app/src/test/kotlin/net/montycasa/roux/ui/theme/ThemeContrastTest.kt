@@ -59,7 +59,7 @@ class ThemeContrastTest {
         }
     }
 
-    /** Text inside the capsule is white on orange; that pair is what a reader actually looks at. */
+    /** Text inside the capsule is the near-black on orange; that pair is what a reader looks at. */
     @Test
     fun theLiveFillCarriesItsOwnForeground() {
         for (accents in listOf(RouxLightAccents, RouxDarkAccents)) {
@@ -83,6 +83,20 @@ class ThemeContrastTest {
             "the signature orange must be the one that clears the floor",
             contrastRatio(RouxLightSignature, RouxLightPage) >= 4.5f,
         )
+    }
+
+    /**
+     * A Material primary button: `onPrimary` on `primary`.
+     *
+     * Asserted separately from the accents because it is a different pairing. The light primary is the
+     * darker `#C93A06`, where white measures 5.13:1 and the capsule's near-black only 3.81:1 - so the
+     * two schemes take different inks and one shared constant would fail one of them.
+     */
+    @Test
+    fun thePrimaryPairMeetsTheTextFloor() {
+        for (scheme in listOf(RouxLightColors, RouxDarkColors)) {
+            assertAtLeast(4.5, scheme.onPrimary, scheme.primary, "onPrimary on primary")
+        }
     }
 
     /** No dynamic colour: the scheme is a constant selected by a flag. */
