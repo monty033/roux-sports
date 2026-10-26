@@ -19,6 +19,7 @@ import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.time.Clock
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
@@ -211,6 +212,65 @@ class ResponseCacheTest {
 
             assertNotNull("read twice, so not the oldest", guarded.get(CacheKey(CacheKind.Standings, "a")))
             assertNull("b was only written once", guarded.get(CacheKey(CacheKind.Standings, "b")))
+        }
+
+    /**
+     * A stamp written in place is truncated before the bytes land, so a write that dies there would
+     * destroy the previous stamp and push the entry back to its write mtime. Moving a sibling into
+     * place means the old stamp survives a failure untouched.
+     */
+    @Test
+    fun failedStampWriteLeavesThePreviousStampIntact() =
+        withCache { fs, _, clock ->
+            var failAccessWrites = false
+            val guarded = ResponseCache(truncatingAccessSinks(fs) { failAccessWrites }, DIRECTORY, clock)
+
+            guarded.put(CacheKey(CacheKind.Standings, "a"), RAW, FETCHED_AT)
+            clock.advance()
+            guarded.put(CacheKey(CacheKind.Standings, "b"), RAW, FETCHED_AT)
+            clock.advance()
+            guarded.put(CacheKey(CacheKind.Standings, "c"), RAW, FETCHED_AT)
+            clock.advance()
+
+            guarded.get(CacheKey(CacheKind.Standings, "a"))
+            clock.advance()
+
+            failAccessWrites = true
+            assertNotNull(guarded.get(CacheKey(CacheKind.Standings, "a")))
+            failAccessWrites = false
+            clock.advance()
+
+            guarded.put(CacheKey(CacheKind.Standings, "d"), RAW, FETCHED_AT)
+
+            assertNotNull("its stamp was never truncated", guarded.get(CacheKey(CacheKind.Standings, "a")))
+            assertNull("b was only written once", guarded.get(CacheKey(CacheKind.Standings, "b")))
+        }
+
+    /**
+     * A device clock can step backwards. Writing today's reading over a newer stamp would quietly
+     * age the entry and make it the eviction candidate despite the recent read.
+     */
+    @Test
+    fun clockRollbackDoesNotAgeAnEntry() =
+        withCache { _, cache, clock ->
+            cache.put(CacheKey(CacheKind.Standings, "a"), RAW, FETCHED_AT)
+            clock.advance()
+            clock.advance()
+            clock.advance()
+
+            cache.get(CacheKey(CacheKind.Standings, "a")) // stamps "a" at the later time
+            clock.rewind(by = 2.seconds)
+            cache.get(CacheKey(CacheKind.Standings, "a")) // a rolled-back clock must not overwrite it
+
+            clock.advance() // back to the later time
+            cache.put(CacheKey(CacheKind.Standings, "b"), RAW, FETCHED_AT)
+            clock.advance()
+            cache.put(CacheKey(CacheKind.Standings, "c"), RAW, FETCHED_AT)
+            clock.advance()
+            cache.put(CacheKey(CacheKind.Standings, "d"), RAW, FETCHED_AT)
+
+            assertNotNull("a was stamped by a newer read", cache.get(CacheKey(CacheKind.Standings, "a")))
+            assertNull("b is the least recently used", cache.get(CacheKey(CacheKind.Standings, "b")))
         }
 
     /**
@@ -433,7 +493,36 @@ class ResponseCacheTest {
         fun advance() {
             instant += 1.seconds
         }
+
+        fun rewind(by: Duration = 1.seconds) {
+            instant -= by
+        }
     }
+
+    /** Creates the file, then fails on the first byte - the truncate-then-die case. */
+    private fun truncatingAccessSinks(
+        fs: FileSystem,
+        shouldFail: () -> Boolean,
+    ): FileSystem =
+        object : ForwardingFileSystem(fs) {
+            override fun sink(
+                file: Path,
+                mustCreate: Boolean,
+            ): Sink {
+                val delegate = super.sink(file, mustCreate)
+                if (!shouldFail() || !file.name.endsWith(".access")) return delegate
+                return object : ForwardingSink(delegate) {
+                    override fun write(
+                        source: Buffer,
+                        byteCount: Long,
+                    ): Unit = throw IOException("opened and truncated, then failed")
+
+                    override fun close() {
+                        runCatching { delegate.close() }
+                    }
+                }
+            }
+        }
 
     private fun flakyAccessWrites(
         fs: FileSystem,

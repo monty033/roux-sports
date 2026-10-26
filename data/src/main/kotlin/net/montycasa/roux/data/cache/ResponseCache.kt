@@ -142,23 +142,37 @@ class ResponseCache(
 
     /**
      * Records "this entry was used now". Best effort: recency must never fail a cache hit, and a
-     * failed write must not erase the recency an earlier one established, because a read that could
-     * not be stamped is still a read.
+     * failed write must not damage the evidence already there.
      *
-     * [lastUsedAt] reconciles the two timestamps by taking the newer, which covers both ways they
-     * can disagree: a record left over from before a replacement loses to the freshly rewritten
-     * entry's mtime, and a read that could only be stamped earlier keeps its earlier evidence.
+     * The stamp is written to a sibling and moved into place, never truncated in place, so a write
+     * that fails partway leaves the previous stamp intact. A stamp is also only ever moved forward:
+     * a clock that steps backwards must not replace newer evidence with older.
      */
     private fun touch(target: Path) {
+        val record = accessRecordFor(target)
+        val stamp = clock.now().toEpochMilliseconds()
         try {
             fileSystem.createDirectories(directory)
-            fileSystem.write(accessRecordFor(target)) {
-                writeUtf8(clock.now().toEpochMilliseconds().toString())
+            val existing = readStamp(record)
+            if (existing != null && existing >= stamp) return
+            val temp = directory / "${record.name}.$stamp.${Random.nextLong()}.tmp"
+            try {
+                fileSystem.write(temp, mustCreate = true) { writeUtf8(stamp.toString()) }
+                fileSystem.atomicMove(temp, record)
+            } finally {
+                deleteQuietly(temp)
             }
         } catch (_: IOException) {
-            // Leave the existing record alone; lastUsedAt resolves a stale one against the mtime.
+            // The previous stamp stands; it was only ever replaced by a move, not by a truncation.
         }
     }
+
+    private fun readStamp(path: Path): Long? =
+        try {
+            fileSystem.read(path) { readUtf8().toLongOrNull() }
+        } catch (_: IOException) {
+            null
+        }
 
     /**
      * The later of the access record and the entry's own mtime.
@@ -168,12 +182,7 @@ class ResponseCache(
      * directions - an entry is never evicted while a newer piece of evidence says it was used.
      */
     private fun lastUsedAt(target: Path): Long {
-        val recorded =
-            try {
-                fileSystem.read(accessRecordFor(target)) { readUtf8().toLongOrNull() }
-            } catch (_: IOException) {
-                null
-            }
+        val recorded = readStamp(accessRecordFor(target))
         val modified = fileSystem.metadataOrNull(target)?.lastModifiedAtMillis
         return when {
             recorded != null && modified != null -> maxOf(recorded, modified)
