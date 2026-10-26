@@ -32,6 +32,14 @@ import kotlin.time.Instant
  *
  * Reads never write. A version is stamped by the first write that stores anything, so a missing
  * version means the file predates versioning and is read as v1 - not that it should be rewritten.
+ *
+ * A file written by a NEWER build is never overwritten. Writes are refused rather than merged, and
+ * reads answer with defaults: this build cannot know what those keys mean, and resetting the marker
+ * would let a later upgrade mistake an old file for a current one. Losing an unreadable file is bad;
+ * silently rewriting it so the newer build's data disappears is worse.
+ *
+ * One instance per file per process. DataStore enforces this itself and throws if a second live
+ * instance is opened over the same path, so wiring must construct one repository and share it.
  */
 class DataStorePreferencesRepository(
     directory: Path,
@@ -44,22 +52,26 @@ class DataStorePreferencesRepository(
             produceFile = { directory.resolve(FILE_NAME).toFile() },
         )
 
-    override suspend fun getFavourites(): Set<TeamKey> =
-        store.data
-            .first()[FAVOURITES]
-            .orEmpty()
-            .mapTo(mutableSetOf(), ::TeamKey)
+    override suspend fun getFavourites(): Set<TeamKey> {
+        val preferences = readablePreferences() ?: return emptySet()
+        return preferences[FAVOURITES].orEmpty().mapTo(mutableSetOf(), ::TeamKey)
+    }
 
     override suspend fun setFavourites(teams: Set<TeamKey>) {
+        requireWritable()
         store.edit { preferences ->
             preferences[VERSION] = PREFERENCES_VERSION
             preferences[FAVOURITES] = teams.mapTo(mutableSetOf()) { it.abbrev }
         }
     }
 
-    override suspend fun getFavouritesOnly(): Boolean = store.data.first()[FAVOURITES_ONLY] ?: DEFAULT_FAVOURITES_ONLY
+    override suspend fun getFavouritesOnly(): Boolean {
+        val preferences = readablePreferences() ?: return DEFAULT_FAVOURITES_ONLY
+        return preferences[FAVOURITES_ONLY] ?: DEFAULT_FAVOURITES_ONLY
+    }
 
     override suspend fun setFavouritesOnly(enabled: Boolean) {
+        requireWritable()
         store.edit { preferences ->
             preferences[VERSION] = PREFERENCES_VERSION
             preferences[FAVOURITES_ONLY] = enabled
@@ -67,7 +79,7 @@ class DataStorePreferencesRepository(
     }
 
     override suspend fun getTeamAlertPreferences(team: TeamKey): TeamAlertPreferences {
-        val preferences = store.data.first()
+        val preferences = readablePreferences() ?: return TeamAlertPreferences()
         return TeamAlertPreferences(
             start = preferences[startKey(team)] ?: true,
             goals = preferences[goalsKey(team)] ?: true,
@@ -78,6 +90,7 @@ class DataStorePreferencesRepository(
         team: TeamKey,
         preferences: TeamAlertPreferences,
     ) {
+        requireWritable()
         store.edit { stored ->
             stored[VERSION] = PREFERENCES_VERSION
             stored[startKey(team)] = preferences.start
@@ -86,7 +99,9 @@ class DataStorePreferencesRepository(
     }
 
     override suspend fun getNotificationLedgerEntry(gameId: String): NotificationLedgerEntry? {
-        val preferences = store.data.first()
+        // An unreadable file reports no notifications, so a stale dedup record cannot suppress an
+        // alert that this build has no way to verify was already sent.
+        val preferences = readablePreferences() ?: return null
         // Half an entry is not evidence of a notification. Without all three fields there is no
         // record, because reporting "already notified" from a partial write would drop a real alert.
         val goalCount = preferences[goalCountKey(gameId)] ?: return null
@@ -103,6 +118,7 @@ class DataStorePreferencesRepository(
         gameId: String,
         entry: NotificationLedgerEntry,
     ) {
+        requireWritable()
         store.edit { preferences ->
             preferences[VERSION] = PREFERENCES_VERSION
             preferences[goalCountKey(gameId)] = entry.lastNotifiedGoalCount
@@ -112,6 +128,7 @@ class DataStorePreferencesRepository(
     }
 
     override suspend fun pruneNotificationLedger(olderThan: Instant) {
+        requireWritable()
         val cutoff = olderThan.toEpochMilliseconds()
         store.edit { preferences ->
             // The update stamp is the key whose name carries the game id, so it drives the sweep and
@@ -133,6 +150,20 @@ class DataStorePreferencesRepository(
                 preferences.remove(goalCountKey(gameId))
                 preferences.remove(startNotifiedKey(gameId))
             }
+        }
+    }
+
+    /** Null when the file was written by a newer build and cannot be interpreted by this one. */
+    private suspend fun readablePreferences(): Preferences? {
+        val preferences = store.data.first()
+        val stored = preferences[VERSION]
+        return if (stored != null && stored > PREFERENCES_VERSION) null else preferences
+    }
+
+    private suspend fun requireWritable() {
+        val stored = store.data.first()[VERSION]
+        if (stored != null && stored > PREFERENCES_VERSION) {
+            throw UnsupportedPreferencesVersionException(stored)
         }
     }
 
@@ -174,3 +205,15 @@ class DataStorePreferencesRepository(
         val FAVOURITES_ONLY = booleanPreferencesKey("favourites_only")
     }
 }
+
+/**
+ * The preferences file was written by a newer build.
+ *
+ * Refusing the write keeps the newer data intact for a later upgrade; the alternative - resetting
+ * the file to defaults - destroys state this build cannot even describe.
+ */
+class UnsupportedPreferencesVersionException(
+    val storedVersion: Int,
+) : IllegalStateException(
+        "preferences file version $storedVersion is newer than this build supports",
+    )

@@ -5,12 +5,14 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.repo.NotificationLedgerEntry
@@ -19,6 +21,7 @@ import okio.Path
 import okio.Path.Companion.toOkioPath
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Test
 import java.nio.file.Files
 import kotlin.time.Instant
@@ -61,12 +64,18 @@ class DataStorePreferencesRepositoryTest {
         goalCount: Int? = null,
         startNotified: Boolean? = null,
         updatedAt: Long? = null,
+        version: Int? = null,
+        favourites: Set<String>? = null,
+        favouritesOnly: Boolean? = null,
     ) {
         val scope = newScope()
         try {
             PreferenceDataStoreFactory
                 .create(scope = scope, produceFile = { fileIn(directory) })
                 .edit { preferences ->
+                    version?.let { preferences[intPreferencesKey("prefs_version")] = it }
+                    favourites?.let { preferences[stringSetPreferencesKey("favourites_abbreviations")] = it }
+                    favouritesOnly?.let { preferences[booleanPreferencesKey("favourites_only")] = it }
                     goalCount?.let { preferences[intPreferencesKey("ledger_goals_$gameId")] = it }
                     startNotified?.let { preferences[booleanPreferencesKey("ledger_start_$gameId")] = it }
                     updatedAt?.let { preferences[longPreferencesKey("ledger_time_$gameId")] = it }
@@ -240,6 +249,82 @@ class DataStorePreferencesRepositoryTest {
             val scope = newScope()
             assertNull(openWhenReleased(directory, scope).getNotificationLedgerEntry("2024020001"))
             scope.cancel()
+        }
+
+    /**
+     * A file written by a newer build must never be rewritten. Reads answer with defaults because
+     * this build cannot interpret those keys, and writes are refused so a downgrade cannot destroy
+     * state that the next upgrade would have migrated properly.
+     */
+    @Test
+    fun fileFromANewerBuildReadsAsDefaultsAndRefusesWrites() =
+        runTest {
+            val directory = newDirectory()
+            writeRawLedgerEntry(
+                directory,
+                "2024020001",
+                goalCount = 9,
+                startNotified = true,
+                updatedAt = 1_000L,
+                version = 99,
+                favourites = setOf("TOR"),
+                favouritesOnly = false,
+            )
+
+            val scope = newScope()
+            val repository = openWhenReleased(directory, scope)
+            // Every getter must be gated: each of these values IS in the file, so an ungated
+            // getter would return it rather than the default.
+            assertEquals(emptySet<TeamKey>(), repository.getFavourites())
+            assertEquals(true, repository.getFavouritesOnly())
+            assertEquals(TeamAlertPreferences(), repository.getTeamAlertPreferences(TeamKey("TOR")))
+            assertEquals(null, repository.getNotificationLedgerEntry("2024020001"))
+            assertThrows(UnsupportedPreferencesVersionException::class.java) {
+                runBlocking { repository.setFavouritesOnly(false) }
+            }
+            scope.cancel()
+
+            // The file and its marker must still be intact afterwards.
+            val readerScope = newScope()
+            val stored =
+                PreferenceDataStoreFactory
+                    .create(scope = readerScope, produceFile = { fileIn(directory) })
+                    .data
+                    .first()
+            assertEquals(99, stored[intPreferencesKey("prefs_version")])
+            assertEquals(9, stored[intPreferencesKey("ledger_goals_2024020001")])
+            assertEquals(setOf("TOR"), stored[stringSetPreferencesKey("favourites_abbreviations")])
+            assertEquals(false, stored[booleanPreferencesKey("favourites_only")])
+            readerScope.cancel()
+        }
+
+    /** Reading a versionless file must not stamp it; a read is not a migration. */
+    @Test
+    fun readsDoNotStampTheVersion() =
+        runTest {
+            val directory = newDirectory()
+            // A file with data but no version marker, as an older build would have left it.
+            writeRawLedgerEntry(directory, "2024020001", goalCount = 2, startNotified = true, updatedAt = 5_000L)
+
+            val scope = newScope()
+            val repository = openWhenReleased(directory, scope)
+            assertEquals(
+                NotificationLedgerEntry(2, true, Instant.fromEpochMilliseconds(5_000L)),
+                repository.getNotificationLedgerEntry("2024020001"),
+            )
+            repository.getFavourites()
+            repository.getFavouritesOnly()
+            repository.getTeamAlertPreferences(TeamKey("TOR"))
+            scope.cancel()
+
+            val readerScope = newScope()
+            val stored =
+                PreferenceDataStoreFactory
+                    .create(scope = readerScope, produceFile = { fileIn(directory) })
+                    .data
+                    .first()
+            assertEquals(null, stored[intPreferencesKey("prefs_version")])
+            readerScope.cancel()
         }
 
     @Test
