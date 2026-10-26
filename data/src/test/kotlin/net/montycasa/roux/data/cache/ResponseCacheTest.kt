@@ -150,6 +150,48 @@ class ResponseCacheTest {
         }
 
     /**
+     * A failed touch must not leave the previous timestamp behind. lastUsedAt prefers the access
+     * record over the entry's mtime, so a stale record after a successful replacement would make
+     * the freshly written entry look older than entries nobody has touched.
+     */
+    @Test
+    fun failedTouchAfterReplacementDoesNotLeaveAStaleRecord() =
+        withCache { fs, cache, clock ->
+            var failAccessWrites = false
+            val flaky =
+                object : ForwardingFileSystem(fs) {
+                    override fun sink(
+                        file: Path,
+                        mustCreate: Boolean,
+                    ): Sink {
+                        if (failAccessWrites && file.name.endsWith(".access")) {
+                            throw IOException("access record write failed")
+                        }
+                        return super.sink(file, mustCreate)
+                    }
+                }
+            val guarded = ResponseCache(flaky, DIRECTORY, clock)
+
+            guarded.put(CacheKey(CacheKind.Standings, "a"), RAW, FETCHED_AT)
+            clock.advance()
+            guarded.put(CacheKey(CacheKind.Standings, "b"), RAW, FETCHED_AT)
+            clock.advance()
+
+            // Replace "a": its entry is rewritten, but the recency record cannot be updated.
+            failAccessWrites = true
+            guarded.put(CacheKey(CacheKind.Standings, "a"), RAW, FETCHED_AT)
+            failAccessWrites = false
+            clock.advance()
+
+            guarded.put(CacheKey(CacheKind.Standings, "c"), RAW, FETCHED_AT)
+            clock.advance()
+            guarded.put(CacheKey(CacheKind.Standings, "d"), RAW, FETCHED_AT)
+
+            assertNotNull("the replaced entry is the newest write, not the oldest", guarded.get(CacheKey(CacheKind.Standings, "a")))
+            assertNull("b is the least recently used", guarded.get(CacheKey(CacheKind.Standings, "b")))
+        }
+
+    /**
      * A read that fails at the filesystem level is not evidence of corruption. Deleting on an
      * unreadable-but-intact entry turns a transient I/O error into permanent cache loss, and if
      * the network is also down the user loses stale data that was still perfectly good.

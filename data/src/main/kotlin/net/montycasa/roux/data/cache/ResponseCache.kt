@@ -148,7 +148,11 @@ class ResponseCache(
                 writeUtf8(clock.now().toEpochMilliseconds().toString())
             }
         } catch (_: IOException) {
-            // Losing the record only costs this entry its recency, so fall back to its mtime.
+            // A stale record is worse than none: lastUsedAt prefers the record over the entry's
+            // fresh mtime, so after a replacement whose touch failed, the entry just written would
+            // carry its predecessor's old timestamp and be evicted ahead of older entries. Drop the
+            // record so eviction falls back to the mtime of the bytes that are actually on disk.
+            deleteQuietly(accessRecordFor(target))
         }
     }
 
