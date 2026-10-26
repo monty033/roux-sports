@@ -119,19 +119,44 @@ abstract class VerifyNoProprietaryDeps : DefaultTask() {
     fun verify() {
         val bannedGroups =
             setOf(
-                "com.google.android.gms",
-                "com.google.firebase",
-                "com.google.android.play",
-                "com.crashlytics",
-                "com.google.android.ads",
-                "com.google.ads",
-                "com.applovin",
-                "com.facebook.ads",
-                "com.facebook.appevents",
-                "com.flurry",
-                "com.mixpanel",
-                "com.segment",
-                "com.amplitude",
+                // Google platform services and Firebase.
+                "com.google.android.gms", // Google Play services.
+                "com.google.firebase", // Firebase services.
+                "com.google.android.play", // Google Play SDKs.
+                // Attribution and measurement.
+                "com.appsflyer", // AppsFlyer attribution.
+                "com.adjust.sdk", // Adjust attribution.
+                "com.kochava", // Kochava measurement.
+                "io.branch", // Branch attribution and deep linking.
+                "com.singular", // Singular attribution.
+                "com.mparticle", // mParticle customer data collection.
+                "com.tenjin", // Tenjin attribution.
+                // Ad networks and mediation.
+                "com.google.android.ads", // Google mobile ads.
+                "com.google.ads", // Google advertising SDKs.
+                "com.applovin", // AppLovin ads and mediation.
+                "com.facebook.ads", // Facebook advertising.
+                "com.ironsource", // ironSource ads and mediation.
+                "com.unity3d.ads", // Unity Ads.
+                "com.vungle", // Vungle advertising.
+                "com.chartboost", // Chartboost advertising.
+                "com.inmobi", // InMobi advertising.
+                "com.startapp", // StartApp advertising.
+                "com.mopub.mobileads", // MoPub mobile ads.
+                "com.tapjoy", // Tapjoy advertising.
+                "com.adcolony", // AdColony advertising.
+                "com.smaato", // Smaato advertising.
+                // Analytics, telemetry and crash reporting.
+                "com.facebook.appevents", // Facebook app event analytics.
+                "com.flurry", // Flurry analytics.
+                "com.mixpanel", // Mixpanel analytics.
+                "com.segment", // Segment event collection.
+                "com.amplitude", // Amplitude analytics.
+                "com.crashlytics", // Crashlytics crash reporting.
+                "com.datadog", // Datadog telemetry.
+                "com.bugsnag", // Bugsnag crash reporting.
+                "com.newrelic.agent", // New Relic telemetry.
+                "com.optimizely", // Optimizely experimentation and analytics.
             )
         val resolvedCoordinates = coordinates.get().sorted()
         val violations =
