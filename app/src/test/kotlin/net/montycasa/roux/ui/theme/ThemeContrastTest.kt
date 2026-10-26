@@ -31,26 +31,40 @@ class ThemeContrastTest {
     private val themed = listOf(RouxLightColors to RouxLightAccents, RouxDarkColors to RouxDarkAccents)
 
     /**
-     * Every pair where text sits on a colour.
+     * Every pair where text sits on a colour, built as a cross-product rather than listed by hand.
      *
-     * `onSurfaceVariant` appears twice because muted text is painted on the card as well as the page,
-     * and in the dark theme the card is the lighter of the two - so it is the harder case. The
-     * signature orange appears twice for the same reason.
+     * Any ink that a row can carry is paired with BOTH surfaces, because a row exists on the page and
+     * the card and the dark card is the lighter, harder case. Listing those pairs by hand is what let
+     * `onFill`, then `onPrimary`, then `onBackground`, then `onSurface`-on-the-card go unasserted in
+     * four consecutive reviews; a product cannot forget a combination.
+     *
+     * The pairs that are NOT free combinations - a button label, a capsule label - are appended
+     * explicitly, since their background is fixed.
      */
     private fun textPairs(
         scheme: ColorScheme,
         accents: RouxAccents,
-    ): List<Pair> =
-        listOf(
-            Pair(scheme.onSurface, scheme.surface, 4.5, "onSurface on surface"),
-            Pair(scheme.onBackground, scheme.background, 4.5, "onBackground on background"),
-            Pair(scheme.onSurfaceVariant, scheme.surface, 4.5, "onSurfaceVariant on the page"),
-            Pair(scheme.onSurfaceVariant, scheme.surfaceVariant, 4.5, "onSurfaceVariant on the card"),
-            Pair(scheme.onPrimary, scheme.primary, 4.5, "onPrimary on primary"),
-            Pair(accents.onFill, accents.fill, 4.5, "onFill on the live fill"),
-            Pair(accents.signature, scheme.surface, 4.5, "signature orange on the page"),
-            Pair(accents.signature, scheme.surfaceVariant, 4.5, "signature orange on the card"),
-        )
+    ): List<Pair> {
+        val surfaces = listOf(scheme.surface to "page", scheme.surfaceVariant to "card")
+        val rowInks =
+            listOf(
+                scheme.onSurface to "onSurface",
+                scheme.onSurfaceVariant to "onSurfaceVariant",
+                accents.signature to "signature orange",
+            )
+        return buildList {
+            for ((ink, name) in rowInks) {
+                for ((surface, where) in surfaces) {
+                    add(Pair(ink, surface, 4.5, "$name on the $where"))
+                }
+            }
+            // Fixed-background pairs: a button label and a capsule label are each painted on exactly
+            // one colour, so there is nothing to cross these with.
+            add(Pair(scheme.onBackground, scheme.background, 4.5, "onBackground on background"))
+            add(Pair(scheme.onPrimary, scheme.primary, 4.5, "onPrimary on primary"))
+            add(Pair(accents.onFill, accents.fill, 4.5, "onFill on the live fill"))
+        }
+    }
 
     @Test
     fun everyPaintedTextPairMeetsItsFloor() {
