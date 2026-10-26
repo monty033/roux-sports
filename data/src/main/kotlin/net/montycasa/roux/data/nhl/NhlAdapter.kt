@@ -5,14 +5,20 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromJsonElement
 import net.montycasa.roux.data.nhl.dto.GameDto
 import net.montycasa.roux.data.nhl.dto.ScoreDto
+import net.montycasa.roux.data.nhl.dto.SeasonsDto
+import net.montycasa.roux.data.nhl.dto.StandingsDto
 import net.montycasa.roux.data.nhl.dto.TeamDto
+import net.montycasa.roux.domain.model.Conference
 import net.montycasa.roux.domain.model.DateIndexEntry
+import net.montycasa.roux.domain.model.Division
 import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.ScoreDay
+import net.montycasa.roux.domain.model.Season
+import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 
@@ -80,6 +86,116 @@ internal object NhlAdapter {
                 droppedCount = wireGames.size - games.size,
             ),
         )
+    }
+
+    /** Reject incomplete league tables so repositories can serve cached or stale data. */
+    fun parseStandings(json: String): ParseResult<List<StandingRow>> {
+        val standings =
+            try {
+                feedJson.decodeFromString<StandingsDto>(json)
+            } catch (exception: SerializationException) {
+                return ParseResult.Failure("NHL standings decoding failed: ${exception.message}")
+            }
+        val wireRows =
+            standings.standings ?: return ParseResult.Failure("NHL standings mapping failed: missing standings field")
+        // A score day can drop and count an unusable game and still be useful. A missing team
+        // makes league rankings and the wildcard cut line misleading, so fail the whole table.
+        // Missing or blank required names are fatal: they leave team identity or group headings empty.
+        // An unrecognised non-blank group name is survivable because Unknown preserves its label.
+        val rows =
+            wireRows.mapIndexed { index, row ->
+                fun missing(field: String) = ParseResult.Failure("NHL standings mapping failed: row $index missing $field")
+
+                if (row == null) return missing("row (null element)")
+                val abbreviation = row.teamAbbrev?.default?.takeIf { it.isNotBlank() } ?: return missing("teamAbbrev.default")
+                val gamesPlayed = row.gamesPlayed ?: return missing("gamesPlayed")
+                val wins = row.wins ?: return missing("wins")
+                val losses = row.losses ?: return missing("losses")
+                val points = row.points ?: return missing("points")
+                val leagueSequence = row.leagueSequence ?: return missing("leagueSequence")
+                val conferenceSequence = row.conferenceSequence ?: return missing("conferenceSequence")
+                val divisionSequence = row.divisionSequence ?: return missing("divisionSequence")
+                val wildcardSequence = row.wildcardSequence ?: return missing("wildcardSequence")
+                val conferenceName = row.conferenceName?.takeIf { it.isNotBlank() } ?: return missing("conferenceName")
+                val divisionName = row.divisionName?.takeIf { it.isNotBlank() } ?: return missing("divisionName")
+                StandingRow(
+                    team =
+                        TeamRef(
+                            key = TeamKey(abbreviation),
+                            name = row.teamName?.default,
+                            logoUrl = row.teamLogo,
+                            darkLogoUrl = row.teamLogoDark,
+                        ),
+                    gp = gamesPlayed,
+                    w = wins,
+                    l = losses,
+                    otl = row.otLosses,
+                    pts = points,
+                    leagueSequence = leagueSequence,
+                    conferenceSequence = conferenceSequence,
+                    divisionSequence = divisionSequence,
+                    wildcardSequence = wildcardSequence,
+                    conference = Conference.fromFeed(conferenceName),
+                    division = Division.fromFeed(divisionName),
+                )
+            }
+        if (rows.isEmpty()) {
+            return ParseResult.Failure("NHL standings mapping failed: empty standings table")
+        }
+        val duplicateTeamKeys =
+            rows
+                .groupingBy { it.team.key }
+                .eachCount()
+                .filterValues { it > 1 }
+                .keys
+        if (duplicateTeamKeys.isNotEmpty()) {
+            return ParseResult.Failure("NHL standings mapping failed: duplicate team keys=$duplicateTeamKeys")
+        }
+        // Require internally consistent league-wide numbering to catch gaps and collisions.
+        // This does not prove completeness: a shorter table can still be numbered 1..N.
+        val sequenceCounts = rows.groupingBy { it.leagueSequence }.eachCount()
+        val expectedSequences = (1..rows.size).toSet()
+        val missingSequences = expectedSequences - sequenceCounts.keys
+        val unexpectedSequences = sequenceCounts.keys - expectedSequences
+        val duplicateSequences = sequenceCounts.filterValues { it > 1 }.keys
+        if (missingSequences.isNotEmpty() || unexpectedSequences.isNotEmpty() || duplicateSequences.isNotEmpty()) {
+            return ParseResult.Failure(
+                "NHL standings mapping failed: leagueSequence must be exactly 1..${rows.size}; " +
+                    "missing=${missingSequences.sorted()}, duplicates=${duplicateSequences.sorted()}, " +
+                    "out of range=${unexpectedSequences.sorted()}",
+            )
+        }
+        // Completeness cannot be derived from the payload alone: an internally consistent
+        // table short a team is indistinguishable from a smaller league. Size must come from outside it.
+        if (rows.size != NhlLeagueShape.EXPECTED_TEAM_COUNT) {
+            return ParseResult.Failure(
+                "NHL standings mapping failed: expected ${NhlLeagueShape.EXPECTED_TEAM_COUNT} teams, " +
+                    "actual ${rows.size}; league shape may have changed",
+            )
+        }
+        // A fabricated replacement team with a distinct key, expected size and clean 1..N
+        // numbering remains undetectable without pinning the roster. Accept that limit here:
+        // pinning abbreviations would break on a rename or relocation.
+        return ParseResult.Success(rows)
+    }
+
+    /** Preserve the feed's season order and optional standings dates. */
+    fun parseSeasons(json: String): ParseResult<List<Season>> {
+        val history =
+            try {
+                feedJson.decodeFromString<SeasonsDto>(json)
+            } catch (exception: SerializationException) {
+                return ParseResult.Failure("NHL seasons decoding failed: ${exception.message}")
+            }
+        val wireSeasons =
+            history.seasons ?: return ParseResult.Failure("NHL seasons mapping failed: missing seasons field")
+        // IDs ascend over time: callers choose the latest with maxBy { it.id }; do not sort here.
+        val seasons =
+            wireSeasons.mapIndexed { index, season ->
+                val id = season?.id ?: return ParseResult.Failure("NHL seasons mapping failed: row $index missing id")
+                Season(id, start = season.standingsStart, end = season.standingsEnd)
+            }
+        return ParseResult.Success(seasons)
     }
 
     /** Missing required identity or date drops a row rather than fabricating domain data. */
