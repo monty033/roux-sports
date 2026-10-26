@@ -49,7 +49,7 @@ class ResponseCacheTest {
 
             assertNull(cache.get(CacheKey(CacheKind.Score, "0")))
             assertArrayEquals(RAW, cache.get(CacheKey(CacheKind.Score, "30"))!!.bytes)
-            assertEquals(30, fs.list(DIRECTORY).size)
+            assertEquals(30, entriesIn(fs).size)
         }
 
     @Test
@@ -72,7 +72,7 @@ class ResponseCacheTest {
             }
 
             assertArrayEquals(RAW, cache.get(standings)!!.bytes)
-            assertEquals(31, fs.list(DIRECTORY).size)
+            assertEquals(31, entriesIn(fs).size)
         }
 
     @Test
@@ -108,26 +108,66 @@ class ResponseCacheTest {
             listOf("a", "b", "d").forEach { assertNotNull(cache.get(CacheKey(CacheKind.Standings, it))) }
         }
 
+    /**
+     * Reading keeps an entry alive. This is what separates least-recently-USED from
+     * least-recently-written: "a" is the oldest write but the newest read, so "b" must go instead.
+     */
     @Test
-    fun readingDoesNotRefreshWriteTimeButReplacingDoes() =
-        withCache { fs, cache, clock ->
-            val a = CacheKey(CacheKind.Standings, "a")
-            val b = CacheKey(CacheKind.Standings, "b")
-            val c = CacheKey(CacheKind.Standings, "c")
-            val d = CacheKey(CacheKind.Standings, "d")
-            for (key in listOf(a, b, c)) {
-                cache.put(key, RAW, FETCHED_AT)
+    fun readingRefreshesRecency() =
+        withCache { _, cache, clock ->
+            for (id in listOf("a", "b", "c")) {
+                cache.put(CacheKey(CacheKind.Standings, id), RAW, FETCHED_AT)
                 clock.advance()
             }
-            val originalTime = fs.metadata(entry(a)).lastModifiedAtMillis
-            assertNotNull(cache.get(a))
-            assertEquals(originalTime, fs.metadata(entry(a)).lastModifiedAtMillis)
-            cache.put(b, RAW, Instant.DISTANT_PAST)
+            assertNotNull(cache.get(CacheKey(CacheKind.Standings, "a")))
             clock.advance()
-            cache.put(d, RAW, FETCHED_AT)
 
-            assertNull(cache.get(a))
-            assertNotNull(cache.get(b))
+            cache.put(CacheKey(CacheKind.Standings, "d"), RAW, FETCHED_AT)
+
+            assertNull("the least recently USED entry goes", cache.get(CacheKey(CacheKind.Standings, "b")))
+            listOf("a", "c", "d").forEach { assertNotNull(cache.get(CacheKey(CacheKind.Standings, it))) }
+        }
+
+    /**
+     * Replacing the oldest entry protects it, which the previous version of this test could not
+     * show: it replaced an entry that was not the eviction candidate, so it passed even if a
+     * replacement kept the old recency.
+     */
+    @Test
+    fun replacingTheOldestEntryProtectsIt() =
+        withCache { _, cache, clock ->
+            for (id in listOf("a", "b", "c")) {
+                cache.put(CacheKey(CacheKind.Standings, id), RAW, FETCHED_AT)
+                clock.advance()
+            }
+
+            cache.put(CacheKey(CacheKind.Standings, "a"), RAW, FETCHED_AT)
+            clock.advance()
+            cache.put(CacheKey(CacheKind.Standings, "d"), RAW, FETCHED_AT)
+
+            assertNull("b is now the oldest", cache.get(CacheKey(CacheKind.Standings, "b")))
+            listOf("a", "c", "d").forEach { assertNotNull(cache.get(CacheKey(CacheKind.Standings, it))) }
+        }
+
+    /**
+     * A read that fails at the filesystem level is not evidence of corruption. Deleting on an
+     * unreadable-but-intact entry turns a transient I/O error into permanent cache loss, and if
+     * the network is also down the user loses stale data that was still perfectly good.
+     */
+    @Test
+    fun unreadableEntryIsKeptRatherThanDeleted() =
+        withCache { fs, cache, clock ->
+            cache.put(KEY, RAW, FETCHED_AT)
+
+            val unreadable =
+                object : ForwardingFileSystem(fs) {
+                    override fun source(file: Path): okio.Source = throw IOException("volume temporarily unavailable")
+                }
+            val failing = ResponseCache(unreadable, DIRECTORY, clock)
+
+            assertNull("an unreadable entry is a miss", failing.get(KEY))
+            assertTrue("but it must not be deleted", fs.exists(entry(KEY)))
+            assertArrayEquals("and it is still readable later", RAW, cache.get(KEY)!!.bytes)
         }
 
     @Test
@@ -195,7 +235,7 @@ class ResponseCacheTest {
 
             assertArrayEquals(RAW, cache.get(KEY)!!.bytes)
             assertEquals(FETCHED_AT, cache.get(KEY)!!.fetchedAt)
-            assertEquals(listOf(entry(KEY)), fs.list(DIRECTORY))
+            assertEquals(listOf(entry(KEY)), entriesIn(fs))
         }
 
     @Test
@@ -225,7 +265,7 @@ class ResponseCacheTest {
 
             assertArrayEquals(RAW, cache.get(KEY)!!.bytes)
             assertEquals(FETCHED_AT, cache.get(KEY)!!.fetchedAt)
-            assertEquals(listOf(entry(KEY)), fs.list(DIRECTORY))
+            assertEquals(listOf(entry(KEY)), entriesIn(fs))
         }
 
     @Test
@@ -235,7 +275,7 @@ class ResponseCacheTest {
             cache.put(KEY, byteArrayOf(42), FETCHED_AT)
 
             assertArrayEquals(byteArrayOf(42), cache.get(KEY)!!.bytes)
-            assertEquals(listOf(entry(KEY)), fs.list(DIRECTORY))
+            assertEquals(listOf(entry(KEY)), entriesIn(fs))
         }
 
     @Test
@@ -297,7 +337,7 @@ class ResponseCacheTest {
         }
         assertNull(cache.get(CacheKey(kind, "0")))
         assertArrayEquals(RAW, cache.get(CacheKey(kind, "$cap"))!!.bytes)
-        assertEquals(cap, fs.list(DIRECTORY).size)
+        assertEquals(cap, entriesIn(fs).size)
     }
 
     private fun assertCorruption(envelope: ByteArray) =
@@ -309,6 +349,8 @@ class ResponseCacheTest {
             assertFalse("Damaged entry must be deleted", fs.exists(entry(KEY)))
             assertNull(cache.get(KEY))
         }
+
+    private fun entriesIn(fakeFileSystem: FakeFileSystem): List<Path> = fakeFileSystem.list(DIRECTORY).filter { it.name.endsWith(".roux") }
 
     private fun withCache(block: suspend (FakeFileSystem, ResponseCache, MutableClock) -> Unit) =
         runBlocking {
