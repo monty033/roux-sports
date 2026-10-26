@@ -20,6 +20,41 @@ import kotlin.time.Instant
 /** Captured payloads guard against silently rendering a populated day as empty. */
 class ScoreAdapterTest {
     @Test
+    fun gamedayFinishedGamesAllHaveStoppedClocks() {
+        val day = (NhlAdapter.parseScore(Fixtures.text("score-gameday.json")) as ParseResult.Success).value
+
+        assertEquals(EXPECTED_GAMES, day.games.size)
+        day.games.forEach { game ->
+            assertEquals(GameState.Final, game.state)
+            assertEquals("game ${game.id.value}", false, game.period?.running)
+        }
+    }
+
+    @Test
+    fun runningClockMapsToTrue() {
+        val json =
+            mutateGame(0) { game ->
+                JsonObject(game + ("clock" to JsonObject(game.getValue("clock").jsonObject + ("running" to JsonPrimitive(true)))))
+            }
+        val day = (NhlAdapter.parseScore(json) as ParseResult.Success).value
+
+        val game = day.games.first()
+        assertEquals(true, game.period?.running)
+    }
+
+    @Test
+    fun absentClockKeepsRunningNull() {
+        val json = mutateGame(0) { JsonObject(it - "clock") }
+        val day = (NhlAdapter.parseScore(json) as ParseResult.Success).value
+
+        assertEquals(EXPECTED_GAMES, day.games.size)
+        assertEquals(0, day.droppedCount)
+        val period = day.games.first().period
+        assertEquals(3, period?.ordinal)
+        assertNull(period?.running)
+    }
+
+    @Test
     fun gamedayRetainsEveryGameAndDateNavigation() {
         val result = NhlAdapter.parseScore(Fixtures.text("score-gameday.json"))
         assertTrue(result is ParseResult.Success)
@@ -124,7 +159,7 @@ class ScoreAdapterTest {
         val day = (NhlAdapter.parseScore(json) as ParseResult.Success).value
         val first = baseline.games.first()
 
-        val expectedFirst = first.copy(period = first.period!!.copy(clock = null), finalKind = null)
+        val expectedFirst = first.copy(period = first.period!!.copy(clock = null, running = null), finalKind = null)
         assertEquals(baseline.copy(games = listOf(expectedFirst) + baseline.games.drop(1)), day)
     }
 
@@ -218,7 +253,7 @@ class ScoreAdapterTest {
         assertEquals(4, game.homeScore)
         assertEquals(5, game.awayScore)
         assertEquals(FinalKind.REG, game.finalKind)
-        assertEquals(PeriodInfo(3, "REG", "00:00", false), game.period)
+        assertEquals(PeriodInfo(3, "REG", "00:00", false, running = false), game.period)
         assertEquals("Flyers", game.home.name)
         assertEquals("https://assets.nhle.com/logos/nhl/svg/PHI_light.svg", game.home.logoUrl)
         assertTrue(day.games.all { it.home.darkLogoUrl == null && it.away.darkLogoUrl == null })

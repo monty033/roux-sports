@@ -215,6 +215,7 @@ internal object NhlAdapter {
                     periodType = periodDescriptor.periodType,
                     clock = clock?.timeRemaining,
                     inIntermission = clock?.inIntermission ?: false,
+                    running = clock?.running,
                 )
             }
         return Game(

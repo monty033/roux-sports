@@ -69,6 +69,11 @@ data class PeriodInfo(
     val periodType: String?,
     val clock: String?,
     val inIntermission: Boolean = false,
+    /**
+     * Feed clock.running; null when the clock is absent. This is the only reliable in-progress
+     * signal: finished games keep their period and can keep a non-zero remaining time.
+     */
+    val running: Boolean? = null,
 )
 
 /** A day's matchup, with optional scores and progress details from the NHL feed. */

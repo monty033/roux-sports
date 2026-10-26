@@ -1,10 +1,16 @@
 package net.montycasa.roux.domain.model
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 /** Verifies feed status conversion and whether each lifecycle state represents a live game. */
 class GameStateTest {
+    @Test
+    fun periodRunningDefaultsToNull() {
+        assertNull(PeriodInfo(2, "REG", "12:34").running)
+    }
+
     @Test
     fun fromFeedMapsKnownStatesAndPreservesUnknownInput() {
         val cases =
