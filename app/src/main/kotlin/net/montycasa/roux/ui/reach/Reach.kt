@@ -9,9 +9,13 @@ import androidx.compose.ui.semantics.semantics
  * The one-handed reach rules (A8, R1-R5), as numbers and as a pure check.
  *
  * The rules are fractions of window height rather than absolute offsets, so they hold on a 6.1" phone
- * and on the Pixel 9 alike. Nothing here measures anything: a caller hands in where each primary
- * control actually landed, and this decides pass or fail. That keeps the policy testable without
- * Compose and keeps the Compose-side reader thin enough to be obvious.
+ * and on the Pixel 9 alike. Nothing here measures anything: a caller hands in where each target
+ * actually landed, and this decides pass or fail. That keeps the policy testable without Compose and
+ * keeps the Compose-side reader thin enough to be obvious.
+ *
+ * R4 is not conditional on tagging. Tagging marks a control as primary, which *additionally* subjects
+ * it to R1, R2 and R5; it is not the price of admission to the size and gap rules. An untagged 40 dp
+ * icon is still a 40 dp target, so a screen with no primary controls whatsoever can still fail R4.
  */
 object Reach {
     /** R1: a primary control's top edge must be at or below this fraction of window height. */
@@ -42,16 +46,25 @@ enum class ReachRule(
     R4_SIZE("R4 target size"),
     R4_GAP("R4 target gap"),
     R5_EDGES("R5 edges"),
+    R5_CONTAINMENT("R5 containment"),
 }
 
-/** Where one primary control ended up, in dp, with the tag its author gave it. */
+/**
+ * Where one target ended up, in dp.
+ *
+ * [path] is the node's position in the semantics tree ("0/2/1"). It exists so an ancestor and the thing
+ * inside it are not reported as overlapping: a clickable row with a clickable star inside it is two
+ * legitimate targets, not one broken one.
+ */
 data class ControlPlacement(
     val tag: String,
     val left: Float,
     val top: Float,
     val right: Float,
     val bottom: Float,
+    val primary: Boolean = false,
     val frequent: Boolean = false,
+    val path: String = "",
 ) {
     val width: Float get() = right - left
     val height: Float get() = bottom - top
@@ -72,6 +85,10 @@ data class ReachViolation(
  * An empty list means the layout is reachable. Violations are returned rather than thrown so a caller
  * can report all of them at once - one failing control usually means several, and fixing them one
  * test-failure at a time is how a reach audit gets abandoned halfway.
+ *
+ * Known limit: this only sees what was composed. A row a `LazyColumn` has not scrolled into view is not
+ * measured, so an audit of an initial viewport can clear only the part it saw, never the whole list.
+ * Callers auditing a list must scroll it and audit again.
  */
 fun findReachViolations(
     controls: List<ControlPlacement>,
@@ -83,7 +100,7 @@ fun findReachViolations(
         val frequentTopLimit = windowHeightDp * Reach.FREQUENT_TOP_MAX_FRACTION
 
         for (control in controls) {
-            if (control.top < primaryTopLimit) {
+            if (control.primary && control.top < primaryTopLimit) {
                 add(
                     ReachViolation(
                         ReachRule.R1,
@@ -95,7 +112,7 @@ fun findReachViolations(
             }
             // R2 is an additional ceiling for frequent controls, not a replacement for R1: a frequent
             // control in the top third passes nothing, and one between 0.50 and 0.70 fails only R2.
-            if (control.frequent && control.top < frequentTopLimit) {
+            if (control.primary && control.frequent && control.top < frequentTopLimit) {
                 add(
                     ReachViolation(
                         ReachRule.R2,
@@ -115,7 +132,7 @@ fun findReachViolations(
                     ),
                 )
             }
-            if (control.height < Reach.PRIMARY_MIN_HEIGHT_DP) {
+            if (control.primary && control.height < Reach.PRIMARY_MIN_HEIGHT_DP) {
                 add(
                     ReachViolation(
                         ReachRule.R4_SIZE,
@@ -125,7 +142,7 @@ fun findReachViolations(
                     ),
                 )
             }
-            if (control.left < Reach.EDGE_INSET_DP) {
+            if (control.primary && control.left < Reach.EDGE_INSET_DP) {
                 add(
                     ReachViolation(
                         ReachRule.R5_EDGES,
@@ -136,13 +153,36 @@ fun findReachViolations(
                 )
             }
             val rightInset = windowWidthDp - control.right
-            if (rightInset < Reach.EDGE_INSET_DP) {
+            if (control.primary && rightInset < Reach.EDGE_INSET_DP) {
                 add(
                     ReachViolation(
                         ReachRule.R5_EDGES,
                         control.tag,
                         "starts ${fmt(rightInset)} dp from the right edge, inside the " +
                             "${fmt(Reach.EDGE_INSET_DP)} dp inset",
+                    ),
+                )
+            }
+            // A target running past the window is clipped, so part of it cannot be pressed at all -
+            // which no amount of R1, size or horizontal-edge checking would reveal.
+            if (control.bottom > windowHeightDp) {
+                add(
+                    ReachViolation(
+                        ReachRule.R5_CONTAINMENT,
+                        control.tag,
+                        "ends at ${fmt(control.bottom)} dp, " +
+                            "${fmt(control.bottom - windowHeightDp)} dp past the bottom of the " +
+                            "${fmt(windowHeightDp)} dp window",
+                    ),
+                )
+            }
+            if (control.right > windowWidthDp) {
+                add(
+                    ReachViolation(
+                        ReachRule.R5_CONTAINMENT,
+                        control.tag,
+                        "ends at ${fmt(control.right)} dp, " +
+                            "${fmt(control.right - windowWidthDp)} dp past the right edge",
                     ),
                 )
             }
@@ -156,50 +196,49 @@ fun findReachViolations(
     }
 
 /**
- * R4's clearance rule, for two targets that sit side by side or stacked.
+ * R4's clearance rule, for two targets close enough on both axes to be neighbours.
  *
- * Only pairs that actually neighbour each other are judged: two controls on different rows of a list
- * are separated by the row height, not by a gap their author chose, so checking every pair would
- * invent failures. A pair counts as horizontal neighbours when their vertical spans overlap, and as
- * vertical neighbours when their horizontal spans do.
+ * Distance is measured per axis and a pair is judged only when **both** axes are under the minimum:
+ * two targets 4 dp apart vertically but 300 dp apart horizontally are not neighbours, and inventing a
+ * failure for them would make the audit unusable. Diagonal neighbours are therefore covered - two
+ * targets 4 dp apart on each axis have a 4 dp gap by this measure, not the 5.7 dp corner clearance a
+ * straight-line reading would give.
+ *
+ * An ancestor and its descendant are skipped: their rectangles overlap by construction and both are
+ * still reported separately if they break a size rule.
  */
 private fun findGapViolation(
     a: ControlPlacement,
     b: ControlPlacement,
 ): ReachViolation? {
-    val verticalOverlap = minOf(a.bottom, b.bottom) - maxOf(a.top, b.top)
-    val horizontalOverlap = minOf(a.right, b.right) - maxOf(a.left, b.left)
-
-    val gap: Float
-    val axis: String
-    when {
-        verticalOverlap > 0f -> {
-            gap = maxOf(b.left - a.right, a.left - b.right)
-            axis = "horizontally"
-        }
-
-        horizontalOverlap > 0f -> {
-            gap = maxOf(b.top - a.bottom, a.top - b.bottom)
-            axis = "vertically"
-        }
-
-        else -> {
-            return null
-        }
+    if (a.path.isNotEmpty() && b.path.isNotEmpty() && (isAncestor(a.path, b.path) || isAncestor(b.path, a.path))) {
+        return null
     }
 
-    // A negative gap means the targets overlap each other, which is worse than a small gap: the
-    // lower one cannot be tapped in the covered region at all.
-    if (gap < Reach.MIN_TARGET_GAP_DP) {
-        val (nearer, further) = if (a.left <= b.left) a to b else b to a
-        return ReachViolation(
-            ReachRule.R4_GAP,
-            "${nearer.tag} / ${further.tag}",
-            "are ${fmt(gap)} dp apart $axis, under the ${fmt(Reach.MIN_TARGET_GAP_DP)} dp gap",
-        )
-    }
-    return null
+    val gapX = maxOf(b.left - a.right, a.left - b.right)
+    val gapY = maxOf(b.top - a.bottom, a.top - b.bottom)
+    val worst = maxOf(gapX, gapY)
+    if (worst >= Reach.MIN_TARGET_GAP_DP) return null
+
+    // Negative means the rectangles overlap: the lower target cannot be pressed where it is covered.
+    val shape =
+        if (worst < 0f) {
+            "overlap by ${fmt(-worst)} dp"
+        } else {
+            "are ${fmt(gapX)} dp apart horizontally and ${fmt(gapY)} dp vertically"
+        }
+    val (nearer, further) = if (a.left <= b.left) a to b else b to a
+    return ReachViolation(
+        ReachRule.R4_GAP,
+        "${nearer.tag} / ${further.tag}",
+        "$shape, under the ${fmt(Reach.MIN_TARGET_GAP_DP)} dp gap",
+    )
 }
+
+private fun isAncestor(
+    candidate: String,
+    of: String,
+): Boolean = of.startsWith("$candidate/")
 
 private fun fmt(value: Float): String = "%.1f".format(value)
 
