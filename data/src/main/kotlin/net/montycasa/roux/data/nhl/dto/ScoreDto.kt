@@ -69,4 +69,5 @@ internal data class PeriodDescriptorDto(
 internal data class ClockDto(
     val timeRemaining: String? = null,
     val inIntermission: Boolean? = null,
+    val running: Boolean? = null,
 )
