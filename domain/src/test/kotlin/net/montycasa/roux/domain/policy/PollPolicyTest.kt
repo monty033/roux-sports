@@ -58,6 +58,21 @@ class PollPolicyTest {
         assertEquals(60.seconds, delay(game(GameState.Live(), now + 2.minutes)))
     }
 
+    /**
+     * A game already under way outranks a second game still inside its own puck-drop gap. Without
+     * this case, an implementation that returns warming whenever ANY live game is inside the gap
+     * passes every other test while slowing a genuinely active game to sixty seconds.
+     */
+    @Test
+    fun liveGameOutsideTheGapOutranksALiveGameInsideIt() {
+        val underWay = game(GameState.Live(), now - 20.minutes)
+        val justStarted = game(GameState.Live(), now - 2.minutes)
+
+        for (games in listOf(listOf(underWay, justStarted), listOf(justStarted, underWay))) {
+            assertEquals(25.seconds, PollPolicy.nextDelay(now, today, today, games))
+        }
+    }
+
     @Test
     fun unknownStateWithRunningClockBeforePuckDropWarms() {
         val game = game(GameState.Unknown("unreadable"), now - 2.minutes, PeriodInfo(1, "REG", "20:00", running = true))
