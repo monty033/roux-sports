@@ -10,8 +10,9 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -41,15 +42,27 @@ class DataStorePreferencesRepositoryTest {
     private fun fileIn(directory: Path) = directory.resolve("roux.preferences_pb").toFile()
 
     /**
-     * DataStore refuses two live instances over one file, and it releases the path only once the
-     * previous store has actually finished closing - which lags `cancel()`. Retrying here keeps a
-     * reopen from failing on that timing instead of on the persistence it is meant to test.
+     * Cancels the scope AND waits for it to finish.
+     *
+     * `cancel()` only requests cancellation: DataStore releases its claim on the file when its
+     * coroutines actually complete, which can lag well past the call. Waiting here is what makes the
+     * reopen deterministic, and it is the difference between a test that proves persistence and one
+     * that fails whenever the machine is busy. This reproduced on a merged main under full-suite
+     * load, so the wait is not belt-and-braces - it is the fix.
+     */
+    private suspend fun closeScope(scope: CoroutineScope) {
+        scope.coroutineContext[Job]?.cancelAndJoin()
+    }
+
+    /**
+     * Retries construction if the previous store has not released the file yet, covering the small
+     * window between the scope finishing and DataStore dropping its claim.
      */
     private suspend fun openWhenReleased(
         directory: Path,
         scope: CoroutineScope,
     ): DataStorePreferencesRepository {
-        repeat(100) {
+        repeat(200) {
             try {
                 return DataStorePreferencesRepository(directory, scope)
             } catch (_: IllegalStateException) {
@@ -64,7 +77,7 @@ class DataStorePreferencesRepositoryTest {
         directory: Path,
         scope: CoroutineScope,
     ): DataStore<Preferences> {
-        repeat(100) {
+        repeat(200) {
             try {
                 return PreferenceDataStoreFactory.create(scope = scope, produceFile = { fileIn(directory) })
             } catch (_: IllegalStateException) {
@@ -97,7 +110,7 @@ class DataStorePreferencesRepositoryTest {
                     updatedAt?.let { preferences[longPreferencesKey("ledger_time_$gameId")] = it }
                 }
         } finally {
-            scope.cancel()
+            closeScope(scope)
         }
     }
 
@@ -108,14 +121,14 @@ class DataStorePreferencesRepositoryTest {
             val first = newScope()
             DataStorePreferencesRepository(directory, first)
                 .setFavourites(setOf(TeamKey("TOR"), TeamKey("MTL")))
-            first.cancel()
+            closeScope(first)
 
             val second = newScope()
             assertEquals(
                 setOf(TeamKey("TOR"), TeamKey("MTL")),
                 openWhenReleased(directory, second).getFavourites(),
             )
-            second.cancel()
+            closeScope(second)
         }
 
     @Test
@@ -126,7 +139,7 @@ class DataStorePreferencesRepositoryTest {
                 true,
                 DataStorePreferencesRepository(newDirectory(), scope).getFavouritesOnly(),
             )
-            scope.cancel()
+            closeScope(scope)
         }
 
     @Test
@@ -135,7 +148,7 @@ class DataStorePreferencesRepositoryTest {
             val directory = newDirectory()
             val first = newScope()
             DataStorePreferencesRepository(directory, first).setFavouritesOnly(false)
-            first.cancel()
+            closeScope(first)
 
             // A default of true makes this the only assertion that can tell "stored false" from
             // "nothing stored"; a fresh store would answer true either way.
@@ -144,7 +157,7 @@ class DataStorePreferencesRepositoryTest {
                 false,
                 openWhenReleased(directory, second).getFavouritesOnly(),
             )
-            second.cancel()
+            closeScope(second)
         }
 
     @Test
@@ -155,7 +168,7 @@ class DataStorePreferencesRepositoryTest {
             val writer = DataStorePreferencesRepository(directory, first)
             writer.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(start = false, goals = true))
             writer.setTeamAlertPreferences(TeamKey("MTL"), TeamAlertPreferences(start = true, goals = false))
-            first.cancel()
+            closeScope(first)
 
             val second = newScope()
             val reader = openWhenReleased(directory, second)
@@ -169,7 +182,7 @@ class DataStorePreferencesRepositoryTest {
             )
             // One team's controls must not leak into a team that was never configured.
             assertEquals(TeamAlertPreferences(), reader.getTeamAlertPreferences(TeamKey("BOS")))
-            second.cancel()
+            closeScope(second)
         }
 
     @Test
@@ -184,14 +197,14 @@ class DataStorePreferencesRepositoryTest {
                 )
             val first = newScope()
             DataStorePreferencesRepository(directory, first).setNotificationLedgerEntry("2024020001", entry)
-            first.cancel()
+            closeScope(first)
 
             val second = newScope()
             assertEquals(
                 entry,
                 openWhenReleased(directory, second).getNotificationLedgerEntry("2024020001"),
             )
-            second.cancel()
+            closeScope(second)
         }
 
     @Test
@@ -213,7 +226,7 @@ class DataStorePreferencesRepositoryTest {
             // Pruning by age must not sweep the ledger: a live game's dedup state has to survive,
             // or the next goal gets announced twice.
             assertEquals(recent, repository.getNotificationLedgerEntry("2024010002"))
-            scope.cancel()
+            closeScope(scope)
         }
 
     @Test
@@ -229,7 +242,7 @@ class DataStorePreferencesRepositoryTest {
             assertEquals(emptySet<TeamKey>(), repository.getFavourites())
             assertEquals(true, repository.getFavouritesOnly())
             assertEquals(TeamAlertPreferences(), repository.getTeamAlertPreferences(TeamKey("TOR")))
-            scope.cancel()
+            closeScope(scope)
         }
 
     /**
@@ -244,7 +257,7 @@ class DataStorePreferencesRepositoryTest {
             writeRawLedgerEntry(directory, "2024020001", startNotified = true, updatedAt = 1_000L)
             val scope = newScope()
             assertNull(openWhenReleased(directory, scope).getNotificationLedgerEntry("2024020001"))
-            scope.cancel()
+            closeScope(scope)
         }
 
     @Test
@@ -254,7 +267,7 @@ class DataStorePreferencesRepositoryTest {
             writeRawLedgerEntry(directory, "2024020001", goalCount = 7, updatedAt = 1_000L)
             val scope = newScope()
             assertNull(openWhenReleased(directory, scope).getNotificationLedgerEntry("2024020001"))
-            scope.cancel()
+            closeScope(scope)
         }
 
     @Test
@@ -264,7 +277,7 @@ class DataStorePreferencesRepositoryTest {
             writeRawLedgerEntry(directory, "2024020001", goalCount = 7, startNotified = true)
             val scope = newScope()
             assertNull(openWhenReleased(directory, scope).getNotificationLedgerEntry("2024020001"))
-            scope.cancel()
+            closeScope(scope)
         }
 
     /**
@@ -316,7 +329,7 @@ class DataStorePreferencesRepositoryTest {
                     runBlocking { refusal() }
                 }
             }
-            scope.cancel()
+            closeScope(scope)
 
             // The file and its marker must still be intact afterwards.
             val readerScope = newScope()
@@ -328,7 +341,7 @@ class DataStorePreferencesRepositoryTest {
             assertEquals(9, stored[intPreferencesKey("ledger_goals_2024020001")])
             assertEquals(setOf("TOR"), stored[stringSetPreferencesKey("favourites_abbreviations")])
             assertEquals(false, stored[booleanPreferencesKey("favourites_only")])
-            readerScope.cancel()
+            closeScope(readerScope)
         }
 
     /** Reading a versionless file must not stamp it; a read is not a migration. */
@@ -348,7 +361,7 @@ class DataStorePreferencesRepositoryTest {
             repository.getFavourites()
             repository.getFavouritesOnly()
             repository.getTeamAlertPreferences(TeamKey("TOR"))
-            scope.cancel()
+            closeScope(scope)
 
             val readerScope = newScope()
             val stored =
@@ -356,7 +369,7 @@ class DataStorePreferencesRepositoryTest {
                     .data
                     .first()
             assertEquals(null, stored[intPreferencesKey("prefs_version")])
-            readerScope.cancel()
+            closeScope(readerScope)
         }
 
     @Test
@@ -366,7 +379,7 @@ class DataStorePreferencesRepositoryTest {
             val writerScope = newScope()
             DataStorePreferencesRepository(directory, writerScope).setFavourites(setOf(TeamKey("TOR")))
             // DataStore refuses two live instances over one file, so the writer has to close first.
-            writerScope.cancel()
+            closeScope(writerScope)
 
             val readerScope = newScope()
             val stored =
@@ -374,7 +387,7 @@ class DataStorePreferencesRepositoryTest {
                     .data
                     .first()
             assertEquals(1, stored[intPreferencesKey("prefs_version")])
-            readerScope.cancel()
+            closeScope(readerScope)
         }
 
     @Test(expected = IllegalArgumentException::class)
@@ -388,7 +401,7 @@ class DataStorePreferencesRepositoryTest {
                         NotificationLedgerEntry(1, startNotified = false, updatedAt = Instant.parse("2025-01-01T00:00:00Z")),
                     )
             } finally {
-                scope.cancel()
+                closeScope(scope)
             }
         }
 }
