@@ -20,6 +20,17 @@ sealed interface LoadError {
     ) : LoadError
 
     data object Parse : LoadError
+
+    /**
+     * The server answered with a slate belonging to a different day.
+     *
+     * Kept distinct from [Parse] because the body was well-formed and the failure was the reply's
+     * content, and from [Network] because retrying the same date may well repeat it.
+     */
+    data class MismatchedDay(
+        val requested: String,
+        val returned: String,
+    ) : LoadError
 }
 
 /**
