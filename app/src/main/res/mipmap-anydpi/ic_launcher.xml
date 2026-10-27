@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  ROUX Sports launcher icon: the selected RX artwork from the supplied brand pack.
+  ROUX Sports launcher icon: the with-SPORTS artwork variant from the supplied brand pack.
+
+  This is a deliberate A/B against the plain RX icon (PR #31). The word SPORTS is the reason: at 48 dp it
+  measures roughly three pixels of cap height, so it is likely to read as a smudge rather than a word. The
+  artwork is composited exactly as the plain variant was, so the only difference on the home screen is the
+  wordmark - which is what makes the two comparable by eye rather than by argument.
 
   Deliberately unqualified (`mipmap-anydpi`, not `-v26`): minSdk is 31, so every supported platform
   understands adaptive icons and a v26 qualifier would be dead configuration (lint's ObsoleteSdkInt
