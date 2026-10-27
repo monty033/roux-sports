@@ -212,6 +212,7 @@ private fun errorMessage(error: LoadError): String =
             is LoadError.Http -> R.string.scores_http_error
             LoadError.Parse -> R.string.scores_parse_error
             is LoadError.MismatchedDay -> R.string.scores_wrong_day_error
+            LoadError.Local -> R.string.scores_local_error
         },
     )
 

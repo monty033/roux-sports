@@ -11,4 +11,5 @@
     <string name="scores_parse_error">The score service sent unreadable scores. Try again.</string>
     <string name="scores_wrong_day_error">The score service sent a different day. Try again.</string>
     <string name="scores_loading">Loading scores…</string>
+    <string name="scores_local_error">Couldn\'t load data on this device.</string>
 </resources>

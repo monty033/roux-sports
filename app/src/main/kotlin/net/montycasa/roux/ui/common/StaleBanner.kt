@@ -33,6 +33,8 @@ fun StaleBanner(
     modifier: Modifier = Modifier,
     isRefreshing: Boolean = false,
     supportingText: String? = null,
+    /** The retry's tag, so a screen can name its own control without removing it from the reach audit. */
+    retryTag: String = "scores.retry",
 ) {
     val locale = LocalConfiguration.current.locales[0]
     val updated =
@@ -48,7 +50,7 @@ fun StaleBanner(
             supportingText ?: stringResource(R.string.common_stale_scores),
             style = MaterialTheme.typography.bodyMedium,
         )
-        RetryButton(onRetry, isRefreshing)
+        RetryButton(onRetry, isRefreshing, retryTag)
     }
 }
 
@@ -56,11 +58,22 @@ fun StaleBanner(
 internal fun RetryButton(
     onRetry: () -> Unit,
     isRefreshing: Boolean,
+) = RetryButton(onRetry, isRefreshing, "scores.retry")
+
+@Composable
+internal fun RetryButton(
+    onRetry: () -> Unit,
+    isRefreshing: Boolean,
+    retryTag: String,
 ) {
     Button(
         onClick = onRetry,
         enabled = !isRefreshing,
-        modifier = Modifier.fillMaxWidth().heightIn(min = Reach.PRIMARY_MIN_HEIGHT_DP.dp).primaryControl("scores.retry"),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = Reach.PRIMARY_MIN_HEIGHT_DP.dp)
+                .primaryControl(retryTag),
     ) {
         Text(stringResource(if (isRefreshing) R.string.common_refreshing else R.string.common_retry))
     }
