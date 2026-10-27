@@ -252,6 +252,20 @@ If any pin fails `checkAarMetadata` or fails to compile together with the others
 
 ---
 
+## 5a. R4 audit boundaries (recorded, not implied)
+
+The reach audit is a geometry check over the Compose semantics tree. It answers "how much of this target can ever be
+under a thumb", which is what R4 needs, and it deliberately does not answer anything else. Two classes of defect are
+outside it by construction rather than by oversight:
+
+- **Z-order.** A target painted over by a later sibling, or one whose taps an untagged overlay consumes, still
+  measures its full size and passes. Catching that needs hit-testing, not measurement, and belongs with the device
+  pass.
+- **Right-to-left.** Compose's RTL `horizontalScroll` reports `reverseScrolling = false` while its content moves right
+  as the value grows - probed under Robolectric, not assumed. So a mirrored layout is measured in the wrong direction.
+  The audit honours `reverseScrolling` when a caller sets it and assumes LTR otherwise, which matches the English-only
+  v1. Localisation must revisit this before any RTL build ships.
+
 ## 6. CI recommendation
 
 > ⚠️ **Unverified.** Nobody has checked whether the Forgejo instance's Actions runner can do an Android build (JDK 21, SDK with platform 37 and build-tools 36.0.0, Gradle, about 8 GB RAM). CI is therefore **Stage 11: optional, last, and off the critical path.** No other stage depends on it.

@@ -214,10 +214,11 @@ fun ComposeTestRule.reachTargets(): List<ControlPlacement> {
             if (scrollsHorizontally) {
                 horizontalWindows +
                     ScrollWindow(
-                        start = maxOf(nodeLeft, staticLeft),
-                        end = minOf(nodeLeft + nodeWidthDp, staticRight),
+                        startInRoot = maxOf(nodeLeft, staticLeft),
+                        endInRoot = minOf(nodeLeft + nodeWidthDp, staticRight),
                         scrollRange = horizontalRange!!.maxValue() / scale,
                         scrollPosition = horizontalRange.value() / scale,
+                        reverseScrolling = horizontalRange.reverseScrolling,
                     )
             } else {
                 horizontalWindows
@@ -226,10 +227,11 @@ fun ComposeTestRule.reachTargets(): List<ControlPlacement> {
             if (scrollsVertically) {
                 verticalWindows +
                     ScrollWindow(
-                        start = maxOf(nodeTop, staticTop),
-                        end = minOf(nodeTop + nodeHeightDp, staticBottom),
+                        startInRoot = maxOf(nodeTop, staticTop),
+                        endInRoot = minOf(nodeTop + nodeHeightDp, staticBottom),
                         scrollRange = verticalRange!!.maxValue() / scale,
                         scrollPosition = verticalRange.value() / scale,
+                        reverseScrolling = verticalRange.reverseScrolling,
                     )
             } else {
                 verticalWindows
@@ -259,10 +261,11 @@ fun ComposeTestRule.reachTargets(): List<ControlPlacement> {
  * can produce, not the viewport's width.
  */
 private data class ScrollWindow(
-    val start: Float,
-    val end: Float,
+    val startInRoot: Float,
+    val endInRoot: Float,
     val scrollRange: Float,
     val scrollPosition: Float,
+    val reverseScrolling: Boolean,
 ) {
     /**
      * Best overlap between this control and the viewport over every legal scroll position.
@@ -274,15 +277,29 @@ private data class ScrollWindow(
      * Legal is [-scrollPosition, scrollRange - scrollPosition], not [0, scrollRange]. The semantics are read at
      * whatever position the content happens to be in, so a strip that is already scrolled can be dragged *back* -
      * a control judged at a non-zero position has more room available than "scroll forwards from here" suggests.
+     *
+     * [reverseScrolling] mirrors the axis for viewports where a larger offset moves content to the right rather
+     * than the left. Lengths are unchanged by a reflection, which is why the same formula serves both.
+     *
+     * KNOWN GAP, measured rather than assumed: Compose's own RTL horizontalScroll does NOT set this flag - probed
+     * under Robolectric, a right-to-left strip reports reverseScrolling=false while its content moves right as the
+     * value grows. So a mirrored layout would be measured in the wrong direction and under-reported. Roux Sports
+     * ships English-only and LTR for v1, so the audit assumes LTR; localising it needs either the flag honoured by
+     * Compose or a hit-test based check rather than a geometry one. Recorded in the stage plan rather than papered
+     * over with a guess that would over-report reachability for every RTL screen.
      */
     fun bestOverlap(
         controlStart: Float,
         controlEnd: Float,
     ): Float {
-        val ideal = controlEnd - end
+        val offsetsAreMirrored = reverseScrolling
+        val start = if (offsetsAreMirrored) -controlEnd else controlStart
+        val end = if (offsetsAreMirrored) -controlStart else controlEnd
+        val windowEnd = if (offsetsAreMirrored) -startInRoot else endInRoot
+        val ideal = end - windowEnd
         val offset = ideal.coerceIn(-scrollPosition, scrollRange - scrollPosition)
-        val from = maxOf(controlStart - offset, start)
-        val to = minOf(controlEnd - offset, end)
+        val from = maxOf(start - offset, if (offsetsAreMirrored) -endInRoot else startInRoot)
+        val to = minOf(end - offset, windowEnd)
         return (to - from).coerceAtLeast(0f)
     }
 }
