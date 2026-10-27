@@ -5,21 +5,17 @@
 package net.montycasa.roux.ui.nav
 
 import androidx.annotation.StringRes
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -27,7 +23,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -44,6 +39,8 @@ import net.montycasa.roux.ui.reach.Reach
 import net.montycasa.roux.ui.reach.primaryControl
 import net.montycasa.roux.ui.scores.ScoresScreen
 import net.montycasa.roux.ui.scores.ScoresViewModel
+import net.montycasa.roux.ui.standings.StandingsScreen
+import net.montycasa.roux.ui.standings.StandingsViewModel
 import net.montycasa.roux.ui.teams.TeamsScreen
 import net.montycasa.roux.ui.teams.TeamsViewModel
 
@@ -54,12 +51,11 @@ import net.montycasa.roux.ui.teams.TeamsViewModel
 enum class TopLevelDestination(
     val route: String,
     @StringRes val label: Int,
-    @StringRes val placeholder: Int,
     val tag: String,
 ) {
-    Scores("scores", R.string.nav_scores, R.string.nav_scores_placeholder, "nav.scores"),
-    Standings("standings", R.string.nav_standings, R.string.nav_standings_placeholder, "nav.standings"),
-    Teams("teams", R.string.nav_teams, R.string.nav_teams_placeholder, "nav.teams"),
+    Scores("scores", R.string.nav_scores, "nav.scores"),
+    Standings("standings", R.string.nav_standings, "nav.standings"),
+    Teams("teams", R.string.nav_teams, "nav.teams"),
 }
 
 /**
@@ -130,7 +126,7 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
                         }
 
                         TopLevelDestination.Standings -> {
-                            PlaceholderScreen(title = stringResource(destination.label), body = stringResource(destination.placeholder))
+                            StandingsDestination()
                         }
                     }
                 }
@@ -187,29 +183,25 @@ private fun ScoresDestination() {
     )
 }
 
-/**
- * What a destination shows until its stage lands. The title is the destination's own name so a
- * screenshot cannot be mistaken for the wrong tab, and the body says plainly that this is not the
- * feature yet rather than showing an empty list that reads as "no games today".
- */
+/** The back stack entry owns the table; the app supplies the shared repository and preferences. */
 @Composable
-private fun PlaceholderScreen(
-    title: String,
-    body: String,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(text = title, style = MaterialTheme.typography.headlineMedium)
-        Text(
-            text = body,
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.Center,
+private fun StandingsDestination() {
+    val container = (LocalContext.current.applicationContext as RouxApp).container
+    val standings: StandingsViewModel =
+        viewModel(
+            factory =
+                viewModelFactory {
+                    initializer {
+                        StandingsViewModel(container.standings, container.preferences)
+                    }
+                },
         )
-    }
+    val state by standings.uiState.collectAsStateWithLifecycle()
+    StandingsScreen(
+        state = state,
+        onRefresh = standings::refresh,
+        onSetView = standings::setView,
+    )
 }
 
 /**
