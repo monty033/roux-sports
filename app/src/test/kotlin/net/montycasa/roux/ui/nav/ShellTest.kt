@@ -1,6 +1,5 @@
 package net.montycasa.roux.ui.nav
 
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsSelected
@@ -14,8 +13,10 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.captureRoboImage
 import net.montycasa.roux.ui.reach.Reach
-import net.montycasa.roux.ui.reach.assertPrimaryControlsReachable
+import net.montycasa.roux.ui.reach.findReachViolations
 import net.montycasa.roux.ui.reach.reachTargets
+import net.montycasa.roux.ui.scores.ScoresIntegrationApp
+import net.montycasa.roux.ui.scores.waitForFixtureScores
 import net.montycasa.roux.ui.theme.RouxTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -31,7 +32,7 @@ import org.robolectric.annotation.GraphicsMode
  * the sizes and type scales that break layouts rather than the one size that happens to be on the desk.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35], qualifiers = "w411dp-h923dp-420dpi")
+@Config(sdk = [35], application = ScoresIntegrationApp::class, qualifiers = "w411dp-h923dp-420dpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ShellTest {
     @get:Rule
@@ -57,6 +58,22 @@ class ShellTest {
                 }
             }
         }
+        rule.waitForFixtureScores()
+    }
+
+    private fun assertBarReach() {
+        // The shell owns navigation; ScoresScreenTest audits the destination's own controls.
+        // Keep window coordinates so the bar still has to satisfy the real thumb-zone limits.
+        val targets = rule.reachTargets().filter { it.tag.startsWith("nav.") }
+        assertEquals(declaredPrimaries.sorted(), targets.filter { it.primary }.map { it.tag }.sorted())
+        val window = rule.onRoot().fetchSemanticsNode().size
+        val violations =
+            findReachViolations(
+                controls = targets,
+                windowWidthDp = window.width / rule.density.density,
+                windowHeightDp = window.height / rule.density.density,
+            )
+        assertTrue(violations.joinToString("\n") { it.describe() }, violations.isEmpty())
     }
 
     @Test
@@ -84,20 +101,20 @@ class ShellTest {
     @Test
     fun theBarPassesTheReachAuditAtTheReferenceWidth() {
         launchShell()
-        rule.assertPrimaryControlsReachable(*declaredPrimaries.toTypedArray())
+        assertBarReach()
     }
 
     @Test
     @Config(qualifiers = "w360dp-h640dp-420dpi")
     fun theBarPassesTheReachAuditOnASmallPhone() {
         launchShell()
-        rule.assertPrimaryControlsReachable(*declaredPrimaries.toTypedArray())
+        assertBarReach()
     }
 
     @Test
     fun theBarPassesTheReachAuditAtDoubleType() {
         launchShell(fontScale = 2f)
-        rule.assertPrimaryControlsReachable(*declaredPrimaries.toTypedArray())
+        assertBarReach()
     }
 
     @Test

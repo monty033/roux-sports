@@ -3,6 +3,8 @@ package net.montycasa.roux
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.captureRoboImage
+import net.montycasa.roux.ui.scores.ScoresIntegrationApp
+import net.montycasa.roux.ui.scores.waitForFixtureScores
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -11,7 +13,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35], qualifiers = "w411dp-h923dp-420dpi")
+@Config(sdk = [35], application = ScoresIntegrationApp::class, qualifiers = "w411dp-h923dp-420dpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class RenderSmokeTest {
     @get:Rule
@@ -19,6 +21,7 @@ class RenderSmokeTest {
 
     @Test
     fun capturesApp() {
+        composeRule.waitForFixtureScores()
         composeRule.onRoot().captureRoboImage("src/test/screenshots/render-smoke.png")
     }
 }
