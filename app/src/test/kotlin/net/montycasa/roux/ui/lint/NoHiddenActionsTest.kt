@@ -369,4 +369,22 @@ class NoHiddenActionsTest {
 
         assertEquals(emptyList<HiddenActionViolation>(), findHiddenActions(source))
     }
+
+    @Test
+    fun aBraceInACommentInsideATemplateDoesNotEndIt() {
+        // `val rendered = "${ /* } */ AlertDialog(...) }"` is valid Kotlin. Reading the commented brace as the
+        // end of the expression blanks the call that follows it.
+        val source =
+            "val rendered = \"\${ /* } */ AlertDialog(onDismissRequest = {}, confirmButton = {}) }\""
+
+        assertEquals(1, findHiddenActions(source).size)
+    }
+
+    @Test
+    fun aLineCommentInsideATemplateDoesNotEndIt() {
+        val source =
+            "val rendered = \"\${ // trailing } comment\nAlertDialog(onDismissRequest = {}) }\""
+
+        assertEquals(1, findHiddenActions(source).size)
+    }
 }

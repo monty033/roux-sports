@@ -407,6 +407,42 @@ private fun blankTemplateExpression(
                 index++
             }
 
+            // A comment inside an expression is not code, and a `}` written in one must not close the
+            // template: `${ /* } */ AlertDialog(...) }` is valid, and reading that brace would end the
+            // expression early and blank the call after it.
+            source.startsWith("//", index) -> {
+                while (index < source.length && source[index] != '\n') {
+                    out.append(' ')
+                    index++
+                }
+            }
+
+            source.startsWith("/*", index) -> {
+                out.append("  ")
+                index += 2
+                var commentDepth = 1
+                while (index < source.length && commentDepth > 0) {
+                    when {
+                        source.startsWith("/*", index) -> {
+                            out.append("  ")
+                            index += 2
+                            commentDepth++
+                        }
+
+                        source.startsWith("*/", index) -> {
+                            out.append("  ")
+                            index += 2
+                            commentDepth--
+                        }
+
+                        else -> {
+                            out.append(if (source[index] == '\n') '\n' else ' ')
+                            index++
+                        }
+                    }
+                }
+            }
+
             else -> {
                 out.append(source[index])
                 index++
