@@ -104,8 +104,7 @@ class ScoresHeaderTest {
         rule.setContent {
             RouxTheme {
                 ScoresScreen(
-                    ScoresUiState("2026-10-27", rows = games, freshness = net.montycasa.roux.domain.Freshness.Fresh),
-                    {},
+                    ScoresUiState("2026-10-27", today = "2026-10-27", rows = games, freshness = net.montycasa.roux.domain.Freshness.Fresh),
                     {},
                     {},
                     {},

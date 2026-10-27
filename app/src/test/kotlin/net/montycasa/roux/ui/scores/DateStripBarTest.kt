@@ -31,7 +31,6 @@ import net.montycasa.roux.domain.model.DateIndexEntry
 import net.montycasa.roux.domain.policy.DateStrip
 import net.montycasa.roux.domain.policy.DateStripItem
 import net.montycasa.roux.ui.reach.PrimaryControlTag
-import net.montycasa.roux.ui.reach.Reach
 import net.montycasa.roux.ui.reach.assertPrimaryControlsReachable
 import net.montycasa.roux.ui.reach.reachTargets
 import net.montycasa.roux.ui.theme.RouxTheme
@@ -79,29 +78,35 @@ class DateStripBarTest {
                 CompositionLocalProvider(LocalDensity provides localDensity) {
                     // The host owns vertical placement. Frequent controls must start below 70%.
                     Box(Modifier.fillMaxSize().padding(bottom = 24.dp), contentAlignment = Alignment.BottomCenter) {
-                        DateStripBar(suppliedItems.value, selection.value, onSelect, Modifier.testTag("dateStrip"))
+                        DateStripBar(
+                            suppliedItems.value,
+                            selection.value,
+                            "2026-10-27",
+                            onSelect,
+                            Modifier.padding(horizontal = 16.dp).testTag("dateStrip"),
+                        )
                     }
                 }
             }
         }
     }
 
-    private fun assertMinimumChipSizes(items: List<DateStripItem>) {
+    private fun assertExactChipSizes(items: List<DateStripItem>) {
         items.forEach { item ->
             val bounds = chip(item.date).getUnclippedBoundsInRoot()
             // The test API returns dp bounds; convert through the composition's LocalDensity to
             // compare the actual measured dimensions in pixels, including at non-unit density.
             with(localDensity) {
-                assertTrue("${item.date} width: ${bounds.width}", bounds.width.toPx() >= 56.dp.toPx())
-                assertTrue("${item.date} height: ${bounds.height}", bounds.height.toPx() >= 56.dp.toPx())
+                assertTrue("${item.date} width: ${bounds.width}", kotlin.math.abs(bounds.width.toPx() - 56.dp.toPx()) < 1f)
+                assertTrue("${item.date} height: ${bounds.height}", kotlin.math.abs(bounds.height.toPx() - 56.dp.toPx()) < 1f)
             }
         }
     }
 
     @Test
-    fun everyChipMeasuresAtLeastFiftySixDpInBothDirections() {
+    fun everyChipMeasuresExactlyFiftySixDpInBothDirections() {
         launchStrip()
-        assertMinimumChipSizes(week)
+        assertExactChipSizes(week)
     }
 
     @Test
@@ -139,11 +144,11 @@ class DateStripBarTest {
     }
 
     @Test
-    fun theFirstChipStartsAtLeastSixteenDpInsideTheContainer() {
+    fun theStripStartsAtTheHostProvidedEdgeInset() {
         launchStrip(selectedDate = week.first().date)
         val container = rule.onNodeWithTag("dateStrip").getUnclippedBoundsInRoot()
         val first = chip(week.first().date).getUnclippedBoundsInRoot()
-        assertTrue("left inset: ${first.left - container.left}", first.left - container.left >= Reach.EDGE_INSET_DP.dp)
+        assertTrue("left inset: ${first.left - container.left}", first.left == 16.dp && container.left == 16.dp)
     }
 
     @Test
@@ -171,7 +176,7 @@ class DateStripBarTest {
         launchStrip(items = single)
         rule.onAllNodes(isSelectable()).assertCountEquals(1)
         chip("2026-10-26").assertIsDisplayed().assertIsSelected()
-        assertMinimumChipSizes(single)
+        assertExactChipSizes(single)
         rule.assertPrimaryControlsReachable("scores.dateChip.2026-10-26")
     }
 
@@ -185,12 +190,12 @@ class DateStripBarTest {
     }
 
     @Test
-    fun doubleTypeGrowsTheChipsAndStillPassesTheReachAuditInTheDarkTheme() {
+    fun doubleTypeKeepsFixedChipGeometryAndPassesTheReachAuditInTheDarkTheme() {
         launchStrip(dark = true)
         val normalHeight = chip("2026-10-26").getUnclippedBoundsInRoot().height
         rule.runOnIdle { fontScale.value = 2f }
-        assertTrue(chip("2026-10-26").getUnclippedBoundsInRoot().height > normalHeight)
-        assertMinimumChipSizes(week)
+        assertEquals(normalHeight, chip("2026-10-26").getUnclippedBoundsInRoot().height)
+        assertExactChipSizes(week)
         rule.assertPrimaryControlsReachable(*week.map { "scores.dateChip.${it.date}" }.toTypedArray())
     }
 
@@ -227,7 +232,7 @@ class DateStripBarTest {
         val container = rule.onNodeWithTag("dateStrip").getUnclippedBoundsInRoot()
         val bounds = chip(date).getUnclippedBoundsInRoot()
         chip(date).assertIsDisplayed()
-        assertTrue("$date left edge: ${bounds.left}", bounds.left >= container.left + Reach.EDGE_INSET_DP.dp)
-        assertTrue("$date right edge: ${bounds.right}", bounds.right <= container.right - Reach.EDGE_INSET_DP.dp)
+        assertTrue("$date left edge: ${bounds.left}", bounds.left >= container.left)
+        assertTrue("$date right edge: ${bounds.right}", bounds.right <= container.right)
     }
 }

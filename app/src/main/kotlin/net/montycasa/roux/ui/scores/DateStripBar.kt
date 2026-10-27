@@ -6,19 +6,16 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -33,27 +30,33 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
 import net.montycasa.roux.R
 import net.montycasa.roux.domain.policy.DateStripItem
 import net.montycasa.roux.ui.reach.Reach
 import net.montycasa.roux.ui.reach.primaryControl
+import net.montycasa.roux.ui.theme.Roux
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+import java.time.format.TextStyle as DateTextStyle
 
 /**
  * Renders the policy's ordered ISO dates as supplied, including empty days. The host places this
- * frequent primary picker in the reach zone; this component owns target sizes, gaps and edge insets.
+ * frequent primary picker in the reach zone; the shelf owns the edge insets.
  */
 @Composable
 fun DateStripBar(
     items: List<DateStripItem>,
     selectedDate: String,
+    today: String,
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -61,12 +64,10 @@ fun DateStripBar(
     val dateFormatter = remember(locale) { DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL).withLocale(locale) }
     val selectedRequester = remember { BringIntoViewRequester() }
 
-    // Keep the viewport itself clear of the back-gesture edges, including after scrolling.
     Row(
         modifier =
             modifier
                 .fillMaxWidth()
-                .padding(horizontal = Reach.EDGE_INSET_DP.dp)
                 .horizontalScroll(rememberScrollState())
                 .selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(Reach.MIN_TARGET_GAP_DP.dp),
@@ -83,8 +84,8 @@ fun DateStripBar(
                         stringResource(R.string.date_strip_day_without_games, fullDate)
                     }
                 val selected = item.date == selectedDate
-                val foreground = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-                val background = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+                val foreground = if (selected) Roux.accents.onFill else MaterialTheme.colorScheme.onSurface
+                val background = if (selected) Roux.accents.fill else MaterialTheme.colorScheme.surfaceVariant
 
                 Column(
                     modifier =
@@ -92,33 +93,38 @@ fun DateStripBar(
                             .then(if (selected) Modifier.bringIntoViewRequester(selectedRequester) else Modifier)
                             .clip(RoundedCornerShape(12.dp))
                             .background(background)
+                            .border(1.dp, if (selected) Roux.accents.fill else MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp))
                             .selectable(selected = selected, role = Role.RadioButton, onClick = { onSelect(item.date) })
                             .primaryControl("scores.dateChip.${item.date}", frequent = true)
                             .semantics { contentDescription = description }
-                            .sizeIn(minWidth = Reach.PRIMARY_MIN_HEIGHT_DP.dp, minHeight = Reach.PRIMARY_MIN_HEIGHT_DP.dp)
-                            .padding(8.dp),
+                            .size(Reach.PRIMARY_MIN_HEIGHT_DP.dp)
+                            .padding(vertical = 4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
+                    verticalArrangement = Arrangement.spacedBy(1.dp, Alignment.CenterVertically),
                 ) {
-                    Text(
-                        text = stringResource(R.string.date_strip_day_label, date.dayOfMonth),
-                        modifier = Modifier.clearAndSetSemantics { },
-                        color = foreground,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = if (item.hasGames) FontWeight.SemiBold else FontWeight.Normal,
-                    )
-                    // Filled versus hollow is a second, non-colour signal, even on the selected day.
-                    Box(
-                        Modifier
-                            .size(6.dp)
-                            .then(
-                                if (item.hasGames) {
-                                    Modifier.background(foreground, CircleShape)
-                                } else {
-                                    Modifier.border(1.dp, foreground, CircleShape)
-                                },
-                            ),
-                    )
+                    if (item.date == today) {
+                        Text(
+                            stringResource(R.string.date_strip_today),
+                            color = foreground,
+                            style = dateTextStyle(12).copy(letterSpacing = 0.01.em),
+                        )
+                    } else {
+                        Text(
+                            date.dayOfWeek.getDisplayName(DateTextStyle.SHORT, locale),
+                            color = if (selected) foreground else MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = dateTextStyle(9),
+                        )
+                        Text(
+                            stringResource(R.string.date_strip_day_label, date.dayOfMonth),
+                            color = foreground,
+                            style = dateTextStyle(19).copy(fontFeatureSettings = "tnum"),
+                        )
+                        Text(
+                            date.month.getDisplayName(DateTextStyle.SHORT, locale),
+                            color = if (selected) foreground else Roux.accents.muted,
+                            style = dateTextStyle(8).copy(fontWeight = FontWeight.Bold, letterSpacing = 0.04.em),
+                        )
+                    }
                 }
             }
         }
@@ -128,3 +134,11 @@ fun DateStripBar(
         if (items.any { it.date == selectedDate }) selectedRequester.bringIntoView()
     }
 }
+
+internal fun dateTextStyle(size: Int): TextStyle =
+    TextStyle(
+        fontSize = size.sp,
+        lineHeight = size.sp,
+        fontWeight = FontWeight.ExtraBold,
+        platformStyle = PlatformTextStyle(includeFontPadding = false),
+    )

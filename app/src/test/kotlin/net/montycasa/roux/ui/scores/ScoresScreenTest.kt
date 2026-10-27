@@ -8,8 +8,6 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.assertIsOff
-import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasTestTag
@@ -60,7 +58,7 @@ class ScoresScreenTest {
 
     private val date = "2025-10-25"
     private val index = listOf(DateIndexEntry("2025-10-28", 2), DateIndexEntry(date, 0))
-    private val fresh = ScoresUiState(date, freshness = Freshness.Fresh, dateIndex = index)
+    private val fresh = ScoresUiState(date, today = date, freshness = Freshness.Fresh, dateIndex = index)
     private val game =
         Game(
             id = GameId("2025020123"),
@@ -83,14 +81,13 @@ class ScoresScreenTest {
         onRefresh: () -> Unit = {},
         onGameClick: (GameId) -> Unit = {},
         onSelectDate: (String) -> Unit = {},
-        onToggleFavourites: (Boolean) -> Unit = {},
     ) {
         suppliedState.value = state
         rule.setContent {
             val base = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(base.density, fontScale.value)) {
                 RouxTheme {
-                    ScoresScreen(suppliedState.value, onRefresh, onGameClick, onSelectDate, onToggleFavourites)
+                    ScoresScreen(suppliedState.value, onRefresh, onGameClick, onSelectDate)
                 }
             }
         }
@@ -131,7 +128,7 @@ class ScoresScreenTest {
     @Test
     fun missingShowsAnErrorWithAPrimaryRetryThatRefreshes() {
         var retries = 0
-        val missing = ScoresUiState(date, error = LoadError.Network)
+        val missing = ScoresUiState(date, today = date, error = LoadError.Network)
         launchScreen(missing, onRefresh = { retries++ })
         rule.onNodeWithText("Couldn’t load scores.").assertIsDisplayed()
         rule.onNodeWithText("Check your connection and try again.").assertIsDisplayed()
@@ -210,17 +207,13 @@ class ScoresScreenTest {
     }
 
     @Test
-    fun dateSelectionAndFavouritesToggleForwardViewModelIntents() {
+    fun dateSelectionForwardsIntentAndTheShelfHasNoFavouritesToggle() {
         val selected = mutableListOf<String>()
-        val filters = mutableListOf<Boolean>()
-        launchScreen(onSelectDate = { selected += it }, onToggleFavourites = { filters += it })
+        launchScreen(onSelectDate = { selected += it })
         rule.onNode(SemanticsMatcher.expectValue(PrimaryControlTag, "scores.dateChip.2025-10-26")).performClick()
         assertEquals(listOf("2025-10-26"), selected)
-        rule.onNodeWithContentDescription("Favourites only").assertIsOn().performClick()
-        assertEquals(listOf(false), filters)
-        rule.runOnIdle { suppliedState.value = fresh.copy(favouritesOnly = false) }
-        rule.onNodeWithContentDescription("Favourites only").assertIsOff().performClick()
-        assertEquals(listOf(false, true), filters)
+        rule.onNodeWithContentDescription("Favourites only").assertDoesNotExist()
+        rule.onNode(SemanticsMatcher.expectValue(PrimaryControlTag, "scores.favourites")).assertDoesNotExist()
     }
 
     @Test
@@ -264,7 +257,10 @@ class ScoresScreenTest {
         rule.onNodeWithText("You haven’t picked favourite teams yet. Choose teams in the Teams tab.").assertIsDisplayed()
         rule.onNodeWithTag("scores.game.${game.id.value}").assertIsDisplayed()
         rule.runOnIdle { suppliedState.value = fresh.copy(favoritesHint = FavoritesHint.NoFavouriteGames) }
-        rule.onNodeWithText("Your favourite teams have no games this day. Turn off Favourites only to see all games.").assertIsDisplayed()
+        rule
+            .onNodeWithText(
+                "Your favourite teams have no games this day. Choose NHL in the leagues drawer to see all games.",
+            ).assertIsDisplayed()
         rule.onNodeWithText("You haven’t picked favourite teams yet. Choose teams in the Teams tab.").assertDoesNotExist()
         rule.onNodeWithText("No games on Sat, Oct 25").assertDoesNotExist()
         rule.onNodeWithText("Next games: Tue, Oct 28").assertDoesNotExist()
@@ -279,7 +275,7 @@ class ScoresScreenTest {
 
     @Test
     fun initialLoadingDoesNotClaimAnEmptyDayOrAnErrorAndRefreshingPreservesRows() {
-        launchScreen(ScoresUiState(date, isRefreshing = true))
+        launchScreen(ScoresUiState(date, today = date, isRefreshing = true))
         rule.onNodeWithText("Loading scores…").assertIsDisplayed()
         rule.onNodeWithTag("scores.error").assertDoesNotExist()
         rule.onNodeWithText("No games on Sat, Oct 25").assertDoesNotExist()
@@ -308,7 +304,7 @@ class ScoresScreenTest {
                     fresh to "scores.nextGames",
                     stale to "scores.retry",
                     stale.copy(error = LoadError.Network) to "scores.retry",
-                    ScoresUiState(date, error = LoadError.Network) to "scores.retry",
+                    ScoresUiState(date, today = date, error = LoadError.Network) to "scores.retry",
                     fresh.copy(rows = listOf(game)) to null,
                     fresh.copy(favoritesHint = FavoritesHint.PickTeams) to "scores.nextGames",
                     fresh.copy(favoritesHint = FavoritesHint.NoFavouriteGames) to null,
@@ -328,9 +324,9 @@ class ScoresScreenTest {
         // Derived from the same policy call the screen makes, rather than a hand-pinned window: pinning the
         // window here let the screen be narrowed to three days to satisfy this fixture instead of the plan.
         val chips = DateStrip.items(state.dateIndex, state.selectedDate).map { "scores.dateChip.${it.date}" }
-        val primaries = chips + listOfNotNull("scores.favourites", action)
+        val primaries = chips + listOfNotNull("scores.calendar", action)
         rule.assertPrimaryControlsReachable(*primaries.toTypedArray())
-        val frequent = rule.reachTargets().filter { it.primary && (it.tag.startsWith("scores.dateChip.") || it.tag == "scores.favourites") }
+        val frequent = rule.reachTargets().filter { it.primary && (it.tag.startsWith("scores.dateChip.") || it.tag == "scores.calendar") }
         assertEquals(chips.size + 1, frequent.size)
         assertTrue(frequent.all { it.frequent })
         assertTrue(rule.reachTargets().any { it.tag == "scores.pullToRefresh" && !it.primary })

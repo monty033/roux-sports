@@ -8,6 +8,8 @@ import net.montycasa.roux.domain.policy.FavoritesHint
 
 data class ScoresUiState(
     val selectedDate: String,
+    /** Current day from the polling clock in the existing league zone. */
+    val today: String,
     /** Filtered rows, with favourites pinned when showing all games. */
     val rows: List<Game> = emptyList(),
     val favoritesHint: FavoritesHint? = null,

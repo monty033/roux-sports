@@ -317,14 +317,18 @@ class ScoresViewModelTest {
             val viewModel = viewModel(scores, clock = clock)
 
             viewModel.uiState.test {
-                assertEquals("2026-10-26", awaitItem().selectedDate)
+                val initial = awaitItem()
+                assertEquals("2026-10-26", initial.selectedDate)
+                assertEquals("2026-10-26", initial.today)
                 runCurrent()
                 advanceTimeBy(1_000)
                 runCurrent()
 
                 assertEquals(listOf(0L, 1_000L), scores.times)
                 assertEquals(listOf("2026-10-26", "2026-10-27"), scores.calls.map { it.today })
-                assertEquals("2026-10-26", expectMostRecentItem().selectedDate)
+                val afterMidnight = expectMostRecentItem()
+                assertEquals("2026-10-26", afterMidnight.selectedDate)
+                assertEquals("2026-10-27", afterMidnight.today)
                 cancelAndIgnoreRemainingEvents()
             }
         }

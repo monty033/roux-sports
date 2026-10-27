@@ -5,8 +5,11 @@
 package net.montycasa.roux.ui.nav
 
 import androidx.annotation.StringRes
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.DrawerValue
@@ -18,8 +21,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -27,6 +33,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -43,6 +50,7 @@ import net.montycasa.roux.RouxApp
 import net.montycasa.roux.ui.drawer.LeagueNavigationDrawer
 import net.montycasa.roux.ui.reach.Reach
 import net.montycasa.roux.ui.reach.primaryControl
+import net.montycasa.roux.ui.scores.CalendarMonthSheet
 import net.montycasa.roux.ui.scores.ScoresScreen
 import net.montycasa.roux.ui.scores.ScoresViewModel
 import net.montycasa.roux.ui.standings.StandingsScreen
@@ -94,76 +102,92 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
         }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    LeagueNavigationDrawer(drawerState, scoresState, scores::setFavouritesOnly) {
-        Scaffold(
-            modifier = modifier.fillMaxSize(),
-            bottomBar = {
-                NavigationBar {
-                    // R5 keeps primary controls 16 dp clear of the screen edges, where the back gesture
-                    // lives. A stock NavigationBar puts its outer items flush to the edges, so the bar's
-                    // own background stays full-bleed and the items are pushed inside it by spacers -
-                    // padding the bar itself would inset its background and leave a strip of page showing.
-                    Spacer(Modifier.width(Reach.EDGE_INSET_DP.dp))
-                    TopLevelDestination.entries.forEach { destination ->
-                        val label = stringResource(destination.label)
-                        NavigationBarItem(
-                            // Primary navigation is the most-used control on every screen, so it is
-                            // tagged frequent: R2 holds it to the thumb-zone ceiling, not the looser one.
-                            modifier = Modifier.primaryControl(destination.tag, frequent = true),
-                            selected = currentRoute == destination.route,
-                            onClick = {
-                                if (currentRoute != destination.route) {
-                                    navController.navigate(destination.route) {
-                                        // One entry per destination, and back from any tab returns to the
-                                        // start destination rather than replaying a tab history.
-                                        popUpTo(navController.graph.findStartDestination().id) {
-                                            saveState = true
+    var calendarOpen by rememberSaveable { mutableStateOf(false) }
+    Box(modifier.fillMaxSize()) {
+        Box(Modifier.then(if (calendarOpen) Modifier.clearAndSetSemantics { } else Modifier)) {
+            LeagueNavigationDrawer(drawerState, scoresState, scores::setFavouritesOnly) {
+                Scaffold(
+                    modifier = Modifier.fillMaxSize(),
+                    bottomBar = {
+                        NavigationBar {
+                            // R5 keeps primary controls 16 dp clear of the screen edges, where the back gesture
+                            // lives. A stock NavigationBar puts its outer items flush to the edges, so the bar's
+                            // own background stays full-bleed and the items are pushed inside it by spacers -
+                            // padding the bar itself would inset its background and leave a strip of page showing.
+                            Spacer(Modifier.width(Reach.EDGE_INSET_DP.dp))
+                            TopLevelDestination.entries.forEach { destination ->
+                                val label = stringResource(destination.label)
+                                NavigationBarItem(
+                                    // Primary navigation is the most-used control on every screen, so it is
+                                    // tagged frequent: R2 holds it to the thumb-zone ceiling, not the looser one.
+                                    modifier = Modifier.primaryControl(destination.tag, frequent = true),
+                                    selected = currentRoute == destination.route,
+                                    onClick = {
+                                        if (currentRoute != destination.route) {
+                                            navController.navigate(destination.route) {
+                                                // One entry per destination, and back from any tab returns to the
+                                                // start destination rather than replaying a tab history.
+                                                popUpTo(navController.graph.findStartDestination().id) {
+                                                    saveState = true
+                                                }
+                                                launchSingleTop = true
+                                                restoreState = true
+                                            }
                                         }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
-                                }
-                            },
-                            icon = {
-                                Icon(imageVector = destination.icon(), contentDescription = null)
-                            },
-                            label = { Text(label) },
-                        )
-                    }
-                    Spacer(Modifier.width(Reach.EDGE_INSET_DP.dp))
-                }
-            },
-        ) { innerPadding ->
-            NavHost(
-                navController = navController,
-                startDestination = TopLevelDestination.Scores.route,
-                modifier = Modifier.padding(innerPadding),
-            ) {
-                TopLevelDestination.entries.forEach { destination ->
-                    composable(destination.route) {
-                        when (destination) {
-                            TopLevelDestination.Scores -> {
-                                ScoresScreen(
-                                    state = scoresState,
-                                    onRefresh = scores::onPullToRefresh,
-                                    onGameClick = {},
-                                    onSelectDate = scores::selectDate,
-                                    onToggleFavourites = scores::setFavouritesOnly,
-                                    onOpenLeagues = { scope.launch { drawerState.open() } },
+                                    },
+                                    icon = {
+                                        Icon(imageVector = destination.icon(), contentDescription = null)
+                                    },
+                                    label = { Text(label) },
                                 )
                             }
+                            Spacer(Modifier.width(Reach.EDGE_INSET_DP.dp))
+                        }
+                    },
+                ) { innerPadding ->
+                    NavHost(
+                        navController = navController,
+                        startDestination = TopLevelDestination.Scores.route,
+                        modifier = Modifier.padding(innerPadding),
+                    ) {
+                        TopLevelDestination.entries.forEach { destination ->
+                            composable(destination.route) {
+                                when (destination) {
+                                    TopLevelDestination.Scores -> {
+                                        ScoresScreen(
+                                            state = scoresState,
+                                            onRefresh = scores::onPullToRefresh,
+                                            onGameClick = {},
+                                            onSelectDate = scores::selectDate,
+                                            onOpenLeagues = { scope.launch { drawerState.open() } },
+                                            onOpenCalendar = { calendarOpen = true },
+                                        )
+                                    }
 
-                            TopLevelDestination.Teams -> {
-                                TeamsDestination()
-                            }
+                                    TopLevelDestination.Teams -> {
+                                        TeamsDestination()
+                                    }
 
-                            TopLevelDestination.Standings -> {
-                                StandingsDestination()
+                                    TopLevelDestination.Standings -> {
+                                        StandingsDestination()
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
+        }
+        if (calendarOpen) {
+            // Cover the entire shell, including tabs, while keeping the system gesture inset only once.
+            CalendarMonthSheet(
+                scoresState.selectedDate,
+                scoresState.today,
+                scoresState.dateIndex,
+                scores::selectDate,
+                { calendarOpen = false },
+                bottomInsets = WindowInsets.navigationBars,
+            )
         }
     }
 }

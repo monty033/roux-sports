@@ -4,34 +4,31 @@ package net.montycasa.roux.ui.scores
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import net.montycasa.roux.R
 import net.montycasa.roux.domain.Freshness
@@ -50,7 +47,7 @@ import java.time.format.DateTimeFormatter
 
 /**
  * Renders the selected day's state without owning loading or filtering. Callbacks map to refresh,
- * selectDate and setFavouritesOnly on ScoresViewModel; game navigation belongs to the host.
+ * selectDate on ScoresViewModel; game navigation belongs to the host.
  * Cached rows survive every refresh failure, with recovery and frequent controls near the thumb.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -60,9 +57,9 @@ fun ScoresScreen(
     onRefresh: () -> Unit,
     onGameClick: (GameId) -> Unit,
     onSelectDate: (String) -> Unit,
-    onToggleFavourites: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     onOpenLeagues: () -> Unit = {},
+    onOpenCalendar: (() -> Unit)? = null,
 ) {
     val locale = LocalConfiguration.current.locales[0]
     val formatter =
@@ -81,136 +78,124 @@ fun ScoresScreen(
             DateStrip.items(state.dateIndex, state.selectedDate)
         }
 
-    Column(modifier.fillMaxSize()) {
-        ScoresHeader(state.liveCount, onOpenLeagues, Modifier.fillMaxWidth())
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Reach.MIN_TARGET_GAP_DP.dp)) {
-            PullToRefreshBox(
-                isRefreshing = state.isRefreshing,
-                onRefresh = onRefresh,
-                modifier =
-                    Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .testTag("scores.refresh")
-                        .reachTarget("scores.pullToRefresh"),
-            ) {
-                BoxWithConstraints(Modifier.fillMaxSize()) {
-                    // The reference queries .listwrap before the list's 12 dp side padding.
-                    val narrow = maxWidth <= 380.dp
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize().testTag("scores.list"),
-                        verticalArrangement = Arrangement.spacedBy(Reach.MIN_TARGET_GAP_DP.dp),
-                    ) {
-                        if (missing) {
-                            item {
-                                Column(Modifier.padding(Reach.EDGE_INSET_DP.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text(
-                                        stringResource(if (loading) R.string.scores_loading else R.string.scores_load_error),
-                                        modifier = Modifier.testTag(if (loading) "scores.loading" else "scores.error"),
-                                        style = MaterialTheme.typography.titleMedium,
-                                    )
-                                    state.error?.let { Text(errorMessage(it), style = MaterialTheme.typography.bodyLarge) }
-                                }
-                            }
-                        } else {
-                            state.favoritesHint?.let { hint ->
+    var calendarOpen by rememberSaveable { mutableStateOf(false) }
+    Box(modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().then(if (calendarOpen) Modifier.clearAndSetSemantics { } else Modifier)) {
+            ScoresHeader(state.liveCount, onOpenLeagues, Modifier.fillMaxWidth())
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Reach.MIN_TARGET_GAP_DP.dp)) {
+                PullToRefreshBox(
+                    isRefreshing = state.isRefreshing,
+                    onRefresh = onRefresh,
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .testTag("scores.refresh")
+                            .reachTarget("scores.pullToRefresh"),
+                ) {
+                    BoxWithConstraints(Modifier.fillMaxSize()) {
+                        // The reference queries .listwrap before the list's 12 dp side padding.
+                        val narrow = maxWidth <= 380.dp
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize().testTag("scores.list"),
+                            verticalArrangement = Arrangement.spacedBy(Reach.MIN_TARGET_GAP_DP.dp),
+                        ) {
+                            if (missing) {
                                 item {
-                                    Text(
-                                        stringResource(
-                                            when (hint) {
-                                                FavoritesHint.PickTeams -> R.string.scores_pick_teams
-                                                FavoritesHint.NoFavouriteGames -> R.string.scores_no_favourite_games
-                                            },
-                                        ),
-                                        modifier = Modifier.padding(Reach.EDGE_INSET_DP.dp),
-                                        style = MaterialTheme.typography.bodyLarge,
+                                    Column(Modifier.padding(Reach.EDGE_INSET_DP.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text(
+                                            stringResource(if (loading) R.string.scores_loading else R.string.scores_load_error),
+                                            modifier = Modifier.testTag(if (loading) "scores.loading" else "scores.error"),
+                                            style = MaterialTheme.typography.titleMedium,
+                                        )
+                                        state.error?.let { Text(errorMessage(it), style = MaterialTheme.typography.bodyLarge) }
+                                    }
+                                }
+                            } else {
+                                state.favoritesHint?.let { hint ->
+                                    item {
+                                        Text(
+                                            stringResource(
+                                                when (hint) {
+                                                    FavoritesHint.PickTeams -> R.string.scores_pick_teams
+                                                    FavoritesHint.NoFavouriteGames -> R.string.scores_no_favourite_games
+                                                },
+                                            ),
+                                            modifier = Modifier.padding(Reach.EDGE_INSET_DP.dp),
+                                            style = MaterialTheme.typography.bodyLarge,
+                                        )
+                                    }
+                                }
+                                if (emptyDate) {
+                                    item {
+                                        Text(
+                                            stringResource(R.string.scores_empty_date, dateLabel),
+                                            modifier = Modifier.padding(Reach.EDGE_INSET_DP.dp),
+                                            style = MaterialTheme.typography.titleMedium,
+                                        )
+                                    }
+                                }
+                                items(state.rows, key = { it.id.value }) { game ->
+                                    GameRow(
+                                        game,
+                                        narrow = narrow,
+                                        modifier =
+                                            Modifier
+                                                .padding(horizontal = 12.dp)
+                                                .testTag("scores.game.${game.id.value}")
+                                                .clickable { onGameClick(game.id) },
                                     )
                                 }
-                            }
-                            if (emptyDate) {
-                                item {
-                                    Text(
-                                        stringResource(R.string.scores_empty_date, dateLabel),
-                                        modifier = Modifier.padding(Reach.EDGE_INSET_DP.dp),
-                                        style = MaterialTheme.typography.titleMedium,
-                                    )
-                                }
-                            }
-                            items(state.rows, key = { it.id.value }) { game ->
-                                GameRow(
-                                    game,
-                                    narrow = narrow,
-                                    modifier =
-                                        Modifier
-                                            .padding(horizontal = 12.dp)
-                                            .testTag("scores.game.${game.id.value}")
-                                            .clickable { onGameClick(game.id) },
-                                )
                             }
                         }
                     }
                 }
-            }
 
-            Column(
-                Modifier.fillMaxWidth().padding(horizontal = Reach.EDGE_INSET_DP.dp),
-                verticalArrangement = Arrangement.spacedBy(Reach.MIN_TARGET_GAP_DP.dp),
-            ) {
-                val stale = state.freshness as? Freshness.Stale
-                when {
-                    stale != null -> {
-                        StaleBanner(
-                            since = stale.since,
-                            onRetry = onRefresh,
-                            isRefreshing = state.isRefreshing,
-                            supportingText = if (state.error != null) stringResource(R.string.scores_refresh_error) else null,
-                        )
-                    }
-
-                    missing && !loading -> {
-                        RetryButton(onRefresh, state.isRefreshing)
-                    }
-
-                    state.error != null && state.rows.isNotEmpty() -> {
-                        Text(stringResource(R.string.scores_refresh_error), style = MaterialTheme.typography.bodyMedium)
-                        RetryButton(onRefresh, state.isRefreshing)
-                    }
-                }
-                // Recovery takes priority over date navigation so a dead screen has one clear exit.
-                if (nextDate != null && stale == null && state.error == null) {
-                    Button(
-                        onClick = { onSelectDate(nextDate) },
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = Reach.PRIMARY_MIN_HEIGHT_DP.dp)
-                                .primaryControl("scores.nextGames"),
-                    ) {
-                        Text(stringResource(R.string.scores_next_games, LocalDate.parse(nextDate).format(formatter)))
-                    }
-                }
-            }
-
-            Row(
-                Modifier.fillMaxWidth().padding(end = Reach.EDGE_INSET_DP.dp, bottom = Reach.EDGE_INSET_DP.dp),
-                horizontalArrangement = Arrangement.spacedBy(Reach.MIN_TARGET_GAP_DP.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                DateStripBar(dates, state.selectedDate, onSelectDate, Modifier.weight(1f))
-                IconToggleButton(
-                    checked = state.favouritesOnly,
-                    onCheckedChange = onToggleFavourites,
-                    modifier =
-                        Modifier
-                            .size(Reach.PRIMARY_MIN_HEIGHT_DP.dp)
-                            .primaryControl("scores.favourites", frequent = true),
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = Reach.EDGE_INSET_DP.dp),
+                    verticalArrangement = Arrangement.spacedBy(Reach.MIN_TARGET_GAP_DP.dp),
                 ) {
-                    Icon(
-                        imageVector = favouriteIcon(state.favouritesOnly),
-                        contentDescription = stringResource(R.string.scores_favourites_only),
-                    )
+                    val stale = state.freshness as? Freshness.Stale
+                    when {
+                        stale != null -> {
+                            StaleBanner(
+                                since = stale.since,
+                                onRetry = onRefresh,
+                                isRefreshing = state.isRefreshing,
+                                supportingText = if (state.error != null) stringResource(R.string.scores_refresh_error) else null,
+                            )
+                        }
+
+                        missing && !loading -> {
+                            RetryButton(onRefresh, state.isRefreshing)
+                        }
+
+                        state.error != null && state.rows.isNotEmpty() -> {
+                            Text(stringResource(R.string.scores_refresh_error), style = MaterialTheme.typography.bodyMedium)
+                            RetryButton(onRefresh, state.isRefreshing)
+                        }
+                    }
+                    // Recovery takes priority over date navigation so a dead screen has one clear exit.
+                    if (nextDate != null && stale == null && state.error == null) {
+                        Button(
+                            onClick = { onSelectDate(nextDate) },
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = Reach.PRIMARY_MIN_HEIGHT_DP.dp)
+                                    .primaryControl("scores.nextGames"),
+                        ) {
+                            Text(stringResource(R.string.scores_next_games, LocalDate.parse(nextDate).format(formatter)))
+                        }
+                    }
                 }
+
+                // The shell lifts the modal over its tabs; a standalone screen keeps the same overlay here.
+                DateShelf(dates, state.selectedDate, state.today, onSelectDate, onOpenCalendar ?: { calendarOpen = true })
             }
+        }
+        if (calendarOpen) {
+            CalendarMonthSheet(state.selectedDate, state.today, state.dateIndex, onSelectDate, { calendarOpen = false })
         }
     }
 }
@@ -226,18 +211,3 @@ private fun errorMessage(error: LoadError): String =
             LoadError.Local -> R.string.scores_local_error
         },
     )
-
-private fun favouriteIcon(selected: Boolean): ImageVector =
-    ImageVector
-        .Builder(
-            name = "Favourites",
-            defaultWidth = 24.dp,
-            defaultHeight = 24.dp,
-            viewportWidth = 24f,
-            viewportHeight = 24f,
-        ).addPath(
-            pathData = addPathNodes("M12,3 L14.8,8.7 L21,9.6 L16.5,14 L17.6,20.2 L12,17.3 L6.4,20.2 L7.5,14 L3,9.6 L9.2,8.7 Z"),
-            fill = if (selected) SolidColor(Color.Black) else null,
-            stroke = SolidColor(Color.Black),
-            strokeLineWidth = 1.5f,
-        ).build()

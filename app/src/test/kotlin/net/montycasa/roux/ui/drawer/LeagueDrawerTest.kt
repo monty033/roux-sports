@@ -44,7 +44,10 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class LeagueDrawerTest {
     @get:Rule val rule = createComposeRule()
-    private val state = mutableStateOf(ScoresUiState("2026-10-27", favouritesOnly = false, favouriteCount = 6, loadedDate = "2026-10-27"))
+    private val state =
+        mutableStateOf(
+            ScoresUiState("2026-10-27", today = "2026-10-27", favouritesOnly = false, favouriteCount = 6, loadedDate = "2026-10-27"),
+        )
 
     private fun launch(
         dark: Boolean = false,

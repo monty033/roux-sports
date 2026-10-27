@@ -2,12 +2,9 @@ package net.montycasa.roux.ui.nav
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.state.ToggleableState
-import androidx.compose.ui.test.assertIsOff
-import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertWidthIsEqualTo
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -157,7 +154,7 @@ class ShellTest {
     }
 
     @Test
-    fun menuOpensTheFullHeightDrawerAndItsRowsShareThePersistedStarFilter() {
+    fun drawerMyTeamsEnablesThePersistedFavouritesFilterAndNhlDisablesIt() {
         val app = RuntimeEnvironment.getApplication() as ScoresIntegrationApp
         runBlocking { app.container.preferences.setFavouritesOnly(false) }
         launchShell()
@@ -165,19 +162,31 @@ class ShellTest {
         rule.onNodeWithTag("leagues.drawer").assertWidthIsEqualTo(240.dp)
         rule.onNodeWithText("My Teams").performClick()
         rule.waitUntil(10_000) {
-            rule.onNodeWithContentDescription("Favourites only").fetchSemanticsNode().config[SemanticsProperties.ToggleableState] ==
-                ToggleableState.On
+            rule.onNodeWithTag("scores.header").fetchSemanticsNode()
+            runBlocking { app.container.preferences.getFavouritesOnly() }
         }
-        rule.onNodeWithContentDescription("Favourites only").assertIsOn()
-        assertTrue(runBlocking { app.container.preferences.getFavouritesOnly() })
+        rule.onNodeWithContentDescription("Favourites only").assertDoesNotExist()
         rule.onNodeWithContentDescription("Open leagues").performClick()
         rule.onNodeWithTag("leagues.nhl").performClick()
         rule.waitUntil(10_000) {
-            rule.onNodeWithContentDescription("Favourites only").fetchSemanticsNode().config[SemanticsProperties.ToggleableState] ==
-                ToggleableState.Off
+            rule.onNodeWithTag("scores.header").fetchSemanticsNode()
+            !runBlocking { app.container.preferences.getFavouritesOnly() }
         }
-        rule.onNodeWithContentDescription("Favourites only").assertIsOff()
-        assertEquals(false, runBlocking { app.container.preferences.getFavouritesOnly() })
+        rule.onNodeWithContentDescription("Favourites only").assertDoesNotExist()
+    }
+
+    @Test
+    fun calendarCoversTheShellAndHidesTabsUntilDone() {
+        launchShell()
+        val window = rule.onRoot().getUnclippedBoundsInRoot()
+        rule.onNodeWithContentDescription("Open calendar").performClick()
+        assertEquals(window, rule.onNodeWithTag("calendar.overlay").getUnclippedBoundsInRoot())
+        barItem("Teams").assertDoesNotExist()
+        barItem("Standings").assertDoesNotExist()
+        rule.onNodeWithText("DONE").performClick()
+        rule.onNodeWithTag("calendar.overlay").assertDoesNotExist()
+        barItem("Scores").assertIsSelected()
+        barItem("Teams").assertExists()
     }
 
     @Test

@@ -70,6 +70,7 @@ class ScoresViewModel(
                 )
             ScoresUiState(
                 selectedDate = load.date,
+                today = load.today,
                 liveCount =
                     load.value.data
                         ?.games
@@ -88,7 +89,7 @@ class ScoresViewModel(
                         ?.dateIndex
                         .orEmpty(),
             )
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ScoresUiState(selectedDate.value))
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ScoresUiState(selectedDate.value, leagueDay()))
 
     /** Calls the cache-aware repository immediately, even when the cadence has stopped. */
     fun refresh() {
@@ -129,11 +130,11 @@ class ScoresViewModel(
             var announceProgress = true
             while (currentCoroutineContext().isActive) {
                 if (announceProgress) {
-                    emit(DayLoad(request.date, value, refreshing = true))
+                    emit(DayLoad(request.date, request.today, value, refreshing = true))
                 }
                 // Always load first on resubscription; loadDay checks FreshnessPolicy itself.
                 value = scores.loadDay(request.date, request.today)
-                val loaded = DayLoad(request.date, value, refreshing = false)
+                val loaded = DayLoad(request.date, request.today, value, refreshing = false)
                 retained = loaded
                 emit(loaded)
                 announceProgress = false
@@ -180,6 +181,7 @@ class ScoresViewModel(
 
     private data class DayLoad(
         val date: String,
+        val today: String,
         val value: Loadable<ScoreDay>,
         val refreshing: Boolean,
     )

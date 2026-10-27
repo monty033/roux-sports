@@ -416,11 +416,10 @@ class GameRowTest {
             RouxTheme {
                 density = LocalDensity.current
                 ScoresScreen(
-                    ScoresUiState(live.date, rows = listOf(live), freshness = Freshness.Fresh),
+                    ScoresUiState(live.date, today = live.date, rows = listOf(live), freshness = Freshness.Fresh),
                     onRefresh = {},
                     onGameClick = {},
                     onSelectDate = {},
-                    onToggleFavourites = {},
                     modifier = Modifier.width(width),
                 )
             }
