@@ -101,6 +101,20 @@ class ShellTest {
     }
 
     @Test
+    fun everyDestinationIsDeclaredFrequentSoR2Applies() {
+        // Navigation is the most-used control on every screen. If the flag were dropped, R1 would still
+        // pass while the tighter R2 ceiling silently stopped being checked - a test that cannot see the
+        // difference is worse than no test.
+        launchShell()
+
+        val placements = rule.reachTargets().filter { it.tag.startsWith("nav.") }
+        assertEquals(declaredPrimaries.sorted(), placements.map { it.tag }.sorted())
+        placements.forEach { placement ->
+            assertTrue("${placement.tag} must be frequent so R2 governs it", placement.frequent)
+        }
+    }
+
+    @Test
     fun everyDestinationIsAtLeastFortyEightDpInBothDirections() {
         launchShell()
 
