@@ -4,3 +4,6 @@ local.properties
 keystore.properties
 result
 .kotlin/
+
+# Independent-review artifacts (frozen diffs, prompts, verdict logs) are working files, never committed.
+.review-*/

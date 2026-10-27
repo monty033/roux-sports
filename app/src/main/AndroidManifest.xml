@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+      INTERNET is the only permission the app asks for: scores and standings come from the NHL's public
+      endpoints and logos from assets.nhle.com. Notifications in v1 are local, so there is no push token to
+      request and no other capability to declare.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
+        android:name=".RouxApp"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:theme="@style/Theme.Roux">
