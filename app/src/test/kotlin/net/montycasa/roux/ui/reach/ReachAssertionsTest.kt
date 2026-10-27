@@ -606,6 +606,78 @@ class ReachAssertionsTest {
         rule.assertPrimaryControlsReachable("scores.offViewportChip")
     }
 
+    /**
+     * Two constraints cutting in different places cannot be judged one at a time. This 200 dp control has 50 dp
+     * inside its parent and 100 dp inside the viewport, so asking each separately says "50 dp, fine". Together, with
+     * no travel to slide them against each other, only the 10 dp where the parent's window meets the viewport's edge
+     * is ever on screen. The fix is order: intersect the non-scrolling ancestors first, then let scrolling move the
+     * result.
+     */
+    @Test
+    fun aStaticClipAndAViewportThatCutInDifferentPlacesAreCombined() {
+        rule.setContent {
+            Box(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(bottom = 16.dp)
+                        .width(100.dp)
+                        .horizontalScroll(rememberScrollState()),
+                ) {
+                    // The parent is the only child, so the strip has no travel at all: nothing can slide.
+                    Box(Modifier.offset(x = 90.dp).width(50.dp).clipToBounds()) {
+                        Box(
+                            Modifier
+                                .offset(x = (-100).dp)
+                                .requiredSize(width = 200.dp, height = 56.dp)
+                                .primaryControl("scores.twoCuts"),
+                        )
+                    }
+                }
+            }
+        }
+
+        val message = failure("scores.twoCuts").message.orEmpty()
+        assertTrue("R4 should be cited, got: $message", message.contains("R4 target size"))
+        assertTrue(
+            "the two cuts leave only the 10 dp where they meet, got: $message",
+            message.matches(Regex("(?s).*is 10\\.\\d x 56\\.0 dp.*")),
+        )
+    }
+
+    /**
+     * Semantics are read at whatever position the strip is currently in, so a strip that is already scrolled can be
+     * dragged back. This chip shows 36 dp at its current position and all 56 dp twenty dp earlier, which the fan
+     * reaches by dragging the other way - a legal offset of -20. Judging only non-negative offsets would call a
+     * perfectly good chip a 36 dp target.
+     */
+    @Test
+    fun aStripAlreadyScrolledCanBeDraggedBackToRevealAControl() {
+        rule.setContent {
+            val density = LocalDensity.current
+            val scrolled = rememberScrollState(initial = with(density) { 60.dp.roundToPx() })
+            Box(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 100.dp, bottom = 16.dp)
+                        .width(100.dp)
+                        .horizontalScroll(scrolled),
+                ) {
+                    Spacer(Modifier.width(40.dp))
+                    Box(
+                        Modifier
+                            .requiredSize(width = 56.dp, height = 56.dp)
+                            .primaryControl("scores.dragBack"),
+                    )
+                    Spacer(Modifier.width(300.dp))
+                }
+            }
+        }
+
+        rule.assertPrimaryControlsReachable("scores.dragBack")
+    }
+
     @Test
     fun aClickableInsideATaggedParentIsJudgedButNotTreatedAsOverlapping() {
         rule.setContent {
