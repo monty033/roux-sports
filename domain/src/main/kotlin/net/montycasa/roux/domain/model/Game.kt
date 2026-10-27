@@ -89,6 +89,9 @@ data class Game(
     val period: PeriodInfo? = null,
     /** Parsed feed startTimeUTC instant; null when the start time is absent or unreadable. */
     val startTimeUtc: Instant? = null,
+    /** Null means unavailable; a supplied zero is a real shot count. */
+    val homeShots: Int? = null,
+    val awayShots: Int? = null,
 ) {
     // Validation of feed identifiers, dates, and missing or unexpected values belongs
     // to the adapter layer; these value types do not reject messy NHL data.

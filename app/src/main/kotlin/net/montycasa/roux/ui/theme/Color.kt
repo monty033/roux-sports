@@ -26,6 +26,9 @@ internal val RouxLightPage = Color(0xFFF2F2EF)
 internal val RouxLightCard = Color(0xFFFFFFFF)
 internal val RouxLightInk = Color(0xFF0C0D0F)
 internal val RouxLightInkMuted = Color(0xFF54585F)
+
+// --ink3 (muted rail labels) in final/scores-screen.html.
+internal val RouxLightMuted = Color(0xFF6B7078)
 internal val RouxLightRule = Color(0xFFE3E3DD)
 internal val RouxLightSignature = Color(0xFFC93A06)
 internal val RouxLightFill = Color(0xFFFF4B12)
@@ -35,6 +38,9 @@ internal val RouxDarkPage = Color(0xFF08090B)
 internal val RouxDarkCard = Color(0xFF101115)
 internal val RouxDarkInk = Color(0xFFEDEEF1)
 internal val RouxDarkInkMuted = Color(0xFFA2A8B1)
+
+// --ink3 (muted rail labels) in final/scores-screen.html.
+internal val RouxDarkMuted = Color(0xFF878D96)
 internal val RouxDarkRule = Color(0xFF202228)
 internal val RouxDarkSignature = Color(0xFFFF4B12)
 internal val RouxDarkFill = Color(0xFFFF4B12)
@@ -62,10 +68,12 @@ data class RouxAccents(
     val fill: Color,
     /** Foreground on [fill]. */
     val onFill: Color,
-    /** Orange as type: the winner's name and score, and the word FINAL. */
+    /** Orange as type: the winner's name and score, while the final capsule uses ink-2. */
     val signature: Color,
     /** Orange as a hairline rule. */
     val stroke: Color,
+    /** Muted micro-labels: --ink3 in final/scores-screen.html. */
+    val muted: Color,
 )
 
 val RouxLightAccents =
@@ -74,6 +82,7 @@ val RouxLightAccents =
         onFill = RouxOnFill,
         signature = RouxLightSignature,
         stroke = RouxLightStroke,
+        muted = RouxLightMuted,
     )
 
 val RouxDarkAccents =
@@ -82,6 +91,7 @@ val RouxDarkAccents =
         onFill = RouxOnFill,
         signature = RouxDarkSignature,
         stroke = RouxDarkStroke,
+        muted = RouxDarkMuted,
     )
 
 /**

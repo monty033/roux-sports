@@ -23,8 +23,14 @@ fun rouxColorScheme(dark: Boolean): ColorScheme = if (dark) RouxDarkColors else 
 /** The orange roles Material has no slot for, resolvable from any composable. */
 val LocalRouxAccents = staticCompositionLocalOf { RouxLightAccents }
 
+val LocalRouxCardTypography = staticCompositionLocalOf { RouxCardTypography }
+
 /** Read the accents without reaching for `MaterialTheme.colorScheme.primary` and getting lucky. */
 object Roux {
+    val cardTypography: GameCardTypography
+        @Composable @ReadOnlyComposable
+        get() = LocalRouxCardTypography.current
+
     val accents: RouxAccents
         @Composable @ReadOnlyComposable
         get() = LocalRouxAccents.current
@@ -41,7 +47,10 @@ fun RouxTheme(
     dark: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,
 ) {
-    CompositionLocalProvider(LocalRouxAccents provides if (dark) RouxDarkAccents else RouxLightAccents) {
+    CompositionLocalProvider(
+        LocalRouxAccents provides if (dark) RouxDarkAccents else RouxLightAccents,
+        LocalRouxCardTypography provides RouxCardTypography,
+    ) {
         MaterialTheme(colorScheme = rouxColorScheme(dark), content = content)
     }
 }

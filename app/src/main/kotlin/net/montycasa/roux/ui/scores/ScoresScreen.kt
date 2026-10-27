@@ -4,6 +4,7 @@ package net.montycasa.roux.ui.scores
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -90,53 +91,59 @@ fun ScoresScreen(
                     .testTag("scores.refresh")
                     .reachTarget("scores.pullToRefresh"),
         ) {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().testTag("scores.list"),
-                verticalArrangement = Arrangement.spacedBy(Reach.MIN_TARGET_GAP_DP.dp),
-            ) {
-                if (missing) {
-                    item {
-                        Column(Modifier.padding(Reach.EDGE_INSET_DP.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(
-                                stringResource(if (loading) R.string.scores_loading else R.string.scores_load_error),
-                                modifier = Modifier.testTag(if (loading) "scores.loading" else "scores.error"),
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                            state.error?.let { Text(errorMessage(it), style = MaterialTheme.typography.bodyLarge) }
-                        }
-                    }
-                } else {
-                    state.favoritesHint?.let { hint ->
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                // The reference queries .listwrap before the list's 12 dp side padding.
+                val narrow = maxWidth <= 380.dp
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().testTag("scores.list"),
+                    verticalArrangement = Arrangement.spacedBy(Reach.MIN_TARGET_GAP_DP.dp),
+                ) {
+                    if (missing) {
                         item {
-                            Text(
-                                stringResource(
-                                    when (hint) {
-                                        FavoritesHint.PickTeams -> R.string.scores_pick_teams
-                                        FavoritesHint.NoFavouriteGames -> R.string.scores_no_favourite_games
-                                    },
-                                ),
-                                modifier = Modifier.padding(Reach.EDGE_INSET_DP.dp),
-                                style = MaterialTheme.typography.bodyLarge,
+                            Column(Modifier.padding(Reach.EDGE_INSET_DP.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(
+                                    stringResource(if (loading) R.string.scores_loading else R.string.scores_load_error),
+                                    modifier = Modifier.testTag(if (loading) "scores.loading" else "scores.error"),
+                                    style = MaterialTheme.typography.titleMedium,
+                                )
+                                state.error?.let { Text(errorMessage(it), style = MaterialTheme.typography.bodyLarge) }
+                            }
+                        }
+                    } else {
+                        state.favoritesHint?.let { hint ->
+                            item {
+                                Text(
+                                    stringResource(
+                                        when (hint) {
+                                            FavoritesHint.PickTeams -> R.string.scores_pick_teams
+                                            FavoritesHint.NoFavouriteGames -> R.string.scores_no_favourite_games
+                                        },
+                                    ),
+                                    modifier = Modifier.padding(Reach.EDGE_INSET_DP.dp),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                            }
+                        }
+                        if (emptyDate) {
+                            item {
+                                Text(
+                                    stringResource(R.string.scores_empty_date, dateLabel),
+                                    modifier = Modifier.padding(Reach.EDGE_INSET_DP.dp),
+                                    style = MaterialTheme.typography.titleMedium,
+                                )
+                            }
+                        }
+                        items(state.rows, key = { it.id.value }) { game ->
+                            GameRow(
+                                game,
+                                narrow = narrow,
+                                modifier =
+                                    Modifier
+                                        .padding(horizontal = 12.dp)
+                                        .testTag("scores.game.${game.id.value}")
+                                        .clickable { onGameClick(game.id) },
                             )
                         }
-                    }
-                    if (emptyDate) {
-                        item {
-                            Text(
-                                stringResource(R.string.scores_empty_date, dateLabel),
-                                modifier = Modifier.padding(Reach.EDGE_INSET_DP.dp),
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                        }
-                    }
-                    items(state.rows, key = { it.id.value }) { game ->
-                        GameRow(
-                            game,
-                            Modifier
-                                .padding(horizontal = Reach.EDGE_INSET_DP.dp)
-                                .testTag("scores.game.${game.id.value}")
-                                .clickable { onGameClick(game.id) },
-                        )
                     }
                 }
             }

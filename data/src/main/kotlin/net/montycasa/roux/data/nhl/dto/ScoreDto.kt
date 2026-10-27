@@ -41,6 +41,8 @@ internal data class TeamDto(
     val name: NameDto? = null,
     val abbrev: String? = null,
     val score: Int? = null,
+    // Keep malformed optional shot counts from invalidating the team's identity or game.
+    val sog: JsonElement? = null,
     val logo: String? = null,
     val darkLogo: String? = null,
 )

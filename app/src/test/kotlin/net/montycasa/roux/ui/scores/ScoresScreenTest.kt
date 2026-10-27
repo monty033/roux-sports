@@ -5,19 +5,26 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertWidthIsEqualTo
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.model.DateIndexEntry
@@ -163,6 +170,43 @@ class ScoresScreenTest {
         launchScreen(fresh.copy(rows = listOf(game)), onGameClick = { clicked += it })
         rule.onNodeWithTag("scores.game.${game.id.value}").performClick()
         assertEquals(listOf(game.id), clicked)
+    }
+
+    @Test
+    @Config(qualifiers = "en-rUS-w411dp-h923dp-mdpi")
+    fun gameCardsAreSeventySixDpWithEightDpPageGaps() {
+        val next = game.copy(id = GameId("2025020124"))
+        launchScreen(fresh.copy(rows = listOf(game, next)))
+        val first = rule.onNodeWithTag("scores.game.${game.id.value}")
+        val second = rule.onNodeWithTag("scores.game.${next.id.value}")
+        first.assertHeightIsEqualTo(76.dp)
+        second.assertHeightIsEqualTo(76.dp)
+        val gap = second.getUnclippedBoundsInRoot().top - first.getUnclippedBoundsInRoot().bottom
+        assertEquals(8f, gap.value, 0.5f)
+        first.assertWidthIsEqualTo(387.dp)
+        rule.onAllNodesWithTag(STATE_RAIL_TAG, useUnmergedTree = true)[0].assertWidthIsEqualTo(92.dp)
+    }
+
+    @Test
+    @Config(qualifiers = "en-rUS-w360dp-h780dp-mdpi")
+    fun gameCardGapEqualsReachMinimumAndTheWholeDayStillScrolls() {
+        val games = (0..11).map { game.copy(id = GameId("game-$it")) }
+        launchScreen(fresh.copy(rows = games))
+        val first = rule.onNodeWithTag("scores.game.${games[0].id.value}")
+        val second = rule.onNodeWithTag("scores.game.${games[1].id.value}")
+        first.assertHeightIsEqualTo(76.dp).assertWidthIsEqualTo(336.dp)
+        rule.onAllNodesWithTag(STATE_RAIL_TAG, useUnmergedTree = true)[0].assertWidthIsEqualTo(82.dp)
+        rule.onAllNodesWithTag(CREST_TAG, useUnmergedTree = true)[0].assertWidthIsEqualTo(32.dp)
+        val gap = second.getUnclippedBoundsInRoot().top - first.getUnclippedBoundsInRoot().bottom
+        assertEquals(Reach.MIN_TARGET_GAP_DP, gap.value, 0.01f)
+        listOf(1f, 2f).forEach { scale ->
+            rule.runOnIdle { fontScale.value = scale }
+            rule.onNodeWithTag("scores.list").performScrollToNode(hasTestTag("scores.game.${games.last().id.value}"))
+            rule.onNodeWithTag("scores.game.${games.last().id.value}").assertIsDisplayed()
+            val last = rule.onNodeWithTag("scores.game.${games.last().id.value}").getUnclippedBoundsInRoot()
+            val list = rule.onNodeWithTag("scores.list").getUnclippedBoundsInRoot()
+            assertTrue(last.top >= list.top && last.bottom <= list.bottom)
+        }
     }
 
     @Test

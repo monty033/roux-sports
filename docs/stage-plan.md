@@ -1229,6 +1229,102 @@ STEP S6.3: Wire Standings
 - Reviewer: Sonnet via Claude subscription; second review
 - Reason: Cross-module wiring with the R3 invariant (Q3).
 
+### Stage 6b: Design parity with the signed-off Scores design (v4b)
+
+**Why this stage exists.** The Scores design was signed off on 2026-10-25 and recorded in
+`/var/lib/hermes/workspace/roux-sports-design/README.md` ("decided, ready to implement"), but no step in this plan ever
+carried it: nothing in `docs/` referenced the design file. Stages 3–6 therefore implemented the palette and the reach
+rules while rendering a two-line matchup row with a status footer. The result is the design's colours inside Material3
+structure: correct brand, wrong screen. This stage is the missing link, and it runs **before Stage 9**, so the screenshot
+matrix captures the real design rather than the interim screen.
+
+**The contract is the file, not this prose.** `final/scores-screen.html` is authoritative: seven frames at 411 × 923 and
+360 × 780, light and dark, with a 1.0×/2.0× type toolbar. The measurements below were read out of its CSS. Where this
+plan and the file disagree, the file wins and this plan gets corrected.
+
+Reference measurements (from `final/scores-screen.html`):
+
+| Element | Value |
+|---|---|
+| Card | one per game, `grid-template-columns: minmax(0,1fr) 5.75rem`, radius 16 dp, **76 dp tall**, **8 dp between cards** |
+| Card inner | 1 dp transparent border (border-box) + 8 dp vertical padding + two 28 dp rows 2 dp apart = 76 dp |
+| Crest | 34 × 34 dp (32 dp when the **scroll container** is ≤ 380 dp — the design queries `.listwrap`, the full-width viewport, not the card) |
+| Club name | 15 sp / 600 (14 sp narrow), letter-spacing -.005 em, ellipsised, full name not abbreviation |
+| Score | 22 sp / 500 (21 sp narrow), **tabular figures**, right-aligned, 30 dp slot (28 dp narrow), letter-spacing -.02 em; ink2 by default, ink at 700 when live, signature for a final winner, ink3 for the dash |
+| Rail | 1 dp left rule, **92 dp wide (82 dp narrow)**; a stack **centred vertically only** and flush left 12 dp in from the rail's edge (7 dp from its right), never horizontally centred: pill, clock, shots for a live game; pill then shots for a final; the start time alone for an upcoming one |
+| Live | filled orange **pill carrying only `dot + LIVE`** (9 sp / 800, uppercase, 0.09 em letter-spacing, 1.5 dp border in its own fill so it matches the outlined pill's size); the clock sits **below** the pill in signature at 12 sp / 800 tabular; live scores are ink at **weight 700** (no leading bar — see R9 note) |
+| Final | 1.5 dp stroke pill in **signature**: `FINAL`, `FINAL · OT`, `FINAL · SO`; then shots. Winner's name and score in signature, the loser's score in **ink2** |
+| Upcoming | no pill and **no numerals** — but an **en dash** at ink3 weight 400 in the score slot, so the column reads "not started" rather than broken; muted names; start time alone in the rail |
+| Header | drawer handle, wordmark, `● N LIVE` pill |
+| Date chip | 56 × 56; weekday/month small, day 19 sp; today's chip reads only "Today"; calendar tile pinned right |
+| No star toggle | favourites become the "My Teams" pseudo-league in the drawer |
+
+The card's **8 dp gap is the same 8 dp as `Reach.MIN_TARGET_GAP_DP`**: a card is clickable, so it is a touch target, and the
+design happens to satisfy the rule exactly. Shrinking the gap to fit more cards would be an accessibility regression
+dressed as a design decision. Two earlier versions of this table said 72 dp and 2 dp, taken from the README's prose rather
+than the file; both were wrong and both were implemented before the render was measured. Measure first.
+
+**R9 is amended by the design, deliberately.** The brief demands a 4 dp leading accent bar on live games; the signed-off
+design removes it (`README.md` line 54) because the rail capsule already carries a dot and a bold clock. "Never colour
+alone" survives — fill + dot + bold clock are three cues. Tests that assert the bar must be re-pointed at the capsule,
+not deleted.
+
+**R10 tension is accepted, not hidden.** Rail micro-labels run 9–12 sp, under the brief's 14 sp body floor. They are
+labels rather than body text, and the file was drawn that way; they must still meet non-text contrast ≥ 3:1 in both themes.
+Any *body* copy stays ≥ 14 sp.
+
+STEP S6b.1: Shots on goal in the domain model
+- Files: `dom/model/Game.kt`, `dat/net/NhlAdapter.kt`
+- Depends on: S1.3
+- Acceptance test: `datT/nhl/ScoreAdapterTest.kt` — the captured `score-gameday.json` yields per-team `sog` (e.g. PHI 32,
+  ANA 26); a payload without `sog` yields `null`, never `0`, so the rail can omit the line rather than claim zero shots.
+- Risk class: none. Privacy class: public-repo. Q1/Q2/Q3/Q4/Q5: Y/Y/N/Y/N. Tier: Free. Effort: low.
+
+STEP S6b.2: The game card, the rail, and the type scale
+- Files: `appM/ui/scores/GameRow.kt`, `appM/ui/theme/Type.kt` (new), `appM/ui/scores/ScoresScreen.kt`, strings
+- Depends on: S6b.1, S3.2
+- Acceptance test: `appT/ui/scores/GameRowTest.kt` — card height **76 dp** at 1.0× type (1 dp border + 16 dp padding +
+  58 dp of rows); crest 34 dp wide and 32 dp at a ≤ 380 dp card; rail 92 dp wide and 82 dp narrow; score uses tabular
+  figures; live renders capsule + dot + bold clock; final renders the ruled `FINAL` capsule and paints the winner's name
+  and score in the signature colour; upcoming renders no capsule and no score numerals; `sog` renders only when known;
+  a missing logo falls back to the abbreviation badge without changing the row height; and the list gap equals
+  `Reach.MIN_TARGET_GAP_DP`.
+- Risk class: none. Privacy class: public-repo. Q1/Q2/Q3/Q4/Q5: Y/Y/N/Y/N. Tier: DeepSeek. Effort: medium.
+
+STEP S6b.3: The header
+- Files: `appM/ui/scores/ScoresScreen.kt`, `appM/ui/nav/RouxNavHost.kt`
+- Depends on: S6b.2
+- Acceptance test: `appT/ui/scores/ScoresHeaderTest.kt` — the wordmark is text-or-image with an accessible name, the live
+  pill reads "N LIVE" for N live games and disappears at zero, and the drawer handle is classified as navigation (not a
+  primary control), per the design's own deviation note. R1/R2 still pass for every actual control.
+- Risk class: none. Privacy class: public-repo. Q1/Q2/Q3/Q4/Q5: Y/Y/N/Y/N. Tier: DeepSeek. Effort: low.
+
+STEP S6b.4: The drawer and My Teams
+- Files: `appM/ui/drawer/LeagueDrawer.kt` (new), `appM/RouxApp.kt`, strings
+- Depends on: S6b.3
+- Acceptance test: `appT/ui/drawer/LeagueDrawerTest.kt` — My Teams sits above the leagues; the pencil becomes Done and
+  visible leagues gain a drag handle; hidden leagues drop below in muted type without a handle; the selection persists
+  through `PreferencesRepository`. Until leagues multiply, the league list is NHL only and the drawer is honest about it.
+- Risk class: none. Privacy class: public-repo. Q1/Q2/Q3/Q4/Q5: Y/Y/N/Y/N. Tier: DeepSeek. Effort: medium.
+
+STEP S6b.5: The date strip and the calendar
+- Files: `appM/ui/scores/DateStripBar.kt`, `appM/ui/calendar/MonthSheet.kt` (new), strings
+- Depends on: S6b.3, S6b.4
+- Acceptance test: `appT/ui/scores/DateStripTest.kt` — chips are 56 × 56 with the day at 19 sp, today's chip reads only
+  "Today", the calendar tile is pinned at the right end and opens a month sheet whose cells meet the touch-target rule,
+  and **the star favourites toggle is gone** (the design removed it; favourites live in the drawer).
+- Risk class: none. Privacy class: public-repo. Q1/Q2/Q3/Q4/Q5: Y/Y/N/Y/N. Tier: DeepSeek. Effort: medium.
+
+STEP S6b.6: Parity proof
+- Files: test only; baselines in `appT/screenshots/design-parity/`
+- Depends on: S6b.2–S6b.5
+- Acceptance test: `appT/ui/DesignParityTest.kt` — Roborazzi records the Scores screen at 411 × 923 and 360 × 780, light
+  and dark, and the four PNGs are compared by eye against the corresponding frames in `final/scores-screen.html`, with the
+  sign-off recorded in `docs/device-checklist.md`. This is the step that would have caught the original drift.
+- Risk class: none. Privacy class: public-repo. Q1/Q2/Q3/Q4/Q5: Y/Y/N/Y/N. Tier: Free. Effort: low.
+
+
+
 ### Stage 7: Game detail
 
 STEP S7.1: Capture gamecenter fixtures and map A6 sources
