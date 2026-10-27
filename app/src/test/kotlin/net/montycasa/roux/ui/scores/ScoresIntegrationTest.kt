@@ -7,6 +7,7 @@ import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -83,7 +84,11 @@ class ScoresIntegrationTest {
         assertTrue(app.requests.any { it.host == "api-web.nhle.com" && it.encodedPath == "/v1/score/${ScoreFixture.date}" })
 
         rule.onNode(hasText("Standings") and isSelectable()).performClick()
-        rule.onNodeWithText("League standings will appear here.").assertIsDisplayed()
+        // Standings is a real destination now; wait for the table it renders rather than a placeholder sentence.
+        rule.waitUntil(timeoutMillis = 10_000) {
+            rule.onAllNodesWithText("NHL").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithTag("standings.header").assertIsDisplayed()
         // Teams is a real destination now, so this asserts the picker rather than a placeholder sentence.
         rule.onNode(hasText("Teams") and isSelectable()).performClick()
         rule.waitUntil(timeoutMillis = 10_000) {

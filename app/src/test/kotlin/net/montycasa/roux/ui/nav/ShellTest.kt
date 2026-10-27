@@ -6,6 +6,8 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -38,8 +40,8 @@ class ShellTest {
     @get:Rule
     val rule = createComposeRule()
 
-    // A destination's name appears twice on screen - on its bar item and, once selected, as the
-    // placeholder heading. Bar assertions therefore match the selectable item, not the text alone.
+    // Bar assertions match the selectable item rather than the text alone: a destination's own screen
+    // may legitimately render the same word, and matching the item keeps the assertion unambiguous.
     private fun barItem(label: String) = rule.onNode(hasText(label) and isSelectable())
 
     private val declaredPrimaries = listOf("nav.scores", "nav.standings", "nav.teams")
@@ -87,15 +89,16 @@ class ShellTest {
     }
 
     @Test
-    fun tappingStandingsShowsItsPlaceholder() {
+    fun tappingStandingsShowsTheTable() {
         launchShell()
 
-        // Both the bar label and the placeholder heading read "Standings", so the assertion is on the
-        // placeholder's own sentence - which exists only when the destination is actually shown.
-        rule.onNodeWithText("League standings will appear here.").assertDoesNotExist()
+        // The column header exists only when the standings destination is the one on screen.
+        rule.onNodeWithTag("standings.header").assertDoesNotExist()
         barItem("Standings").performClick()
-        rule.onNodeWithText("League standings will appear here.").assertExists()
+        rule.onNodeWithTag("standings.header").assertExists()
         barItem("Standings").assertIsSelected()
+        // And the table itself arrives from the feed rather than staying a skeleton.
+        rule.waitUntil(timeoutMillis = 10_000) { rule.onAllNodesWithText("NHL").fetchSemanticsNodes().isNotEmpty() }
     }
 
     @Test
