@@ -42,6 +42,11 @@ android {
         }
     }
 
+    sourceSets.named("test") {
+        // Exercise the captured corpus directly so app and data tests cannot drift apart.
+        resources.directories += "../data/src/test/resources"
+    }
+
     lint {
         // Abort the build on lint errors.
         abortOnError = true
@@ -106,6 +111,7 @@ dependencies {
     implementation(libs.coil.network.ktor3)
 
     testImplementation(libs.junit)
+    testImplementation(libs.ktor.client.mock)
     testImplementation(libs.androidx.compose.ui.test.junit4)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.work.testing)

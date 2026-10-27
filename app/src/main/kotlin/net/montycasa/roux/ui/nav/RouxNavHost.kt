@@ -25,17 +25,25 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import net.montycasa.roux.R
+import net.montycasa.roux.RouxApp
 import net.montycasa.roux.ui.reach.Reach
 import net.montycasa.roux.ui.reach.primaryControl
+import net.montycasa.roux.ui.scores.ScoresScreen
+import net.montycasa.roux.ui.scores.ScoresViewModel
 
 /**
  * The three places the app goes. Scores is the reason the app exists; the other two are peers, not
@@ -110,11 +118,42 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
         ) {
             TopLevelDestination.entries.forEach { destination ->
                 composable(destination.route) {
-                    PlaceholderScreen(title = stringResource(destination.label), body = stringResource(destination.placeholder))
+                    if (destination == TopLevelDestination.Scores) {
+                        ScoresDestination()
+                    } else {
+                        PlaceholderScreen(title = stringResource(destination.label), body = stringResource(destination.placeholder))
+                    }
                 }
             }
         }
     }
+}
+
+/**
+ * The back stack entry owns this ViewModel; the application supplies its shared dependencies.
+ * Lifecycle collection suspends polling when Scores leaves the foreground. Row clicks are a no-op
+ * until Stage 7 supplies game detail, so an otherwise useful row cannot crash on an unfinished route.
+ */
+@Composable
+private fun ScoresDestination() {
+    val container = (LocalContext.current.applicationContext as RouxApp).container
+    val scores: ScoresViewModel =
+        viewModel(
+            factory =
+                viewModelFactory {
+                    initializer {
+                        ScoresViewModel(container.scores, container.preferences, container.clock)
+                    }
+                },
+        )
+    val state by scores.uiState.collectAsStateWithLifecycle()
+    ScoresScreen(
+        state = state,
+        onRefresh = scores::onPullToRefresh,
+        onGameClick = {},
+        onSelectDate = scores::selectDate,
+        onToggleFavourites = scores::setFavouritesOnly,
+    )
 }
 
 /**

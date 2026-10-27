@@ -1,6 +1,13 @@
 package net.montycasa.roux
 
 import android.app.Application
+import android.content.Context
+import coil3.ImageLoader
+import coil3.SingletonImageLoader
+import coil3.annotation.ExperimentalCoilApi
+import coil3.network.ktor3.KtorNetworkFetcherFactory
+import coil3.serviceLoaderEnabled
+import coil3.svg.SvgDecoder
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.okhttp.OkHttp
@@ -24,14 +31,31 @@ import kotlin.time.Clock
  * refuses a second one at first use, so construction has to happen once and be shared. Building it eagerly in
  * `onCreate` would also be correct; lazily, a process that never touches prefs or the cache never opens them.
  */
-class RouxApp : Application() {
-    val container: AppContainer by lazy {
+open class RouxApp :
+    Application(),
+    SingletonImageLoader.Factory {
+    /** Overridable so integration tests replace the engine while exercising the production wiring. */
+    open val container: AppContainer by lazy {
         AppContainer(
             filesDir = filesDir.absolutePath.toPath(),
             engine = OkHttp.create(),
             version = versionName(),
         )
     }
+
+    /**
+     * Coil shares the data client's engine and NHL host boundary. Supplying the fetcher explicitly
+     * prevents Coil from choosing a client of its own for team logos.
+     */
+    @OptIn(ExperimentalCoilApi::class)
+    override fun newImageLoader(context: Context): ImageLoader =
+        ImageLoader
+            .Builder(context)
+            .serviceLoaderEnabled(false)
+            .components {
+                add(KtorNetworkFetcherFactory(httpClient = container.httpClient))
+                add(SvgDecoder.Factory())
+            }.build()
 
     /**
      * The User-Agent carries the app version so an NHL-side complaint can be traced to a build.
