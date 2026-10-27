@@ -397,6 +397,42 @@ class ScoresViewModelTest {
             }
         }
 
+    @Test
+    fun headerAndDrawerMetadataUseTheLoadedUnfilteredDayWithoutAnExtraRequest() =
+        runTest {
+            val scores = FakeScoresRepository(testScheduler)
+            scores.respond = { date, _ ->
+                freshDay(
+                    date,
+                    listOf(
+                        game(date = date, state = GameState.Live()),
+                        game(
+                            date = date,
+                            state = GameState.Live(critical = true),
+                        ).copy(id = GameId("other"), home = TeamRef(TeamKey("BOS")), away = TeamRef(TeamKey("NYR"))),
+                    ),
+                )
+            }
+            val preferences = FakePreferencesRepository(setOf(TeamKey("TOR")), storedOnly = true)
+            val viewModel = viewModel(scores, preferences)
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                val filtered = expectMostRecentItem()
+                assertEquals(1, filtered.rows.size)
+                assertEquals(2, filtered.liveCount)
+                assertEquals(1, filtered.favouriteCount)
+                assertEquals(filtered.selectedDate, filtered.loadedDate)
+                viewModel.setFavouritesOnly(false)
+                runCurrent()
+                val all = expectMostRecentItem()
+                assertEquals(2, all.rows.size)
+                assertEquals(2, all.liveCount)
+                assertEquals(1, scores.calls.size)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
     private fun viewModel(
         scores: FakeScoresRepository,
         preferences: FakePreferencesRepository = FakePreferencesRepository(),

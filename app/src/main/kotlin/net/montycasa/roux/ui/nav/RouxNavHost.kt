@@ -9,13 +9,17 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -33,8 +37,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import kotlinx.coroutines.launch
 import net.montycasa.roux.R
 import net.montycasa.roux.RouxApp
+import net.montycasa.roux.ui.drawer.LeagueNavigationDrawer
 import net.montycasa.roux.ui.reach.Reach
 import net.montycasa.roux.ui.reach.primaryControl
 import net.montycasa.roux.ui.scores.ScoresScreen
@@ -70,63 +76,90 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
 
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        bottomBar = {
-            NavigationBar {
-                // R5 keeps primary controls 16 dp clear of the screen edges, where the back gesture
-                // lives. A stock NavigationBar puts its outer items flush to the edges, so the bar's
-                // own background stays full-bleed and the items are pushed inside it by spacers -
-                // padding the bar itself would inset its background and leave a strip of page showing.
-                Spacer(Modifier.width(Reach.EDGE_INSET_DP.dp))
-                TopLevelDestination.entries.forEach { destination ->
-                    val label = stringResource(destination.label)
-                    NavigationBarItem(
-                        // Primary navigation is the most-used control on every screen, so it is
-                        // tagged frequent: R2 holds it to the thumb-zone ceiling, not the looser one.
-                        modifier = Modifier.primaryControl(destination.tag, frequent = true),
-                        selected = currentRoute == destination.route,
-                        onClick = {
-                            if (currentRoute != destination.route) {
-                                navController.navigate(destination.route) {
-                                    // One entry per destination, and back from any tab returns to the
-                                    // start destination rather than replaying a tab history.
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
+    val container = (LocalContext.current.applicationContext as RouxApp).container
+    val scores: ScoresViewModel =
+        viewModel(
+            factory =
+                viewModelFactory {
+                    initializer { ScoresViewModel(container.scores, container.preferences, container.clock) }
+                },
+        )
+    // Only Scores subscribes: leaving its tab still stops polling after WhileSubscribed's grace.
+    val scoresState =
+        if (currentRoute == null || currentRoute == TopLevelDestination.Scores.route) {
+            scores.uiState.collectAsStateWithLifecycle().value
+        } else {
+            // Freeze the last Scores state while another tab owns the active collection.
+            remember(scores, currentRoute) { scores.uiState.value }
+        }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    LeagueNavigationDrawer(drawerState, scoresState, scores::setFavouritesOnly) {
+        Scaffold(
+            modifier = modifier.fillMaxSize(),
+            bottomBar = {
+                NavigationBar {
+                    // R5 keeps primary controls 16 dp clear of the screen edges, where the back gesture
+                    // lives. A stock NavigationBar puts its outer items flush to the edges, so the bar's
+                    // own background stays full-bleed and the items are pushed inside it by spacers -
+                    // padding the bar itself would inset its background and leave a strip of page showing.
+                    Spacer(Modifier.width(Reach.EDGE_INSET_DP.dp))
+                    TopLevelDestination.entries.forEach { destination ->
+                        val label = stringResource(destination.label)
+                        NavigationBarItem(
+                            // Primary navigation is the most-used control on every screen, so it is
+                            // tagged frequent: R2 holds it to the thumb-zone ceiling, not the looser one.
+                            modifier = Modifier.primaryControl(destination.tag, frequent = true),
+                            selected = currentRoute == destination.route,
+                            onClick = {
+                                if (currentRoute != destination.route) {
+                                    navController.navigate(destination.route) {
+                                        // One entry per destination, and back from any tab returns to the
+                                        // start destination rather than replaying a tab history.
+                                        popUpTo(navController.graph.findStartDestination().id) {
+                                            saveState = true
+                                        }
+                                        launchSingleTop = true
+                                        restoreState = true
                                     }
-                                    launchSingleTop = true
-                                    restoreState = true
                                 }
-                            }
-                        },
-                        icon = {
-                            Icon(imageVector = destination.icon(), contentDescription = null)
-                        },
-                        label = { Text(label) },
-                    )
+                            },
+                            icon = {
+                                Icon(imageVector = destination.icon(), contentDescription = null)
+                            },
+                            label = { Text(label) },
+                        )
+                    }
+                    Spacer(Modifier.width(Reach.EDGE_INSET_DP.dp))
                 }
-                Spacer(Modifier.width(Reach.EDGE_INSET_DP.dp))
-            }
-        },
-    ) { innerPadding ->
-        NavHost(
-            navController = navController,
-            startDestination = TopLevelDestination.Scores.route,
-            modifier = Modifier.padding(innerPadding),
-        ) {
-            TopLevelDestination.entries.forEach { destination ->
-                composable(destination.route) {
-                    when (destination) {
-                        TopLevelDestination.Scores -> {
-                            ScoresDestination()
-                        }
+            },
+        ) { innerPadding ->
+            NavHost(
+                navController = navController,
+                startDestination = TopLevelDestination.Scores.route,
+                modifier = Modifier.padding(innerPadding),
+            ) {
+                TopLevelDestination.entries.forEach { destination ->
+                    composable(destination.route) {
+                        when (destination) {
+                            TopLevelDestination.Scores -> {
+                                ScoresScreen(
+                                    state = scoresState,
+                                    onRefresh = scores::onPullToRefresh,
+                                    onGameClick = {},
+                                    onSelectDate = scores::selectDate,
+                                    onToggleFavourites = scores::setFavouritesOnly,
+                                    onOpenLeagues = { scope.launch { drawerState.open() } },
+                                )
+                            }
 
-                        TopLevelDestination.Teams -> {
-                            TeamsDestination()
-                        }
+                            TopLevelDestination.Teams -> {
+                                TeamsDestination()
+                            }
 
-                        TopLevelDestination.Standings -> {
-                            StandingsDestination()
+                            TopLevelDestination.Standings -> {
+                                StandingsDestination()
+                            }
                         }
                     }
                 }
@@ -153,33 +186,6 @@ private fun TeamsDestination() {
         state = state,
         onToggle = teams::toggle,
         onRetry = teams::retry,
-    )
-}
-
-/**
- * The back stack entry owns this ViewModel; the application supplies its shared dependencies.
- * Lifecycle collection suspends polling when Scores leaves the foreground. Row clicks are a no-op
- * until Stage 7 supplies game detail, so an otherwise useful row cannot crash on an unfinished route.
- */
-@Composable
-private fun ScoresDestination() {
-    val container = (LocalContext.current.applicationContext as RouxApp).container
-    val scores: ScoresViewModel =
-        viewModel(
-            factory =
-                viewModelFactory {
-                    initializer {
-                        ScoresViewModel(container.scores, container.preferences, container.clock)
-                    }
-                },
-        )
-    val state by scores.uiState.collectAsStateWithLifecycle()
-    ScoresScreen(
-        state = state,
-        onRefresh = scores::onPullToRefresh,
-        onGameClick = {},
-        onSelectDate = scores::selectDate,
-        onToggleFavourites = scores::setFavouritesOnly,
     )
 }
 

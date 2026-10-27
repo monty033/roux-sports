@@ -19,4 +19,9 @@ data class ScoresUiState(
     val freshness: Freshness = Freshness.Missing,
     /** Unfiltered navigation metadata from the last load of the selected date. */
     val dateIndex: List<DateIndexEntry> = emptyList(),
+    /** Counted before the favourites filter, from the loaded day without another request. */
+    val liveCount: Int = 0,
+    val favouriteCount: Int = 0,
+    /** Feed day in the league zone; null until a day has actually loaded. */
+    val loadedDate: String? = null,
 )

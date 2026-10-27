@@ -1255,9 +1255,12 @@ Reference measurements (from `final/scores-screen.html`):
 | Live | filled orange **pill carrying only `dot + LIVE`** (9 sp / 800, uppercase, 0.09 em letter-spacing, 1.5 dp border in its own fill so it matches the outlined pill's size); the clock sits **below** the pill in signature at 12 sp / 800 tabular; live scores are ink at **weight 700** (no leading bar — see R9 note) |
 | Final | 1.5 dp stroke pill in **signature**: `FINAL`, `FINAL · OT`, `FINAL · SO`; then shots. Winner's name and score in signature, the loser's score in **ink2** |
 | Upcoming | no pill and **no numerals** — but an **en dash** at ink3 weight 400 in the score slot, so the column reads "not started" rather than broken; muted names; start time alone in the rail |
-| Header | drawer handle, wordmark, `● N LIVE` pill |
+| Header | 64 dp row, 48 dp navigation handle, `.brandmark` **20 dp image box** (18 dp visible ink with the supplied asset), `● N LIVE` pill, 28 dp high |
 | Date chip | 56 × 56; weekday/month small, day 19 sp; today's chip reads only "Today"; calendar tile pinned right |
 | No star toggle | favourites become the "My Teams" pseudo-league in the drawer |
+| Header | 64 dp row above the list (it does not scroll): 48 dp menu, wordmark in a **20 dp box** (18 dp of visible ink in the supplied asset), 28 dp live pill, 10 dp column gaps, 16 dp side padding |
+| Drawer | **240 dp dark panel in both themes** (`#08090B`, not a theme surface), 20/16/16/24 dp padding, wordmark 108 dp wide, 56 dp rows with 10 dp radius, 8 dp row gaps, 1 dp `#1B1D22` rules; the flexible spacer sits **directly after the brand block**, so the menu and footer anchor to the bottom |
+| Drawer rows | My Teams carries the favourite count and selects the favourites-only view; the league row shows name plus sport, selected = `#15171C` background with an orange sport label; footer carries its own top border, so no extra rule above it |
 
 The card's **8 dp gap is the same 8 dp as `Reach.MIN_TARGET_GAP_DP`**: a card is clickable, so it is a touch target, and the
 design happens to satisfy the rule exactly. Shrinking the gap to fit more cards would be an accessibility regression
@@ -1302,9 +1305,12 @@ STEP S6b.3: The header
 STEP S6b.4: The drawer and My Teams
 - Files: `appM/ui/drawer/LeagueDrawer.kt` (new), `appM/RouxApp.kt`, strings
 - Depends on: S6b.3
-- Acceptance test: `appT/ui/drawer/LeagueDrawerTest.kt` — My Teams sits above the leagues; the pencil becomes Done and
-  visible leagues gain a drag handle; hidden leagues drop below in muted type without a handle; the selection persists
-  through `PreferencesRepository`. Until leagues multiply, the league list is NHL only and the drawer is honest about it.
+- Acceptance test: `appT/ui/drawer/LeagueDrawerTest.kt` — 240 dp dark brand panel in both themes, 56 dp rows;
+  My Teams sits above the leagues, carries the current favourite count and selects the existing favourites-only state;
+  NHL is the selected league. Both rows close the drawer, and selection persists through `PreferencesRepository`.
+  While NHL is the only supported league, assert the absence of the edit pencil and its hint, Settings, and non-NHL
+  leagues. Editing/reordering is deferred until multiple leagues exist. The final CSS overrides bottom padding to 24 dp.
+  `appT/ui/nav/ShellTest.kt` exercises header opening and both selections through the real preference store.
 - Risk class: none. Privacy class: public-repo. Q1/Q2/Q3/Q4/Q5: Y/Y/N/Y/N. Tier: DeepSeek. Effort: medium.
 
 STEP S6b.5: The date strip and the calendar

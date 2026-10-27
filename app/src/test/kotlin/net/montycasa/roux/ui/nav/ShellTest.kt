@@ -2,11 +2,17 @@ package net.montycasa.roux.ui.nav
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
@@ -14,6 +20,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.captureRoboImage
+import kotlinx.coroutines.runBlocking
 import net.montycasa.roux.ui.reach.Reach
 import net.montycasa.roux.ui.reach.findReachViolations
 import net.montycasa.roux.ui.reach.reachTargets
@@ -26,6 +33,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
@@ -146,6 +154,44 @@ class ShellTest {
                 placement.width >= Reach.MIN_TARGET_DP && placement.height >= Reach.MIN_TARGET_DP,
             )
         }
+    }
+
+    @Test
+    fun menuOpensTheFullHeightDrawerAndItsRowsShareThePersistedStarFilter() {
+        val app = RuntimeEnvironment.getApplication() as ScoresIntegrationApp
+        runBlocking { app.container.preferences.setFavouritesOnly(false) }
+        launchShell()
+        rule.onNodeWithContentDescription("Open leagues").performClick()
+        rule.onNodeWithTag("leagues.drawer").assertWidthIsEqualTo(240.dp)
+        rule.onNodeWithText("My Teams").performClick()
+        rule.waitUntil(10_000) {
+            rule.onNodeWithContentDescription("Favourites only").fetchSemanticsNode().config[SemanticsProperties.ToggleableState] ==
+                ToggleableState.On
+        }
+        rule.onNodeWithContentDescription("Favourites only").assertIsOn()
+        assertTrue(runBlocking { app.container.preferences.getFavouritesOnly() })
+        rule.onNodeWithContentDescription("Open leagues").performClick()
+        rule.onNodeWithTag("leagues.nhl").performClick()
+        rule.waitUntil(10_000) {
+            rule.onNodeWithContentDescription("Favourites only").fetchSemanticsNode().config[SemanticsProperties.ToggleableState] ==
+                ToggleableState.Off
+        }
+        rule.onNodeWithContentDescription("Favourites only").assertIsOff()
+        assertEquals(false, runBlocking { app.container.preferences.getFavouritesOnly() })
+    }
+
+    @Test
+    fun shellDrawerLight() {
+        launchShell(dark = false)
+        rule.onNodeWithContentDescription("Open leagues").performClick()
+        rule.onRoot().captureRoboImage("src/test/screenshots/drawer/shell-drawer-light.png")
+    }
+
+    @Test
+    fun shellDrawerDark() {
+        launchShell(dark = true)
+        rule.onNodeWithContentDescription("Open leagues").performClick()
+        rule.onRoot().captureRoboImage("src/test/screenshots/drawer/shell-drawer-dark.png")
     }
 
     @Test

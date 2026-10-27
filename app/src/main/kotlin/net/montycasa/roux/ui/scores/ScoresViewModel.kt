@@ -70,6 +70,13 @@ class ScoresViewModel(
                 )
             ScoresUiState(
                 selectedDate = load.date,
+                liveCount =
+                    load.value.data
+                        ?.games
+                        .orEmpty()
+                        .count { it.isLive },
+                favouriteCount = settings.favourites.size,
+                loadedDate = load.value.data?.date,
                 rows = if (settings.only) filtered.rows else FavoritesOrdering.pin(filtered.rows, settings.favourites),
                 favoritesHint = filtered.hint,
                 favouritesOnly = settings.only,
