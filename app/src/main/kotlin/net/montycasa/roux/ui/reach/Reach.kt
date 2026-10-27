@@ -117,6 +117,11 @@ data class ReachViolation(
  * Known limit: this only sees what was composed. A row a `LazyColumn` has not scrolled into view is not
  * measured, so an audit of an initial viewport can clear only the part it saw, never the whole list.
  * Callers auditing a list must scroll it and audit again.
+ *
+ * Known limit: this is a geometry audit over the semantics tree, and nothing more. A target painted over by a
+ * later sibling, or one whose taps are consumed by an overlay carrying no semantics and no tag, still measures its
+ * full size and will pass. Catching that needs hit-testing rather than measurement, which is a different tool and
+ * belongs with the device pass; pretending geometry can see z-order would only make the audit confidently wrong.
  */
 fun findReachViolations(
     controls: List<ControlPlacement>,

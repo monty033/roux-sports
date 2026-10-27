@@ -188,8 +188,13 @@ fun ComposeTestRule.reachTargets(): List<ControlPlacement> {
         // permanently; a parent that scrolls instead publishes a window the child can be dragged through, so it
         // contributes the window's extent rather than its own clipping. Keeping them separate is what tells a
         // chip at the end of a strip apart from a button squeezed inside one.
-        val scrollsHorizontally = node.config.contains(SemanticsProperties.HorizontalScrollAxisRange)
-        val scrollsVertically = node.config.contains(SemanticsProperties.VerticalScrollAxisRange)
+        // A scrollable modifier with nothing to scroll is not a window: the content cannot move, so whatever is
+        // outside the viewport now is outside it forever and the viewport behaves exactly like a fixed parent.
+        // maxValue is the scroll range, which is the only way to tell that apart from a real strip.
+        val horizontalRange = node.config.getOrNull(SemanticsProperties.HorizontalScrollAxisRange)
+        val verticalRange = node.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange)
+        val scrollsHorizontally = horizontalRange != null && horizontalRange.maxValue() > 0f
+        val scrollsVertically = verticalRange != null && verticalRange.maxValue() > 0f
         val nodeWidthDp = node.size.width / scale
         val nodeHeightDp = node.size.height / scale
         val nodeLeft = node.positionInRoot.x / scale

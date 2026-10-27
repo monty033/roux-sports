@@ -505,6 +505,40 @@ class ReachAssertionsTest {
         assertTrue("the outer 30 dp window is the limit, got: $message", message.matches(Regex("(?s).*is 30\\.\\d x 56\\.0 dp.*")))
     }
 
+    /**
+     * A scrollable modifier with nothing to scroll cannot reveal anything. An offset target inside it is cut by a
+     * window that will never move, so it is judged on what shows through - the scroll range is what distinguishes
+     * this from a strip with more content than fits.
+     */
+    @Test
+    fun aScrollerWithNoScrollRangeCannotRevealAnOffsetTarget() {
+        rule.setContent {
+            Box(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 16.dp, bottom = 16.dp)
+                        .width(100.dp)
+                        .horizontalScroll(rememberScrollState()),
+                ) {
+                    Box(
+                        Modifier
+                            .offset(x = 60.dp)
+                            .requiredSize(width = 56.dp, height = 56.dp)
+                            .primaryControl("scores.offsetNoRange"),
+                    )
+                }
+            }
+        }
+
+        val message = failure("scores.offsetNoRange").message.orEmpty()
+        assertTrue("R4 should be cited, got: $message", message.contains("R4 target size"))
+        assertTrue(
+            "100 - 60 = 40 dp is what can show, got: $message",
+            message.matches(Regex("(?s).*is 40\\.\\d x 56\\.0 dp.*")),
+        )
+    }
+
     @Test
     fun aClickableInsideATaggedParentIsJudgedButNotTreatedAsOverlapping() {
         rule.setContent {
