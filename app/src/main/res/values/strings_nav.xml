@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nav_scores">Scores</string>
+    <string name="nav_standings">Standings</string>
+    <string name="nav_teams">Teams</string>
+    <string name="nav_scores_placeholder">Scores for the selected night will appear here.</string>
+    <string name="nav_standings_placeholder">League standings will appear here.</string>
+    <string name="nav_teams_placeholder">Team lists and favourites will appear here.</string>
+</resources>
