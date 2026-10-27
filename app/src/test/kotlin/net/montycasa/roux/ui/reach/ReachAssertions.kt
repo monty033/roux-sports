@@ -80,13 +80,18 @@ fun ComposeTestRule.reachTargets(): List<ControlPlacement> {
         node: SemanticsNode,
         path: String,
     ) {
-        val tag = node.config.getOrNull(PrimaryControlTag)
+        // Two keys, deliberately not merged: primaryControl marks a control that R1, R2 and the edge
+        // insets also govern, while reachTarget only says "measure this". Collapsing them would subject
+        // a drag knob to the reach zone it is not in.
+        val primaryTag = node.config.getOrNull(PrimaryControlTag)
+        val declaredTarget = node.config.getOrNull(ReachTargetTag)
+        val tag = primaryTag ?: declaredTarget
         // A target is anything a finger can act on: a click, or an adjustable control such as a slider,
         // which carries SetProgress instead of OnClick and would otherwise be invisible to R4.
-        val actionable =
+        if (tag != null ||
             node.config.contains(SemanticsActions.OnClick) ||
-                node.config.contains(SemanticsActions.SetProgress)
-        if (tag != null || actionable) {
+            node.config.contains(SemanticsActions.SetProgress)
+        ) {
             // Position and measured size, not boundsInRoot: boundsInRoot is clipped by parents, so a
             // control running 17 dp past the bottom of the window reports a rectangle that stops exactly
             // at the window edge, and looks like a smaller target that passes every rule. The overrun is
@@ -95,6 +100,14 @@ fun ComposeTestRule.reachTargets(): List<ControlPlacement> {
             val top = node.positionInRoot.y / scale
             val right = left + node.size.width / scale
             val bottom = top + node.size.height / scale
+            // boundsInRoot is already clipped by every ancestor as well as the window, which is exactly
+            // the area a finger can reach. Intersecting position+size with the window instead would miss
+            // a control inside a nested scroll viewport that shows only part of it.
+            val clipped = node.boundsInRoot
+            val visibleLeft = (clipped.left / scale).coerceIn(0f, windowWidthDp)
+            val visibleTop = (clipped.top / scale).coerceIn(0f, windowHeightDp)
+            val visibleRight = (clipped.right / scale).coerceIn(visibleLeft, windowWidthDp)
+            val visibleBottom = (clipped.bottom / scale).coerceIn(visibleTop, windowHeightDp)
             found +=
                 ControlPlacement(
                     tag = tag ?: describe(node, left, top),
@@ -102,11 +115,11 @@ fun ComposeTestRule.reachTargets(): List<ControlPlacement> {
                     rawTop = top,
                     rawRight = right,
                     rawBottom = bottom,
-                    visibleLeft = left.coerceAtLeast(0f),
-                    visibleTop = top.coerceAtLeast(0f),
-                    visibleRight = right.coerceAtMost(windowWidthDp),
-                    visibleBottom = bottom.coerceAtMost(windowHeightDp),
-                    primary = tag != null,
+                    visibleLeft = visibleLeft,
+                    visibleTop = visibleTop,
+                    visibleRight = visibleRight,
+                    visibleBottom = visibleBottom,
+                    primary = primaryTag != null,
                     frequent = node.config.getOrNull(IsFrequentControl) ?: false,
                     path = path,
                 )

@@ -223,9 +223,13 @@ fun findReachViolations(
             }
         }
 
-        controls.indices.forEach { i ->
-            for (j in i + 1 until controls.size) {
-                findGapViolation(controls[i], controls[j])?.let { add(it) }
+        // Only targets with visible area can conflict with each other. Without this filter a control
+        // scrolled entirely out of view still reports a 0 dp gap against the one at the window edge,
+        // which is the same mistake the per-target checks already avoid.
+        val visible = controls.filter { it.isVisible }
+        visible.indices.forEach { i ->
+            for (j in i + 1 until visible.size) {
+                findGapViolation(visible[i], visible[j])?.let { add(it) }
             }
         }
     }
@@ -307,3 +311,20 @@ var SemanticsPropertyReceiver.primaryControlTag by PrimaryControlTag
 /** Whether R2's tighter ceiling applies to this control. */
 val IsFrequentControl: SemanticsPropertyKey<Boolean> = SemanticsPropertyKey("IsFrequentControl")
 var SemanticsPropertyReceiver.isFrequentControl by IsFrequentControl
+
+/**
+ * Declares a target that must meet R4 but is not a primary control.
+ *
+ * Needed for gesture targets Compose exposes no action for: a `Modifier.draggable` knob or a custom
+ * `pointerInput` carries neither OnClick nor SetProgress, so the audit cannot find it, and marking it
+ * with [primaryControl] would wrongly subject it to R1, R2 and the edge insets. Anything with a custom
+ * gesture must declare itself here or it is invisible to the size rule.
+ */
+fun Modifier.reachTarget(tag: String): Modifier =
+    semantics {
+        reachTargetTag = tag
+    }
+
+/** The tag of a non-primary target, read back by the audit. */
+val ReachTargetTag: SemanticsPropertyKey<String> = SemanticsPropertyKey("ReachTargetTag")
+var SemanticsPropertyReceiver.reachTargetTag by ReachTargetTag

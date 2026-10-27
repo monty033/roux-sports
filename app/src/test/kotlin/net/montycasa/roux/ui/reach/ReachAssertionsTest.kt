@@ -1,6 +1,9 @@
 package net.montycasa.roux.ui.reach
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -20,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.Density
@@ -521,5 +526,101 @@ class ReachAssertionsTest {
             "the guard must count primaries, not targets, got: $message",
             message.contains("found 0 primary control"),
         )
+    }
+
+    @Test
+    fun aTargetWithNoVisibleAreaIsNeitherJudgedNorAGapNeighbour() {
+        // Pure rectangles, no Compose: an edge-flush fixture at this density rounds to 923.05 dp and
+        // trips containment by a hundredth, which would make the test about rounding instead of about
+        // the filter. The rule takes placements as data, so it is tested as data.
+        val visible =
+            ControlPlacement(
+                tag = "edge.visible",
+                rawLeft = 16f,
+                rawTop = 867f,
+                rawRight = 216f,
+                rawBottom = 923f,
+                visibleLeft = 16f,
+                visibleTop = 867f,
+                visibleRight = 216f,
+                visibleBottom = 923f,
+                primary = true,
+                path = "0",
+            )
+        // Composed at the window edge: zero visible area, and 56 dp past the bottom if it were judged.
+        val belowWindow =
+            ControlPlacement(
+                tag = "edge.belowWindow",
+                rawLeft = 16f,
+                rawTop = 923f,
+                rawRight = 136f,
+                rawBottom = 979f,
+                visibleLeft = 16f,
+                visibleTop = 923f,
+                visibleRight = 136f,
+                visibleBottom = 923f,
+                primary = true,
+                path = "1",
+            )
+
+        val violations = findReachViolations(listOf(visible, belowWindow), windowWidthDp = 411f, windowHeightDp = 923f)
+        assertTrue(
+            "a zero-area target must not be judged or counted as a 0 dp neighbour, got: " +
+                violations.map { it.describe() },
+            violations.isEmpty(),
+        )
+    }
+
+    @Test
+    fun aTargetClippedByItsOwnAncestorIsJudgedOnWhatShowsThrough() {
+        rule.setContent {
+            Box(Modifier.fillMaxSize()) {
+                Box(
+                    Modifier
+                        .padding(start = 16.dp, top = 800.dp)
+                        .size(width = 200.dp, height = 30.dp)
+                        .clipToBounds(),
+                ) {
+                    Box(
+                        Modifier
+                            .requiredSize(width = 200.dp, height = 56.dp)
+                            .primaryControl("nested.inViewport"),
+                    )
+                }
+            }
+        }
+
+        // The control's own layout box is 56 dp and sits inside the window, so a window-clipped
+        // measurement clears it. Its parent only shows 30 dp of it, so a thumb only gets 30 dp.
+        val message = failure().message.orEmpty()
+        assertTrue("R4 should be cited for the clipped target, got: $message", message.contains("R4 target size"))
+        assertTrue(
+            "the visible height should be reported, got: $message",
+            message.contains("x 30") && message.contains("under the 48.0 dp minimum"),
+        )
+    }
+
+    @Test
+    fun aDeclaredCustomGestureTargetIsCheckedForSizeWithoutBecomingPrimary() {
+        rule.setContent {
+            Box(Modifier.fillMaxSize()) {
+                Box(
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = 16.dp, top = 16.dp)
+                        .size(width = 32.dp, height = 32.dp)
+                        .draggable(state = rememberDraggableState { }, orientation = Orientation.Vertical)
+                        .reachTarget("drawer.knob"),
+                )
+            }
+        }
+
+        // draggable exposes neither OnClick nor SetProgress, so the audit cannot discover it; the
+        // explicit reachTarget() is what makes it measurable. Being at the top of the screen must not
+        // make it fail R1, because R1 is about primary controls and a drag knob is not one.
+        val message = failure(minPrimary = 0).message.orEmpty()
+        assertTrue("R4 should be cited, got: $message", message.contains("R4 target size"))
+        assertTrue("the knob should be named, got: $message", message.contains("drawer.knob"))
+        assertTrue("a declared target is not primary, got: $message", !message.contains("R1"))
     }
 }
