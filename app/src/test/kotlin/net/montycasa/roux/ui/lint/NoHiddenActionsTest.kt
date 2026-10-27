@@ -256,4 +256,38 @@ class NoHiddenActionsTest {
 
         assertEquals(emptyList<HiddenActionViolation>(), findHiddenActions(source))
     }
+
+    @Test
+    fun aPositionalActionsArgumentIsStillAnActionsSlot() {
+        // No `actions =` anywhere: the fourth positional argument *is* the actions slot.
+        val source =
+            """
+            TopAppBar({ Text("Scores") }, Modifier, {}, { IconButton(onClick = {}) { Text("+") } })
+            """.trimIndent()
+
+        val violations = findHiddenActions(source)
+        assertEquals(1, violations.size)
+        assertTrue(violations.single().reason.contains("actions"))
+    }
+
+    @Test
+    fun aPositionalNavigationIconIsNotAnActionsSlot() {
+        // Third positional is navigationIcon, which R6 allows - a back arrow is navigation, not an action.
+        val source = """TopAppBar({ Text("Scores") }, Modifier, { IconButton(onClick = {}) { Text("<") } })"""
+
+        assertEquals(emptyList<HiddenActionViolation>(), findHiddenActions(source))
+    }
+
+    @Test
+    fun aKeywordAliasCalledWithBackticksIsRecognised() {
+        val source =
+            """
+            import androidx.compose.material3.TopAppBar as `when`
+
+            fun bar() = `when`(title = { Text("Scores") }, actions = {})
+            """.trimIndent()
+
+        val violations = findHiddenActions(source)
+        assertEquals(1, violations.size)
+    }
 }

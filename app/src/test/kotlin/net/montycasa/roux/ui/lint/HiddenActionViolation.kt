@@ -67,7 +67,7 @@ internal fun findHiddenActions(source: String): List<HiddenActionViolation> {
             val close = matchingParen(code, open)
             // from the first character *after* the bar's own "(" so its named arguments are at depth 0
             val arguments = if (close > open) code.substring(open + 1, close) else ""
-            if (hasTopLevelActions(arguments)) {
+            if (hasTopLevelActions(arguments) || hasPositionalActions(arguments)) {
                 violations +=
                     HiddenActionViolation(
                         lineAt(code, index),
@@ -113,7 +113,7 @@ private fun eachCall(
     token: String,
     action: (index: Int, openParen: Int) -> Unit,
 ) {
-    val call = Regex("(?<![\\w$])" + Regex.escape(token) + """\s*\(""")
+    val call = Regex("(?<![\\w$])`?" + Regex.escape(token) + """`?\s*\(""")
     call.findAll(code).forEach { match ->
         val open = code.indexOf('(', match.range.first)
         if (open >= 0) action(match.range.first, open)
@@ -149,6 +149,54 @@ private fun isActionsAssignment(
     var next = index + "actions".length
     while (next < arguments.length && arguments[next].isWhitespace()) next++
     return next < arguments.length && arguments[next] == '=' && arguments.getOrNull(next + 1) != '='
+}
+
+/**
+ * Whether the actions slot is filled positionally. The Material 3 top bars take
+ * `title, modifier, navigationIcon, actions, ...`, so a fourth unnamed argument is an actions slot even
+ * though the word never appears: `TopAppBar({ Text("Scores") }, Modifier, {}, { IconButton(...) })`.
+ *
+ * Counting stops at the first named argument, because Kotlin forbids a positional argument after one.
+ */
+private fun hasPositionalActions(arguments: String): Boolean {
+    var depth = 0
+    var positional = 0
+    var index = 0
+    var segmentStart = 0
+    var segmentHasEquals = false
+
+    fun finish(end: Int) {
+        if (!segmentHasEquals && arguments.substring(segmentStart, end).isNotBlank()) positional++
+    }
+
+    while (index < arguments.length) {
+        when (arguments[index]) {
+            '{', '(', '[' -> {
+                depth++
+            }
+
+            '}', ')', ']' -> {
+                depth--
+            }
+
+            ',' -> {
+                if (depth == 0) {
+                    finish(index)
+                    segmentHasEquals = false
+                    segmentStart = index + 1
+                }
+            }
+
+            '=' -> {
+                if (depth == 0 && arguments.getOrNull(index + 1) != '=' && arguments.getOrNull(index - 1) != '=') {
+                    segmentHasEquals = true
+                }
+            }
+        }
+        index++
+    }
+    finish(arguments.length)
+    return positional >= 4
 }
 
 private fun lineAt(
