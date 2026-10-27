@@ -290,4 +290,41 @@ class NoHiddenActionsTest {
         val violations = findHiddenActions(source)
         assertEquals(1, violations.size)
     }
+
+    @Test
+    fun anEscapedActionsNameIsStillTheActionsSlot() {
+        // Backticks are legal around any identifier, so `actions` = {} fills the same slot as actions = {}.
+        val source = """TopAppBar(`actions` = { IconButton(onClick = {}) { Text("+") } })"""
+
+        val violations = findHiddenActions(source)
+        assertEquals(1, violations.size)
+    }
+
+    @Test
+    fun genericTypeCommasAreNotArgumentSeparators() {
+        // titleFor<Triple<A, B, C>>() is one argument; counting its generic commas would make this a
+        // four-positional bar and flag correct code.
+        val source = """TopAppBar(titleFor<Triple<A, B, C>>(), Modifier)"""
+
+        assertEquals(emptyList<HiddenActionViolation>(), findHiddenActions(source))
+    }
+
+    @Test
+    fun aLessThanComparisonDoesNotSwallowLaterArguments() {
+        // A bare `<` at the bar's own level is a comparison, not a type-argument opener. Treating it as one
+        // would put the counter inside angle brackets and stop the commas from separating arguments, so the
+        // actions slot below would go unseen - a false negative rather than a false positive.
+        val source = """TopAppBar(flag < limit, Modifier, {}, { IconButton(onClick = {}) { Text("+") } })"""
+
+        assertEquals(1, findHiddenActions(source).size)
+    }
+
+    @Test
+    fun theCountStopsAtANamedArgument() {
+        // Kotlin rejects a positional argument after a named one, so this cannot compile; the point is that
+        // the counter stops rather than crediting malformed text with four positional slots.
+        val source = """TopAppBar(title = { Text("x") }, Modifier, {}, {}, {})"""
+
+        assertEquals(emptyList<HiddenActionViolation>(), findHiddenActions(source))
+    }
 }

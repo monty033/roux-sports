@@ -143,10 +143,17 @@ private fun isActionsAssignment(
     arguments: String,
     index: Int,
 ): Boolean {
-    if (!arguments.startsWith("actions", index)) return false
+    // `actions =` and its escaped twin `\`actions\` =` are the same slot. Kotlin lets a backticked name be
+    // used wherever a plain identifier is, so a guard that knows only the bare spelling can be walked past.
+    val nameLength =
+        when {
+            arguments.startsWith("`actions`", index) -> "`actions`".length
+            arguments.startsWith("actions", index) -> "actions".length
+            else -> return false
+        }
     val before = arguments.getOrNull(index - 1)
     if (before != null && (before.isLetterOrDigit() || before == '_' || before == '$')) return false
-    var next = index + "actions".length
+    var next = index + nameLength
     while (next < arguments.length && arguments[next].isWhitespace()) next++
     return next < arguments.length && arguments[next] == '=' && arguments.getOrNull(next + 1) != '='
 }
@@ -160,13 +167,22 @@ private fun isActionsAssignment(
  */
 private fun hasPositionalActions(arguments: String): Boolean {
     var depth = 0
+    var angles = 0
     var positional = 0
+    var named = false
     var index = 0
     var segmentStart = 0
     var segmentHasEquals = false
 
     fun finish(end: Int) {
-        if (!segmentHasEquals && arguments.substring(segmentStart, end).isNotBlank()) positional++
+        val segment = arguments.substring(segmentStart, end)
+        if (segmentHasEquals) {
+            // Kotlin rejects a positional argument after a named one, so this is malformed source; stop
+            // counting rather than crediting malformed text with an argument count.
+            named = true
+        } else if (!named && segment.isNotBlank()) {
+            positional++
+        }
     }
 
     while (index < arguments.length) {
@@ -179,8 +195,16 @@ private fun hasPositionalActions(arguments: String): Boolean {
                 depth--
             }
 
+            '<' -> {
+                if (depth == 0 && opensTypeArguments(arguments, index)) angles++
+            }
+
+            '>' -> {
+                if (depth == 0 && angles > 0 && closesTypeArguments(arguments, index)) angles--
+            }
+
             ',' -> {
-                if (depth == 0) {
+                if (depth == 0 && angles == 0) {
                     finish(index)
                     segmentHasEquals = false
                     segmentStart = index + 1
@@ -197,6 +221,32 @@ private fun hasPositionalActions(arguments: String): Boolean {
     }
     finish(arguments.length)
     return positional >= 4
+}
+
+/**
+ * Whether the `<` at [index] opens a type argument list rather than comparing. A generic opener follows an
+ * identifier or a closing bracket and is not part of `<=`. Without this, `titleFor<Triple<A, B, C>>()` has
+ * its commas counted as argument separators and a two-argument bar looks like a four-argument one.
+ */
+private fun opensTypeArguments(
+    text: String,
+    index: Int,
+): Boolean {
+    if (text.getOrNull(index + 1) == '=') return false
+    // Kotlin requires the type-argument list to be adjacent: `titleFor<Int>()` is generic, `flag < limit` and
+    // `titleFor < Int >()` are comparisons. Locating the previous non-space character would erase exactly
+    // that distinction, so the neighbour is read as-is.
+    val previous = text.getOrNull(index - 1) ?: return false
+    return previous.isLetterOrDigit() || previous == '_' || previous == '>' || previous == ']' || previous == ')'
+}
+
+/** Whether the `>` at [index] closes a type argument list: not `>=`, not an arrow's `->`. */
+private fun closesTypeArguments(
+    text: String,
+    index: Int,
+): Boolean {
+    if (text.getOrNull(index + 1) == '=') return false
+    return text.getOrNull(index - 1) != '-'
 }
 
 private fun lineAt(
