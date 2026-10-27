@@ -106,6 +106,27 @@ fun ComposeTestRule.reachTargets(): List<ControlPlacement> {
     val windowHeightDp = root.size.height / scale
     val found = mutableListOf<ControlPlacement>()
 
+    // Every semantics action that means "a person operates this", decided once rather than one action per
+    // review round. Each entry earned its place by being a real control that carries no OnClick: a slider
+    // exposes SetProgress, and a text field can expose SetText and nothing else, so a 40 dp field used to
+    // vanish from the audit while it passed.
+    //
+    // Deliberately absent: ScrollBy and its relatives, because a scrollable region is a container rather
+    // than a target and including it would flag every list. Custom actions added through
+    // semantics { customActions = ... } cannot be read reliably here; such a control declares itself with
+    // Modifier.reachTarget(tag).
+    val actions =
+        listOf(
+            SemanticsActions.OnClick,
+            SemanticsActions.OnLongClick,
+            SemanticsActions.SetProgress,
+            SemanticsActions.SetText,
+            SemanticsActions.SetSelection,
+            SemanticsActions.Expand,
+            SemanticsActions.Collapse,
+            SemanticsActions.Dismiss,
+        )
+
     fun walk(
         node: SemanticsNode,
         path: String,
@@ -116,12 +137,7 @@ fun ComposeTestRule.reachTargets(): List<ControlPlacement> {
         val primaryTag = node.config.getOrNull(PrimaryControlTag)
         val declaredTarget = node.config.getOrNull(ReachTargetTag)
         val tag = primaryTag ?: declaredTarget
-        // A target is anything a finger can act on: a click, or an adjustable control such as a slider,
-        // which carries SetProgress instead of OnClick and would otherwise be invisible to R4.
-        if (tag != null ||
-            node.config.contains(SemanticsActions.OnClick) ||
-            node.config.contains(SemanticsActions.SetProgress)
-        ) {
+        if (tag != null || actions.any { node.config.contains(it) }) {
             // Position and measured size, not boundsInRoot: boundsInRoot is clipped by parents, so a
             // control running 17 dp past the bottom of the window reports a rectangle that stops exactly
             // at the window edge, and looks like a smaller target that passes every rule. The overrun is

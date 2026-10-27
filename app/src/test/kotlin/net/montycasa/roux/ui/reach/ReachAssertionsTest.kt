@@ -26,6 +26,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.setText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -743,5 +745,25 @@ class ReachAssertionsTest {
             "two controls sharing a tag must be rejected, got: ${duplicated.message}",
             duplicated.message.orEmpty().contains("must be unique"),
         )
+    }
+
+    @Test
+    fun aControlOfferingOnlySetTextIsATarget() {
+        rule.setContent {
+            Box(Modifier.fillMaxSize()) {
+                // SetText without OnClick: what a text field can expose, and what a click-only collector
+                // misses. BasicTextField happens to add OnClick on this Compose version, so the action set
+                // is exercised directly rather than through a component that would mask the gap.
+                Box(
+                    Modifier
+                        .padding(start = 16.dp, top = 16.dp)
+                        .size(width = 40.dp, height = 40.dp)
+                        .semantics { setText { true } },
+                )
+            }
+        }
+
+        val message = failure().message.orEmpty()
+        assertTrue("R4 should be cited for a SetText control, got: $message", message.contains("R4 target size"))
     }
 }
