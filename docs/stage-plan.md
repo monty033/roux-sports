@@ -266,6 +266,28 @@ outside it by construction rather than by oversight:
   The audit honours `reverseScrolling` when a caller sets it and assumes LTR otherwise, which matches the English-only
   v1. Localisation must revisit this before any RTL build ships.
 
+### Collections are reach targets, actions are primary controls (S5.2)
+
+R1 puts a primary control at or below 0.50·H, and R2 tightens that to 0.70·H for frequent ones. That is a rule about
+**fixed actions**: the date strip, the favourites toggle and the bottom bar all sit in the bottom zone of the scores
+screen for exactly this reason, and the game rows above them are clickable yet carry no primary tag.
+
+A collection of items - the thirty-two team toggles, a list of games - is the other case. Its rows are reached by
+scrolling, so applying R1 to each row asks for something structurally impossible: thirty-two controls cannot all start
+below the midpoint. The first attempt satisfied the letter of R1 by giving the header a weight and squeezing the list
+into the bottom half, which passed every test and showed **five of thirty-two teams**.
+
+The rule, therefore:
+
+- **Fixed actions** (one per screen, pressed where they sit) are `primaryControl`, and R1/R2/edge insets apply.
+- **Rows in a scrolling collection** are `reachTarget`: R4 size and gap, and R5 containment, still apply; R1 and R2 do
+  not.
+- A screen still declares its own primary controls, and the audit fails if the tree's declaration and the screen's
+  differ - so changing a row's classification has to be done deliberately, in both places.
+
+This is a judgement about reachability, not an exemption from it: if a collection ever becomes a single action (a
+one-tap "confirm all"), that action is primary and belongs in the bottom zone.
+
 ## 6. CI recommendation
 
 > ⚠️ **Unverified.** Nobody has checked whether the Forgejo instance's Actions runner can do an Android build (JDK 21, SDK with platform 37 and build-tools 36.0.0, Gradle, about 8 GB RAM). CI is therefore **Stage 11: optional, last, and off the critical path.** No other stage depends on it.
