@@ -8,6 +8,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertHeightIsEqualTo
+import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.captureToImage
@@ -169,13 +170,27 @@ class DateShelfCalendarTest {
     }
 
     @Test
-    fun todayJumpsAndSelectsDoneKeepsThePickAndReopeningUsesItsMonth() {
+    fun tappingADayOnlyMovesTheDraftAndDoneAppliesIt() {
+        launch(selected = "2026-11-15")
+        open()
+        rule.onNodeWithTag("calendar.day.2026-11-19").performClick()
+        // The sheet shows the draft as selected, but the screen behind it has not moved.
+        rule.onNodeWithTag("calendar.day.2026-11-19").assertIsSelected()
+        assertEquals("2026-11-15", state.value.selectedDate)
+        rule.onNodeWithText("DONE").performClick()
+        rule.onNodeWithTag("calendar.sheet").assertDoesNotExist()
+        assertEquals("2026-11-19", state.value.selectedDate)
+    }
+
+    @Test
+    fun todayJumpsTheDraftAndOnlyDoneApplies() {
         launch(selected = "2026-12-15")
         open()
         rule.onNodeWithText("TODAY").performClick()
         rule.onNodeWithText("November 2026").assertExists()
         rule.onNodeWithTag("calendar.day.2026-11-16").assertIsSelected()
-        assertEquals("2026-11-16", state.value.selectedDate)
+        // TODAY is a draft too: nothing is applied until DONE.
+        assertEquals("2026-12-15", state.value.selectedDate)
         rule.onNodeWithTag("calendar.day.2026-11-20").performClick()
         rule.onNodeWithText("DONE").performClick()
         rule.onNodeWithTag("calendar.sheet").assertDoesNotExist()
@@ -186,10 +201,11 @@ class DateShelfCalendarTest {
     }
 
     @Test
-    fun scrimTapDismissesAndPreservesThePickedDate() {
+    fun scrimTapDiscardsTheDraftAndLeavesTheScoresWhereTheyWere() {
         launch()
         open()
         rule.onNodeWithTag("calendar.day.2026-11-19").performClick()
+        rule.onNodeWithTag("calendar.day.2026-11-19").assertIsSelected()
         rule.onNodeWithTag("calendar.scrim").performTouchInput {
             click(
                 androidx.compose.ui.geometry
@@ -197,13 +213,18 @@ class DateShelfCalendarTest {
             )
         }
         rule.onNodeWithTag("calendar.sheet").assertDoesNotExist()
-        assertEquals("2026-11-19", state.value.selectedDate)
+        assertEquals("2026-11-15", state.value.selectedDate)
+        // Reopening starts from the applied date, not from the discarded draft.
+        open()
+        rule.onNodeWithTag("calendar.day.2026-11-15").assertIsSelected()
+        rule.onNodeWithTag("calendar.day.2026-11-19").assertIsNotSelected()
     }
 
     @Test
-    fun dialogDismissActionClosesAndPreservesSelection() {
+    fun dialogDismissActionDiscardsTheDraft() {
         launch()
         open()
+        rule.onNodeWithTag("calendar.day.2026-11-19").performClick()
         rule.onNodeWithTag("calendar.sheet").performSemanticsAction(SemanticsActions.Dismiss)
         rule.onNodeWithTag("calendar.sheet").assertDoesNotExist()
         assertEquals("2026-11-15", state.value.selectedDate)

@@ -9,7 +9,9 @@ Two decisions since that session, applied to the steps that depended on them:
 
 - **Times are device-local.** Start times, "today" and the stale banner all use the device zone and the user's 12/24-hour
   preference. The league day does not roll over separately for Pacific users; it is the device's civil date.
-- The calendar-sheet confirm step is still open; the step that covers it stays conditional.
+- **The calendar sheet confirms.** Tapping a day or TODAY moves a draft and highlights it; only DONE applies it.
+  Dismissing - scrim, back, or the dialog dismiss action - discards the draft, and TODAY is a draft too rather than an
+  instant jump. Step H18 is therefore in scope, not conditional.
 
 Where the review and this plan disagree with the merged documentation, this plan wins: the review found that the parity
 document's "the app pins what the design floats" claim is false — the design pins the state rail at `5.75rem` (92 dp),

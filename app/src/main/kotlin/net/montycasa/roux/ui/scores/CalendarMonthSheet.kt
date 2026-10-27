@@ -64,11 +64,15 @@ internal fun CalendarMonthSheet(
     selectedDate: String,
     today: String,
     dateIndex: List<DateIndexEntry>,
-    onSelect: (String) -> Unit,
+    onApply: (String) -> Unit,
     onDismiss: () -> Unit,
     bottomInsets: WindowInsets = WindowInsets(0, 0, 0, 0),
 ) {
     var displayedMonth by rememberSaveable { mutableStateOf(selectedDate.take(7)) }
+    // The sheet holds a draft, and only DONE applies it. Tapping a day or TODAY moves the draft; dismissing the sheet -
+    // scrim, back or the dialog dismiss action - throws the draft away and leaves the scores where they were. That is
+    // what makes TODAY and DONE two different buttons rather than decoration.
+    var draft by rememberSaveable { mutableStateOf(selectedDate) }
     val month = YearMonth.parse(displayedMonth)
     val locale = LocalConfiguration.current.locales[0]
     val title = month.format(DateTimeFormatter.ofPattern("MMMM yyyy", locale))
@@ -135,12 +139,12 @@ internal fun CalendarMonthSheet(
                         val date = start.plusDays((week * 7 + day).toLong())
                         CalendarDay(
                             date,
-                            date.toString() == selectedDate,
+                            date.toString() == draft,
                             YearMonth.from(date) != month,
                             date.toString() in games,
                             Modifier.weight(1f),
                         ) {
-                            onSelect(date.toString())
+                            draft = date.toString()
                         }
                     }
                 }
@@ -148,9 +152,12 @@ internal fun CalendarMonthSheet(
             Row(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CalendarAction(stringResource(R.string.calendar_today), false, Modifier.weight(1f)) {
                     displayedMonth = today.take(7)
-                    onSelect(today)
+                    draft = today
                 }
-                CalendarAction(stringResource(R.string.calendar_done), true, Modifier.weight(1f), onDismiss)
+                CalendarAction(stringResource(R.string.calendar_done), true, Modifier.weight(1f)) {
+                    onApply(draft)
+                    onDismiss()
+                }
             }
             // The shell supplies its navigation inset only when this overlay sits outside Scaffold.
             // An already inset screen supplies zero; neither path invents a second 24 dp strip.
