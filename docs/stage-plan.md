@@ -1248,13 +1248,13 @@ Reference measurements (from `final/scores-screen.html`):
 |---|---|
 | Card | one per game, `grid-template-columns: minmax(0,1fr) 5.75rem`, radius 16 dp, **76 dp tall**, **8 dp between cards** |
 | Card inner | 1 dp transparent border (border-box) + 8 dp vertical padding + two 28 dp rows 2 dp apart = 76 dp |
-| Crest | 34 × 34 dp (32 dp when the card is ≤ 380 dp wide) |
-| Club name | 15 sp / 600 (14 sp narrow), ellipsised, full name not abbreviation |
-| Score | 22 sp / 500 (21 sp narrow), **tabular figures**, right-aligned, 30 dp slot (28 dp narrow) |
-| Rail | 1 dp left rule, **92 dp wide (82 dp narrow)**; a **vertically centred stack**, not rows aligned to the team lines: pill, clock, shots for a live game; pill then shots for a final; the start time alone for an upcoming one |
-| Live | filled orange **pill carrying only `dot + Live`** (9 sp / 800, uppercase, 0.09 em letter-spacing); the clock sits **below** the pill in signature at 12 sp / 800 tabular; live scores are ink at **weight 700** (no leading bar — see R9 note) |
-| Final | 1.5 dp stroke pill, `FINAL` text in **signature**, then shots; winner's name and score in signature |
-| Upcoming | no pill and **no numerals**; muted names; start time alone in the rail |
+| Crest | 34 × 34 dp (32 dp when the **scroll container** is ≤ 380 dp — the design queries `.listwrap`, the full-width viewport, not the card) |
+| Club name | 15 sp / 600 (14 sp narrow), letter-spacing -.005 em, ellipsised, full name not abbreviation |
+| Score | 22 sp / 500 (21 sp narrow), **tabular figures**, right-aligned, 30 dp slot (28 dp narrow), letter-spacing -.02 em; ink2 by default, ink at 700 when live, signature for a final winner, ink3 for the dash |
+| Rail | 1 dp left rule, **92 dp wide (82 dp narrow)**; a stack **centred vertically only** and flush left 12 dp in from the rail's edge (7 dp from its right), never horizontally centred: pill, clock, shots for a live game; pill then shots for a final; the start time alone for an upcoming one |
+| Live | filled orange **pill carrying only `dot + LIVE`** (9 sp / 800, uppercase, 0.09 em letter-spacing, 1.5 dp border in its own fill so it matches the outlined pill's size); the clock sits **below** the pill in signature at 12 sp / 800 tabular; live scores are ink at **weight 700** (no leading bar — see R9 note) |
+| Final | 1.5 dp stroke pill in **signature**: `FINAL`, `FINAL · OT`, `FINAL · SO`; then shots. Winner's name and score in signature, the loser's score in **ink2** |
+| Upcoming | no pill and **no numerals** — but an **en dash** at ink3 weight 400 in the score slot, so the column reads "not started" rather than broken; muted names; start time alone in the rail |
 | Header | drawer handle, wordmark, `● N LIVE` pill |
 | Date chip | 56 × 56; weekday/month small, day 19 sp; today's chip reads only "Today"; calendar tile pinned right |
 | No star toggle | favourites become the "My Teams" pseudo-league in the drawer |

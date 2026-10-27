@@ -2,8 +2,8 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <string name="game_row_final">FINAL</string>
     <!-- Complete labels let translators choose the separator and word order. -->
-    <string name="game_row_final_ot">FINAL/OT</string>
-    <string name="game_row_final_so">FINAL/SO</string>
+    <string name="game_row_final_ot">FINAL · OT</string>
+    <string name="game_row_final_so">FINAL · SO</string>
     <string name="game_row_period_first">1st</string>
     <string name="game_row_period_second">2nd</string>
     <string name="game_row_period_third">3rd</string>

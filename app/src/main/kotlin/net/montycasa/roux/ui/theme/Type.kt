@@ -28,8 +28,8 @@ data class GameCardTypography(
 
 val RouxCardTypography =
     GameCardTypography(
-        clubName = cardText.copy(fontSize = 15.sp, fontWeight = FontWeight.SemiBold, lineHeight = 20.sp),
-        score = cardText.copy(fontSize = 22.sp, fontWeight = FontWeight.Medium, lineHeight = 22.sp),
+        clubName = cardText.copy(fontSize = 15.sp, fontWeight = FontWeight.SemiBold, lineHeight = 20.sp, letterSpacing = (-0.005).em),
+        score = cardText.copy(fontSize = 22.sp, fontWeight = FontWeight.Medium, lineHeight = 22.sp, letterSpacing = (-0.02).em),
         clock = cardText.copy(fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 16.sp),
         finalState =
             cardText.copy(

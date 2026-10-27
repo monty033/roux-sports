@@ -1,5 +1,6 @@
 package net.montycasa.roux.ui.scores
 
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
@@ -20,20 +21,24 @@ import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.height
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.width
 import androidx.test.core.app.ApplicationProvider
 import com.github.takahirom.roborazzi.captureRoboImage
+import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
@@ -111,7 +116,9 @@ class GameRowTest {
             RouxTheme(dark = dark) {
                 density = Density(LocalDensity.current.density, fontScale)
                 CompositionLocalProvider(LocalDensity provides density) {
-                    GameRow(game, modifier.testTag("game-row"))
+                    BoxWithConstraints {
+                        GameRow(game, narrow = maxWidth <= 380.dp, modifier = modifier.testTag("game-row"))
+                    }
                 }
             }
         }
@@ -149,7 +156,7 @@ class GameRowTest {
     @Test
     fun finalOvertimeShowsFinalOtAndNoLiveIndicatorDespiteRetainedClock() {
         launch(finalOt)
-        rule.onNodeWithText("FINAL/OT").assertIsDisplayed()
+        rule.onNodeWithText("FINAL · OT").assertIsDisplayed()
         rule.onNodeWithContentDescription("Live").assertDoesNotExist()
         rule.onNodeWithText("12:34").assertDoesNotExist()
     }
@@ -157,7 +164,7 @@ class GameRowTest {
     @Test
     fun finalShootoutShowsFinalSo() {
         launch(finalOt.copy(finalKind = FinalKind.SO))
-        rule.onNodeWithText("FINAL/SO").assertIsDisplayed()
+        rule.onNodeWithText("FINAL · SO").assertIsDisplayed()
     }
 
     @Test
@@ -404,36 +411,66 @@ class GameRowTest {
         assertNarrowMetrics(336.dp)
     }
 
-    @Test
-    fun cardAtThreeHundredEightyDpUsesNarrowMetricsOnAWideScreen() {
-        launch(live, modifier = Modifier.width(380.dp))
-        assertNarrowMetrics(380.dp)
+    private fun launchViewport(width: Dp) {
+        rule.setContent {
+            RouxTheme {
+                density = LocalDensity.current
+                ScoresScreen(
+                    ScoresUiState(live.date, rows = listOf(live), freshness = Freshness.Fresh),
+                    onRefresh = {},
+                    onGameClick = {},
+                    onSelectDate = {},
+                    onToggleFavourites = {},
+                    modifier = Modifier.width(width),
+                )
+            }
+        }
+        rule.onNodeWithTag("scores.list").assertWidthIsEqualTo(width)
     }
 
     @Test
-    fun cardAboveThreeHundredEightyDpUsesWideMetrics() {
-        launch(live, modifier = Modifier.width(381.dp))
-        rule.onNodeWithTag("game-row").assertWidthIsEqualTo(381.dp).assertHeightIsEqualTo(76.dp)
-        rule.onNodeWithTag(STATE_RAIL_TAG).assertWidthIsEqualTo(92.dp)
-        rule.onAllNodesWithTag(CREST_TAG)[0].assertWidthIsEqualTo(34.dp)
-        assertEquals(15.sp, textLayout(rule.onNodeWithText("Boston Bruins")).layoutInput.style.fontSize)
-        assertEquals(22.sp, textLayout(rule.onNodeWithText("2")).layoutInput.style.fontSize)
+    fun viewportAtThreeHundredEightyDpUsesNarrowMetrics() {
+        launchViewport(380.dp)
+        assertNarrowMetrics(356.dp, cardTag = "scores.game.${live.id.value}")
     }
 
-    private fun assertNarrowMetrics(cardWidth: Dp) {
-        val card = rule.onNodeWithTag("game-row")
+    @Test
+    fun viewportAtThreeHundredEightyOneDpUsesWideMetrics() {
+        launchViewport(381.dp)
+        assertWideViewportMetrics(357.dp)
+    }
+
+    @Test
+    fun viewportAtThreeHundredNinetyDpUsesWideMetrics() {
+        launchViewport(390.dp)
+        assertWideViewportMetrics(366.dp)
+    }
+
+    private fun assertWideViewportMetrics(cardWidth: Dp) {
+        rule.onNodeWithTag("scores.game.${live.id.value}").assertWidthIsEqualTo(cardWidth).assertHeightIsEqualTo(76.dp)
+        rule.onNodeWithTag(STATE_RAIL_TAG, useUnmergedTree = true).assertWidthIsEqualTo(92.dp)
+        rule.onAllNodesWithTag(CREST_TAG, useUnmergedTree = true)[0].assertWidthIsEqualTo(34.dp)
+        assertEquals(15.sp, textLayout(rule.onNodeWithText("Boston Bruins", useUnmergedTree = true)).layoutInput.style.fontSize)
+        assertEquals(22.sp, textLayout(rule.onNodeWithText("2", useUnmergedTree = true)).layoutInput.style.fontSize)
+    }
+
+    private fun assertNarrowMetrics(
+        cardWidth: Dp,
+        cardTag: String = "game-row",
+    ) {
+        val card = rule.onNodeWithTag(cardTag)
         card.assertWidthIsEqualTo(cardWidth).assertHeightIsEqualTo(76.dp)
-        rule.onNodeWithTag(STATE_RAIL_TAG).assertWidthIsEqualTo(82.dp)
-        val rows = rule.onAllNodesWithTag(TEAM_LINE_TAG)
-        val crests = rule.onAllNodesWithTag(CREST_TAG)
+        rule.onNodeWithTag(STATE_RAIL_TAG, useUnmergedTree = true).assertWidthIsEqualTo(82.dp)
+        val rows = rule.onAllNodesWithTag(TEAM_LINE_TAG, useUnmergedTree = true)
+        val crests = rule.onAllNodesWithTag(CREST_TAG, useUnmergedTree = true)
         assertEquals(2, rows.fetchSemanticsNodes().size)
         assertEquals(2, crests.fetchSemanticsNodes().size)
         repeat(2) {
             rows[it].assertHeightIsEqualTo(28.dp)
             crests[it].assertWidthIsEqualTo(32.dp).assertHeightIsEqualTo(32.dp)
         }
-        val name = rule.onNodeWithText("Boston Bruins")
-        val score = rule.onNodeWithText("2")
+        val name = rule.onNodeWithText("Boston Bruins", useUnmergedTree = true)
+        val score = rule.onNodeWithText("2", useUnmergedTree = true)
         assertEquals(14.sp, textLayout(name).layoutInput.style.fontSize)
         assertEquals(21.sp, textLayout(score).layoutInput.style.fontSize)
         assertEquals(21.sp, textLayout(score).layoutInput.style.lineHeight)
@@ -456,9 +493,11 @@ class GameRowTest {
         assertEquals(FontWeight.Bold, score.fontWeight)
         assertEquals(RouxLightColors.onSurface, score.color)
         assertEquals("tnum", score.fontFeatureSettings)
+        assertEquals((-0.02).em, score.letterSpacing)
         val name = textLayout(rule.onNodeWithText("Toronto Maple Leafs"))
         assertEquals(15.sp, name.layoutInput.style.fontSize)
         assertEquals(FontWeight.SemiBold, name.layoutInput.style.fontWeight)
+        assertEquals((-0.005).em, name.layoutInput.style.letterSpacing)
         assertEquals(1, name.layoutInput.maxLines)
     }
 
@@ -481,6 +520,15 @@ class GameRowTest {
         val dot = rule.onNodeWithContentDescription("Live")
         dot.assertWidthIsEqualTo(6.dp).assertHeightIsEqualTo(6.dp)
         assertEquals(accents.onFill, dot.captureToImage().toPixelMap()[3, 3])
+        val labelBounds = rule.onNodeWithText("LIVE", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val pillBounds = capsule.getUnclippedBoundsInRoot()
+        val borderSpace = with(density) { 1.5.dp.roundToPx().toDp() }
+        assertEquals("live pill reserves its border above the label", borderSpace + 2.dp, labelBounds.top - pillBounds.top)
+        assertEquals(
+            "live pill reserves its border before the dot",
+            borderSpace + 6.dp,
+            dot.getUnclippedBoundsInRoot().left - pillBounds.left,
+        )
         val label = textLayout(rule.onNodeWithText("LIVE")).layoutInput.style
         assertEquals(accents.onFill, label.color)
         val clock = textLayout(rule.onNodeWithText("2nd 12:34")).layoutInput.style
@@ -493,7 +541,7 @@ class GameRowTest {
             assertEquals(colors.onSurface, score.color)
             assertEquals(FontWeight.Bold, score.fontWeight)
         }
-        assertCentredStack(listOf(capsule, rule.onNodeWithText("2nd 12:34"), rule.onNodeWithTag(SHOTS_TAG)))
+        assertStartAlignedStack(listOf(capsule, rule.onNodeWithText("2nd 12:34"), rule.onNodeWithTag(SHOTS_TAG)))
         println(
             "Measured ${if (dark) "dark" else "light"}: live pill fill=#%08X text=#%08X; clock=#%08X weight=%d; score=#%08X weight=%d"
                 .format(
@@ -511,7 +559,7 @@ class GameRowTest {
         )
     }
 
-    private fun assertCentredStack(lines: List<SemanticsNodeInteraction>) {
+    private fun assertStartAlignedStack(lines: List<SemanticsNodeInteraction>) {
         val rail = rule.onNodeWithTag(STATE_RAIL_TAG).getUnclippedBoundsInRoot()
         val bounds = lines.map { it.getUnclippedBoundsInRoot() }
         assertEquals(
@@ -522,21 +570,35 @@ class GameRowTest {
         )
         bounds.forEach {
             assertEquals(
-                "line centred horizontally",
-                (rail.left + rail.right).value / 2f,
-                (it.left + it.right).value / 2f,
+                "line starts 12 dp inside the rail",
+                (rail.left + 12.dp).value,
+                it.left.value,
                 0.5f,
             )
         }
+        bounds.forEach { assertTrue("line stays within the 7 dp end inset", it.right <= rail.right - 7.dp) }
+        val text = lines.last()
+        val layout = textLayout(text)
+        assertEquals(TextAlign.Start, layout.layoutInput.style.textAlign)
+        val contentWidth =
+            with(density) {
+                layout.layoutInput.constraints.maxWidth
+                    .toDp()
+            }
+        assertEquals("rail content width reserves both insets", (rail.width - 19.dp).value, contentWidth.value, 0.01f)
+        assertEquals("first text line starts at the left", 0f, layout.getLineLeft(0), 0.01f)
+        val leftInset = bounds.first().left - rail.left
+        val rightInset = rail.width - leftInset - contentWidth
+        println("Measured rail: left inset=${leftInset.value} dp, right inset=${rightInset.value} dp; start-aligned, vertically centred")
         bounds.zipWithNext().forEach { (above, below) -> assertEquals("line gap", 2f, (below.top - above.bottom).value, 0.01f) }
         rule.onNodeWithTag("game-row").assertHeightIsEqualTo(76.dp)
     }
 
     @Test
-    fun livePillClockAndShotsFormACentredStackLight() = assertLiveStack(dark = false)
+    fun livePillClockAndShotsFormAStartAlignedStackLight() = assertLiveStack(dark = false)
 
     @Test
-    fun livePillClockAndShotsFormACentredStackDark() = assertLiveStack(dark = true)
+    fun livePillClockAndShotsFormAStartAlignedStackDark() = assertLiveStack(dark = true)
 
     private fun assertFinalWinner(dark: Boolean) {
         launch(finalOt.copy(awayShots = 18, homeShots = 14), dark = dark)
@@ -545,16 +607,24 @@ class GameRowTest {
         assertEquals(accents.signature, textLayout(rule.onNodeWithText("Toronto Maple Leafs")).layoutInput.style.color)
         assertEquals(accents.signature, textLayout(rule.onNodeWithText("3")).layoutInput.style.color)
         assertEquals(colors.onSurface, textLayout(rule.onNodeWithText("Boston Bruins")).layoutInput.style.color)
-        assertEquals(colors.onSurface, textLayout(rule.onNodeWithText("2")).layoutInput.style.color)
-        val label = textLayout(rule.onNodeWithText("FINAL/OT")).layoutInput.style
+        val losingScore = textLayout(rule.onNodeWithText("2")).layoutInput.style
+        val winningScore = textLayout(rule.onNodeWithText("3")).layoutInput.style
+        assertEquals(colors.onSurfaceVariant, losingScore.color)
+        assertEquals(FontWeight.Medium, losingScore.fontWeight)
+        assertEquals(FontWeight.Medium, winningScore.fontWeight)
+        val label = textLayout(rule.onNodeWithText("FINAL · OT")).layoutInput.style
         assertEquals(accents.signature, label.color)
         assertEquals(9.sp, label.fontSize)
         assertEquals(FontWeight.ExtraBold, label.fontWeight)
         assertEquals(0.09.em, label.letterSpacing)
-        val pixels = rule.onNodeWithTag(STATE_CAPSULE_TAG).captureToImage().toPixelMap()
+        val pill = rule.onNodeWithTag(STATE_CAPSULE_TAG)
+        val pillLayout = textLayout(pill)
+        val borderSpace = with(density) { 1.5.dp.roundToPx().toDp() }
+        pill.assertHeightIsEqualTo(with(density) { pillLayout.size.height.toDp() } + 4.dp + borderSpace * 2)
+        val pixels = pill.captureToImage().toPixelMap()
         assertEquals(accents.stroke, pixels[pixels.width / 2, 0])
         assertEquals(colors.surfaceVariant, pixels[pixels.width / 2, pixels.height - 3])
-        assertCentredStack(listOf(rule.onNodeWithTag(STATE_CAPSULE_TAG), rule.onNodeWithTag(SHOTS_TAG)))
+        assertStartAlignedStack(listOf(rule.onNodeWithTag(STATE_CAPSULE_TAG), rule.onNodeWithTag(SHOTS_TAG)))
         println(
             "Measured ${if (dark) "dark" else "light"}: final pill text=#%08X weight=%d".format(
                 label.color.toArgb(),
@@ -574,24 +644,46 @@ class GameRowTest {
         launch(finalOt.copy(awayScore = 4))
         assertEquals(RouxLightAccents.signature, textLayout(rule.onNodeWithText("Boston Bruins")).layoutInput.style.color)
         assertEquals(RouxLightAccents.signature, textLayout(rule.onNodeWithText("4")).layoutInput.style.color)
-        assertEquals(RouxLightColors.onSurface, textLayout(rule.onNodeWithText("3")).layoutInput.style.color)
+        assertEquals(RouxLightColors.onSurfaceVariant, textLayout(rule.onNodeWithText("3")).layoutInput.style.color)
     }
 
-    @Test
-    fun upcomingSuppressesEvenSuppliedScoresAndShotsAndHasNoCapsule() {
-        launch(scheduled.copy(homeScore = 0, awayScore = 2, homeShots = 14, awayShots = 18))
+    private fun assertUpcoming(
+        dark: Boolean,
+        state: GameState = GameState.Scheduled,
+    ) {
+        launch(scheduled.copy(state = state, homeScore = 0, awayScore = 2, homeShots = 14, awayShots = 18), dark = dark)
+        val colors = if (dark) RouxDarkColors else RouxLightColors
+        val accents = if (dark) RouxDarkAccents else RouxLightAccents
         rule.onNodeWithText("0").assertDoesNotExist()
         rule.onNodeWithText("2").assertDoesNotExist()
         rule.onNodeWithTag(STATE_CAPSULE_TAG).assertDoesNotExist()
         rule.onNodeWithTag(SHOTS_TAG).assertDoesNotExist()
         val name = textLayout(rule.onNodeWithText("Boston Bruins")).layoutInput.style
-        assertEquals(RouxLightColors.onSurfaceVariant, name.color)
+        assertEquals(colors.onSurfaceVariant, name.color)
+        val dashes = rule.onAllNodesWithText("–")
+        assertEquals("one en dash per team", 2, dashes.fetchSemanticsNodes().size)
+        repeat(2) {
+            dashes[it].assertIsDisplayed().assertWidthIsEqualTo(30.dp)
+            val dash = textLayout(dashes[it]).layoutInput.style
+            assertEquals(accents.muted, dash.color)
+            assertEquals(FontWeight.Normal, dash.fontWeight)
+            assertEquals((-0.02).em, dash.letterSpacing)
+        }
         val time = rule.onNodeWithText("7:00 PM", useUnmergedTree = true)
         val rail = rule.onNodeWithTag(STATE_RAIL_TAG, useUnmergedTree = true).fetchSemanticsNode()
         assertEquals("scheduled rail contains only the time", listOf(time.fetchSemanticsNode().id), rail.children.map { it.id })
         assertEquals("tnum", textLayout(time).layoutInput.style.fontFeatureSettings)
-        assertCentredStack(listOf(time))
+        assertStartAlignedStack(listOf(time))
     }
+
+    @Test
+    fun upcomingShowsDashesAndSuppressesSuppliedScoresAndShotsLight() = assertUpcoming(dark = false)
+
+    @Test
+    fun upcomingShowsDashesAndSuppressesSuppliedScoresAndShotsDark() = assertUpcoming(dark = true)
+
+    @Test
+    fun pregameShowsDashesToo() = assertUpcoming(dark = false, state = GameState.Pre)
 
     @Test
     fun knownShotsRenderAwayThenHomeWithTabularFigures() {

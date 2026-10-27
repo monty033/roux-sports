@@ -7,7 +7,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
@@ -72,7 +71,7 @@ const val STATE_RAIL_TAG = "gameRowStateRail"
 const val SHOTS_TAG = "gameRowShots"
 const val TEAM_LINE_TAG = "gameRowTeamLine"
 
-/** Values from the reference's wide rules and max-width:380px variant. */
+/** Values from the reference's wide rules and max-width:380px list viewport variant. */
 private data class CardMetrics(
     val railWidth: Dp,
     val crestSize: Dp,
@@ -88,11 +87,12 @@ private val narrowCard = CardMetrics(82.dp, 32.dp, 14.sp, 21.sp, 28.dp, 7.dp, 11
 
 /**
  * One informational card per game; the host owns the existing navigation callback and tag.
- * Intrinsic height lets the team rows and centred state stack grow together with type size.
+ * Intrinsic height lets the team rows and vertically centred state stack grow together with type size.
  */
 @Composable
 fun GameRow(
     game: Game,
+    narrow: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val upcoming = game.state == GameState.Scheduled || game.state == GameState.Pre
@@ -100,47 +100,44 @@ fun GameRow(
     val awayScore = game.awayScore
     val homeWins = game.state == GameState.Final && homeScore != null && awayScore != null && homeScore > awayScore
     val awayWins = game.state == GameState.Final && homeScore != null && awayScore != null && awayScore > homeScore
-    BoxWithConstraints(modifier.fillMaxWidth()) {
-        // Use the available card width after the caller's list padding, independent of screen size.
-        val metrics = if (maxWidth <= 380.dp) narrowCard else wideCard
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(IntrinsicSize.Min)
-                    .heightIn(min = 76.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .border(1.dp, Color.Transparent, RoundedCornerShape(16.dp))
-                    // Compose's border only draws. Reserve its space to match CSS border-box:
-                    // 28 + 2 + 28 of rows + 16 of main padding + 2 of border = 76 dp.
-                    .padding(1.dp),
+    val metrics = if (narrow) narrowCard else wideCard
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Min)
+                .heightIn(min = 76.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .border(1.dp, Color.Transparent, RoundedCornerShape(16.dp))
+                // Compose's border only draws. Reserve its space to match CSS border-box:
+                // 28 + 2 + 28 of rows + 16 of main padding + 2 of border = 76 dp.
+                .padding(1.dp),
+    ) {
+        Column(
+            Modifier.weight(1f).fillMaxHeight().padding(start = metrics.startPadding, end = 4.dp, top = 8.dp, bottom = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            Column(
-                Modifier.weight(1f).fillMaxHeight().padding(start = metrics.startPadding, end = 4.dp, top = 8.dp, bottom = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                TeamLine(
-                    game.away,
-                    game.awayScore.takeUnless { upcoming },
-                    upcoming,
-                    awayWins,
-                    game.state is GameState.Live,
-                    metrics,
-                    Modifier.weight(1f),
-                )
-                TeamLine(
-                    game.home,
-                    game.homeScore.takeUnless { upcoming },
-                    upcoming,
-                    homeWins,
-                    game.state is GameState.Live,
-                    metrics,
-                    Modifier.weight(1f),
-                )
-            }
-            StateRail(game, upcoming, metrics.railWidth)
+            TeamLine(
+                game.away,
+                game.awayScore.takeUnless { upcoming },
+                upcoming,
+                awayWins,
+                game.state is GameState.Live,
+                metrics,
+                Modifier.weight(1f),
+            )
+            TeamLine(
+                game.home,
+                game.homeScore.takeUnless { upcoming },
+                upcoming,
+                homeWins,
+                game.state is GameState.Live,
+                metrics,
+                Modifier.weight(1f),
+            )
         }
+        StateRail(game, upcoming, metrics.railWidth)
     }
 }
 
@@ -159,6 +156,13 @@ private fun TeamLine(
             winner -> Roux.accents.signature
             upcoming -> MaterialTheme.colorScheme.onSurfaceVariant
             else -> MaterialTheme.colorScheme.onSurface
+        }
+    val scoreInk =
+        when {
+            winner -> Roux.accents.signature
+            upcoming -> Roux.accents.muted
+            live -> MaterialTheme.colorScheme.onSurface
+            else -> MaterialTheme.colorScheme.onSurfaceVariant
         }
     Row(
         modifier.fillMaxWidth().heightIn(min = 28.dp).testTag(TEAM_LINE_TAG),
@@ -179,17 +183,22 @@ private fun TeamLine(
         )
         // A reserved slot keeps names aligned, even when no score is known. Grow with large type.
         Box(Modifier.width(metrics.scoreWidth * LocalDensity.current.fontScale.coerceAtLeast(1f)), contentAlignment = Alignment.CenterEnd) {
-            if (score != null) {
+            if (upcoming || score != null) {
                 Text(
-                    text = score.toString(),
+                    text = if (upcoming) "–" else score.toString(),
                     modifier = Modifier.fillMaxWidth(),
                     style =
                         Roux.cardTypography.score.copy(
                             fontSize = metrics.scoreSize,
                             lineHeight = metrics.scoreSize,
-                            fontWeight = if (live) FontWeight.Bold else Roux.cardTypography.score.fontWeight,
+                            fontWeight =
+                                when {
+                                    upcoming -> FontWeight.Normal
+                                    live -> FontWeight.Bold
+                                    else -> Roux.cardTypography.score.fontWeight
+                                },
                         ),
-                    color = ink,
+                    color = scoreInk,
                     textAlign = TextAlign.End,
                 )
             }
@@ -264,13 +273,13 @@ private fun StateRail(
                         androidx.compose.ui.geometry
                             .Size(1.dp.toPx(), size.height),
                 )
-            }.padding(vertical = 8.dp),
+            }.padding(start = 12.dp, end = 7.dp, top = 8.dp, bottom = 8.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
-        horizontalAlignment = Alignment.CenterHorizontally,
+        horizontalAlignment = Alignment.Start,
     ) {
         if (unknown) {
             // Preserve the existing fallback layout for unrecognised feed states.
-            Box(Modifier.weight(1f).heightIn(min = 28.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.weight(1f).heightIn(min = 28.dp), contentAlignment = Alignment.CenterStart) {
                 RailText(stringResource(R.string.game_row_status_unavailable))
             }
         } else {
@@ -296,7 +305,7 @@ private fun StateRail(
             }
         }
         if (unknown) {
-            Box(Modifier.weight(1f).heightIn(min = 28.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.weight(1f).heightIn(min = 28.dp), contentAlignment = Alignment.CenterStart) {
                 if (awayShots != null && homeShots != null) Shots(awayShots, homeShots)
             }
         } else if (!upcoming && awayShots != null && homeShots != null) {
@@ -315,7 +324,7 @@ private fun Shots(
         Modifier.testTag(SHOTS_TAG),
         style = Roux.cardTypography.shots,
         color = Roux.accents.muted,
-        textAlign = TextAlign.Center,
+        textAlign = TextAlign.Start,
     )
 }
 
@@ -332,7 +341,7 @@ private fun StateClock(
         modifier = Modifier.semantics { if (breakDescription != null) contentDescription = "$text, $breakDescription" },
         style = Roux.cardTypography.clock,
         color = if (live) Roux.accents.signature else MaterialTheme.colorScheme.onSurfaceVariant,
-        textAlign = TextAlign.Center,
+        textAlign = TextAlign.Start,
     )
 }
 
@@ -344,6 +353,8 @@ private fun LiveCapsule() {
             .testTag(STATE_CAPSULE_TAG)
             .width(IntrinsicSize.Max)
             .background(Roux.accents.fill, CircleShape)
+            .border(1.5.dp, Roux.accents.fill, CircleShape)
+            .padding(1.5.dp)
             .padding(horizontal = 6.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -376,10 +387,11 @@ private fun FinalCapsule(kind: FinalKind?) {
         Modifier
             .testTag(STATE_CAPSULE_TAG)
             .border(1.5.dp, Roux.accents.stroke, CircleShape)
+            .padding(1.5.dp)
             .padding(horizontal = 6.dp, vertical = 2.dp),
         style = Roux.cardTypography.finalState,
         color = Roux.accents.signature,
-        textAlign = TextAlign.Center,
+        textAlign = TextAlign.Start,
     )
 }
 
@@ -389,7 +401,7 @@ private fun RailText(text: String) {
         text,
         style = Roux.cardTypography.shots,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        textAlign = TextAlign.Center,
+        textAlign = TextAlign.Start,
     )
 }
 
