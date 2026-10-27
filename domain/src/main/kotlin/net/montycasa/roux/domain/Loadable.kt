@@ -31,6 +31,15 @@ sealed interface LoadError {
         val requested: String,
         val returned: String,
     ) : LoadError
+
+    /**
+     * The device could not complete the load for a reason that is not the feed's: a cache it cannot write,
+     * for instance.
+     *
+     * Distinct from [Network] because retrying immediately may well succeed and the connection was never the
+     * problem, and from [Parse] because the response may have been perfectly good.
+     */
+    data object Local : LoadError
 }
 
 /**
