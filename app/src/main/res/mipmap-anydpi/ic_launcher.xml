@@ -1,14 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Placeholder launcher icon. Stage 3 replaces it with the real one.
+  ROUX Sports launcher icon: the selected RX artwork from the supplied brand pack.
 
-  Deliberately unqualified (`mipmap-anydpi`, not `-v26`): minSdk is 31, so every
-  supported platform understands adaptive icons and a v26 qualifier would be dead
-  configuration (lint's ObsoleteSdkInt flags exactly that). The `monochrome` layer
-  is ignored below API 33 and used for themed icons from API 33 up.
+  Deliberately unqualified (`mipmap-anydpi`, not `-v26`): minSdk is 31, so every supported platform
+  understands adaptive icons and a v26 qualifier would be dead configuration (lint's ObsoleteSdkInt
+  flags exactly that).
+
+  The foreground is a bitmap because the pack ships no vector master for the RX mark - only the
+  wordmark has one. Two consequences, both deliberate:
+
+  * The artwork keeps its own dark field, so the background colour matches it exactly (Carbon Black) and
+    the foreground's edge is faded out rather than cut. A plain inset crop leaves a visible square seam
+    inside the launcher mask; the fade is what removes it.
+
+  * There is no monochrome layer, so the icon is not themeable on Android 13+. Keying a silhouette out
+    of this raster does not work: the monogram's X is part white and part orange, so a luminance key
+    truncates it, and widening the key drags in the orange speed trails that cross the field. Every
+    variant tried produced a mark that reads as something other than RX at 48 dp. Faking one would put
+    a wrong logo on the home screen; a vector master from design is the real fix, and until it exists
+    the icon is simply not themeable.
+
+  MonochromeLauncherIcon is suppressed for that reason and only for this file. The follow-up is a
+  vector RX mark, at which point the layer is derived from paths rather than pixels.
 -->
-<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:ignore="MonochromeLauncherIcon">
     <background android:drawable="@color/ic_launcher_background" />
-    <foreground android:drawable="@drawable/ic_launcher_foreground" />
-    <monochrome android:drawable="@drawable/ic_launcher_foreground" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
 </adaptive-icon>
