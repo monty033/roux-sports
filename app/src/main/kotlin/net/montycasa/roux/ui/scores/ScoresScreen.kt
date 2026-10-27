@@ -209,5 +209,6 @@ private fun errorMessage(error: LoadError): String =
             LoadError.Parse -> R.string.scores_parse_error
             is LoadError.MismatchedDay -> R.string.scores_wrong_day_error
             LoadError.Local -> R.string.scores_local_error
+            is LoadError.Blocked -> R.string.scores_blocked_error
         },
     )

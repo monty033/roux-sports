@@ -13,6 +13,7 @@
     <string name="scores_load_error">Couldn’t load scores.</string>
     <string name="scores_refresh_error">Couldn’t refresh. Showing saved scores.</string>
     <string name="scores_network_error">Check your connection and try again.</string>
+    <string name="scores_blocked_error">The score service sent this app to an address it is not allowed to use. Nothing was sent there.</string>
     <string name="scores_http_error">The score service is unavailable. Try again.</string>
     <string name="scores_parse_error">The score service sent unreadable scores. Try again.</string>
     <string name="scores_wrong_day_error">The score service sent a different day. Try again.</string>

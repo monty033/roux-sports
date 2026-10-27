@@ -5,7 +5,9 @@ import net.montycasa.roux.data.cache.CacheKey
 import net.montycasa.roux.data.cache.CacheKind
 import net.montycasa.roux.data.cache.ResponseCache
 import net.montycasa.roux.data.net.ApiResult
+import net.montycasa.roux.data.net.HostNotAllowedException
 import net.montycasa.roux.data.net.NhlApi
+import net.montycasa.roux.data.net.RateLimited
 import net.montycasa.roux.data.nhl.NhlAdapter
 import net.montycasa.roux.data.nhl.ParseResult
 import net.montycasa.roux.domain.Cached
@@ -21,6 +23,7 @@ import net.montycasa.roux.domain.policy.DayRelation
 import net.montycasa.roux.domain.policy.DaySlate
 import net.montycasa.roux.domain.policy.FreshnessPolicy
 import net.montycasa.roux.domain.repo.ScoresRepository
+import okio.IOException
 import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.time.Instant
@@ -53,7 +56,19 @@ internal class ScoresRepositoryImpl(
             return Loadable(cached.day, Freshness.Fresh, null)
         }
 
-        return when (val result = api.score(date)) {
+        // The two exceptions the HTTP boundary raises on purpose are answers, not faults: a rate limit carries
+        // the pause the server asked for, and a blocked host is a refusal worth showing. Letting either escape
+        // took the process down instead of falling back to the cached slate.
+        val result =
+            try {
+                api.score(date)
+            } catch (limited: RateLimited) {
+                return fallBack(cached, LoadError.Http(status = 429, retryAfter = limited.retryAfter))
+            } catch (blocked: HostNotAllowedException) {
+                return fallBack(cached, LoadError.Blocked(blocked.host))
+            }
+
+        return when (result) {
             is ApiResult.Success -> {
                 when (val parsed = adapter.parseScore(result.bytes.decodeToString())) {
                     is ParseResult.Success -> {
@@ -67,8 +82,15 @@ internal class ScoresRepositoryImpl(
                             // stamp is taken when the bytes arrived, not when the load began, so a
                             // slow request cannot install an entry that is already past its own
                             // lifetime and so refetch immediately.
-                            cache.put(CacheKey(CacheKind.Score, date), result.bytes, clock.now())
-                            Loadable(parsed.value, Freshness.Fresh, null)
+                            try {
+                                cache.put(CacheKey(CacheKind.Score, date), result.bytes, clock.now())
+                                Loadable(parsed.value, Freshness.Fresh, null)
+                            } catch (_: IOException) {
+                                // The feed answered and the answer is good; the disk is what failed. Reporting
+                                // that as a fetch failure would hide a perfectly usable slate behind an error,
+                                // so the data is returned and Local names the actual problem.
+                                Loadable(parsed.value, Freshness.Fresh, LoadError.Local)
+                            }
                         }
                     }
 
@@ -126,7 +148,14 @@ internal class ScoresRepositoryImpl(
         date: String,
         today: String,
     ): CachedDay? {
-        val entry = cache.get(CacheKey(CacheKind.Score, date)) ?: return null
+        val entry =
+            try {
+                cache.get(CacheKey(CacheKind.Score, date))
+            } catch (_: IOException) {
+                // Reading a cache may still write an access stamp or evict; a failure there means the cache is
+                // unavailable, which is the same as empty. It must not stop the network attempt or crash.
+                null
+            } ?: return null
         val parsed = adapter.parseScore(entry.bytes.decodeToString())
         if (parsed !is ParseResult.Success) return null
         if (isWrongDay(date, parsed.value, today)) return null
