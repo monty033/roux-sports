@@ -7,6 +7,7 @@ import io.ktor.client.request.get
 import kotlinx.coroutines.runBlocking
 import net.montycasa.roux.data.net.HostNotAllowedException
 import okio.Path.Companion.toPath
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
@@ -27,6 +28,15 @@ import javax.xml.parsers.DocumentBuilderFactory
 @Config(sdk = [35])
 class AppContainerTest {
     private val app: RouxApp get() = RuntimeEnvironment.getApplication() as RouxApp
+
+    /**
+     * The container owns the preference store's scope now, so leaving it open leaks a coroutine and its file
+     * claim into whichever test runs next.
+     */
+    @After
+    fun closeContainer() {
+        runBlocking { app.container.close() }
+    }
 
     /** Unit tests run with the module directory as the working directory, so the source manifest is here. */
     private val projectDir: File get() = File(System.getProperty("user.dir") ?: ".")
@@ -65,8 +75,13 @@ class AppContainerTest {
                 engine = OkHttp.create(),
             )
 
-        assertThrows(IllegalStateException::class.java) {
-            runBlocking { second.preferences.getFavourites() }
+        try {
+            assertThrows(IllegalStateException::class.java) {
+                runBlocking { second.preferences.getFavourites() }
+            }
+        } finally {
+            // The refused container still owns a scope and a client; leaving them running leaks into later tests.
+            runBlocking { second.close() }
         }
     }
 

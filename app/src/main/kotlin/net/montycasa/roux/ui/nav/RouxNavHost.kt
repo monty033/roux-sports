@@ -44,6 +44,8 @@ import net.montycasa.roux.ui.reach.Reach
 import net.montycasa.roux.ui.reach.primaryControl
 import net.montycasa.roux.ui.scores.ScoresScreen
 import net.montycasa.roux.ui.scores.ScoresViewModel
+import net.montycasa.roux.ui.teams.TeamsScreen
+import net.montycasa.roux.ui.teams.TeamsViewModel
 
 /**
  * The three places the app goes. Scores is the reason the app exists; the other two are peers, not
@@ -118,15 +120,44 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
         ) {
             TopLevelDestination.entries.forEach { destination ->
                 composable(destination.route) {
-                    if (destination == TopLevelDestination.Scores) {
-                        ScoresDestination()
-                    } else {
-                        PlaceholderScreen(title = stringResource(destination.label), body = stringResource(destination.placeholder))
+                    when (destination) {
+                        TopLevelDestination.Scores -> {
+                            ScoresDestination()
+                        }
+
+                        TopLevelDestination.Teams -> {
+                            TeamsDestination()
+                        }
+
+                        TopLevelDestination.Standings -> {
+                            PlaceholderScreen(title = stringResource(destination.label), body = stringResource(destination.placeholder))
+                        }
                     }
                 }
             }
         }
     }
+}
+
+/** The back stack entry owns the picker; its repositories are shared with Scores through the app. */
+@Composable
+private fun TeamsDestination() {
+    val container = (LocalContext.current.applicationContext as RouxApp).container
+    val teams: TeamsViewModel =
+        viewModel(
+            factory =
+                viewModelFactory {
+                    initializer {
+                        TeamsViewModel(container.standings, container.preferences)
+                    }
+                },
+        )
+    val state by teams.uiState.collectAsStateWithLifecycle()
+    TeamsScreen(
+        state = state,
+        onToggle = teams::toggle,
+        onRetry = teams::retry,
+    )
 }
 
 /**
