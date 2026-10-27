@@ -52,22 +52,34 @@ enum class ReachRule(
 /**
  * Where one target ended up, in dp.
  *
- * [path] is the node's position in the semantics tree ("0/2/1"). It exists so an ancestor and the thing
- * inside it are not reported as overlapping: a clickable row with a clickable star inside it is two
- * legitimate targets, not one broken one.
+ * Two rectangles, because they answer different questions. The raw rectangle is where the control was
+ * laid out; the visible one is the part inside the window. Size and clearance are judged on what a thumb
+ * can actually hit, so a 56 dp button hanging 20 dp off the left edge is a 36 dp target however large
+ * its layout size is. Position rules (R1, R2, the edge insets) use the raw rectangle, because a control
+ * that starts above the reach line does not become reachable by being clipped.
+ *
+ * [path] is the node's position in the semantics tree ("0/2/1"), so an ancestor and the thing inside it
+ * are not reported as overlapping: a clickable row with a clickable star is two legitimate targets.
  */
 data class ControlPlacement(
     val tag: String,
-    val left: Float,
-    val top: Float,
-    val right: Float,
-    val bottom: Float,
+    val rawLeft: Float,
+    val rawTop: Float,
+    val rawRight: Float,
+    val rawBottom: Float,
+    val visibleLeft: Float,
+    val visibleTop: Float,
+    val visibleRight: Float,
+    val visibleBottom: Float,
     val primary: Boolean = false,
     val frequent: Boolean = false,
     val path: String = "",
 ) {
-    val width: Float get() = right - left
-    val height: Float get() = bottom - top
+    /** What a thumb can actually press: the part of the target inside the window. */
+    val width: Float get() = visibleRight - visibleLeft
+    val height: Float get() = visibleBottom - visibleTop
+
+    val isVisible: Boolean get() = width > 0f && height > 0f
 }
 
 /** A single failed rule, with the measurement that failed it. */
@@ -100,24 +112,27 @@ fun findReachViolations(
         val frequentTopLimit = windowHeightDp * Reach.FREQUENT_TOP_MAX_FRACTION
 
         for (control in controls) {
-            if (control.primary && control.top < primaryTopLimit) {
+            // A composed node scrolled entirely out of view is not on screen to be pressed, so it is not
+            // a violation - judging it would fail an audit of a screen nobody can see.
+            if (!control.isVisible) continue
+            if (control.primary && control.rawTop < primaryTopLimit) {
                 add(
                     ReachViolation(
                         ReachRule.R1,
                         control.tag,
-                        "starts at ${fmt(control.top)} dp, above the ${fmt(primaryTopLimit)} dp limit " +
+                        "starts at ${fmt(control.rawTop)} dp, above the ${fmt(primaryTopLimit)} dp limit " +
                             "(0.50 of ${fmt(windowHeightDp)} dp)",
                     ),
                 )
             }
             // R2 is an additional ceiling for frequent controls, not a replacement for R1: a frequent
             // control in the top third passes nothing, and one between 0.50 and 0.70 fails only R2.
-            if (control.primary && control.frequent && control.top < frequentTopLimit) {
+            if (control.primary && control.frequent && control.rawTop < frequentTopLimit) {
                 add(
                     ReachViolation(
                         ReachRule.R2,
                         control.tag,
-                        "is frequent but starts at ${fmt(control.top)} dp, above the " +
+                        "is frequent but starts at ${fmt(control.rawTop)} dp, above the " +
                             "${fmt(frequentTopLimit)} dp limit (0.70 of ${fmt(windowHeightDp)} dp)",
                     ),
                 )
@@ -142,17 +157,17 @@ fun findReachViolations(
                     ),
                 )
             }
-            if (control.primary && control.left < Reach.EDGE_INSET_DP) {
+            if (control.primary && control.rawLeft < Reach.EDGE_INSET_DP) {
                 add(
                     ReachViolation(
                         ReachRule.R5_EDGES,
                         control.tag,
-                        "starts ${fmt(control.left)} dp from the left edge, inside the " +
+                        "starts ${fmt(control.rawLeft)} dp from the left edge, inside the " +
                             "${fmt(Reach.EDGE_INSET_DP)} dp inset",
                     ),
                 )
             }
-            val rightInset = windowWidthDp - control.right
+            val rightInset = windowWidthDp - control.rawRight
             if (control.primary && rightInset < Reach.EDGE_INSET_DP) {
                 add(
                     ReachViolation(
@@ -165,24 +180,44 @@ fun findReachViolations(
             }
             // A target running past the window is clipped, so part of it cannot be pressed at all -
             // which no amount of R1, size or horizontal-edge checking would reveal.
-            if (control.bottom > windowHeightDp) {
+            if (control.rawBottom > windowHeightDp) {
                 add(
                     ReachViolation(
                         ReachRule.R5_CONTAINMENT,
                         control.tag,
-                        "ends at ${fmt(control.bottom)} dp, " +
-                            "${fmt(control.bottom - windowHeightDp)} dp past the bottom of the " +
+                        "ends at ${fmt(control.rawBottom)} dp, " +
+                            "${fmt(control.rawBottom - windowHeightDp)} dp past the bottom of the " +
                             "${fmt(windowHeightDp)} dp window",
                     ),
                 )
             }
-            if (control.right > windowWidthDp) {
+            if (control.rawRight > windowWidthDp) {
                 add(
                     ReachViolation(
                         ReachRule.R5_CONTAINMENT,
                         control.tag,
-                        "ends at ${fmt(control.right)} dp, " +
-                            "${fmt(control.right - windowWidthDp)} dp past the right edge",
+                        "ends at ${fmt(control.rawRight)} dp, " +
+                            "${fmt(control.rawRight - windowWidthDp)} dp past the right edge",
+                    ),
+                )
+            }
+            // The left and top overruns matter for the same reason: the target is cut down to less than
+            // it claims to be, and on the left it sits inside the back-gesture strip as well.
+            if (control.rawLeft < 0f) {
+                add(
+                    ReachViolation(
+                        ReachRule.R5_CONTAINMENT,
+                        control.tag,
+                        "starts at ${fmt(control.rawLeft)} dp, ${fmt(-control.rawLeft)} dp past the left edge",
+                    ),
+                )
+            }
+            if (control.rawTop < 0f) {
+                add(
+                    ReachViolation(
+                        ReachRule.R5_CONTAINMENT,
+                        control.tag,
+                        "starts at ${fmt(control.rawTop)} dp, ${fmt(-control.rawTop)} dp above the top edge",
                     ),
                 )
             }
@@ -215,8 +250,8 @@ private fun findGapViolation(
         return null
     }
 
-    val gapX = maxOf(b.left - a.right, a.left - b.right)
-    val gapY = maxOf(b.top - a.bottom, a.top - b.bottom)
+    val gapX = maxOf(b.visibleLeft - a.visibleRight, a.visibleLeft - b.visibleRight)
+    val gapY = maxOf(b.visibleTop - a.visibleBottom, a.visibleTop - b.visibleBottom)
     val worst = maxOf(gapX, gapY)
     if (worst >= Reach.MIN_TARGET_GAP_DP) return null
 
@@ -227,7 +262,7 @@ private fun findGapViolation(
         } else {
             "are ${fmt(gapX)} dp apart horizontally and ${fmt(gapY)} dp vertically"
         }
-    val (nearer, further) = if (a.left <= b.left) a to b else b to a
+    val (nearer, further) = if (a.visibleLeft <= b.visibleLeft) a to b else b to a
     return ReachViolation(
         ReachRule.R4_GAP,
         "${nearer.tag} / ${further.tag}",
@@ -238,7 +273,15 @@ private fun findGapViolation(
 private fun isAncestor(
     candidate: String,
     of: String,
-): Boolean = of.startsWith("$candidate/")
+): Boolean =
+    if (candidate.isEmpty()) {
+        // Defensive: the fetched semantics root is an ancestor of every node. Current traversal does not
+        // collect the root itself, so this branch is unreachable today and is kept only so a future
+        // collector that does include it cannot report a root click as overlapping its children.
+        of.isNotEmpty()
+    } else {
+        of.startsWith("$candidate/")
+    }
 
 private fun fmt(value: Float): String = "%.1f".format(value)
 

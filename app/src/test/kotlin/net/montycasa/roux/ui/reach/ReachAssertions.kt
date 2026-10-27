@@ -14,15 +14,16 @@ import androidx.compose.ui.test.onRoot
  * covered without Compose; the only thing this adds is a tree walk and a px-to-dp conversion. If a
  * reach bug is ever about the *rule*, it is not in here.
  */
-fun ComposeTestRule.assertPrimaryControlsReachable(minTargets: Int = 1) {
+fun ComposeTestRule.assertPrimaryControlsReachable(minPrimary: Int = 1) {
     val targets = reachTargets()
-    // A screen with no clickable anything is almost always a screen whose audit was misconfigured, so
-    // "found nothing" fails by default rather than reading as reachable. A screen that genuinely has no
-    // targets says so by passing 0.
-    if (targets.size < minTargets) {
+    // Counted in primaries, not in targets: if the tags were dropped the R1, R2 and R5 checks would run
+    // on nothing at all, while an untagged button kept the target count healthy and hid the mistake.
+    // A screen with no primary controls says so by passing 0.
+    val primaries = targets.count { it.primary }
+    if (primaries < minPrimary) {
         throw AssertionError(
-            "reach audit found ${targets.size} target(s), expected at least $minTargets - " +
-                "nothing was measured, so nothing was cleared",
+            "reach audit found $primaries primary control(s), expected at least $minPrimary - " +
+                "R1, R2 and the edge rules were checked against nothing",
         )
     }
     val violations = reachViolations(targets)
@@ -71,6 +72,8 @@ private fun ComposeTestRule.reachViolations(targets: List<ControlPlacement>): Li
 fun ComposeTestRule.reachTargets(): List<ControlPlacement> {
     val root = onRoot(useUnmergedTree = true).fetchSemanticsNode()
     val scale = density.density
+    val windowWidthDp = root.size.width / scale
+    val windowHeightDp = root.size.height / scale
     val found = mutableListOf<ControlPlacement>()
 
     fun walk(
@@ -78,21 +81,31 @@ fun ComposeTestRule.reachTargets(): List<ControlPlacement> {
         path: String,
     ) {
         val tag = node.config.getOrNull(PrimaryControlTag)
-        val clickable = node.config.contains(SemanticsActions.OnClick)
-        if (tag != null || clickable) {
+        // A target is anything a finger can act on: a click, or an adjustable control such as a slider,
+        // which carries SetProgress instead of OnClick and would otherwise be invisible to R4.
+        val actionable =
+            node.config.contains(SemanticsActions.OnClick) ||
+                node.config.contains(SemanticsActions.SetProgress)
+        if (tag != null || actionable) {
             // Position and measured size, not boundsInRoot: boundsInRoot is clipped by parents, so a
             // control running 17 dp past the bottom of the window reports a rectangle that stops exactly
             // at the window edge, and looks like a smaller target that passes every rule. The overrun is
             // only visible in the unclipped rectangle, which is position + size.
             val left = node.positionInRoot.x / scale
             val top = node.positionInRoot.y / scale
+            val right = left + node.size.width / scale
+            val bottom = top + node.size.height / scale
             found +=
                 ControlPlacement(
                     tag = tag ?: describe(node, left, top),
-                    left = left,
-                    top = top,
-                    right = left + node.size.width / scale,
-                    bottom = top + node.size.height / scale,
+                    rawLeft = left,
+                    rawTop = top,
+                    rawRight = right,
+                    rawBottom = bottom,
+                    visibleLeft = left.coerceAtLeast(0f),
+                    visibleTop = top.coerceAtLeast(0f),
+                    visibleRight = right.coerceAtMost(windowWidthDp),
+                    visibleBottom = bottom.coerceAtMost(windowHeightDp),
                     primary = tag != null,
                     frequent = node.config.getOrNull(IsFrequentControl) ?: false,
                     path = path,
