@@ -6,5 +6,7 @@
     <string name="drawer_my_teams">My Teams</string>
     <string name="drawer_leagues">LEAGUES</string>
     <string name="drawer_hockey">HOCKEY</string>
+    <string name="drawer_football">FOOTBALL</string>
+    <string name="drawer_baseball">BASEBALL</string>
     <string name="drawer_footer">NO ADS · NO TRACKERS · GPL–3.0</string>
 </resources>

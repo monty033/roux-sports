@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.captureToImage
@@ -146,7 +147,15 @@ class LeagueDrawerTest {
     @Test
     fun unsupportedLeaguesAreDeliberatelyAbsent() {
         launch()
-        listOf("NFL", "MLB", "NBA", "WNBA", "MLS").forEach { rule.onNodeWithText(it).assertDoesNotExist() }
+        // Drawn but not offered: the file lists these leagues, the app has no data for them yet, so they
+        // are greyed (.ditem.hid) and disabled rather than hidden or, worse, tappable into an empty day.
+        listOf("NFL" to "FOOTBALL", "MLB" to "BASEBALL").forEach { (league, sport) ->
+            rule.onNodeWithText(league).assertExists()
+            rule.onNodeWithText(sport).assertExists()
+            rule.onNodeWithTag("leagues.${league.lowercase()}").assertIsNotEnabled()
+        }
+        // Leagues the app has never mentioned stay absent.
+        listOf("NBA", "WNBA", "MLS").forEach { rule.onNodeWithText(it).assertDoesNotExist() }
     }
 
     @Test

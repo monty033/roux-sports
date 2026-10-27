@@ -41,6 +41,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
@@ -134,12 +136,17 @@ fun LeagueDrawer(
         }
         Spacer(Modifier.weight(1f).height(8.dp))
         DrawerLabel(stringResource(R.string.drawer_favourites))
-        DrawerRow(stringResource(R.string.drawer_my_teams), favouriteCount.toString(), team = true) { onFavouritesOnly(true) }
+        DrawerRow(stringResource(R.string.drawer_my_teams), favouriteCount.toString(), tag = "leagues.myTeams", team = true) {
+            onFavouritesOnly(true)
+        }
         DrawerRule()
         Box(Modifier.height(48.dp), contentAlignment = Alignment.CenterStart) {
             DrawerLabel(stringResource(R.string.drawer_leagues))
         }
-        DrawerRow("NHL", stringResource(R.string.drawer_hockey), selected = true) { onFavouritesOnly(false) }
+        DrawerRow("NHL", stringResource(R.string.drawer_hockey), tag = "leagues.nhl", selected = true) { onFavouritesOnly(false) }
+        // Drawn, greyed and not offered: the file lists them, the app has no data for them yet.
+        DrawerRow("NFL", stringResource(R.string.drawer_football), tag = "leagues.nfl", dimmed = true) {}
+        DrawerRow("MLB", stringResource(R.string.drawer_baseball), tag = "leagues.mlb", dimmed = true) {}
         // No separator here: the footer draws its own top border (.dfoot{border-top}), and an extra rule
         // put two lines 17 dp apart whenever Settings/hint are absent.
         Box(Modifier.padding(top = 8.dp)) {
@@ -185,8 +192,10 @@ private fun DrawerRule() {
 private fun DrawerRow(
     label: String,
     trailing: String,
+    tag: String,
     team: Boolean = false,
     selected: Boolean = false,
+    dimmed: Boolean = false,
     onClick: () -> Unit,
 ) {
     Row(
@@ -194,10 +203,25 @@ private fun DrawerRow(
             .fillMaxWidth()
             .height(56.dp)
             .clip(RoundedCornerShape(10.dp))
-            .background(if (team) Color(0xFF101216) else Color(0xFF15171C))
-            .selectable(selected, role = Role.Tab, onClick = onClick)
-            .reachTarget(if (team) "leagues.myTeams" else "leagues.nhl")
-            .testTag(if (team) "leagues.myTeams" else "leagues.nhl")
+            // .ditem is transparent by default; only .on (#15171C) and .team (#101216) fill.
+            .background(
+                when {
+                    dimmed -> Color.Transparent
+                    team -> Color(0xFF101216)
+                    selected -> Color(0xFF15171C)
+                    else -> Color.Transparent
+                },
+            )
+            // A dimmed league is drawn but not offered: .ditem.hid in the file. It carries no click
+            // action at all - a disabled-but-clickable row still reaches TalkBack as an actionable
+            // control, and it would also be audited as a reach target it can never satisfy.
+            .then(
+                if (dimmed) {
+                    Modifier.semantics { disabled() }
+                } else {
+                    Modifier.selectable(selected, role = Role.Tab, onClick = onClick).reachTarget(tag)
+                },
+            ).testTag(tag)
             .padding(horizontal = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -206,11 +230,27 @@ private fun DrawerRow(
         Text(
             label,
             Modifier.weight(1f),
-            color = if (team) ink else Color.White,
+            color =
+                when {
+                    dimmed -> Color(0xFF6E747E)
+                    team -> ink
+                    else -> Color.White
+                },
             fontSize = 15.sp,
             fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold,
         )
-        Text(trailing, color = if (selected) orange else muted, fontSize = 8.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.1.em)
+        Text(
+            trailing,
+            color =
+                when {
+                    dimmed -> Color(0xFF5F656E)
+                    selected -> orange
+                    else -> muted
+                },
+            fontSize = 8.sp,
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = 0.1.em,
+        )
     }
 }
 
