@@ -7,12 +7,21 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.onRoot
 
-/**
+/*
  * The Compose-side half of the reach audit: read where the targets landed, then ask [Reach].
  *
  * This file is thin on purpose. Everything that decides pass or fail is in [findReachViolations] and is
  * covered without Compose; the only thing this adds is a tree walk and a px-to-dp conversion. If a
  * reach bug is ever about the *rule*, it is not in here.
+ */
+
+/**
+ * Audits every reachable target on screen and insists the tree matches the primaries the screen declares.
+ *
+ * The declaration is also the audit's limit. It can prove the tree matches what a screen says it intends,
+ * not that the intent is right: an action wrongly declared non-primary - a reachTarget instead of a
+ * primaryControl - sits outside R1, R2 and the edge rules, and nothing here can tell. Reviewing the
+ * declaration is part of reviewing the screen.
  */
 fun ComposeTestRule.assertPrimaryControlsReachable(vararg expectedPrimaryTags: String) {
     val targets = reachTargets()

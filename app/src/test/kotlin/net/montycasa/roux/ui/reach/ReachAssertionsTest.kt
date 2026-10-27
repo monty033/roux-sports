@@ -679,7 +679,7 @@ class ReachAssertionsTest {
     }
 
     @Test
-    fun twoControlsSharingATagAreRejectedRatherThanCollapsed() {
+    fun aRepeatedDeclarationIsRejected() {
         rule.setContent {
             Box(Modifier.fillMaxSize()) {
                 // The upper chip is not tagged; the lower one claims the tag both of them share by name.
@@ -700,8 +700,7 @@ class ReachAssertionsTest {
             }
         }
 
-        // Compared as a set this passes: the declaration says "scores.toggle" and a control with that tag
-        // exists. The duplicate is what makes that possible, so the duplicate is the failure.
+        // Declaration side: asking for the same tag twice would otherwise be silently deduplicated.
         val duplicated =
             assertThrows(AssertionError::class.java) {
                 rule.assertPrimaryControlsReachable("scores.toggle", "scores.toggle")
@@ -738,7 +737,7 @@ class ReachAssertionsTest {
 
         val duplicated =
             assertThrows(AssertionError::class.java) {
-                rule.assertPrimaryControlsReachable("scores.toggle", "scores.toggle")
+                rule.assertPrimaryControlsReachable("scores.toggle")
             }
         assertTrue(
             "two controls sharing a tag must be rejected, got: ${duplicated.message}",
