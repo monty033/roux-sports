@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#546E7A</color>
+    <!--
+      Brand Carbon Black. The launcher foreground keeps the artwork's own dark field, and this colour is
+      what that field fades into - they have to match or the icon shows a square edge inside its mask.
+    -->
+    <color name="ic_launcher_background">#08090B</color>
 </resources>
