@@ -79,6 +79,11 @@ dependencies {
     implementation(project(":data"))
 
     implementation(platform(libs.compose.bom))
+    // Registers androidx.activity.ComponentActivity in the debug manifest so createComposeRule() has a
+    // host activity under Robolectric. Debug-only: it is not on any shipped build's classpath, and the
+    // release audit in S10.2 would catch it if it ever were.
+    debugImplementation(platform(libs.compose.bom))
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.ui.tooling.preview)
