@@ -1,24 +1,37 @@
 package net.montycasa.roux.ui.scores
 
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertWidthIsEqualTo
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.height
+import androidx.compose.ui.unit.sp
 import androidx.test.core.app.ApplicationProvider
 import com.github.takahirom.roborazzi.captureRoboImage
 import net.montycasa.roux.domain.model.FinalKind
@@ -29,6 +42,10 @@ import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.ui.reach.assertPrimaryControlsReachable
+import net.montycasa.roux.ui.theme.RouxDarkAccents
+import net.montycasa.roux.ui.theme.RouxDarkColors
+import net.montycasa.roux.ui.theme.RouxLightAccents
+import net.montycasa.roux.ui.theme.RouxLightColors
 import net.montycasa.roux.ui.theme.RouxTheme
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -45,7 +62,7 @@ import java.util.TimeZone
 import kotlin.time.Instant
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35], qualifiers = "en-rUS-w360dp-h640dp-420dpi")
+@Config(sdk = [35], qualifiers = "en-rUS-w411dp-h923dp-mdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class GameRowTest {
     @get:Rule
@@ -88,12 +105,13 @@ class GameRowTest {
         game: Game = scheduled,
         dark: Boolean = false,
         fontScale: Float = 1f,
+        modifier: Modifier = Modifier,
     ) {
         rule.setContent {
             RouxTheme(dark = dark) {
                 density = Density(LocalDensity.current.density, fontScale)
                 CompositionLocalProvider(LocalDensity provides density) {
-                    GameRow(game, Modifier.testTag("game-row"))
+                    GameRow(game, modifier.testTag("game-row"))
                 }
             }
         }
@@ -122,8 +140,7 @@ class GameRowTest {
     @Test
     fun liveShowsPeriodClockAndLiveDescription() {
         launch(live)
-        rule.onNodeWithText("2nd").assertIsDisplayed()
-        rule.onNodeWithText("12:34").assertIsDisplayed()
+        rule.onNodeWithText("2nd 12:34").assertIsDisplayed()
         rule.onNodeWithContentDescription("Live").assertExists()
         rule.onNodeWithText("2").assertIsDisplayed()
         rule.onNodeWithText("3").assertIsDisplayed()
@@ -207,13 +224,13 @@ class GameRowTest {
     }
 
     @Test
-    fun rowIsAtLeastFiftySixDpTall() {
+    fun cardIsExactlySeventySixDpAtNormalType() {
         launch()
         val heightDp = rule.onNodeWithTag("game-row").getUnclippedBoundsInRoot().height
         // The Compose helper returns Dp; round-trip with the composition's LocalDensity to also pin
         // the physical-pixel conversion used when measuring the actual rendered row.
         val heightPx = with(density) { heightDp.toPx() }
-        assertTrue("row measured $heightDp", with(density) { heightPx.toDp() } >= 56.dp)
+        assertEquals("card height in dp", 76f, with(density) { heightPx.toDp() }.value, 0.01f)
     }
 
     @Test
@@ -234,9 +251,9 @@ class GameRowTest {
     }
 
     @Test
-    fun pregameShowsItsPhaseAndStartTimeWithoutLiveIndicator() {
+    fun pregameShowsOnlyStartTimeWithoutLiveIndicator() {
         launch(scheduled.copy(state = GameState.Pre))
-        rule.onNodeWithText("Pregame").assertIsDisplayed()
+        rule.onNodeWithText("Pregame").assertDoesNotExist()
         rule.onNodeWithText("7:00 PM").assertIsDisplayed()
         rule.onNodeWithContentDescription("Live").assertDoesNotExist()
     }
@@ -261,13 +278,13 @@ class GameRowTest {
     @Test
     fun liveOvertimeUsesPeriodTypeInsteadOfOrdinal() {
         launch(live.copy(period = live.period!!.copy(ordinal = 5, periodType = "OT")))
-        rule.onNodeWithText("OT").assertIsDisplayed()
+        rule.onNodeWithText("OT 12:34").assertIsDisplayed()
     }
 
     @Test
     fun liveShootoutUsesPeriodTypeInsteadOfOrdinal() {
         launch(live.copy(period = live.period!!.copy(ordinal = 5, periodType = "SO")))
-        rule.onNodeWithText("SO").assertIsDisplayed()
+        rule.onNodeWithText("SO 12:34").assertIsDisplayed()
     }
 
     @Test
@@ -281,28 +298,36 @@ class GameRowTest {
     @Test
     fun intermissionKeepsPeriodAndClockAndNamesTheBreak() {
         launch(live.copy(period = live.period!!.copy(inIntermission = true)))
-        rule.onNodeWithText("Intermission").assertIsDisplayed()
-        rule.onNodeWithText("2nd").assertIsDisplayed()
-        rule.onNodeWithText("12:34").assertIsDisplayed()
+        rule.onNodeWithContentDescription("2nd 12:34, Intermission").assertIsDisplayed()
+        rule.onNodeWithText("2nd 12:34").assertIsDisplayed()
     }
 
     @Test
+    @Config(qualifiers = "en-rUS-w360dp-h780dp-mdpi")
     fun doubleFontScaleOnSmallPhoneDoesNotOverflowText() {
         launch(live, fontScale = 2f)
         rule.onNodeWithText("Boston Bruins").assertIsDisplayed()
         rule.onNodeWithText("Toronto Maple Leafs").assertIsDisplayed()
+        assertTrue(rule.onNodeWithTag("game-row").getUnclippedBoundsInRoot().height > 76.dp)
+        assertTextFits(expectedCount = 8)
+    }
+
+    private fun assertTextFits(expectedCount: Int) {
         val textNodes = rule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.Text))
         val count = textNodes.fetchSemanticsNodes().size
-        assertEquals(8, count) // Two badges, names, scores, and the period/clock.
+        assertEquals(expectedCount, count)
         repeat(count) { index ->
             val layouts = mutableListOf<TextLayoutResult>()
             textNodes[index].performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
             assertTrue(layouts.isNotEmpty())
             layouts.forEach {
-                assertFalse("height overflow in ${it.layoutInput.text}", it.didOverflowHeight)
-                // A paragraph may retain a wider layout constraint than its final intrinsic width.
-                // Check the actual line edges rather than counting that empty space as overflow.
+                // Compose also marks a one-line ellipsis as didOverflowHeight (maxLines exceeded).
+                // Ellipsis is intentional for club names; measure the visible line to detect clipping.
+                if (!(it.lineCount == 1 && it.isLineEllipsized(0))) {
+                    assertFalse("height overflow in ${it.layoutInput.text}", it.didOverflowHeight)
+                }
                 repeat(it.lineCount) { line ->
+                    assertTrue("clipped line in ${it.layoutInput.text}", it.getLineBottom(line) <= it.size.height + 1f)
                     assertTrue("left overflow in ${it.layoutInput.text}", it.getLineLeft(line) >= -1f)
                     assertTrue(
                         "right overflow in ${it.layoutInput.text}: ${it.getLineRight(line)} > ${it.size.width}",
@@ -314,10 +339,299 @@ class GameRowTest {
     }
 
     @Test
+    @Config(qualifiers = "en-rUS-w360dp-h780dp-mdpi")
+    fun doubleTypeFitsKnownShotsAndTwoDigitScores() {
+        launch(live.copy(homeScore = 12, awayScore = 10, homeShots = 14, awayShots = 18), fontScale = 2f)
+        assertTextFits(expectedCount = 9)
+        rule.onNodeWithTag(STATE_RAIL_TAG).assertWidthIsEqualTo(82.dp)
+    }
+
+    @Test
+    @Config(qualifiers = "en-rUS-w360dp-h780dp-mdpi")
+    fun doubleTypeFitsIntermissionAndShots() {
+        launch(live.copy(homeShots = 14, awayShots = 18, period = live.period!!.copy(inIntermission = true)), fontScale = 2f)
+        assertTextFits(expectedCount = 9)
+    }
+
+    @Test
+    @Config(qualifiers = "en-rUS-w360dp-h780dp-mdpi")
+    fun doubleTypeFitsFinalShootoutCapsule() {
+        launch(finalOt.copy(finalKind = FinalKind.SO, homeShots = 14, awayShots = 18), fontScale = 2f)
+        assertTextFits(expectedCount = 8)
+    }
+
+    @Test
     fun rowHasNoClickActionsOrReachControls() {
         launch()
         assertTrue(rule.onAllNodes(hasClickAction()).fetchSemanticsNodes().isEmpty())
         rule.assertPrimaryControlsReachable()
+    }
+
+    private fun textLayout(node: SemanticsNodeInteraction): TextLayoutResult {
+        val layouts = mutableListOf<TextLayoutResult>()
+        node.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        return layouts.single()
+    }
+
+    @Test
+    fun crestsAreThirtyFourDpAndRailIsNinetyTwoDp() {
+        launch(live, modifier = Modifier.padding(horizontal = 12.dp))
+        rule.onNodeWithTag("game-row").assertWidthIsEqualTo(387.dp).assertHeightIsEqualTo(76.dp)
+        rule.onAllNodesWithTag(TEAM_LINE_TAG).also { rows ->
+            assertEquals(2, rows.fetchSemanticsNodes().size)
+            repeat(2) { rows[it].assertHeightIsEqualTo(28.dp) }
+        }
+        rule.onAllNodesWithTag(CREST_TAG).also { crests ->
+            assertEquals(2, crests.fetchSemanticsNodes().size)
+            repeat(2) { crests[it].assertHeightIsEqualTo(34.dp).assertWidthIsEqualTo(34.dp) }
+        }
+        rule.onNodeWithTag(STATE_RAIL_TAG).assertWidthIsEqualTo(92.dp)
+        val name = rule.onNodeWithText("Boston Bruins").getUnclippedBoundsInRoot()
+        val score = rule.onNodeWithText("2")
+        score.assertWidthIsEqualTo(30.dp)
+        val crest = rule.onAllNodesWithTag(CREST_TAG)[0].getUnclippedBoundsInRoot()
+        val row = rule.onAllNodesWithTag(TEAM_LINE_TAG)[0].getUnclippedBoundsInRoot()
+        val card = rule.onNodeWithTag("game-row").getUnclippedBoundsInRoot()
+        assertEquals(14f, (row.left - card.left).value, 0.01f)
+        assertEquals(8f, (name.left - crest.right).value, 0.01f)
+        assertEquals(8f, (score.getUnclippedBoundsInRoot().left - name.right).value, 0.01f)
+    }
+
+    @Test
+    @Config(qualifiers = "en-rUS-w360dp-h780dp-mdpi")
+    fun narrowCardHasEightyTwoDpRailThirtyTwoDpCrestsAndSeventySixDpHeight() {
+        launch(live, modifier = Modifier.padding(horizontal = 12.dp))
+        assertNarrowMetrics(336.dp)
+    }
+
+    @Test
+    fun cardAtThreeHundredEightyDpUsesNarrowMetricsOnAWideScreen() {
+        launch(live, modifier = Modifier.width(380.dp))
+        assertNarrowMetrics(380.dp)
+    }
+
+    @Test
+    fun cardAboveThreeHundredEightyDpUsesWideMetrics() {
+        launch(live, modifier = Modifier.width(381.dp))
+        rule.onNodeWithTag("game-row").assertWidthIsEqualTo(381.dp).assertHeightIsEqualTo(76.dp)
+        rule.onNodeWithTag(STATE_RAIL_TAG).assertWidthIsEqualTo(92.dp)
+        rule.onAllNodesWithTag(CREST_TAG)[0].assertWidthIsEqualTo(34.dp)
+        assertEquals(15.sp, textLayout(rule.onNodeWithText("Boston Bruins")).layoutInput.style.fontSize)
+        assertEquals(22.sp, textLayout(rule.onNodeWithText("2")).layoutInput.style.fontSize)
+    }
+
+    private fun assertNarrowMetrics(cardWidth: Dp) {
+        val card = rule.onNodeWithTag("game-row")
+        card.assertWidthIsEqualTo(cardWidth).assertHeightIsEqualTo(76.dp)
+        rule.onNodeWithTag(STATE_RAIL_TAG).assertWidthIsEqualTo(82.dp)
+        val rows = rule.onAllNodesWithTag(TEAM_LINE_TAG)
+        val crests = rule.onAllNodesWithTag(CREST_TAG)
+        assertEquals(2, rows.fetchSemanticsNodes().size)
+        assertEquals(2, crests.fetchSemanticsNodes().size)
+        repeat(2) {
+            rows[it].assertHeightIsEqualTo(28.dp)
+            crests[it].assertWidthIsEqualTo(32.dp).assertHeightIsEqualTo(32.dp)
+        }
+        val name = rule.onNodeWithText("Boston Bruins")
+        val score = rule.onNodeWithText("2")
+        assertEquals(14.sp, textLayout(name).layoutInput.style.fontSize)
+        assertEquals(21.sp, textLayout(score).layoutInput.style.fontSize)
+        assertEquals(21.sp, textLayout(score).layoutInput.style.lineHeight)
+        score.assertWidthIsEqualTo(28.dp)
+        val crestBounds = crests[0].getUnclippedBoundsInRoot()
+        val rowBounds = rows[0].getUnclippedBoundsInRoot()
+        val nameBounds = name.getUnclippedBoundsInRoot()
+        assertEquals(12f, (rowBounds.left - card.getUnclippedBoundsInRoot().left).value, 0.01f)
+        assertEquals(7f, (nameBounds.left - crestBounds.right).value, 0.01f)
+        assertEquals(7f, (score.getUnclippedBoundsInRoot().left - nameBounds.right).value, 0.01f)
+        assertEquals(2f, (rows[1].getUnclippedBoundsInRoot().top - rowBounds.bottom).value, 0.01f)
+    }
+
+    @Test
+    fun scoreAndClubUseTheCardScaleAndTabularFigures() {
+        launch(live)
+        val score = textLayout(rule.onNodeWithText("3")).layoutInput.style
+        assertEquals(22.sp, score.fontSize)
+        assertEquals(22.sp, score.lineHeight)
+        assertEquals(FontWeight.Bold, score.fontWeight)
+        assertEquals(RouxLightColors.onSurface, score.color)
+        assertEquals("tnum", score.fontFeatureSettings)
+        val name = textLayout(rule.onNodeWithText("Toronto Maple Leafs"))
+        assertEquals(15.sp, name.layoutInput.style.fontSize)
+        assertEquals(FontWeight.SemiBold, name.layoutInput.style.fontWeight)
+        assertEquals(1, name.layoutInput.maxLines)
+    }
+
+    private fun assertLiveStack(dark: Boolean) {
+        launch(live.copy(awayShots = 18, homeShots = 14), dark = dark)
+        val accents = if (dark) RouxDarkAccents else RouxLightAccents
+        val colors = if (dark) RouxDarkColors else RouxLightColors
+        val capsule = rule.onNodeWithTag(STATE_CAPSULE_TAG, useUnmergedTree = true)
+        val pillNode = capsule.fetchSemanticsNode()
+        val labelNode = rule.onNodeWithText("LIVE", useUnmergedTree = true).fetchSemanticsNode()
+        val clockNode = rule.onNodeWithText("2nd 12:34", useUnmergedTree = true).fetchSemanticsNode()
+        val railNode = rule.onNodeWithTag(STATE_RAIL_TAG, useUnmergedTree = true).fetchSemanticsNode()
+        assertEquals("pill contains only dot and label", 2, pillNode.children.size)
+        assertEquals(pillNode.id, labelNode.parent!!.id)
+        assertEquals("pill is a rail child", railNode.id, pillNode.parent!!.id)
+        assertEquals("clock is a sibling of the pill", railNode.id, clockNode.parent!!.id)
+        assertEquals(3, railNode.children.size)
+        val pixels = capsule.captureToImage().toPixelMap()
+        assertEquals(accents.fill, pixels[pixels.width / 2, 1])
+        val dot = rule.onNodeWithContentDescription("Live")
+        dot.assertWidthIsEqualTo(6.dp).assertHeightIsEqualTo(6.dp)
+        assertEquals(accents.onFill, dot.captureToImage().toPixelMap()[3, 3])
+        val label = textLayout(rule.onNodeWithText("LIVE")).layoutInput.style
+        assertEquals(accents.onFill, label.color)
+        val clock = textLayout(rule.onNodeWithText("2nd 12:34")).layoutInput.style
+        assertEquals(accents.signature, clock.color)
+        assertEquals(12.sp, clock.fontSize)
+        assertEquals(FontWeight.ExtraBold, clock.fontWeight)
+        assertEquals("tnum", clock.fontFeatureSettings)
+        listOf("2", "3").forEach {
+            val score = textLayout(rule.onNodeWithText(it)).layoutInput.style
+            assertEquals(colors.onSurface, score.color)
+            assertEquals(FontWeight.Bold, score.fontWeight)
+        }
+        assertCentredStack(listOf(capsule, rule.onNodeWithText("2nd 12:34"), rule.onNodeWithTag(SHOTS_TAG)))
+        println(
+            "Measured ${if (dark) "dark" else "light"}: live pill fill=#%08X text=#%08X; clock=#%08X weight=%d; score=#%08X weight=%d"
+                .format(
+                    pixels[pixels.width / 2, 1].toArgb(),
+                    label.color.toArgb(),
+                    clock.color.toArgb(),
+                    clock.fontWeight!!.weight,
+                    textLayout(rule.onNodeWithText("3"))
+                        .layoutInput.style.color
+                        .toArgb(),
+                    textLayout(rule.onNodeWithText("3"))
+                        .layoutInput.style.fontWeight!!
+                        .weight,
+                ),
+        )
+    }
+
+    private fun assertCentredStack(lines: List<SemanticsNodeInteraction>) {
+        val rail = rule.onNodeWithTag(STATE_RAIL_TAG).getUnclippedBoundsInRoot()
+        val bounds = lines.map { it.getUnclippedBoundsInRoot() }
+        assertEquals(
+            "stack centred vertically",
+            (rail.top + rail.bottom).value / 2f,
+            (bounds.first().top + bounds.last().bottom).value / 2f,
+            0.5f,
+        )
+        bounds.forEach {
+            assertEquals(
+                "line centred horizontally",
+                (rail.left + rail.right).value / 2f,
+                (it.left + it.right).value / 2f,
+                0.5f,
+            )
+        }
+        bounds.zipWithNext().forEach { (above, below) -> assertEquals("line gap", 2f, (below.top - above.bottom).value, 0.01f) }
+        rule.onNodeWithTag("game-row").assertHeightIsEqualTo(76.dp)
+    }
+
+    @Test
+    fun livePillClockAndShotsFormACentredStackLight() = assertLiveStack(dark = false)
+
+    @Test
+    fun livePillClockAndShotsFormACentredStackDark() = assertLiveStack(dark = true)
+
+    private fun assertFinalWinner(dark: Boolean) {
+        launch(finalOt.copy(awayShots = 18, homeShots = 14), dark = dark)
+        val accents = if (dark) RouxDarkAccents else RouxLightAccents
+        val colors = if (dark) RouxDarkColors else RouxLightColors
+        assertEquals(accents.signature, textLayout(rule.onNodeWithText("Toronto Maple Leafs")).layoutInput.style.color)
+        assertEquals(accents.signature, textLayout(rule.onNodeWithText("3")).layoutInput.style.color)
+        assertEquals(colors.onSurface, textLayout(rule.onNodeWithText("Boston Bruins")).layoutInput.style.color)
+        assertEquals(colors.onSurface, textLayout(rule.onNodeWithText("2")).layoutInput.style.color)
+        val label = textLayout(rule.onNodeWithText("FINAL/OT")).layoutInput.style
+        assertEquals(accents.signature, label.color)
+        assertEquals(9.sp, label.fontSize)
+        assertEquals(FontWeight.ExtraBold, label.fontWeight)
+        assertEquals(0.09.em, label.letterSpacing)
+        val pixels = rule.onNodeWithTag(STATE_CAPSULE_TAG).captureToImage().toPixelMap()
+        assertEquals(accents.stroke, pixels[pixels.width / 2, 0])
+        assertEquals(colors.surfaceVariant, pixels[pixels.width / 2, pixels.height - 3])
+        assertCentredStack(listOf(rule.onNodeWithTag(STATE_CAPSULE_TAG), rule.onNodeWithTag(SHOTS_TAG)))
+        println(
+            "Measured ${if (dark) "dark" else "light"}: final pill text=#%08X weight=%d".format(
+                label.color.toArgb(),
+                label.fontWeight!!.weight,
+            ),
+        )
+    }
+
+    @Test
+    fun finalCapsuleAndOnlyWinnerNameAndScoreAreSignatureLight() = assertFinalWinner(dark = false)
+
+    @Test
+    fun finalCapsuleAndOnlyWinnerNameAndScoreAreSignatureDark() = assertFinalWinner(dark = true)
+
+    @Test
+    fun awayWinnerIsSignatureToo() {
+        launch(finalOt.copy(awayScore = 4))
+        assertEquals(RouxLightAccents.signature, textLayout(rule.onNodeWithText("Boston Bruins")).layoutInput.style.color)
+        assertEquals(RouxLightAccents.signature, textLayout(rule.onNodeWithText("4")).layoutInput.style.color)
+        assertEquals(RouxLightColors.onSurface, textLayout(rule.onNodeWithText("3")).layoutInput.style.color)
+    }
+
+    @Test
+    fun upcomingSuppressesEvenSuppliedScoresAndShotsAndHasNoCapsule() {
+        launch(scheduled.copy(homeScore = 0, awayScore = 2, homeShots = 14, awayShots = 18))
+        rule.onNodeWithText("0").assertDoesNotExist()
+        rule.onNodeWithText("2").assertDoesNotExist()
+        rule.onNodeWithTag(STATE_CAPSULE_TAG).assertDoesNotExist()
+        rule.onNodeWithTag(SHOTS_TAG).assertDoesNotExist()
+        val name = textLayout(rule.onNodeWithText("Boston Bruins")).layoutInput.style
+        assertEquals(RouxLightColors.onSurfaceVariant, name.color)
+        val time = rule.onNodeWithText("7:00 PM", useUnmergedTree = true)
+        val rail = rule.onNodeWithTag(STATE_RAIL_TAG, useUnmergedTree = true).fetchSemanticsNode()
+        assertEquals("scheduled rail contains only the time", listOf(time.fetchSemanticsNode().id), rail.children.map { it.id })
+        assertEquals("tnum", textLayout(time).layoutInput.style.fontFeatureSettings)
+        assertCentredStack(listOf(time))
+    }
+
+    @Test
+    fun knownShotsRenderAwayThenHomeWithTabularFigures() {
+        launch(live.copy(awayShots = 18, homeShots = 14))
+        val shots = textLayout(rule.onNodeWithText("18–14 sog")).layoutInput.style
+        assertEquals(11.sp, shots.fontSize)
+        assertEquals("tnum", shots.fontFeatureSettings)
+        assertEquals(RouxLightAccents.muted, shots.color)
+    }
+
+    @Test
+    fun zeroShotsAreShownWhenBothCountsAreKnown() {
+        launch(live.copy(awayShots = 0, homeShots = 0))
+        rule.onNodeWithText("0–0 sog").assertIsDisplayed()
+    }
+
+    @Test
+    fun shotsAreOmittedWhenEitherCountIsUnknown() {
+        launch(live.copy(homeShots = 14))
+        rule.onNodeWithTag(SHOTS_TAG).assertDoesNotExist()
+    }
+
+    @Test
+    fun shotsAreOmittedWhenHomeCountIsUnknown() {
+        launch(live.copy(awayShots = 18))
+        rule.onNodeWithTag(SHOTS_TAG).assertDoesNotExist()
+    }
+
+    @Test
+    fun absentShotsAreOmitted() {
+        launch(live)
+        rule.onNodeWithTag(SHOTS_TAG).assertDoesNotExist()
+    }
+
+    @Test
+    fun failedLogoKeepsThirtyFourDpCrestAndSeventySixDpCard() {
+        launch(live.copy(away = live.away.copy(logoUrl = "unsupported://bruins")))
+        rule.onNodeWithText("BOS").assertIsDisplayed()
+        rule.onAllNodesWithTag(CREST_TAG)[0].assertWidthIsEqualTo(34.dp).assertHeightIsEqualTo(34.dp)
+        rule.onNodeWithTag("game-row").assertHeightIsEqualTo(76.dp)
     }
 
     // All snapshots deliberately use offline abbreviation fallbacks. State and theme changes remain
@@ -327,7 +641,8 @@ class GameRowTest {
         game: Game,
         dark: Boolean,
     ) {
-        launch(game, dark)
+        val snapshotGame = if (game.state == GameState.Scheduled) game else game.copy(awayShots = 18, homeShots = 14)
+        launch(snapshotGame, dark)
         rule.onNodeWithTag("game-row").captureRoboImage("src/test/screenshots/game-row/$name.png")
     }
 

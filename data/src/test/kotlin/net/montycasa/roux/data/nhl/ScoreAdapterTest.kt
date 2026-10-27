@@ -2,6 +2,7 @@ package net.montycasa.roux.data.nhl
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -19,6 +20,50 @@ import kotlin.time.Instant
 
 /** Captured payloads guard against silently rendering a populated day as empty. */
 class ScoreAdapterTest {
+    @Test
+    fun capturedGamedayMapsPhiladelphia32AndAnaheim26Shots() {
+        val day = (NhlAdapter.parseScore(Fixtures.text("score-gameday.json")) as ParseResult.Success).value
+        val game = day.games.single { it.id.value == "2026020168" }
+        assertEquals("PHI", game.home.abbrev)
+        assertEquals(32, game.homeShots)
+        assertEquals("ANA", game.away.abbrev)
+        assertEquals(26, game.awayShots)
+    }
+
+    @Test
+    fun missingShotsRemainNullWithoutDroppingGames() {
+        val day = (NhlAdapter.parseScore(withShots(null)) as ParseResult.Success).value
+        assertEquals(12, day.games.size)
+        assertEquals(0, day.droppedCount)
+        day.games.forEach {
+            assertNull(it.homeShots)
+            assertNull(it.awayShots)
+        }
+    }
+
+    @Test
+    fun nonNumericShotsRemainNullWithoutDroppingGames() {
+        listOf(JsonPrimitive("unknown"), JsonPrimitive(true), JsonPrimitive(1.5), JsonObject(emptyMap()), JsonArray(emptyList()), JsonNull)
+            .forEach { value ->
+                val day = (NhlAdapter.parseScore(withShots(value)) as ParseResult.Success).value
+                assertEquals("shots=$value", 12, day.games.size)
+                assertEquals(0, day.droppedCount)
+                day.games.forEach {
+                    assertNull(it.homeShots)
+                    assertNull(it.awayShots)
+                }
+            }
+    }
+
+    @Test
+    fun zeroShotsRemainKnownZero() {
+        val day = (NhlAdapter.parseScore(withShots(JsonPrimitive(0))) as ParseResult.Success).value
+        day.games.forEach {
+            assertEquals(0, it.homeShots)
+            assertEquals(0, it.awayShots)
+        }
+    }
+
     @Test
     fun gamedayFinishedGamesAllHaveStoppedClocks() {
         val day = (NhlAdapter.parseScore(Fixtures.text("score-gameday.json")) as ParseResult.Success).value
@@ -320,6 +365,21 @@ class ScoreAdapterTest {
     fun missingCurrentDateIsAFailureRatherThanAnInventedEmptyDay() {
         assertTrue(NhlAdapter.parseScore("{}") is ParseResult.Failure)
         assertTrue(NhlAdapter.parseScore("""{"currentDate": null}""") is ParseResult.Failure)
+    }
+
+    private fun withShots(shots: JsonElement?): String {
+        val score = Json.parseToJsonElement(Fixtures.text("score-gameday.json")).jsonObject
+        val games =
+            score.getValue("games").jsonArray.map { element ->
+                val game = element.jsonObject
+                val teams =
+                    listOf("homeTeam", "awayTeam").associateWith { key ->
+                        val team = game.getValue(key).jsonObject - "sog"
+                        JsonObject(if (shots == null) team else team + ("sog" to shots))
+                    }
+                JsonObject(game + teams)
+            }
+        return JsonObject(score + ("games" to JsonArray(games))).toString()
     }
 
     private fun mutateGameday(transform: (JsonObject) -> JsonObject): String =

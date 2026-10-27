@@ -133,7 +133,7 @@ fun ScoresScreen(
                         GameRow(
                             game,
                             Modifier
-                                .padding(horizontal = Reach.EDGE_INSET_DP.dp)
+                                .padding(horizontal = 12.dp)
                                 .testTag("scores.game.${game.id.value}")
                                 .clickable { onGameClick(game.id) },
                         )

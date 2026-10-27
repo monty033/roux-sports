@@ -2,7 +2,9 @@ package net.montycasa.roux.data.nhl
 
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.intOrNull
 import net.montycasa.roux.data.nhl.dto.GameDto
 import net.montycasa.roux.data.nhl.dto.ScoreDto
 import net.montycasa.roux.data.nhl.dto.SeasonsDto
@@ -226,6 +228,8 @@ internal object NhlAdapter {
             away = away,
             homeScore = homeTeam.score,
             awayScore = awayTeam.score,
+            homeShots = (homeTeam.sog as? JsonPrimitive)?.intOrNull,
+            awayShots = (awayTeam.sog as? JsonPrimitive)?.intOrNull,
             finalKind = FinalKind.from(gameOutcome?.lastPeriodType),
             period = period,
             // A bad or absent timestamp must never drop a game: its score is still useful.

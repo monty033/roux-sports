@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <string name="game_row_final">FINAL</string>
     <!-- Complete labels let translators choose the separator and word order. -->
     <string name="game_row_final_ot">FINAL/OT</string>
@@ -13,7 +13,10 @@
     <string name="game_row_period_unavailable">Period unavailable</string>
     <string name="game_row_intermission">Intermission</string>
     <string name="game_row_live_description">Live</string>
-    <string name="game_row_pregame">Pregame</string>
+    <!-- The rail label is drawn uppercase in final/scores-screen.html; the description stays sentence case. -->
+    <string name="game_row_live_label">LIVE</string>
     <string name="game_row_time_tbd">Time TBD</string>
     <string name="game_row_status_unavailable">Status unavailable</string>
+    <!-- Paired away/home statistics with an invariant abbreviation, not one inflected quantity. -->
+    <string name="game_row_shots" tools:ignore="PluralsCandidate">%1$d–%2$d sog</string>
 </resources>
