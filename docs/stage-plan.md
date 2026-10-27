@@ -1,5 +1,7 @@
 # Roux Sports v1: plan, sections 1–7
 
+> **Plan v2.** A post-review plan for the remaining stages lives in `stage-plan-v2.md` (60 tiered steps, and it supersedes this document from Stage 6b onward, including two corrections it makes to `stage-6b-parity.md`).
+
 **Before you start.** I read only `roux-plan-brief.md`. To get the version numbers in §5 right, I also made read-only HTTP GETs to Maven Central, Google Maven, services.gradle.org and developer.android.com on 2026-10-25. Three things in the brief need attention before work begins:
 - **SDK gap.** Current stable Compose (1.12.x, BOM 2026.09.00) needs **compileSdk 37 and AGP ≥ 9.2**. AGP 9.4 also defaults to **build-tools 36.0.0**. The host only has `android-35` and build-tools 34/35. See §3 R1 and blocking question B1.
 - **Notifications (A7, D4).** WorkManager-only notifications can't deliver near-real-time goal alerts while the phone is in Doze. A7 as written can only be met on a best-effort basis. See R5 and B3.

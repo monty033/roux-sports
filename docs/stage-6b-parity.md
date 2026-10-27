@@ -21,8 +21,8 @@ with **8.0 dp** gaps, within the border-rounding tolerance of the 76 dp and 8 dp
 | Card height | not pinned — emerges from two 28 dp rows plus padding (measured 76 dp in the render) | 76 dp exact | `GameRowTest.kt:386` | match; app pins what the design derives |
 | Card width at 411 dp | 387 dp (411 − 2×12 upright padding) | 387 dp | `GameRowTest.kt:386` | match |
 | List gap | 8 dp (`.list{gap:.5rem}`) | 8 dp | `GameRowTest.kt` (reach gap) + `DateShelfCalendarTest.kt:89` pattern | match |
-| State rail, wide | not pinned — content width from `padding:.5rem .4375rem .5rem .625rem` | 92 dp fixed | `GameRowTest.kt:395` | **app pins what the design floats** |
-| State rail, narrow (<380 dp) | same rule | 82 dp fixed | `GameRowTest.kt:462` | as above |
+| State rail, wide | 92 dp — `.tk{grid-template-columns:minmax(0,1fr) 5.75rem}` (`scores-screen.html:94`) | 92 dp | `GameRowTest.kt:395` | match |
+| State rail, narrow (<380 dp) | 82 dp — `5.125rem` at `scores-screen.html:117` | 82 dp | `GameRowTest.kt:462` | match |
 | Crest | 34 dp (32 dp narrow) | 34 dp | `GameRowTest.kt:393` | match |
 | Matchup row | 28 dp | 28 dp | `GameRowTest.kt:389` | match |
 | Score column | fixed | 30 dp | `GameRowTest.kt:398` | match |
@@ -45,16 +45,30 @@ with **8.0 dp** gaps, within the border-rounding tolerance of the 76 dp and 8 dp
 | Game dot | 4 dp, 85% opacity, `--sig` | 4 dp, 0.85 | `DateShelfCalendarTest.kt:217,224` | match |
 | Sheet action button | 56 dp, pill | 56 dp, pill | `CalendarMonthSheet.kt` | match |
 
-## Where the app pins what the design leaves to content
+## The rail is pinned by the design, not floated by it
 
-**The state rail.** The design gives the rail padding and lets its content set the width; the app fixes 92 dp, or 82 dp
-below a 380 dp viewport. That is why the narrow variant exists at all — the app is approximating a measurement it took,
-not implementing a rule the file states.
+An earlier version of this document claimed the opposite and called it a risk: that the design let the rail size to its
+content while the app fixed 92 dp, so a three-digit score would clip. That was wrong, and checking it cost nothing.
 
-The consequence is a real risk rather than a style preference: a three-digit score, a long state label or a wider font
-scale has nowhere to go. The design's rail would grow and push the matchup block narrower; the app's will clip or
-overflow. Worth watching when Stage 7 adds more states to that rail. If the rail ever needs to hold something wider,
-this is the line that should change from a constant to a weight.
+`.tk{grid-template-columns:minmax(0,1fr) 5.75rem}` (`scores-screen.html:94`) gives the rail a fixed 92 dp, and
+`5.125rem` at `:117` gives 82 dp under 380 px. The app implements the design exactly, narrow variant included — which is
+why that variant exists at all.
+
+The clipping risk is real but it belongs to the design: a three-digit score or a 2.0 font scale has nowhere to go in the
+file either. Widening the rail is therefore a design deviation for Patrick to approve, not a bug to fix quietly.
+
+One correction inside this document: the rail's padding was cited from `:104`, which `:262-263` overrides with
+`padding:0 .4375rem 0 .75rem` on an absolutely positioned `.rstate`. The app's 12 dp start and 7 dp end padding match
+that rule; its 8 dp top and bottom (`GameRow.kt:276`) do not come from the final CSS.
+
+## Deltas nobody had recorded
+
+- **Navigation bar glyphs.** The design draws dotted lines, a bar chart and a shield (`:447-449`) inside a 44 × 28 dp
+  indicator pill (`:148-150`). The app hand-draws its own and its source comment admits the icon set "is not settled".
+- **Drag lift.** `.ditem.drag` (`:293`) lifts a dragged drawer row; the app only raises its z-index.
+- **Capsule gap.** 5 px in the design (`:111`), 4 dp in the app (`GameRow.kt:359`).
+- **My Teams star colour, unverified.** `.ditem .icn` is orange `#FF4B12` at 18 px (`:178`); the app tints the star with
+  ink (`LeagueDrawer.kt:326`). Whether the design's star actually uses `.icn` in its markup was not checked.
 
 ## Two assertions were weaker than they looked, and are now equalities
 
