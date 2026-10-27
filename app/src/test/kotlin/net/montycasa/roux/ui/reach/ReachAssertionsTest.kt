@@ -299,6 +299,44 @@ class ReachAssertionsTest {
         assertTrue("a fixed parent must not be excused as a scroller, got: $message", !message.contains("laid out"))
     }
 
+    /**
+     * The scroller exception is per axis, and the axis is the point. A vertical list can never reveal a control
+     * that is too narrow, so a fixed-width parent inside a scrolling list must still fail. A coarse "inside some
+     * scroller" flag would have excused exactly this case.
+     */
+    @Test
+    fun aTargetTooNarrowInsideAVerticalListIsStillAViolation() {
+        rule.setContent {
+            Box(Modifier.fillMaxSize()) {
+                Column(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 16.dp)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    Box(Modifier.width(30.dp).clipToBounds()) {
+                        Box(
+                            Modifier
+                                .size(width = 56.dp, height = 56.dp)
+                                .primaryControl("scores.squeezed"),
+                        )
+                    }
+                }
+            }
+        }
+
+        val message = failure("scores.squeezed").message.orEmpty()
+        assertTrue("R4 should be cited, got: $message", message.contains("R4 target size"))
+        assertTrue(
+            "the visible width must be judged, got: $message",
+            message.matches(Regex("(?s).*is 30\\.\\d x 56\\.0 dp.*")),
+        )
+        assertTrue(
+            "a vertical scroller must not excuse a horizontal cut, got: $message",
+            !message.contains("scroll away"),
+        )
+    }
+
     @Test
     fun aClickableInsideATaggedParentIsJudgedButNotTreatedAsOverlapping() {
         rule.setContent {

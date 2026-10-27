@@ -130,7 +130,8 @@ fun ComposeTestRule.reachTargets(): List<ControlPlacement> {
     fun walk(
         node: SemanticsNode,
         path: String,
-        insideScroller: Boolean = false,
+        inHorizontalScroller: Boolean = false,
+        inVerticalScroller: Boolean = false,
     ) {
         // Two keys, deliberately not merged: primaryControl marks a control that R1, R2 and the edge
         // insets also govern, while reachTarget only says "measure this". Collapsing them would subject
@@ -169,17 +170,25 @@ fun ComposeTestRule.reachTargets(): List<ControlPlacement> {
                     primary = primaryTag != null,
                     frequent = node.config.getOrNull(IsFrequentControl) ?: false,
                     path = path,
-                    // The scroller itself is an ancestor, not the control, so the flag is threaded down
+                    // The scroller itself is an ancestor, not the control, so the flags are threaded down
                     // rather than read from this node.
-                    clippedByScroller = insideScroller,
+                    horizontalScroller = inHorizontalScroller,
+                    verticalScroller = inVerticalScroller,
                 )
         }
-        // A node that exposes ScrollBy is a viewport: everything below it can be scrolled into reach, so a
-        // clipped child there is measured at its own size. ScrollBy stays out of the action list above - it
-        // marks a container, not a target - so reading it here costs nothing.
-        val scrolls = node.config.contains(SemanticsActions.ScrollBy)
+        // A viewport reveals content only along the axis it scrolls on, so the two axes are tracked apart:
+        // a vertical list cannot restore a button's width. The axis ranges are what Compose's scrollable
+        // modifiers publish; ScrollBy alone says "scrollable" without saying which way, and stays out of the
+        // action list above because it marks a container rather than a target.
+        val scrollsHorizontally = node.config.contains(SemanticsProperties.HorizontalScrollAxisRange)
+        val scrollsVertically = node.config.contains(SemanticsProperties.VerticalScrollAxisRange)
         node.children.forEachIndexed { index, child ->
-            walk(child, if (path.isEmpty()) "$index" else "$path/$index", insideScroller || scrolls)
+            walk(
+                child,
+                if (path.isEmpty()) "$index" else "$path/$index",
+                inHorizontalScroller || scrollsHorizontally,
+                inVerticalScroller || scrollsVertically,
+            )
         }
     }
     walk(root, "")
