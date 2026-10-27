@@ -1,0 +1,14 @@
+<resources>
+    <string name="scores_favourites_only">Favourites only</string>
+    <string name="scores_empty_date">No games on %1$s</string>
+    <string name="scores_next_games">Next games: %1$s</string>
+    <string name="scores_pick_teams">You haven’t picked favourite teams yet. Choose teams in the Teams tab.</string>
+    <string name="scores_no_favourite_games">Your favourite teams have no games this day. Turn off Favourites only to see all games.</string>
+    <string name="scores_load_error">Couldn’t load scores.</string>
+    <string name="scores_refresh_error">Couldn’t refresh. Showing saved scores.</string>
+    <string name="scores_network_error">Check your connection and try again.</string>
+    <string name="scores_http_error">The score service is unavailable. Try again.</string>
+    <string name="scores_parse_error">The score service sent unreadable scores. Try again.</string>
+    <string name="scores_wrong_day_error">The score service sent a different day. Try again.</string>
+    <string name="scores_loading">Loading scores…</string>
+</resources>
