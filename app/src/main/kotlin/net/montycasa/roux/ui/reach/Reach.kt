@@ -74,10 +74,26 @@ data class ControlPlacement(
     val primary: Boolean = false,
     val frequent: Boolean = false,
     val path: String = "",
+    /**
+     * Most of this control that can ever be on screen at once, in dp, supplied by the reader.
+     *
+     * Not the same as [width]: a chip at the end of a scrolling strip shows 42 dp at rest and all 56 dp after one
+     * flick, while a button squeezed by a fixed parent shows 30 dp no matter how far anything scrolls. R4 asks
+     * whether a target is big enough, and for a clipped target the honest answer is what the fan can ever put a
+     * finger on - so the reader measures that and the rule stops guessing about clipping.
+     *
+     * Negative means "not supplied", and the rule falls back to the visible size.
+     */
+    val reachableWidth: Float = -1f,
+    val reachableHeight: Float = -1f,
 ) {
     /** What a thumb can actually press: the part of the target inside the window. */
     val width: Float get() = visibleRight - visibleLeft
     val height: Float get() = visibleBottom - visibleTop
+
+    /** The size R4 judges: what can be reached, else what is visible. */
+    val targetWidth: Float get() = if (reachableWidth >= 0f) reachableWidth else width
+    val targetHeight: Float get() = if (reachableHeight >= 0f) reachableHeight else height
 
     val isVisible: Boolean get() = width > 0f && height > 0f
 }
@@ -101,6 +117,11 @@ data class ReachViolation(
  * Known limit: this only sees what was composed. A row a `LazyColumn` has not scrolled into view is not
  * measured, so an audit of an initial viewport can clear only the part it saw, never the whole list.
  * Callers auditing a list must scroll it and audit again.
+ *
+ * Known limit: this is a geometry audit over the semantics tree, and nothing more. A target painted over by a
+ * later sibling, or one whose taps are consumed by an overlay carrying no semantics and no tag, still measures its
+ * full size and will pass. Catching that needs hit-testing rather than measurement, which is a different tool and
+ * belongs with the device pass; pretending geometry can see z-order would only make the audit confidently wrong.
  */
 fun findReachViolations(
     controls: List<ControlPlacement>,
@@ -137,22 +158,33 @@ fun findReachViolations(
                     ),
                 )
             }
-            if (control.width < Reach.MIN_TARGET_DP || control.height < Reach.MIN_TARGET_DP) {
+            if (control.targetWidth < Reach.MIN_TARGET_DP || control.targetHeight < Reach.MIN_TARGET_DP) {
+                val measured =
+                    // Sub-pixel noise would otherwise print "reachable at most 30.1 (30.1 visible now)",
+                    // which reads as a contradiction.
+                    if (kotlin.math.abs(control.targetWidth - control.width) > 0.05f ||
+                        kotlin.math.abs(control.targetHeight - control.height) > 0.05f
+                    ) {
+                        "${fmt(control.targetWidth)} x ${fmt(control.targetHeight)} dp reachable at most " +
+                            "(${fmt(control.width)} x ${fmt(control.height)} visible now; clipped elsewhere " +
+                            "or never fully on screen)"
+                    } else {
+                        "${fmt(control.targetWidth)} x ${fmt(control.targetHeight)} dp"
+                    }
                 add(
                     ReachViolation(
                         ReachRule.R4_SIZE,
                         control.tag,
-                        "is ${fmt(control.width)} x ${fmt(control.height)} dp, under the " +
-                            "${fmt(Reach.MIN_TARGET_DP)} dp minimum",
+                        "is $measured, under the ${fmt(Reach.MIN_TARGET_DP)} dp minimum",
                     ),
                 )
             }
-            if (control.primary && control.height < Reach.PRIMARY_MIN_HEIGHT_DP) {
+            if (control.primary && control.targetHeight < Reach.PRIMARY_MIN_HEIGHT_DP) {
                 add(
                     ReachViolation(
                         ReachRule.R4_SIZE,
                         control.tag,
-                        "is ${fmt(control.height)} dp tall, under the ${fmt(Reach.PRIMARY_MIN_HEIGHT_DP)} dp " +
+                        "is ${fmt(control.targetHeight)} dp tall, under the ${fmt(Reach.PRIMARY_MIN_HEIGHT_DP)} dp " +
                             "primary height",
                     ),
                 )
