@@ -327,4 +327,30 @@ class NoHiddenActionsTest {
 
         assertEquals(emptyList<HiddenActionViolation>(), findHiddenActions(source))
     }
+
+    @Test
+    fun aBacktickedIdentifierContainingAParenthesisDoesNotHideTheActionsSlot() {
+        // `val `score)` = "Scores"` is legal Kotlin. If the `)` inside that name closed the bar's argument
+        // list, the scan would stop before reaching the actions slot.
+        val source =
+            """
+            val `score)` = "Scores"
+
+            fun bar() = TopAppBar(title = { Text(`score)`) }, actions = {})
+            """.trimIndent()
+
+        assertEquals(1, findHiddenActions(source).size)
+    }
+
+    @Test
+    fun aBacktickedIdentifierContainingACommaIsNotAnArgumentSeparator() {
+        val source =
+            """
+            val `a, b` = "together"
+
+            fun bar() = TopAppBar(`a, b`, Modifier)
+            """.trimIndent()
+
+        assertEquals(emptyList<HiddenActionViolation>(), findHiddenActions(source))
+    }
 }

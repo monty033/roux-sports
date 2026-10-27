@@ -43,6 +43,11 @@ private const val FAB = "FloatingActionButton"
  */
 internal fun findHiddenActions(source: String): List<HiddenActionViolation> {
     val code = blankCommentsAndStrings(source)
+    // A backticked identifier is a name, so its interior cannot be syntax - but it may *contain* syntax
+    // characters: `val `score)` = ...` is legal, and a `)` inside it would close the bar's argument list
+    // early and hide the actions slot. The interior is blanked for structural scanning only, keeping the
+    // backticks so an escaped call name (`when`(...)) still matches; the alias reader sees the real names.
+    val structure = blankBacktickedContents(code)
     val aliases = importedAliases(code)
     val violations = mutableListOf<HiddenActionViolation>()
 
@@ -57,16 +62,16 @@ internal fun findHiddenActions(source: String): List<HiddenActionViolation> {
                 .mapValues { (_, canonical) -> bannedCalls.getValue(canonical) }
 
     bannedTokens.forEach { (token, why) ->
-        eachCall(code, token) { index, _ ->
+        eachCall(structure, token) { index, _ ->
             violations += HiddenActionViolation(lineAt(code, index), "$token is $why")
         }
     }
 
     topBarTokens.forEach { token ->
-        eachCall(code, token) { index, open ->
-            val close = matchingParen(code, open)
+        eachCall(structure, token) { index, open ->
+            val close = matchingParen(structure, open)
             // from the first character *after* the bar's own "(" so its named arguments are at depth 0
-            val arguments = if (close > open) code.substring(open + 1, close) else ""
+            val arguments = if (close > open) structure.substring(open + 1, close) else ""
             if (hasTopLevelActions(arguments) || hasPositionalActions(arguments)) {
                 violations +=
                     HiddenActionViolation(
@@ -84,7 +89,7 @@ internal fun findHiddenActions(source: String): List<HiddenActionViolation> {
     // bans the control outright: the signed-off design has no FAB anywhere, and adding one has to be a
     // deliberate change here, in the open, rather than a call that happens to slip past a heuristic.
     (aliases.filterValues { it == FAB }.keys + FAB).forEach { token ->
-        eachCall(code, token) { index, _ ->
+        eachCall(structure, token) { index, _ ->
             violations +=
                 HiddenActionViolation(
                     lineAt(code, index),
@@ -273,6 +278,40 @@ private fun matchingParen(
         }
     }
     return -1
+}
+
+/**
+ * Blanks the syntax characters inside every backticked identifier, keeping the backticks and the name
+ * characters themselves. Kotlin forbids a backtick inside a name and forbids line breaks in one, so the span
+ * is bounded by the next backtick.
+ *
+ * Keeping the letters matters: `actions` must still read as a name, while the `)` in `score)` must not read
+ * as a closing parenthesis.
+ */
+private fun blankBacktickedContents(code: String): String {
+    val out = StringBuilder(code)
+    var index = 0
+    while (index < code.length) {
+        if (code[index] != '`') {
+            index++
+            continue
+        }
+        var close = index + 1
+        while (close < code.length && code[close] != '`' && code[close] != '\n') close++
+        if (close >= code.length || code[close] != '`') {
+            index++ // an unmatched backtick is not an identifier; leave it alone
+            continue
+        }
+        for (inner in index + 1 until close) {
+            val char = out[inner]
+            // Names are made of identifier characters; anything else inside the backticks is syntax as far
+            // as the scan is concerned. Keeping the letters is what lets `actions` and `when` stay readable
+            // as names while a stray `)` or `,` stops being structural.
+            if (!char.isLetterOrDigit() && char != '_' && char != '$' && char != ' ') out.setCharAt(inner, ' ')
+        }
+        index = close + 1
+    }
+    return out.toString()
 }
 
 /**
