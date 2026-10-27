@@ -677,4 +677,72 @@ class ReachAssertionsTest {
             message.contains("scores.staleName") && message.contains("scores.filter"),
         )
     }
+
+    @Test
+    fun twoControlsSharingATagAreRejectedRatherThanCollapsed() {
+        rule.setContent {
+            Box(Modifier.fillMaxSize()) {
+                // The upper chip is not tagged; the lower one claims the tag both of them share by name.
+                Box(
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = 16.dp, top = 16.dp)
+                        .size(width = 56.dp, height = 56.dp)
+                        .clickable { },
+                )
+                Box(
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 16.dp, bottom = 16.dp)
+                        .size(width = 56.dp, height = 56.dp)
+                        .primaryControl("scores.toggle", frequent = true),
+                )
+            }
+        }
+
+        // Compared as a set this passes: the declaration says "scores.toggle" and a control with that tag
+        // exists. The duplicate is what makes that possible, so the duplicate is the failure.
+        val duplicated =
+            assertThrows(AssertionError::class.java) {
+                rule.assertPrimaryControlsReachable("scores.toggle", "scores.toggle")
+            }
+        assertTrue(
+            "a repeated declaration must be rejected, got: ${duplicated.message}",
+            duplicated.message.orEmpty().contains("must be unique"),
+        )
+    }
+
+    @Test
+    fun twoTaggedControlsSharingATagAreRejected() {
+        rule.setContent {
+            Box(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 16.dp, bottom = 16.dp),
+                ) {
+                    Box(
+                        Modifier
+                            .size(width = 56.dp, height = 56.dp)
+                            .primaryControl("scores.toggle", frequent = true),
+                    )
+                    Spacer(Modifier.width(16.dp))
+                    Box(
+                        Modifier
+                            .size(width = 56.dp, height = 56.dp)
+                            .primaryControl("scores.toggle", frequent = true),
+                    )
+                }
+            }
+        }
+
+        val duplicated =
+            assertThrows(AssertionError::class.java) {
+                rule.assertPrimaryControlsReachable("scores.toggle", "scores.toggle")
+            }
+        assertTrue(
+            "two controls sharing a tag must be rejected, got: ${duplicated.message}",
+            duplicated.message.orEmpty().contains("must be unique"),
+        )
+    }
 }

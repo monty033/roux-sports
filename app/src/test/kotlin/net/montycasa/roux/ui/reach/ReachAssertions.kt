@@ -20,9 +20,28 @@ fun ComposeTestRule.assertPrimaryControlsReachable(vararg expectedPrimaryTags: S
     // catches losing every tag; a screen with two primary actions would still lose one of them silently,
     // and that action would keep its size check while losing R1, R2 and the edge insets. An empty list is
     // a positive statement that this screen has no primary controls.
-    val actual = targets.filter { it.primary }.map { it.tag }.toSet()
-    val expected = expectedPrimaryTags.toSet()
-    if (actual != expected) {
+    val actual = targets.filter { it.primary }.map { it.tag }
+    val expected = expectedPrimaryTags.toList()
+
+    // A tag has to name exactly one control. Compared as sets, two controls sharing a tag would mask one
+    // of them losing its tag: the survivor keeps the set equal to the declaration while the other quietly
+    // drops out of R1 and R2. Duplicates are rejected outright instead of being collapsed.
+    fun duplicates(tags: List<String>): Set<String> =
+        tags
+            .groupingBy { it }
+            .eachCount()
+            .filterValues { it > 1 }
+            .keys
+
+    val duplicated = duplicates(actual) + duplicates(expected)
+    if (duplicated.isNotEmpty()) {
+        throw AssertionError(
+            "primary tags must be unique, but ${duplicated.sorted()} appear more than once - " +
+                "a shared tag hides one control losing it",
+        )
+    }
+
+    if (actual.sorted() != expected.sorted()) {
         throw AssertionError(
             "primary controls are ${actual.sorted()} but the screen declares ${expected.sorted()} - " +
                 "an untagged or reachTarget-declared action is outside R1, R2 and the edge rules",
