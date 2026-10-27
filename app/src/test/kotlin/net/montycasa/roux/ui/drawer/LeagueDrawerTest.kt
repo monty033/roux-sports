@@ -221,7 +221,7 @@ class LeagueDrawerTest {
         rule.onNodeWithText("DONE").assertExists()
         assertHandles(listOf("nhl", "nfl", "mlb"))
         rule.onNodeWithTag("leagues.nhl").assertHeightIsEqualTo(56.dp)
-        rule.onNodeWithTag("leagues.heading").assertHeightIsAtLeast(48.dp)
+        rule.onNodeWithTag("leagues.heading").assertHeightIsEqualTo(48.dp)
         rule.onNodeWithText("DONE").performClick()
         assertHandles(emptyList())
         rule.onNodeWithText("DONE").assertDoesNotExist()
@@ -373,7 +373,7 @@ class LeagueDrawerTest {
         val bounds = ids.map { rule.onNodeWithTag("leagues.$it").getUnclippedBoundsInRoot() }
         bounds.zipWithNext().forEach { (above, below) -> assertTrue("expected ${ids.toList()}", above.top < below.top) }
         ids.forEach { rule.onNodeWithTag("leagues.$it").assertHeightIsEqualTo(56.dp) }
-        rule.onNodeWithTag("leagues.heading").assertHeightIsAtLeast(48.dp)
+        rule.onNodeWithTag("leagues.heading").assertHeightIsEqualTo(48.dp)
     }
 
     @Test
