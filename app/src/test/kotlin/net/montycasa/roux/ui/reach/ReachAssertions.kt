@@ -207,12 +207,15 @@ fun ComposeTestRule.reachTargets(): List<ControlPlacement> {
         val nextStaticRight = if (scrollsHorizontally) Float.MAX_VALUE else minOf(staticRight, nodeLeft + nodeWidthDp)
         val nextStaticTop = if (scrollsVertically) -Float.MAX_VALUE else maxOf(staticTop, nodeTop)
         val nextStaticBottom = if (scrollsVertically) Float.MAX_VALUE else minOf(staticBottom, nodeTop + nodeHeightDp)
+        // A scroller's viewport is itself subject to the ancestors above it: a 100 dp strip inside a 40 dp fixed
+        // parent only ever shows 40 dp, however freely its content moves. So the accumulated interval clips the
+        // window's rectangle first, and only then is the interval reset for the content below.
         val nextHorizontalWindows =
             if (scrollsHorizontally) {
                 horizontalWindows +
                     ScrollWindow(
-                        start = nodeLeft,
-                        end = nodeLeft + nodeWidthDp,
+                        start = maxOf(nodeLeft, staticLeft),
+                        end = minOf(nodeLeft + nodeWidthDp, staticRight),
                         scrollRange = horizontalRange!!.maxValue() / scale,
                         scrollPosition = horizontalRange.value() / scale,
                     )
@@ -223,8 +226,8 @@ fun ComposeTestRule.reachTargets(): List<ControlPlacement> {
             if (scrollsVertically) {
                 verticalWindows +
                     ScrollWindow(
-                        start = nodeTop,
-                        end = nodeTop + nodeHeightDp,
+                        start = maxOf(nodeTop, staticTop),
+                        end = minOf(nodeTop + nodeHeightDp, staticBottom),
                         scrollRange = verticalRange!!.maxValue() / scale,
                         scrollPosition = verticalRange.value() / scale,
                     )

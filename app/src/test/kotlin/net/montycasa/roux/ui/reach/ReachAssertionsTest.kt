@@ -678,6 +678,42 @@ class ReachAssertionsTest {
         rule.assertPrimaryControlsReachable("scores.dragBack")
     }
 
+    /**
+     * A strip inside a fixed parent is only as wide as the parent allows. The content scrolls freely and the
+     * viewport is 100 dp, but 40 dp of it is on screen, so 40 dp is the most any chip can ever occupy - resetting the
+     * measurement on entering a scroller must not forget the ancestor that bounds the scroller itself.
+     */
+    @Test
+    fun aViewportClippedByAFixedParentCannotShowMoreThanThat() {
+        rule.setContent {
+            Box(Modifier.fillMaxSize()) {
+                Box(
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(bottom = 16.dp)
+                        .width(40.dp)
+                        .clipToBounds(),
+                ) {
+                    Row(Modifier.width(100.dp).horizontalScroll(rememberScrollState())) {
+                        Box(
+                            Modifier
+                                .requiredSize(width = 56.dp, height = 56.dp)
+                                .primaryControl("scores.clippedViewport"),
+                        )
+                        Spacer(Modifier.width(300.dp))
+                    }
+                }
+            }
+        }
+
+        val message = failure("scores.clippedViewport").message.orEmpty()
+        assertTrue("R4 should be cited, got: $message", message.contains("R4 target size"))
+        assertTrue(
+            "40 dp is the most the parent allows, got: $message",
+            message.matches(Regex("(?s).*is 40\\.\\d x 56\\.0 dp.*")),
+        )
+    }
+
     @Test
     fun aClickableInsideATaggedParentIsJudgedButNotTreatedAsOverlapping() {
         rule.setContent {
