@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -227,6 +228,75 @@ class ReachAssertionsTest {
         val message = failure().message.orEmpty()
         assertTrue("R4 should be cited, got: $message", message.contains("R4 target size"))
         assertTrue("the size should be reported, got: $message", message.contains("40.0 x 40.0 dp"))
+    }
+
+    /**
+     * A strip of six 56 dp chips in a 200 dp viewport leaves the last one half visible. It is 42 dp of target
+     * at rest and 56 dp after one flick, so the size rule measures the chip, not the viewport - otherwise every
+     * horizontally scrolling primary control is illegal and the strip has to be shrunk until the artefact
+     * disappears.
+     */
+    @Test
+    fun aChipClippedByItsStripIsMeasuredAtItsOwnSize() {
+        rule.setContent {
+            Box(Modifier.fillMaxSize()) {
+                Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp)) {
+                    Row(
+                        Modifier
+                            .width(200.dp)
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        repeat(6) { index ->
+                            Box(
+                                Modifier
+                                    .size(width = 56.dp, height = 56.dp)
+                                    .primaryControl("scores.chip.$index", frequent = true),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        rule.assertPrimaryControlsReachable(
+            "scores.chip.0",
+            "scores.chip.1",
+            "scores.chip.2",
+            "scores.chip.3",
+            "scores.chip.4",
+            "scores.chip.5",
+        )
+    }
+
+    /**
+     * The exception above is scoped to scrolling ancestors. A control cut short by a parent that cannot scroll
+     * is genuinely smaller than it looks in code, and that is the case the visible-geometry rule exists for.
+     */
+    @Test
+    fun aTargetClippedByAFixedParentIsJudgedByWhatIsActuallyVisible() {
+        rule.setContent {
+            Box(Modifier.fillMaxSize()) {
+                Box(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 16.dp)
+                        .width(30.dp)
+                        .clipToBounds(),
+                ) {
+                    Box(
+                        Modifier
+                            .size(width = 56.dp, height = 56.dp)
+                            .primaryControl("scores.truncated"),
+                    )
+                }
+            }
+        }
+
+        val message = failure("scores.truncated").message.orEmpty()
+        assertTrue("R4 should be cited, got: $message", message.contains("R4 target size"))
+        assertTrue("the visible width should be reported, got: $message", message.matches(Regex("(?s).*is 30\\.\\d x 56\\.0 dp.*")))
+        assertTrue("a fixed parent must not be excused as a scroller, got: $message", !message.contains("laid out"))
     }
 
     @Test

@@ -74,10 +74,28 @@ data class ControlPlacement(
     val primary: Boolean = false,
     val frequent: Boolean = false,
     val path: String = "",
+    /**
+     * True when an ancestor that scrolls is what cut this control short, rather than a fixed parent or the
+     * window edge.
+     *
+     * A date strip shows six chips and part of a seventh; the seventh is 42 dp of visible target at rest and
+     * 56 dp the moment the strip is scrolled. R4 asks how big the target is, and a scroll viewport is not a
+     * statement about the target - the fan can always scroll the rest of it into reach. Judging visible
+     * geometry here would make every horizontally scrolling primary control illegal at double type, where no
+     * window width fits even three chips.
+     */
+    val clippedByScroller: Boolean = false,
 ) {
     /** What a thumb can actually press: the part of the target inside the window. */
     val width: Float get() = visibleRight - visibleLeft
     val height: Float get() = visibleBottom - visibleTop
+
+    /**
+     * The size R4 judges. Inside a scroll viewport that is the control's own measured size, because the
+     * clipping is a viewport fact rather than a property of the control.
+     */
+    val targetWidth: Float get() = if (clippedByScroller) rawRight - rawLeft else width
+    val targetHeight: Float get() = if (clippedByScroller) rawBottom - rawTop else height
 
     val isVisible: Boolean get() = width > 0f && height > 0f
 }
@@ -137,22 +155,28 @@ fun findReachViolations(
                     ),
                 )
             }
-            if (control.width < Reach.MIN_TARGET_DP || control.height < Reach.MIN_TARGET_DP) {
+            if (control.targetWidth < Reach.MIN_TARGET_DP || control.targetHeight < Reach.MIN_TARGET_DP) {
+                val measured =
+                    if (control.clippedByScroller) {
+                        "${fmt(control.targetWidth)} x ${fmt(control.targetHeight)} dp laid out " +
+                            "(${fmt(control.width)} x ${fmt(control.height)} visible in its scroller)"
+                    } else {
+                        "${fmt(control.targetWidth)} x ${fmt(control.targetHeight)} dp"
+                    }
                 add(
                     ReachViolation(
                         ReachRule.R4_SIZE,
                         control.tag,
-                        "is ${fmt(control.width)} x ${fmt(control.height)} dp, under the " +
-                            "${fmt(Reach.MIN_TARGET_DP)} dp minimum",
+                        "is $measured, under the ${fmt(Reach.MIN_TARGET_DP)} dp minimum",
                     ),
                 )
             }
-            if (control.primary && control.height < Reach.PRIMARY_MIN_HEIGHT_DP) {
+            if (control.primary && control.targetHeight < Reach.PRIMARY_MIN_HEIGHT_DP) {
                 add(
                     ReachViolation(
                         ReachRule.R4_SIZE,
                         control.tag,
-                        "is ${fmt(control.height)} dp tall, under the ${fmt(Reach.PRIMARY_MIN_HEIGHT_DP)} dp " +
+                        "is ${fmt(control.targetHeight)} dp tall, under the ${fmt(Reach.PRIMARY_MIN_HEIGHT_DP)} dp " +
                             "primary height",
                     ),
                 )

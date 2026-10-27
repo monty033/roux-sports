@@ -130,6 +130,7 @@ fun ComposeTestRule.reachTargets(): List<ControlPlacement> {
     fun walk(
         node: SemanticsNode,
         path: String,
+        insideScroller: Boolean = false,
     ) {
         // Two keys, deliberately not merged: primaryControl marks a control that R1, R2 and the edge
         // insets also govern, while reachTarget only says "measure this". Collapsing them would subject
@@ -168,9 +169,18 @@ fun ComposeTestRule.reachTargets(): List<ControlPlacement> {
                     primary = primaryTag != null,
                     frequent = node.config.getOrNull(IsFrequentControl) ?: false,
                     path = path,
+                    // The scroller itself is an ancestor, not the control, so the flag is threaded down
+                    // rather than read from this node.
+                    clippedByScroller = insideScroller,
                 )
         }
-        node.children.forEachIndexed { index, child -> walk(child, if (path.isEmpty()) "$index" else "$path/$index") }
+        // A node that exposes ScrollBy is a viewport: everything below it can be scrolled into reach, so a
+        // clipped child there is measured at its own size. ScrollBy stays out of the action list above - it
+        // marks a container, not a target - so reading it here costs nothing.
+        val scrolls = node.config.contains(SemanticsActions.ScrollBy)
+        node.children.forEachIndexed { index, child ->
+            walk(child, if (path.isEmpty()) "$index" else "$path/$index", insideScroller || scrolls)
+        }
     }
     walk(root, "")
     return found
