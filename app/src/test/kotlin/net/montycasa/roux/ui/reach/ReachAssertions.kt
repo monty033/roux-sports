@@ -1,5 +1,6 @@
 package net.montycasa.roux.ui.reach
 
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -130,8 +131,12 @@ fun ComposeTestRule.reachTargets(): List<ControlPlacement> {
     fun walk(
         node: SemanticsNode,
         path: String,
-        inHorizontalScroller: Boolean = false,
-        inVerticalScroller: Boolean = false,
+        staticLeft: Float = -Float.MAX_VALUE,
+        staticRight: Float = Float.MAX_VALUE,
+        staticTop: Float = -Float.MAX_VALUE,
+        staticBottom: Float = Float.MAX_VALUE,
+        horizontalWindow: Float = Float.MAX_VALUE,
+        verticalWindow: Float = Float.MAX_VALUE,
     ) {
         // Two keys, deliberately not merged: primaryControl marks a control that R1, R2 and the edge
         // insets also govern, while reachTarget only says "measure this". Collapsing them would subject
@@ -170,29 +175,69 @@ fun ComposeTestRule.reachTargets(): List<ControlPlacement> {
                     primary = primaryTag != null,
                     frequent = node.config.getOrNull(IsFrequentControl) ?: false,
                     path = path,
-                    // The scroller itself is an ancestor, not the control, so the flags are threaded down
-                    // rather than read from this node.
-                    horizontalScroller = inHorizontalScroller,
-                    verticalScroller = inVerticalScroller,
+                    // How much of this control can ever be on screen at once. Ancestors that cannot scroll
+                    // bound it where it sits, so their rectangles have to be intersected with the control's
+                    // own - a width alone cannot say that a target is hanging out of the side of its parent.
+                    // Scrolling ancestors contribute their extent, and every one of them counts: an inner
+                    // 200 dp scroller inside a 30 dp one still only ever shows 30.
+                    reachableWidth = reachable(left, right, staticLeft, staticRight, horizontalWindow),
+                    reachableHeight = reachable(top, bottom, staticTop, staticBottom, verticalWindow),
                 )
         }
-        // A viewport reveals content only along the axis it scrolls on, so the two axes are tracked apart:
-        // a vertical list cannot restore a button's width. The axis ranges are what Compose's scrollable
-        // modifiers publish; ScrollBy alone says "scrollable" without saying which way, and stays out of the
-        // action list above because it marks a container rather than a target.
+        // Two facts per axis, and they are different facts. A parent that does not scroll bounds its child
+        // permanently; a parent that scrolls instead publishes a window the child can be dragged through, so it
+        // contributes the window's extent rather than its own clipping. Keeping them separate is what tells a
+        // chip at the end of a strip apart from a button squeezed inside one.
         val scrollsHorizontally = node.config.contains(SemanticsProperties.HorizontalScrollAxisRange)
         val scrollsVertically = node.config.contains(SemanticsProperties.VerticalScrollAxisRange)
+        val nodeWidthDp = node.size.width / scale
+        val nodeHeightDp = node.size.height / scale
+        val nodeLeft = node.positionInRoot.x / scale
+        val nodeTop = node.positionInRoot.y / scale
+        val nextStaticLeft = if (scrollsHorizontally) staticLeft else maxOf(staticLeft, nodeLeft)
+        val nextStaticRight = if (scrollsHorizontally) staticRight else minOf(staticRight, nodeLeft + nodeWidthDp)
+        val nextStaticTop = if (scrollsVertically) staticTop else maxOf(staticTop, nodeTop)
+        val nextStaticBottom = if (scrollsVertically) staticBottom else minOf(staticBottom, nodeTop + nodeHeightDp)
+        val nextHorizontalWindow = if (scrollsHorizontally) minOf(horizontalWindow, nodeWidthDp) else horizontalWindow
+        val nextVerticalWindow = if (scrollsVertically) minOf(verticalWindow, nodeHeightDp) else verticalWindow
         node.children.forEachIndexed { index, child ->
             walk(
                 child,
                 if (path.isEmpty()) "$index" else "$path/$index",
-                inHorizontalScroller || scrollsHorizontally,
-                inVerticalScroller || scrollsVertically,
+                nextStaticLeft,
+                nextStaticRight,
+                nextStaticTop,
+                nextStaticBottom,
+                nextHorizontalWindow,
+                nextVerticalWindow,
             )
         }
     }
     walk(root, "")
     return found
+}
+
+/**
+ * The most of a control that can ever be simultaneously on screen, in dp.
+ *
+ * [start]/[end] are the control's laid-out extent on one axis. [staticStart]/[staticEnd] are the interval left
+ * over by the ancestors that cannot scroll, and [window] is the narrowest scrolling viewport around it. The answer
+ * is how much of the control falls inside that interval, capped by the window a fan can drag it through.
+ *
+ * Intersecting rectangles rather than comparing widths is what catches a target hanging out of the side of its
+ * parent: the parent is wide, the target is displaced, and only 16 dp of it is ever reachable.
+ */
+private fun reachable(
+    start: Float,
+    end: Float,
+    staticStart: Float,
+    staticEnd: Float,
+    window: Float,
+): Float {
+    val clippedStart = maxOf(start, staticStart)
+    val clippedEnd = minOf(end, staticEnd)
+    val insideStatic = (clippedEnd - clippedStart).coerceAtLeast(0f)
+    return if (window == Float.MAX_VALUE) insideStatic else minOf(insideStatic, window)
 }
 
 /** A name for an untagged target, so a failure can still be found on screen. */

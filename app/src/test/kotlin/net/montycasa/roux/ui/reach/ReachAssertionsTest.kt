@@ -286,7 +286,7 @@ class ReachAssertionsTest {
                 ) {
                     Box(
                         Modifier
-                            .size(width = 56.dp, height = 56.dp)
+                            .requiredSize(width = 56.dp, height = 56.dp)
                             .primaryControl("scores.truncated"),
                     )
                 }
@@ -317,7 +317,7 @@ class ReachAssertionsTest {
                     Box(Modifier.width(30.dp).clipToBounds()) {
                         Box(
                             Modifier
-                                .size(width = 56.dp, height = 56.dp)
+                                .requiredSize(width = 56.dp, height = 56.dp)
                                 .primaryControl("scores.squeezed"),
                         )
                     }
@@ -333,8 +333,176 @@ class ReachAssertionsTest {
         )
         assertTrue(
             "a vertical scroller must not excuse a horizontal cut, got: $message",
-            !message.contains("scroll away"),
+            message.matches(Regex("(?s).*is 30\\.\\d x 56\\.0 dp.*")),
         )
+    }
+
+    /**
+     * A horizontal strip excuses a chip it cuts at its own edge. It must not excuse a chip that a fixed parent
+     * inside the strip squeezed: scrolling the strip moves that parent, and the chip stays 30 dp wide the whole
+     * way. The scroller has to be the thing whose edge bounded the control, not merely an ancestor of it.
+     */
+    @Test
+    fun aTargetSqueezedInsideAHorizontalStripIsStillAViolation() {
+        rule.setContent {
+            Box(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 16.dp)
+                        .width(200.dp)
+                        .horizontalScroll(rememberScrollState()),
+                ) {
+                    // Deliberately away from the strip's edges: flush against one, "the viewport cut it" would
+                    // be true by accident and this test would pass whichever rule was in force.
+                    Spacer(Modifier.width(40.dp))
+                    Box(Modifier.width(30.dp).clipToBounds()) {
+                        Box(
+                            Modifier
+                                .requiredSize(width = 56.dp, height = 56.dp)
+                                .primaryControl("scores.squeezedInStrip"),
+                        )
+                    }
+                    Spacer(Modifier.width(100.dp))
+                }
+            }
+        }
+
+        val message = failure("scores.squeezedInStrip").message.orEmpty()
+        assertTrue("R4 should be cited, got: $message", message.contains("R4 target size"))
+        assertTrue(
+            "the visible width must be judged, got: $message",
+            message.matches(Regex("(?s).*is 30\\.\\d x 56\\.0 dp.*")),
+        )
+        assertTrue(
+            "the strip must not excuse a squeeze it cannot scroll away, got: $message",
+            message.matches(Regex("(?s).*is 30\\.\\d x 56\\.0 dp.*")),
+        )
+    }
+
+    /**
+     * A viewport can be narrower than the minimum itself. However far it scrolls, 48 dp is never on screen at
+     * once, so the target is unreachable by R4's definition no matter that it was laid out at 56.
+     */
+    @Test
+    fun aTargetInAViewportNarrowerThanTheMinimumStillFails() {
+        rule.setContent {
+            Box(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 16.dp)
+                        .width(30.dp)
+                        .horizontalScroll(rememberScrollState()),
+                ) {
+                    Box(
+                        Modifier
+                            .requiredSize(width = 56.dp, height = 56.dp)
+                            .primaryControl("scores.narrowViewport"),
+                    )
+                }
+            }
+        }
+
+        val message = failure("scores.narrowViewport").message.orEmpty()
+        assertTrue("R4 should be cited, got: $message", message.contains("R4 target size"))
+        assertTrue("30 dp is all that can ever show, got: $message", message.matches(Regex("(?s).*is 30\\.\\d x 56\\.0 dp.*")))
+    }
+
+    /**
+     * A strip wide enough to show the whole chip still cannot undo a squeeze by a fixed parent inside it. This is
+     * the case that a rule keyed on "is there a scroller above me" got wrong twice.
+     */
+    @Test
+    fun aTargetSqueezedInsideAWideStripIsStillAViolation() {
+        rule.setContent {
+            Box(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 16.dp)
+                        .width(300.dp)
+                        .horizontalScroll(rememberScrollState()),
+                ) {
+                    Spacer(Modifier.width(20.dp))
+                    Box(Modifier.width(30.dp).clipToBounds()) {
+                        Box(
+                            Modifier
+                                .requiredSize(width = 56.dp, height = 56.dp)
+                                .primaryControl("scores.squeezedInWideStrip"),
+                        )
+                    }
+                    Spacer(Modifier.width(200.dp))
+                }
+            }
+        }
+
+        val message = failure("scores.squeezedInWideStrip").message.orEmpty()
+        assertTrue("R4 should be cited, got: $message", message.contains("R4 target size"))
+        assertTrue(
+            "the 30 dp parent bounds it permanently, got: $message",
+            message.matches(Regex("(?s).*is 30\\.\\d x 56\\.0 dp.*")),
+        )
+    }
+
+    /**
+     * A wide parent that the target hangs out of the side of: the parent is 200 dp, the target is 56 dp, and only
+     * 16 dp of it is inside. Comparing widths would call this healthy; intersecting the rectangles does not.
+     */
+    @Test
+    fun aTargetHangingOutOfItsParentsSideIsJudgedOnWhatIsInside() {
+        rule.setContent {
+            Box(Modifier.fillMaxSize()) {
+                Box(
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 100.dp, bottom = 16.dp)
+                        .width(200.dp)
+                        .clipToBounds(),
+                ) {
+                    Box(
+                        Modifier
+                            .offset(x = (-40).dp)
+                            .requiredSize(width = 56.dp, height = 56.dp)
+                            .primaryControl("scores.hangingOut"),
+                    )
+                }
+            }
+        }
+
+        val message = failure("scores.hangingOut").message.orEmpty()
+        assertTrue("R4 should be cited, got: $message", message.contains("R4 target size"))
+    }
+
+    /**
+     * Nested viewports: an inner 200 dp strip inside an outer 30 dp one. The fan can only ever see 30 dp of the
+     * target, so the narrowest window is the one that decides.
+     */
+    @Test
+    fun theNarrowestViewportInANestDecides() {
+        rule.setContent {
+            Box(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 16.dp)
+                        .width(30.dp)
+                        .horizontalScroll(rememberScrollState()),
+                ) {
+                    Row(Modifier.width(200.dp).horizontalScroll(rememberScrollState())) {
+                        Box(
+                            Modifier
+                                .requiredSize(width = 56.dp, height = 56.dp)
+                                .primaryControl("scores.nestedViewports"),
+                        )
+                    }
+                }
+            }
+        }
+
+        val message = failure("scores.nestedViewports").message.orEmpty()
+        assertTrue("R4 should be cited, got: $message", message.contains("R4 target size"))
+        assertTrue("the outer 30 dp window is the limit, got: $message", message.matches(Regex("(?s).*is 30\\.\\d x 56\\.0 dp.*")))
     }
 
     @Test
@@ -590,14 +758,15 @@ class ReachAssertionsTest {
             }
         }
 
-        // Only 36 dp of this 56 dp control is on screen, so it is a 36 dp target however large its layout
-        // box is - and no size rule can see that from the raw extent.
+        // The window is an ancestor that does not scroll, so intersecting its rectangle leaves 36 dp of this
+        // 56 dp control reachable: R4 reports the target as too small and R5 reports where it was put. Both are
+        // true statements about the same mistake, and the pair is more useful than either alone.
         val message = failure("scores.halfOff").message.orEmpty()
         assertTrue("containment should be cited, got: $message", message.contains("R5 containment"))
         assertTrue("the overrun should be reported, got: $message", message.contains("past the left edge"))
         assertTrue(
-            "the visible width should fail R4, got: $message",
-            message.contains("x 56.0 dp, under the 48.0 dp minimum"),
+            "the reachable width should fail R4, got: $message",
+            message.matches(Regex("(?s).*is 36\\.\\d x 56\\.0 dp.*")),
         )
     }
 
