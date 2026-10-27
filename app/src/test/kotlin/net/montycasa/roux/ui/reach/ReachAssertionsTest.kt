@@ -539,6 +539,73 @@ class ReachAssertionsTest {
         )
     }
 
+    /**
+     * A scroller with real travel is still not a rescue if the travel goes the wrong way. This strip can scroll 356
+     * dp, but its first child sits 40 dp to the left of the viewport, so every scroll position shows less of it, not
+     * more: 16 dp is the best a fan can ever get. The viewport's width says nothing about that - its range and the
+     * child's offset together do.
+     */
+    @Test
+    fun aScrollerThatOnlyScrollsAwayFromATargetRevealsNothing() {
+        rule.setContent {
+            Box(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 100.dp, bottom = 16.dp)
+                        .width(100.dp)
+                        .horizontalScroll(rememberScrollState()),
+                ) {
+                    Box(
+                        Modifier
+                            .offset(x = (-40).dp)
+                            .requiredSize(width = 56.dp, height = 56.dp)
+                            .primaryControl("scores.scrollsAway"),
+                    )
+                    Spacer(Modifier.width(400.dp))
+                }
+            }
+        }
+
+        val message = failure("scores.scrollsAway").message.orEmpty()
+        assertTrue("R4 should be cited, got: $message", message.contains("R4 target size"))
+        assertTrue(
+            "only 16 dp can ever be inside the viewport, got: $message",
+            message.matches(Regex("(?s).*is 16\\.0 x 56\\.0 dp.*")),
+        )
+    }
+
+    /**
+     * The other half of the same fact: a strip is allowed to hide a control it can bring back. This chip sits
+     * outside its viewport and inside the window, and one flick puts all 56 dp on screen, so R4 must stay silent.
+     * Without this, the rule could pass every "detects a bad layout" test while failing the layouts it exists to
+     * permit.
+     */
+    @Test
+    fun aChipAStripCanScrollIntoViewIsReachable() {
+        rule.setContent {
+            Box(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 20.dp, bottom = 16.dp)
+                        .width(100.dp)
+                        .horizontalScroll(rememberScrollState()),
+                ) {
+                    Spacer(Modifier.width(150.dp))
+                    Box(
+                        Modifier
+                            .requiredSize(width = 56.dp, height = 56.dp)
+                            .primaryControl("scores.offViewportChip"),
+                    )
+                    Spacer(Modifier.width(150.dp))
+                }
+            }
+        }
+
+        rule.assertPrimaryControlsReachable("scores.offViewportChip")
+    }
+
     @Test
     fun aClickableInsideATaggedParentIsJudgedButNotTreatedAsOverlapping() {
         rule.setContent {

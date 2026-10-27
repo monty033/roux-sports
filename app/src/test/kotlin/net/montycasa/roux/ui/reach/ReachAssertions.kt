@@ -135,8 +135,8 @@ fun ComposeTestRule.reachTargets(): List<ControlPlacement> {
         staticRight: Float = Float.MAX_VALUE,
         staticTop: Float = -Float.MAX_VALUE,
         staticBottom: Float = Float.MAX_VALUE,
-        horizontalWindow: Float = Float.MAX_VALUE,
-        verticalWindow: Float = Float.MAX_VALUE,
+        horizontalWindows: List<ScrollWindow> = emptyList(),
+        verticalWindows: List<ScrollWindow> = emptyList(),
     ) {
         // Two keys, deliberately not merged: primaryControl marks a control that R1, R2 and the edge
         // insets also govern, while reachTarget only says "measure this". Collapsing them would subject
@@ -180,8 +180,8 @@ fun ComposeTestRule.reachTargets(): List<ControlPlacement> {
                     // own - a width alone cannot say that a target is hanging out of the side of its parent.
                     // Scrolling ancestors contribute their extent, and every one of them counts: an inner
                     // 200 dp scroller inside a 30 dp one still only ever shows 30.
-                    reachableWidth = reachable(left, right, staticLeft, staticRight, horizontalWindow),
-                    reachableHeight = reachable(top, bottom, staticTop, staticBottom, verticalWindow),
+                    reachableWidth = reachable(left, right, staticLeft, staticRight, horizontalWindows),
+                    reachableHeight = reachable(top, bottom, staticTop, staticBottom, verticalWindows),
                 )
         }
         // Two facts per axis, and they are different facts. A parent that does not scroll bounds its child
@@ -203,8 +203,18 @@ fun ComposeTestRule.reachTargets(): List<ControlPlacement> {
         val nextStaticRight = if (scrollsHorizontally) staticRight else minOf(staticRight, nodeLeft + nodeWidthDp)
         val nextStaticTop = if (scrollsVertically) staticTop else maxOf(staticTop, nodeTop)
         val nextStaticBottom = if (scrollsVertically) staticBottom else minOf(staticBottom, nodeTop + nodeHeightDp)
-        val nextHorizontalWindow = if (scrollsHorizontally) minOf(horizontalWindow, nodeWidthDp) else horizontalWindow
-        val nextVerticalWindow = if (scrollsVertically) minOf(verticalWindow, nodeHeightDp) else verticalWindow
+        val nextHorizontalWindows =
+            if (scrollsHorizontally) {
+                horizontalWindows + ScrollWindow(nodeLeft, nodeLeft + nodeWidthDp, horizontalRange!!.maxValue() / scale)
+            } else {
+                horizontalWindows
+            }
+        val nextVerticalWindows =
+            if (scrollsVertically) {
+                verticalWindows + ScrollWindow(nodeTop, nodeTop + nodeHeightDp, verticalRange!!.maxValue() / scale)
+            } else {
+                verticalWindows
+            }
         node.children.forEachIndexed { index, child ->
             walk(
                 child,
@@ -213,8 +223,8 @@ fun ComposeTestRule.reachTargets(): List<ControlPlacement> {
                 nextStaticRight,
                 nextStaticTop,
                 nextStaticBottom,
-                nextHorizontalWindow,
-                nextVerticalWindow,
+                nextHorizontalWindows,
+                nextVerticalWindows,
             )
         }
     }
@@ -223,26 +233,70 @@ fun ComposeTestRule.reachTargets(): List<ControlPlacement> {
 }
 
 /**
+ * One scrolling viewport: where it sits, and how far its content can move.
+ *
+ * The range matters as much as the size. A strip whose content already fits cannot move, and a strip with 20 dp of
+ * travel cannot rescue a control that needs 40 - so what a fan can reach is the best overlap any scroll position
+ * can produce, not the viewport's width.
+ */
+private data class ScrollWindow(
+    val start: Float,
+    val end: Float,
+    val scrollRange: Float,
+) {
+    /**
+     * Best overlap between this control and the viewport over every reachable scroll position.
+     *
+     * Overlap is unimodal in the scroll offset: it grows until the control is as far inside the viewport as it can
+     * get and shrinks after that. So the maximum is at whichever reachable offset is closest to the ideal one, and
+     * the ideal is "right edges flush" - which for a control narrower than the viewport means fully visible, and
+     * for a wider one means the whole viewport covered.
+     *
+     * The lower bound is load-bearing: without it a control scrolled past the start of its strip gets a negative
+     * offset, slides back into view on paper, and is reported reachable - removing it fails
+     * [aScrollerThatOnlyScrollsAwayFromATargetRevealsNothing].
+     *
+     * The upper bound is not, and saying so beats implying otherwise: a control a strip has scrolled entirely out
+     * of view is absent from the semantics tree, and a control that is the last thing in a strip has exactly
+     * enough travel to bring it flush with the far edge, so removing that bound survives the suite - measured, not
+     * assumed. It stays because trailing decoration can break both premises, and the cost is one coerceIn.
+     */
+    fun bestOverlap(
+        controlStart: Float,
+        controlEnd: Float,
+    ): Float {
+        val offset = (controlEnd - end).coerceIn(0f, scrollRange)
+        val from = maxOf(controlStart - offset, start)
+        val to = minOf(controlEnd - offset, end)
+        return (to - from).coerceAtLeast(0f)
+    }
+}
+
+/**
  * The most of a control that can ever be simultaneously on screen, in dp.
  *
- * [start]/[end] are the control's laid-out extent on one axis. [staticStart]/[staticEnd] are the interval left
- * over by the ancestors that cannot scroll, and [window] is the narrowest scrolling viewport around it. The answer
- * is how much of the control falls inside that interval, capped by the window a fan can drag it through.
+ * [start]/[end] are the control's laid-out extent on one axis. [staticStart]/[staticEnd] are the interval left over
+ * by the ancestors that cannot scroll. [windows] are the scroll viewports around it, each with its own travel; the
+ * narrowest of them decides, because every one of them clips.
  *
  * Intersecting rectangles rather than comparing widths is what catches a target hanging out of the side of its
- * parent: the parent is wide, the target is displaced, and only 16 dp of it is ever reachable.
+ * parent, and asking each window for its best reachable overlap is what catches one that a scroller can never bring
+ * fully into view.
  */
 private fun reachable(
     start: Float,
     end: Float,
     staticStart: Float,
     staticEnd: Float,
-    window: Float,
+    windows: List<ScrollWindow>,
 ): Float {
     val clippedStart = maxOf(start, staticStart)
     val clippedEnd = minOf(end, staticEnd)
-    val insideStatic = (clippedEnd - clippedStart).coerceAtLeast(0f)
-    return if (window == Float.MAX_VALUE) insideStatic else minOf(insideStatic, window)
+    var best = (clippedEnd - clippedStart).coerceAtLeast(0f)
+    for (window in windows) {
+        best = minOf(best, window.bestOverlap(start, end))
+    }
+    return best
 }
 
 /** A name for an untagged target, so a failure can still be found on screen. */
