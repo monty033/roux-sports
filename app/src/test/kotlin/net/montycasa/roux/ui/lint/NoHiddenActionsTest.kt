@@ -353,4 +353,20 @@ class NoHiddenActionsTest {
 
         assertEquals(emptyList<HiddenActionViolation>(), findHiddenActions(source))
     }
+
+    @Test
+    fun aTopBarInsideAStringTemplateIsStillSeen() {
+        // A template expression is executable Kotlin, so blanking the whole literal would hide this. The probe
+        // that settled it: `val x = "${Text("y")}"` compiles in this app's module.
+        val source = "val note = \"\${TopAppBar(title = {}, actions = {})}\""
+
+        assertEquals(1, findHiddenActions(source).size)
+    }
+
+    @Test
+    fun proseInsideAStringTemplateIsStillIgnored() {
+        val source = "val note = \"the actions = { } slot must stay empty\""
+
+        assertEquals(emptyList<HiddenActionViolation>(), findHiddenActions(source))
+    }
 }

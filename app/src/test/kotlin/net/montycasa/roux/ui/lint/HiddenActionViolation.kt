@@ -315,7 +315,110 @@ private fun blankBacktickedContents(code: String): String {
 }
 
 /**
- * Replaces comment and string bodies with spaces, preserving length so line numbers stay right.
+ * Blanks a string literal's text while keeping its `${...}` expressions as code.
+ *
+ * A template expression is executable: `"${TopAppBar(title = {}, actions = {})}"` compiles, so blanking the
+ * whole literal would hide exactly what this scan exists to find. Quoted text is blanked, `$name` references
+ * are kept as names, and an expression is copied through with any literal nested inside it blanked by the
+ * same rule. Length is preserved, so line numbers stay right.
+ */
+private fun blankStringBody(
+    source: String,
+    start: Int,
+    terminator: String,
+    out: StringBuilder,
+): Int {
+    out.append(" ".repeat(terminator.length))
+    var index = start + terminator.length
+    while (index < source.length) {
+        if (source.startsWith(terminator, index)) {
+            out.append(" ".repeat(terminator.length))
+            return index + terminator.length
+        }
+        val char = source[index]
+        when {
+            terminator.length == 1 && char == '\\' -> {
+                out.append(if (source.getOrNull(index + 1) == '\n') "\n " else "  ")
+                index += 2
+            }
+
+            char == '$' && source.getOrNull(index + 1) == '{' -> {
+                out.append("\${")
+                index = blankTemplateExpression(source, index + 2, out)
+            }
+
+            char == '$' -> {
+                out.append(' ')
+                var cursor = index + 1
+                while (cursor < source.length && (source[cursor].isLetterOrDigit() || source[cursor] == '_')) {
+                    out.append(source[cursor])
+                    cursor++
+                }
+                index = cursor
+            }
+
+            char == '\n' -> {
+                out.append('\n')
+                index++
+            }
+
+            else -> {
+                out.append(' ')
+                index++
+            }
+        }
+    }
+    return index
+}
+
+/** Copies a template expression through as code, blanking any string literal nested inside it. */
+private fun blankTemplateExpression(
+    source: String,
+    start: Int,
+    out: StringBuilder,
+): Int {
+    var index = start
+    var depth = 1
+    while (index < source.length) {
+        when {
+            source.startsWith("\"\"\"", index) -> {
+                index = blankStringBody(source, index, "\"\"\"", out)
+            }
+
+            source[index] == '"' -> {
+                index = blankStringBody(source, index, "\"", out)
+            }
+
+            source[index] == '{' -> {
+                depth++
+                out.append('{')
+                index++
+            }
+
+            source[index] == '}' -> {
+                depth--
+                out.append('}')
+                index++
+                if (depth == 0) return index
+            }
+
+            source[index] == '\n' -> {
+                out.append('\n')
+                index++
+            }
+
+            else -> {
+                out.append(source[index])
+                index++
+            }
+        }
+    }
+    return index
+}
+
+/**
+ * Replaces comment bodies and the text of string and character literals with spaces, preserving length so
+ * line numbers stay right. Template expressions are the exception: they are code, and are copied through.
  *
  * Kotlin has nested block comments and character literals, and both break a naive blanker in ways that
  * matter: `'"'` read as an opening quote blanks the rest of the file, hiding every call after it.
@@ -360,42 +463,11 @@ private fun blankCommentsAndStrings(source: String): String {
             }
 
             source.startsWith("\"\"\"", index) -> {
-                out.append("   ")
-                index += 3
-                while (index < source.length) {
-                    if (source.startsWith("\"\"\"", index)) {
-                        out.append("   ")
-                        index += 3
-                        break
-                    }
-                    out.append(if (source[index] == '\n') '\n' else ' ')
-                    index++
-                }
+                index = blankStringBody(source, index, "\"\"\"", out)
             }
 
             char == '"' -> {
-                out.append(' ')
-                index++
-                while (index < source.length) {
-                    val inner = source[index]
-                    when {
-                        inner == '\\' -> {
-                            out.append("  ")
-                            index += 2
-                        }
-
-                        inner == '"' -> {
-                            out.append(' ')
-                            index++
-                            break
-                        }
-
-                        else -> {
-                            out.append(if (inner == '\n') '\n' else ' ')
-                            index++
-                        }
-                    }
-                }
+                index = blankStringBody(source, index, "\"", out)
             }
 
             char == '\'' -> {
