@@ -4,13 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
+import net.montycasa.roux.ui.nav.RouxNavHost
 import net.montycasa.roux.ui.theme.RouxTheme
 
 class MainActivity : ComponentActivity() {
@@ -20,12 +14,11 @@ class MainActivity : ComponentActivity() {
         setContent {
             // Fixed palettes from the signed-off design; dynamic colour stays off. The theme also
             // carries the orange roles Material has no slot for.
+            //
+            // No inset padding here: the shell's Scaffold owns the insets, so the navigation bar's own
+            // background reaches the bottom edge instead of stopping short of it.
             RouxTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    Box(modifier = Modifier.safeDrawingPadding()) {
-                        Text(stringResource(R.string.app_name))
-                    }
-                }
+                RouxNavHost()
             }
         }
     }
