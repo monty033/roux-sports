@@ -1,69 +1,125 @@
 package net.montycasa.roux.ui.lint
 
 /**
- * R6: no hidden actions. A top app bar may hold a title and nothing else, overflow menus are out, and a
- * confirmation is a [androidx.compose.material3.ModalBottomSheet] with its buttons at the bottom rather
- * than an `AlertDialog` whose choices sit wherever the dialog puts them.
+ * R6: no hidden actions. A top app bar may hold a title and nothing else, overflow menus are out, no
+ * floating action button sits at the top, and a confirmation is a `ModalBottomSheet` with its buttons at
+ * the bottom rather than an `AlertDialog` whose choices sit wherever the dialog puts them.
  *
  * This is a source scan, not a rendering check: it reads Kotlin text. That is deliberate - the rule is
- * about the code a reviewer reads, and a scan can be run in `check` without a device.
+ * about the code a reviewer reads, and a scan can run in `check` without a device.
+ *
+ * Its limit is lexical: it recognises calls written by name, including names imported with `as`. A
+ * composable that wraps a top bar (`AppBar { ... }`), a FAB hoisted into a top-aligned parent, or a menu
+ * opened by raw `pointerInput` cannot be seen here. R6 says nothing may be hidden, so those are review
+ * questions rather than scan questions.
  */
 internal data class HiddenActionViolation(
     val line: Int,
     val reason: String,
 )
 
-private val topBarCalls =
+private val topBarNames =
     listOf(
-        "TopAppBar(",
-        "CenterAlignedTopAppBar(",
-        "MediumTopAppBar(",
-        "LargeTopAppBar(",
+        "TopAppBar",
+        "CenterAlignedTopAppBar",
+        "MediumTopAppBar",
+        "LargeTopAppBar",
     )
 
 /** Calls R6 bans outright, with the replacement to reach for. */
 private val bannedCalls =
     mapOf(
-        "DropdownMenu(" to "an overflow menu - put the action on screen instead",
-        "AlertDialog(" to "a dialog - confirm with ModalBottomSheet and buttons at the bottom",
+        "DropdownMenu" to "an overflow menu - put the action on screen instead",
+        "AlertDialog" to "a dialog - confirm with ModalBottomSheet and buttons at the bottom",
     )
+
+private const val FAB = "FloatingActionButton"
 
 /**
  * Scans one file's [source] for R6 violations.
  *
- * Comments and string literals are blanked first, so prose that mentions `actions =` cannot trip the
- * scan and a call written inside a string cannot hide from it.
+ * Comments, string literals and character literals are blanked first, so prose that mentions
+ * `actions =` cannot trip the scan and a call written inside a string cannot hide from it.
  */
 internal fun findHiddenActions(source: String): List<HiddenActionViolation> {
     val code = blankCommentsAndStrings(source)
+    val aliases = importedAliases(code)
     val violations = mutableListOf<HiddenActionViolation>()
 
-    bannedCalls.forEach { (call, why) ->
-        var index = code.indexOf(call)
-        while (index >= 0) {
-            violations += HiddenActionViolation(lineAt(code, index), "$call is $why")
-            index = code.indexOf(call, index + call.length)
+    // An aliased import is still a call to the banned composable: `import ...TopAppBar as Header`
+    // followed by `Header(actions = ...)` hides a top-bar action from any scan that knows only the
+    // original name.
+    val topBarTokens = topBarNames + aliases.filterValues { it in topBarNames }.keys
+    val bannedTokens =
+        bannedCalls +
+            aliases
+                .filterValues { it in bannedCalls }
+                .mapValues { (_, canonical) -> bannedCalls.getValue(canonical) }
+
+    bannedTokens.forEach { (token, why) ->
+        eachCall(code, token) { index ->
+            violations += HiddenActionViolation(lineAt(code, index), "$token is $why")
         }
     }
 
-    topBarCalls.forEach { call ->
-        var index = code.indexOf(call)
-        while (index >= 0) {
-            val open = index + call.length - 1
+    topBarTokens.forEach { token ->
+        eachCall(code, token) { index ->
+            val open = index + token.length
             val close = matchingParen(code, open)
             val arguments = if (close > open) code.substring(open, close) else ""
             if (Regex("""\bactions\s*=""").containsMatchIn(arguments)) {
                 violations +=
                     HiddenActionViolation(
                         lineAt(code, index),
-                        "$call carries actions = - the top bar holds a title only (R6)",
+                        "$token carries actions = - the top bar holds a title only (R6)",
                     )
             }
-            index = code.indexOf(call, index + call.length)
+        }
+    }
+
+    (aliases.filterValues { it == FAB }.keys + FAB).forEach { token ->
+        eachCall(code, token) { index ->
+            val open = index + token.length
+            val close = matchingParen(code, open)
+            val arguments = if (close > open) code.substring(open, close) else ""
+            // R6 bans a FAB at the TOP. The alignment has to be inside the call's own modifier chain to
+            // be visible lexically; a FAB placed in a top-aligned wrapper around it escapes this scan.
+            if (arguments.contains("Alignment.Top")) {
+                violations +=
+                    HiddenActionViolation(
+                        lineAt(code, index),
+                        "$token is aligned to the top - a floating action button belongs at the bottom (R6)",
+                    )
+            }
         }
     }
 
     return violations.sortedBy { it.line }
+}
+
+/** Alias to the composable it renames, read from `import a.b.Composable as Alias` lines. */
+private fun importedAliases(code: String): Map<String, String> =
+    Regex("""(?m)^\s*import\s+[\w.]+\.(\w+)\s+as\s+(\w+)""")
+        .findAll(code)
+        .associate { match -> match.groupValues[2] to match.groupValues[1] }
+
+/**
+ * Visits every call to [token], skipping identifiers that merely end in it: `parseDropdownMenu(` is a
+ * different function, and flagging it is how a guard earns a reputation for lying.
+ */
+private fun eachCall(
+    code: String,
+    token: String,
+    action: (Int) -> Unit,
+) {
+    val needle = "$token("
+    var index = code.indexOf(needle)
+    while (index >= 0) {
+        val before = code.getOrNull(index - 1) ?: ' '
+        val partOfLongerName = before.isLetterOrDigit() || before == '_' || before == '$'
+        if (!partOfLongerName) action(index)
+        index = code.indexOf(needle, index + needle.length)
+    }
 }
 
 private fun lineAt(
@@ -93,8 +149,10 @@ private fun matchingParen(
 }
 
 /**
- * Replaces comment and string bodies with spaces, preserving length so line numbers stay right. Raw
- * strings are handled because a JSON fixture inside `"""` is the usual place a bracket appears.
+ * Replaces comment and string bodies with spaces, preserving length so line numbers stay right.
+ *
+ * Kotlin has nested block comments and character literals, and both break a naive blanker in ways that
+ * matter: `'"'` read as an opening quote blanks the rest of the file, hiding every call after it.
  */
 private fun blankCommentsAndStrings(source: String): String {
     val out = StringBuilder(source.length)
@@ -112,14 +170,26 @@ private fun blankCommentsAndStrings(source: String): String {
             char == '/' && source.getOrNull(index + 1) == '*' -> {
                 out.append("  ")
                 index += 2
-                while (index < source.length) {
-                    if (source[index] == '*' && source.getOrNull(index + 1) == '/') {
-                        out.append("  ")
-                        index += 2
-                        break
+                var depth = 1
+                while (index < source.length && depth > 0) {
+                    when {
+                        source[index] == '/' && source.getOrNull(index + 1) == '*' -> {
+                            out.append("  ")
+                            index += 2
+                            depth++
+                        }
+
+                        source[index] == '*' && source.getOrNull(index + 1) == '/' -> {
+                            out.append("  ")
+                            index += 2
+                            depth--
+                        }
+
+                        else -> {
+                            out.append(if (source[index] == '\n') '\n' else ' ')
+                            index++
+                        }
                     }
-                    out.append(if (source[index] == '\n') '\n' else ' ')
-                    index++
                 }
             }
 
@@ -156,6 +226,36 @@ private fun blankCommentsAndStrings(source: String): String {
 
                         else -> {
                             out.append(if (inner == '\n') '\n' else ' ')
+                            index++
+                        }
+                    }
+                }
+            }
+
+            char == '\'' -> {
+                // A character literal, including the escaped ones: '"', '\'', '\n'.
+                out.append(' ')
+                index++
+                while (index < source.length) {
+                    val inner = source[index]
+                    when {
+                        inner == '\\' -> {
+                            out.append("  ")
+                            index += 2
+                        }
+
+                        inner == '\'' -> {
+                            out.append(' ')
+                            index++
+                            break
+                        }
+
+                        inner == '\n' -> {
+                            break
+                        }
+
+                        else -> {
+                            out.append(' ')
                             index++
                         }
                     }

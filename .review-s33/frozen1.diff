@@ -1,0 +1,312 @@
+diff --git a/app/src/test/kotlin/net/montycasa/roux/ui/lint/HiddenActionViolation.kt b/app/src/test/kotlin/net/montycasa/roux/ui/lint/HiddenActionViolation.kt
+new file mode 100644
+index 0000000..55174d1
+--- /dev/null
++++ b/app/src/test/kotlin/net/montycasa/roux/ui/lint/HiddenActionViolation.kt
+@@ -0,0 +1,172 @@
++package net.montycasa.roux.ui.lint
++
++/**
++ * R6: no hidden actions. A top app bar may hold a title and nothing else, overflow menus are out, and a
++ * confirmation is a [androidx.compose.material3.ModalBottomSheet] with its buttons at the bottom rather
++ * than an `AlertDialog` whose choices sit wherever the dialog puts them.
++ *
++ * This is a source scan, not a rendering check: it reads Kotlin text. That is deliberate - the rule is
++ * about the code a reviewer reads, and a scan can be run in `check` without a device.
++ */
++internal data class HiddenActionViolation(
++    val line: Int,
++    val reason: String,
++)
++
++private val topBarCalls =
++    listOf(
++        "TopAppBar(",
++        "CenterAlignedTopAppBar(",
++        "MediumTopAppBar(",
++        "LargeTopAppBar(",
++    )
++
++/** Calls R6 bans outright, with the replacement to reach for. */
++private val bannedCalls =
++    mapOf(
++        "DropdownMenu(" to "an overflow menu - put the action on screen instead",
++        "AlertDialog(" to "a dialog - confirm with ModalBottomSheet and buttons at the bottom",
++    )
++
++/**
++ * Scans one file's [source] for R6 violations.
++ *
++ * Comments and string literals are blanked first, so prose that mentions `actions =` cannot trip the
++ * scan and a call written inside a string cannot hide from it.
++ */
++internal fun findHiddenActions(source: String): List<HiddenActionViolation> {
++    val code = blankCommentsAndStrings(source)
++    val violations = mutableListOf<HiddenActionViolation>()
++
++    bannedCalls.forEach { (call, why) ->
++        var index = code.indexOf(call)
++        while (index >= 0) {
++            violations += HiddenActionViolation(lineAt(code, index), "$call is $why")
++            index = code.indexOf(call, index + call.length)
++        }
++    }
++
++    topBarCalls.forEach { call ->
++        var index = code.indexOf(call)
++        while (index >= 0) {
++            val open = index + call.length - 1
++            val close = matchingParen(code, open)
++            val arguments = if (close > open) code.substring(open, close) else ""
++            if (Regex("""\bactions\s*=""").containsMatchIn(arguments)) {
++                violations +=
++                    HiddenActionViolation(
++                        lineAt(code, index),
++                        "$call carries actions = - the top bar holds a title only (R6)",
++                    )
++            }
++            index = code.indexOf(call, index + call.length)
++        }
++    }
++
++    return violations.sortedBy { it.line }
++}
++
++private fun lineAt(
++    code: String,
++    index: Int,
++): Int = code.take(index).count { it == '\n' } + 1
++
++/** Index of the `)` matching the `(` at [open], or -1 when the call is unbalanced. */
++private fun matchingParen(
++    code: String,
++    open: Int,
++): Int {
++    var depth = 0
++    for (index in open until code.length) {
++        when (code[index]) {
++            '(' -> {
++                depth++
++            }
++
++            ')' -> {
++                depth--
++                if (depth == 0) return index
++            }
++        }
++    }
++    return -1
++}
++
++/**
++ * Replaces comment and string bodies with spaces, preserving length so line numbers stay right. Raw
++ * strings are handled because a JSON fixture inside `"""` is the usual place a bracket appears.
++ */
++private fun blankCommentsAndStrings(source: String): String {
++    val out = StringBuilder(source.length)
++    var index = 0
++    while (index < source.length) {
++        val char = source[index]
++        when {
++            char == '/' && source.getOrNull(index + 1) == '/' -> {
++                while (index < source.length && source[index] != '\n') {
++                    out.append(' ')
++                    index++
++                }
++            }
++
++            char == '/' && source.getOrNull(index + 1) == '*' -> {
++                out.append("  ")
++                index += 2
++                while (index < source.length) {
++                    if (source[index] == '*' && source.getOrNull(index + 1) == '/') {
++                        out.append("  ")
++                        index += 2
++                        break
++                    }
++                    out.append(if (source[index] == '\n') '\n' else ' ')
++                    index++
++                }
++            }
++
++            source.startsWith("\"\"\"", index) -> {
++                out.append("   ")
++                index += 3
++                while (index < source.length) {
++                    if (source.startsWith("\"\"\"", index)) {
++                        out.append("   ")
++                        index += 3
++                        break
++                    }
++                    out.append(if (source[index] == '\n') '\n' else ' ')
++                    index++
++                }
++            }
++
++            char == '"' -> {
++                out.append(' ')
++                index++
++                while (index < source.length) {
++                    val inner = source[index]
++                    when {
++                        inner == '\\' -> {
++                            out.append("  ")
++                            index += 2
++                        }
++
++                        inner == '"' -> {
++                            out.append(' ')
++                            index++
++                            break
++                        }
++
++                        else -> {
++                            out.append(if (inner == '\n') '\n' else ' ')
++                            index++
++                        }
++                    }
++                }
++            }
++
++            else -> {
++                out.append(char)
++                index++
++            }
++        }
++    }
++    return out.toString()
++}
+diff --git a/app/src/test/kotlin/net/montycasa/roux/ui/lint/NoHiddenActionsTest.kt b/app/src/test/kotlin/net/montycasa/roux/ui/lint/NoHiddenActionsTest.kt
+new file mode 100644
+index 0000000..d5b4d82
+--- /dev/null
++++ b/app/src/test/kotlin/net/montycasa/roux/ui/lint/NoHiddenActionsTest.kt
+@@ -0,0 +1,128 @@
++package net.montycasa.roux.ui.lint
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertTrue
++import org.junit.Test
++import java.io.File
++
++/**
++ * R6: nothing important lives behind an overflow menu or a dialog. The rule is enforced by scanning the
++ * source, so a reviewer reading a diff never has to notice a bar that quietly grew an `actions` slot.
++ */
++class NoHiddenActionsTest {
++    @Test
++    fun aTopBarWithActionsIsFlagged() {
++        val violations =
++            findHiddenActions(
++                """
++                TopAppBar(
++                    title = { Text("Scores") },
++                    actions = { IconButton(onClick = {}) { Icon(Icons.Default.Refresh, null) } },
++                )
++                """.trimIndent(),
++            )
++
++        assertEquals(listOf(1), violations.map { it.line })
++        assertTrue("should name actions =, got: $violations", violations.single().reason.contains("actions ="))
++    }
++
++    @Test
++    fun anEmptyActionsSlotIsFlaggedToo() {
++        // An empty slot is how a bar acquires one later; the rule is about the slot, not its contents.
++        val violations = findHiddenActions("""TopAppBar(title = { Text("Scores") }, actions = {})""")
++
++        assertEquals(1, violations.size)
++        assertTrue(violations.single().reason.contains("actions ="))
++    }
++
++    @Test
++    fun aCentreAlignedBarWithoutActionsPasses() {
++        val violations =
++            findHiddenActions(
++                """
++                CenterAlignedTopAppBar(
++                    title = { Text("Standings") },
++                )
++                """.trimIndent(),
++            )
++
++        assertEquals(emptyList<HiddenActionViolation>(), violations)
++    }
++
++    @Test
++    fun aDropdownMenuIsFlagged() {
++        val violations = findHiddenActions("""DropdownMenu(expanded = open, onDismissRequest = {})""")
++
++        assertEquals(1, violations.size)
++        assertTrue(violations.single().reason.contains("overflow menu"))
++    }
++
++    @Test
++    fun anAlertDialogIsFlagged() {
++        val violations = findHiddenActions("""AlertDialog(onDismissRequest = {}, confirmButton = {})""")
++
++        assertEquals(1, violations.size)
++        assertTrue(violations.single().reason.contains("ModalBottomSheet"))
++    }
++
++    @Test
++    fun aModalBottomSheetPasses() {
++        val violations =
++            findHiddenActions(
++                """
++                ModalBottomSheet(onDismissRequest = {}) {
++                    Button(onClick = {}) { Text("Sign out") }
++                }
++                """.trimIndent(),
++            )
++
++        assertEquals(emptyList<HiddenActionViolation>(), violations)
++    }
++
++    @Test
++    fun proseAndStringsDoNotTripTheScan() {
++        // A comment describing the rule and a string holding a banned name are exactly the false
++        // positives that make a guard get deleted instead of obeyed.
++        val source =
++            """
++            // Never pass actions = { } to a TopAppBar.
++            /* DropdownMenu( and AlertDialog( are banned by R6. */
++            val message = "DropdownMenu( is banned"
++            val raw = ""${'"'}
++                AlertDialog(
++            ""${'"'}
++            """.trimIndent()
++
++        assertEquals(emptyList<HiddenActionViolation>(), findHiddenActions(source))
++    }
++
++    @Test
++    fun anActionsArgumentBelongingToANestedCallIsNotAttributedToTheBar() {
++        // The scanner looks inside the bar's own parentheses, so a nested call's argument is the nested
++        // call's business - here it is outside the bar entirely.
++        // The decoy has to come AFTER the bar: a scanner that reads from the opening paren to the end of
++        // the file instead of to the matching one would attribute this to the bar above it.
++        val source =
++            """
++            CenterAlignedTopAppBar(title = { Text("Scores") })
++            val handler = Modifier.semantics { actions = 1 }
++            """.trimIndent()
++
++        assertEquals(emptyList<HiddenActionViolation>(), findHiddenActions(source))
++    }
++
++    @Test
++    fun theRealMainTreeHasNoHiddenActions() {
++        val root = File("src/main/kotlin")
++        assertTrue("expected the main source tree at ${root.absolutePath}", root.isDirectory)
++        val sources = root.walkTopDown().filter { it.isFile && it.extension == "kt" }.toList()
++        assertTrue("expected Kotlin sources under ${root.absolutePath}", sources.isNotEmpty())
++
++        val found =
++            sources.flatMap { file ->
++                findHiddenActions(file.readText()).map { "${file.relativeTo(root)}:${it.line} ${it.reason}" }
++            }
++
++        assertEquals(emptyList<String>(), found)
++    }
++}

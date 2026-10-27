@@ -125,4 +125,92 @@ class NoHiddenActionsTest {
 
         assertEquals(emptyList<String>(), found)
     }
+
+    @Test
+    fun anAliasedTopBarIsStillATopBar() {
+        // `import ...TopAppBar as Header` then Header(actions = ...) is the same hidden action under a
+        // name the scan would otherwise never look for.
+        val source =
+            """
+            import androidx.compose.material3.TopAppBar as Header
+
+            fun bar() = Header(title = { Text("Scores") }, actions = {})
+            """.trimIndent()
+
+        val violations = findHiddenActions(source)
+        assertEquals(1, violations.size)
+        assertTrue(violations.single().reason.contains("actions ="))
+    }
+
+    @Test
+    fun anAliasedOverflowMenuIsFlagged() {
+        val source =
+            """
+            import androidx.compose.material3.DropdownMenu as Menu
+
+            fun menu() = Menu(expanded = false, onDismissRequest = {}) {}
+            """.trimIndent()
+
+        val violations = findHiddenActions(source)
+        assertEquals(1, violations.size)
+        assertTrue(violations.single().reason.contains("overflow menu"))
+    }
+
+    @Test
+    fun aTopAlignedFabIsFlagged() {
+        val source =
+            """
+            FloatingActionButton(modifier = Modifier.align(Alignment.TopEnd), onClick = {}) { Text("+") }
+            """.trimIndent()
+
+        val violations = findHiddenActions(source)
+        assertEquals(1, violations.size)
+        assertTrue(violations.single().reason.contains("top"))
+    }
+
+    @Test
+    fun aBottomAlignedFabPasses() {
+        val source =
+            """
+            FloatingActionButton(modifier = Modifier.align(Alignment.BottomEnd), onClick = {}) { Text("+") }
+            """.trimIndent()
+
+        assertEquals(emptyList<HiddenActionViolation>(), findHiddenActions(source))
+    }
+
+    @Test
+    fun aCharacterLiteralDoesNotSwallowTheRestOfTheFile() {
+        // Reading '"' as an opening string blanks everything after it, so this call would vanish.
+        val source =
+            """
+            val quote = '"'
+            DropdownMenu(expanded = false, onDismissRequest = {}) {}
+            """.trimIndent()
+
+        val violations = findHiddenActions(source)
+        assertEquals(1, violations.size)
+        assertTrue(violations.single().reason.contains("overflow menu"))
+    }
+
+    @Test
+    fun aFunctionWhoseNameEndsInABannedNameIsNotACall() {
+        val source =
+            """
+            fun parseDropdownMenu() = Unit
+            fun constructAlertDialogLater() = Unit
+            """.trimIndent()
+
+        assertEquals(emptyList<HiddenActionViolation>(), findHiddenActions(source))
+    }
+
+    @Test
+    fun aNestedBlockCommentIsBlankedToItsRealEnd() {
+        // Kotlin nests block comments; stopping at the first */ leaves the rest looking like code.
+        val source =
+            """
+            /* outer /* inner */ DropdownMenu(expanded = false) */
+            """.trimIndent()
+
+        assertEquals(emptyList<HiddenActionViolation>(), findHiddenActions(source))
+    }
 }
