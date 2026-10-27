@@ -11,6 +11,11 @@ import coil3.svg.SvgDecoder
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.okhttp.OkHttp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.job
 import net.montycasa.roux.data.cache.ResponseCache
 import net.montycasa.roux.data.net.NhlApi
 import net.montycasa.roux.data.net.NhlHttpClientFactory
@@ -87,6 +92,7 @@ class AppContainer(
     engine: HttpClientEngine,
     val clock: Clock = Clock.System,
     version: String = "dev",
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) {
     val httpClient: HttpClient = NhlHttpClientFactory.create(engine, version)
 
@@ -104,9 +110,31 @@ class AppContainer(
     val preferences: PreferencesRepository =
         DataStorePreferencesRepository(
             directory = filesDir / "datastore",
+            scope = scope,
         )
 
     val scores: ScoresRepository = scoresRepository(api = api, cache = cache, clock = clock)
 
     val standings: StandingsRepository = standingsRepository(api = api, cache = cache, clock = clock)
+
+    /**
+     * Closes the HTTP client and cancels this container's scope, waiting for the preference store's
+     * coroutines to finish. A closed container's repositories and client must not be used again, and the
+     * [scope] belongs to this container, so it must not be shared with another one.
+     *
+     * This waits for the scope, not for DataStore to drop its claim on the file: that happens just after
+     * the coroutines complete, so a same-process reopen can still be refused for a moment. The app opens
+     * one container per process and never reopens, so only tests meet that window - and they retry, as
+     * `DataStorePreferencesRepositoryTest.openWhenReleased` documents.
+     *
+     * The client is closed in a `finally` because a caller cancelled while the join is suspended would
+     * otherwise leave it open.
+     */
+    suspend fun close() {
+        try {
+            scope.coroutineContext.job.cancelAndJoin()
+        } finally {
+            httpClient.close()
+        }
+    }
 }

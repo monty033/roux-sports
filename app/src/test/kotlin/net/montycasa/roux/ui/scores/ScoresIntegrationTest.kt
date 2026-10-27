@@ -1,6 +1,5 @@
 package net.montycasa.roux.ui.scores
 
-import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -12,27 +11,15 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
-import coil3.ImageLoader
 import coil3.SingletonImageLoader
 import coil3.annotation.DelicateCoilApi
-import io.ktor.client.engine.mock.MockEngine
-import io.ktor.client.engine.mock.respond
-import io.ktor.http.HttpHeaders
-import io.ktor.http.HttpStatusCode
-import io.ktor.http.Url
-import io.ktor.http.headersOf
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import net.montycasa.roux.AppContainer
-import net.montycasa.roux.RouxApp
 import net.montycasa.roux.data.cache.CacheKey
 import net.montycasa.roux.data.cache.CacheKind
 import net.montycasa.roux.ui.nav.RouxNavHost
 import net.montycasa.roux.ui.theme.RouxTheme
-import okio.Path.Companion.toPath
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -43,11 +30,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
-import java.io.IOException
-import java.util.concurrent.CopyOnWriteArrayList
-import kotlin.time.Clock
 import kotlin.time.Duration.Companion.hours
-import kotlin.time.Instant
 
 /** Exercises the shipped host, ViewModel factory, repositories and singleton logo loader together. */
 @RunWith(RobolectricTestRunner::class)
@@ -64,7 +47,8 @@ class ScoresIntegrationTest {
     fun tearDown() {
         SingletonImageLoader.get(app).shutdown()
         SingletonImageLoader.reset()
-        app.container.httpClient.close()
+        // The container owns the preference store's scope now, so closing the client alone would leave it running.
+        runBlocking { app.container.close() }
     }
 
     @Test
@@ -100,8 +84,12 @@ class ScoresIntegrationTest {
 
         rule.onNode(hasText("Standings") and isSelectable()).performClick()
         rule.onNodeWithText("League standings will appear here.").assertIsDisplayed()
+        // Teams is a real destination now, so this asserts the picker rather than a placeholder sentence.
         rule.onNode(hasText("Teams") and isSelectable()).performClick()
-        rule.onNodeWithText("Team lists and favourites will appear here.").assertIsDisplayed()
+        rule.waitUntil(timeoutMillis = 10_000) {
+            rule.onAllNodesWithTag("teams.row.TOR").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithText("Choose your favourite teams. Favourites appear first.").assertIsDisplayed()
     }
 
     @Test
@@ -184,66 +172,4 @@ fun ComposeTestRule.waitForFixtureScores() {
     waitUntil(timeoutMillis = 10_000) {
         onAllNodesWithTag("scores.game.$id").fetchSemanticsNodes().isNotEmpty()
     }
-}
-
-/** Replaces only the container inputs; the real application's singleton factory still builds Coil. */
-class ScoresIntegrationApp : RouxApp() {
-    /** Each test must observe its own requests, including URLs another test answered with a 404. */
-    override fun newImageLoader(context: Context): ImageLoader =
-        super
-            .newImageLoader(context)
-            .newBuilder()
-            .diskCache(null)
-            .build()
-
-    var offline = false
-    var serveLogos = false
-    val requests = CopyOnWriteArrayList<Url>()
-
-    override val container: AppContainer by lazy {
-        AppContainer(
-            filesDir = filesDir.absolutePath.toPath(),
-            clock =
-                object : Clock {
-                    override fun now(): Instant = Instant.parse("${ScoreFixture.date}T20:00:00Z")
-                },
-            engine =
-                MockEngine { request ->
-                    requests += request.url
-                    if (offline) throw IOException("offline cold start")
-                    when (request.url.host) {
-                        "api-web.nhle.com" -> {
-                            respond(
-                                ScoreFixture.bytes,
-                                HttpStatusCode.OK,
-                                headersOf(HttpHeaders.ContentType, "application/json"),
-                            )
-                        }
-
-                        "assets.nhle.com" -> {
-                            respond(
-                                """<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><path fill="red" d="M0 0h32v32H0z"/></svg>""",
-                                if (serveLogos) HttpStatusCode.OK else HttpStatusCode.NotFound,
-                                headersOf(HttpHeaders.ContentType, "image/svg+xml"),
-                            )
-                        }
-
-                        else -> {
-                            error("Unexpected host: ${request.url.host}")
-                        }
-                    }
-                },
-        )
-    }
-}
-
-/** The existing data corpus is a test resource in :app too; no duplicate capture or rewritten date. */
-private object ScoreFixture {
-    val bytes =
-        requireNotNull(javaClass.getResourceAsStream("/fx/2026-10-26/score-gameday.json")) {
-            "Missing captured score fixture"
-        }.use { it.readBytes() }
-    private val body = Json.parseToJsonElement(bytes.decodeToString()).jsonObject
-    val date = body.getValue("currentDate").jsonPrimitive.content
-    val games = body.getValue("games").jsonArray.map { it.jsonObject }
 }
