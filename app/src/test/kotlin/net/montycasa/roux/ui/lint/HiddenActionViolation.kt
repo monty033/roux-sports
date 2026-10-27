@@ -57,17 +57,17 @@ internal fun findHiddenActions(source: String): List<HiddenActionViolation> {
                 .mapValues { (_, canonical) -> bannedCalls.getValue(canonical) }
 
     bannedTokens.forEach { (token, why) ->
-        eachCall(code, token) { index ->
+        eachCall(code, token) { index, _ ->
             violations += HiddenActionViolation(lineAt(code, index), "$token is $why")
         }
     }
 
     topBarTokens.forEach { token ->
-        eachCall(code, token) { index ->
-            val open = index + token.length
+        eachCall(code, token) { index, open ->
             val close = matchingParen(code, open)
-            val arguments = if (close > open) code.substring(open, close) else ""
-            if (Regex("""\bactions\s*=""").containsMatchIn(arguments)) {
+            // from the first character *after* the bar's own "(" so its named arguments are at depth 0
+            val arguments = if (close > open) code.substring(open + 1, close) else ""
+            if (hasTopLevelActions(arguments)) {
                 violations +=
                     HiddenActionViolation(
                         lineAt(code, index),
@@ -77,20 +77,20 @@ internal fun findHiddenActions(source: String): List<HiddenActionViolation> {
         }
     }
 
+    // R6 bans a FAB at the TOP. Detecting "at the top" from source is not sound: the alignment may sit
+    // on a parent (Box(contentAlignment = Alignment.TopEnd) { FloatingActionButton(...) }), and a FAB
+    // aligned to Alignment.Top inside a short Row at the bottom of the screen sits at the bottom in fact.
+    // A check that misses the first and flags the second teaches a reviewer to distrust it, so this scan
+    // bans the control outright: the signed-off design has no FAB anywhere, and adding one has to be a
+    // deliberate change here, in the open, rather than a call that happens to slip past a heuristic.
     (aliases.filterValues { it == FAB }.keys + FAB).forEach { token ->
-        eachCall(code, token) { index ->
-            val open = index + token.length
-            val close = matchingParen(code, open)
-            val arguments = if (close > open) code.substring(open, close) else ""
-            // R6 bans a FAB at the TOP. The alignment has to be inside the call's own modifier chain to
-            // be visible lexically; a FAB placed in a top-aligned wrapper around it escapes this scan.
-            if (arguments.contains("Alignment.Top")) {
-                violations +=
-                    HiddenActionViolation(
-                        lineAt(code, index),
-                        "$token is aligned to the top - a floating action button belongs at the bottom (R6)",
-                    )
-            }
+        eachCall(code, token) { index, _ ->
+            violations +=
+                HiddenActionViolation(
+                    lineAt(code, index),
+                    "$token is a floating action button - R6 bans one at the top and this app has none; " +
+                        "if that is changing, change this rule in the same commit",
+                )
         }
     }
 
@@ -99,27 +99,56 @@ internal fun findHiddenActions(source: String): List<HiddenActionViolation> {
 
 /** Alias to the composable it renames, read from `import a.b.Composable as Alias` lines. */
 private fun importedAliases(code: String): Map<String, String> =
-    Regex("""(?m)^\s*import\s+[\w.]+\.(\w+)\s+as\s+(\w+)""")
+    Regex("(?m)^\\s*import\\s+[\\w.]+\\.(`?\\w+`?)\\s+as\\s+(`?\\w+`?)")
         .findAll(code)
-        .associate { match -> match.groupValues[2] to match.groupValues[1] }
+        .associate { match -> match.groupValues[2].trim('`') to match.groupValues[1].trim('`') }
 
 /**
- * Visits every call to [token], skipping identifiers that merely end in it: `parseDropdownMenu(` is a
- * different function, and flagging it is how a guard earns a reputation for lying.
+ * Visits every call to [token], skipping identifiers that merely end in it (`parseDropdownMenu(` is a
+ * different function) and allowing a space before the parenthesis, which Kotlin accepts and a scan that
+ * matches "token(" literally would miss.
  */
 private fun eachCall(
     code: String,
     token: String,
-    action: (Int) -> Unit,
+    action: (index: Int, openParen: Int) -> Unit,
 ) {
-    val needle = "$token("
-    var index = code.indexOf(needle)
-    while (index >= 0) {
-        val before = code.getOrNull(index - 1) ?: ' '
-        val partOfLongerName = before.isLetterOrDigit() || before == '_' || before == '$'
-        if (!partOfLongerName) action(index)
-        index = code.indexOf(needle, index + needle.length)
+    val call = Regex("(?<![\\w$])" + Regex.escape(token) + """\s*\(""")
+    call.findAll(code).forEach { match ->
+        val open = code.indexOf('(', match.range.first)
+        if (open >= 0) action(match.range.first, open)
     }
+}
+
+/**
+ * Whether the argument list contains an `actions` slot at its own level. A local named `actions` inside
+ * the title lambda - `title = { val actions = listOf(...); Text("Scores") }` - is not a slot, and flagging
+ * it would be a false positive on correct code.
+ */
+private fun hasTopLevelActions(arguments: String): Boolean {
+    var depth = 0
+    var index = 0
+    while (index < arguments.length) {
+        when (arguments[index]) {
+            '{', '(' -> depth++
+            '}', ')' -> depth--
+            else -> if (depth == 0 && isActionsAssignment(arguments, index)) return true
+        }
+        index++
+    }
+    return false
+}
+
+private fun isActionsAssignment(
+    arguments: String,
+    index: Int,
+): Boolean {
+    if (!arguments.startsWith("actions", index)) return false
+    val before = arguments.getOrNull(index - 1)
+    if (before != null && (before.isLetterOrDigit() || before == '_' || before == '$')) return false
+    var next = index + "actions".length
+    while (next < arguments.length && arguments[next].isWhitespace()) next++
+    return next < arguments.length && arguments[next] == '=' && arguments.getOrNull(next + 1) != '='
 }
 
 private fun lineAt(
