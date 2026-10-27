@@ -9,12 +9,14 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import net.montycasa.roux.domain.model.TeamKey
+import net.montycasa.roux.domain.policy.LeagueOrder
 import net.montycasa.roux.domain.repo.NotificationLedgerEntry
 import net.montycasa.roux.domain.repo.PreferencesRepository
 import net.montycasa.roux.domain.repo.TeamAlertPreferences
@@ -75,6 +77,20 @@ class DataStorePreferencesRepository(
         store.edit { preferences ->
             preferences[VERSION] = PREFERENCES_VERSION
             preferences[FAVOURITES_ONLY] = enabled
+        }
+    }
+
+    override suspend fun getLeagueOrder(): List<String> {
+        val preferences = readablePreferences() ?: return LeagueOrder.canonical
+        return LeagueOrder.reconcile(preferences[LEAGUE_ORDER]?.split(",").orEmpty())
+    }
+
+    override suspend fun setLeagueOrder(order: List<String>) {
+        requireWritable()
+        store.edit { preferences ->
+            preferences[VERSION] = PREFERENCES_VERSION
+            // A string preserves sequence; a DataStore string set would discard the user's order.
+            preferences[LEAGUE_ORDER] = LeagueOrder.reconcile(order).joinToString(",")
         }
     }
 
@@ -204,6 +220,7 @@ class DataStorePreferencesRepository(
 
         val VERSION = intPreferencesKey("prefs_version")
         val FAVOURITES = stringSetPreferencesKey("favourites_abbreviations")
+        val LEAGUE_ORDER = stringPreferencesKey("league_order")
         val FAVOURITES_ONLY = booleanPreferencesKey("favourites_only")
     }
 }

@@ -9,4 +9,9 @@
     <string name="drawer_football">FOOTBALL</string>
     <string name="drawer_baseball">BASEBALL</string>
     <string name="drawer_footer">NO ADS · NO TRACKERS · GPL–3.0</string>
+    <string name="drawer_edit_leagues">Edit leagues</string>
+    <string name="drawer_done">DONE</string>
+    <string name="drawer_reorder_league">Reorder %1$s</string>
+    <string name="drawer_move_up">Move up</string>
+    <string name="drawer_move_down">Move down</string>
 </resources>

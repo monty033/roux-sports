@@ -2,8 +2,11 @@
 
 package net.montycasa.roux.ui.drawer
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,10 +16,12 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DrawerState
 import androidx.compose.material3.DrawerValue
@@ -25,30 +30,48 @@ import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import kotlinx.coroutines.launch
 import net.montycasa.roux.R
+import net.montycasa.roux.domain.policy.LeagueOrder
 import net.montycasa.roux.ui.reach.reachTarget
 import net.montycasa.roux.ui.scores.ScoresUiState
 import java.time.LocalDate
@@ -67,9 +90,15 @@ fun LeagueNavigationDrawer(
     state: ScoresUiState,
     onFavouritesOnly: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    onLeagueOrder: (List<String>) -> Unit,
+    catalog: List<DrawerLeague> = drawerCatalog,
+    onLeagueSelected: (String) -> Unit = { onFavouritesOnly(false) },
     content: @Composable () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val open = drawerState.currentValue == DrawerValue.Open || drawerState.targetValue == DrawerValue.Open
+    // A close (including a scrim tap or swipe) always discards this drawer-local mode.
+    var editing by remember(open) { mutableStateOf(false) }
     ModalNavigationDrawer(
         drawerState = drawerState,
         modifier = modifier.background(panel),
@@ -92,10 +121,21 @@ fun LeagueNavigationDrawer(
                 drawerTonalElevation = 0.dp,
                 windowInsets = WindowInsets(0, 0, 0, 0),
             ) {
-                LeagueDrawer(state.favouriteCount, state.loadedDate) { only ->
-                    onFavouritesOnly(only)
-                    scope.launch { drawerState.close() }
-                }
+                LeagueDrawer(
+                    state = state,
+                    editing = editing,
+                    onEditing = { editing = it },
+                    catalog = catalog,
+                    onLeagueOrder = onLeagueOrder,
+                    onLeagueSelected = { id ->
+                        onLeagueSelected(id)
+                        scope.launch { drawerState.close() }
+                    },
+                    onFavouritesOnly = { only ->
+                        onFavouritesOnly(only)
+                        scope.launch { drawerState.close() }
+                    },
+                )
             }
         },
     ) {
@@ -113,9 +153,13 @@ fun LeagueNavigationDrawer(
 
 @Composable
 fun LeagueDrawer(
-    favouriteCount: Int,
-    loadedDate: String?,
+    state: ScoresUiState,
+    editing: Boolean,
+    onEditing: (Boolean) -> Unit,
+    onLeagueOrder: (List<String>) -> Unit,
+    onLeagueSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
+    catalog: List<DrawerLeague> = drawerCatalog,
     onFavouritesOnly: (Boolean) -> Unit,
 ) {
     Column(modifier.fillMaxHeight().background(panel).padding(start = 16.dp, top = 20.dp, end = 16.dp, bottom = 24.dp)) {
@@ -124,7 +168,7 @@ fun LeagueDrawer(
             stringResource(R.string.app_name),
             Modifier.width(108.dp).alpha(0.95f).testTag("leagues.wordmark"),
         )
-        leagueSeason(loadedDate)?.let { season ->
+        leagueSeason(state.loadedDate)?.let { season ->
             Text(
                 season,
                 Modifier.padding(top = 8.dp).testTag("leagues.season"),
@@ -136,17 +180,61 @@ fun LeagueDrawer(
         }
         Spacer(Modifier.weight(1f).height(8.dp))
         DrawerLabel(stringResource(R.string.drawer_favourites))
-        DrawerRow(stringResource(R.string.drawer_my_teams), favouriteCount.toString(), tag = "leagues.myTeams", team = true) {
+        DrawerRow(stringResource(R.string.drawer_my_teams), state.favouriteCount.toString(), tag = "leagues.myTeams", team = true) {
             onFavouritesOnly(true)
         }
         DrawerRule()
-        Box(Modifier.height(48.dp), contentAlignment = Alignment.CenterStart) {
-            DrawerLabel(stringResource(R.string.drawer_leagues))
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                // The reference permits a taller heading; 8 dp above/below the 48 dp button
+                // preserves the app's required clearance from adjacent navigation targets.
+                .padding(start = 10.dp, end = 6.dp, top = 8.dp, bottom = 8.dp)
+                .testTag("leagues.heading"),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            DrawerLabel(stringResource(R.string.drawer_leagues), Modifier.weight(1f), padded = false)
+            Box(
+                Modifier
+                    .then(if (editing) Modifier.height(48.dp) else Modifier.size(48.dp))
+                    .clip(CircleShape)
+                    .clickable(role = Role.Button) { onEditing(!editing) }
+                    .reachTarget("leagues.edit")
+                    .testTag("leagues.edit")
+                    .then(if (editing) Modifier.padding(horizontal = 12.dp) else Modifier),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (editing) {
+                    Text(
+                        stringResource(R.string.drawer_done),
+                        color = orange,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 0.1.em,
+                    )
+                } else {
+                    Icon(pencil, stringResource(R.string.drawer_edit_leagues), Modifier.size(20.dp), tint = orange)
+                }
+            }
         }
-        DrawerRow("NHL", stringResource(R.string.drawer_hockey), tag = "leagues.nhl", selected = true) { onFavouritesOnly(false) }
-        // Drawn, greyed and not offered: the file lists them, the app has no data for them yet.
-        DrawerRow("NFL", stringResource(R.string.drawer_football), tag = "leagues.nfl", dimmed = true) {}
-        DrawerRow("MLB", stringResource(R.string.drawer_baseball), tag = "leagues.mlb", dimmed = true) {}
+        val order = LeagueOrder.reconcile(state.leagueOrder, catalog.map { it.id })
+        // The drawer renders the persisted order directly. Every league in the catalog is arrangeable, including
+        // ones with no data yet: greying says "nothing to show", not "not yours to arrange".
+        order.forEach { id ->
+            key(id) {
+                val league = catalog.first { it.id == id }
+                ReorderableLeagueRow(
+                    league = league,
+                    selected = id == state.selectedLeagueId,
+                    editing = editing,
+                    order = order,
+                    onLeagueOrder = onLeagueOrder,
+                    onClick = { onLeagueSelected(id) },
+                )
+            }
+        }
         // No separator here: the footer draws its own top border (.dfoot{border-top}), and an extra rule
         // put two lines 17 dp apart whenever Settings/hint are absent.
         Box(Modifier.padding(top = 8.dp)) {
@@ -166,10 +254,14 @@ fun LeagueDrawer(
 }
 
 @Composable
-private fun DrawerLabel(label: String) {
+private fun DrawerLabel(
+    label: String,
+    modifier: Modifier = Modifier,
+    padded: Boolean = true,
+) {
     Text(
         label,
-        Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+        modifier.then(if (padded) Modifier.padding(horizontal = 10.dp, vertical = 6.dp) else Modifier),
         color = muted,
         fontSize = 8.sp,
         fontWeight = FontWeight.ExtraBold,
@@ -193,13 +285,16 @@ private fun DrawerRow(
     label: String,
     trailing: String,
     tag: String,
+    modifier: Modifier = Modifier,
     team: Boolean = false,
     selected: Boolean = false,
     dimmed: Boolean = false,
+    editing: Boolean = false,
+    handle: (@Composable () -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
             .height(56.dp)
             .clip(RoundedCornerShape(10.dp))
@@ -218,6 +313,8 @@ private fun DrawerRow(
             .then(
                 if (dimmed) {
                     Modifier.semantics { disabled() }
+                } else if (editing) {
+                    Modifier
                 } else {
                     Modifier.selectable(selected, role = Role.Tab, onClick = onClick).reachTarget(tag)
                 },
@@ -226,7 +323,7 @@ private fun DrawerRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (team) Icon(star, contentDescription = null, Modifier.size(18.dp), tint = orange)
+        if (team) Icon(star, contentDescription = null, Modifier.size(17.dp).testTag("leagues.myTeams.star"), tint = ink)
         Text(
             label,
             Modifier.weight(1f),
@@ -234,10 +331,13 @@ private fun DrawerRow(
                 when {
                     dimmed -> Color(0xFF6E747E)
                     team -> ink
-                    else -> Color.White
+                    selected -> Color.White
+                    else -> Color(0xFFB4B9C1)
                 },
             fontSize = 15.sp,
             fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
         Text(
             trailing,
@@ -251,6 +351,7 @@ private fun DrawerRow(
             fontWeight = FontWeight.ExtraBold,
             letterSpacing = 0.1.em,
         )
+        handle?.invoke()
     }
 }
 
@@ -272,4 +373,131 @@ private val star =
         .addPath(
             addPathNodes("M12,3.6 L14.6,8.9 L20.5,9.8 L16.2,13.9 L17.2,19.7 L12,16.9 L6.8,19.7 L7.8,13.9 L3.5,9.8 L9.4,8.9 Z"),
             fill = SolidColor(Color.Black),
+        ).build()
+
+/** Availability is catalog data, so tests and future adapters can offer more than today's NHL. */
+data class DrawerLeague(
+    val id: String,
+    val label: String,
+    val sport: Int,
+    val available: Boolean,
+)
+
+val drawerCatalog: List<DrawerLeague> =
+    listOf(
+        DrawerLeague("nhl", "NHL", R.string.drawer_hockey, true),
+        DrawerLeague("nfl", "NFL", R.string.drawer_football, false),
+        DrawerLeague("mlb", "MLB", R.string.drawer_baseball, false),
+    )
+
+@Composable
+private fun ReorderableLeagueRow(
+    league: DrawerLeague,
+    selected: Boolean,
+    editing: Boolean,
+    order: List<String>,
+    onLeagueOrder: (List<String>) -> Unit,
+    onClick: () -> Unit,
+) {
+    val latestOrder by rememberUpdatedState(order)
+    val writeOrder by rememberUpdatedState(onLeagueOrder)
+    val rowHeight = with(LocalDensity.current) { 56.dp.toPx() }
+    var offset by remember(editing) { mutableFloatStateOf(0f) }
+    var dragging by remember(editing) { mutableStateOf(false) }
+    val handleDescription = stringResource(R.string.drawer_reorder_league, league.label)
+    val moveUp = stringResource(R.string.drawer_move_up)
+    val moveDown = stringResource(R.string.drawer_move_down)
+    DrawerRow(
+        label = league.label,
+        trailing = stringResource(league.sport),
+        tag = "leagues.${league.id}",
+        selected = selected,
+        dimmed = !league.available,
+        editing = editing,
+        modifier = Modifier.zIndex(if (dragging) 1f else 0f).graphicsLayer { translationY = offset },
+        handle =
+            if (editing) {
+                {
+                    Box(
+                        Modifier
+                            // The glyph stays 10 dp; a transparent 48 dp target makes holding it practical.
+                            .size(48.dp)
+                            .testTag("leagues.${league.id}.handle")
+                            .semantics {
+                                contentDescription = handleDescription
+                                // TalkBack users get the same durable reorder without the hold-and-drag gesture.
+                                customActions =
+                                    listOf(-1 to moveUp, 1 to moveDown).mapNotNull { (step, label) ->
+                                        val from = latestOrder.indexOf(league.id)
+                                        val to = from + step
+                                        if (from < 0 || to !in latestOrder.indices) {
+                                            null
+                                        } else {
+                                            CustomAccessibilityAction(label) {
+                                                writeOrder(latestOrder.toMutableList().apply { add(to, removeAt(from)) })
+                                                true
+                                            }
+                                        }
+                                    }
+                            }.pointerInput(league.id) {
+                                var gestureOrder = latestOrder
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = {
+                                        gestureOrder = latestOrder
+                                        dragging = true
+                                    },
+                                    onDragEnd = {
+                                        dragging = false
+                                        offset = 0f
+                                    },
+                                    onDragCancel = {
+                                        dragging = false
+                                        offset = 0f
+                                    },
+                                ) { change, amount ->
+                                    change.consume()
+                                    offset += amount.y
+                                    while (true) {
+                                        val from = gestureOrder.indexOf(league.id)
+                                        val step =
+                                            when {
+                                                offset < -rowHeight / 2 -> -1
+                                                offset > rowHeight / 2 -> 1
+                                                else -> 0
+                                            }
+                                        val to = from + step
+                                        if (from < 0 || step == 0 || to !in gestureOrder.indices) break
+                                        gestureOrder = gestureOrder.toMutableList().apply { add(to, removeAt(from)) }
+                                        offset -= step * rowHeight
+                                        writeOrder(gestureOrder)
+                                    }
+                                }
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Canvas(Modifier.size(10.dp)) {
+                            repeat(3) { bar ->
+                                val y = 0.75.dp.toPx() + bar * 4.dp.toPx()
+                                drawLine(Color(0xFF6C727B), Offset(0f, y), Offset(size.width, y), 1.5.dp.toPx())
+                            }
+                        }
+                    }
+                }
+            } else {
+                null
+            },
+        onClick = onClick,
+    )
+}
+
+private val pencil =
+    ImageVector
+        .Builder("Edit leagues", 20.dp, 20.dp, 24f, 24f)
+        .addPath(
+            addPathNodes("M16,3 L21,8 L8,21 L3,21 L3,16 Z M14,5 L19,10"),
+            fill = null,
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 1.9f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round,
         ).build()

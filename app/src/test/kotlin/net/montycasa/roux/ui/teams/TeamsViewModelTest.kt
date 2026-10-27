@@ -455,6 +455,10 @@ private class FakePreferences(
         this.teams = teams
     }
 
+    override suspend fun getLeagueOrder(): List<String> = net.montycasa.roux.domain.policy.LeagueOrder.canonical
+
+    override suspend fun setLeagueOrder(order: List<String>) = Unit
+
     override suspend fun getFavouritesOnly(): Boolean = true
 
     override suspend fun setFavouritesOnly(enabled: Boolean) = Unit
