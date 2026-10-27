@@ -317,14 +317,18 @@ class ScoresViewModelTest {
             val viewModel = viewModel(scores, clock = clock)
 
             viewModel.uiState.test {
-                assertEquals("2026-10-26", awaitItem().selectedDate)
+                val initial = awaitItem()
+                assertEquals("2026-10-26", initial.selectedDate)
+                assertEquals("2026-10-26", initial.today)
                 runCurrent()
                 advanceTimeBy(1_000)
                 runCurrent()
 
                 assertEquals(listOf(0L, 1_000L), scores.times)
                 assertEquals(listOf("2026-10-26", "2026-10-27"), scores.calls.map { it.today })
-                assertEquals("2026-10-26", expectMostRecentItem().selectedDate)
+                val afterMidnight = expectMostRecentItem()
+                assertEquals("2026-10-26", afterMidnight.selectedDate)
+                assertEquals("2026-10-27", afterMidnight.today)
                 cancelAndIgnoreRemainingEvents()
             }
         }
@@ -393,6 +397,42 @@ class ScoresViewModelTest {
                 assertTrue(state.favouritesOnly)
                 assertEquals(FavoritesHint.PickTeams, state.favoritesHint)
                 assertTrue(state.rows.isNotEmpty())
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun headerAndDrawerMetadataUseTheLoadedUnfilteredDayWithoutAnExtraRequest() =
+        runTest {
+            val scores = FakeScoresRepository(testScheduler)
+            scores.respond = { date, _ ->
+                freshDay(
+                    date,
+                    listOf(
+                        game(date = date, state = GameState.Live()),
+                        game(
+                            date = date,
+                            state = GameState.Live(critical = true),
+                        ).copy(id = GameId("other"), home = TeamRef(TeamKey("BOS")), away = TeamRef(TeamKey("NYR"))),
+                    ),
+                )
+            }
+            val preferences = FakePreferencesRepository(setOf(TeamKey("TOR")), storedOnly = true)
+            val viewModel = viewModel(scores, preferences)
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                val filtered = expectMostRecentItem()
+                assertEquals(1, filtered.rows.size)
+                assertEquals(2, filtered.liveCount)
+                assertEquals(1, filtered.favouriteCount)
+                assertEquals(filtered.selectedDate, filtered.loadedDate)
+                viewModel.setFavouritesOnly(false)
+                runCurrent()
+                val all = expectMostRecentItem()
+                assertEquals(2, all.rows.size)
+                assertEquals(2, all.liveCount)
+                assertEquals(1, scores.calls.size)
                 cancelAndIgnoreRemainingEvents()
             }
         }

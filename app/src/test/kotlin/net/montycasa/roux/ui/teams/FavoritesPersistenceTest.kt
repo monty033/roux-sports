@@ -100,7 +100,8 @@ class FavoritesPersistenceTest {
         )
         val torIds = torGames.map { it.getValue("id").jsonPrimitive.content }.toSet()
         waitForGame(torIds.first())
-        rule.onNodeWithContentDescription("Favourites only").assertIsOn()
+        rule.onNodeWithContentDescription("Favourites only").assertDoesNotExist()
+        assertTrue(runBlocking { app.container.preferences.getFavouritesOnly() })
         assertEquals(torIds, composedGameIds())
         ScoreFixture.games.filter { it.getValue("id").jsonPrimitive.content !in torIds }.forEach {
             rule.onNodeWithTag("scores.game.${it.getValue("id").jsonPrimitive.content}").assertDoesNotExist()
@@ -109,15 +110,13 @@ class FavoritesPersistenceTest {
         openTeams()
         torToggle().assertIsOn()
         barItem("Scores").performClick()
-        rule.onNodeWithContentDescription("Favourites only").performClick()
+        rule.onNodeWithContentDescription("Open leagues").performClick()
+        rule.onNodeWithTag("leagues.nhl").performClick()
         rule.waitUntil(timeoutMillis = 10_000) {
-            rule
-                .onNodeWithContentDescription("Favourites only")
-                .fetchSemanticsNode()
-                .config
-                .getOrNull(SemanticsProperties.ToggleableState) == ToggleableState.Off
+            rule.onNodeWithTag("scores.header").fetchSemanticsNode()
+            !runBlocking { app.container.preferences.getFavouritesOnly() }
         }
-        rule.onNodeWithContentDescription("Favourites only").assertIsOff()
+        rule.onNodeWithContentDescription("Favourites only").assertDoesNotExist()
         val seen = mutableSetOf<String>()
         ScoreFixture.games.forEach { game ->
             val id = game.getValue("id").jsonPrimitive.content

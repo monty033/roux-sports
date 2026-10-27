@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="open_leagues">Open leagues</string>
+    <string name="live_count">%1$d LIVE</string>
+    <string name="drawer_favourites">FAVOURITES</string>
+    <string name="drawer_my_teams">My Teams</string>
+    <string name="drawer_leagues">LEAGUES</string>
+    <string name="drawer_hockey">HOCKEY</string>
+    <string name="drawer_football">FOOTBALL</string>
+    <string name="drawer_baseball">BASEBALL</string>
+    <string name="drawer_footer">NO ADS · NO TRACKERS · GPL–3.0</string>
+</resources>
