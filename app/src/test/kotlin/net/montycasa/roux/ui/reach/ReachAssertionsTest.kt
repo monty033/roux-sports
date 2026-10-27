@@ -56,13 +56,8 @@ class ReachAssertionsTest {
     @get:Rule
     val rule = createComposeRule()
 
-    private fun failure(minPrimary: Int = 1): AssertionError =
-        assertThrows(AssertionError::class.java) { rule.assertPrimaryControlsReachable(minPrimary) }
-
-    /** The audit must have seen the control, or a silent pass means nothing. */
-    private fun assertSaw(vararg tags: String) {
-        assertEquals(tags.toList(), rule.primaryControlTags())
-    }
+    private fun failure(vararg expectedPrimary: String): AssertionError =
+        assertThrows(AssertionError::class.java) { rule.assertPrimaryControlsReachable(*expectedPrimary) }
 
     @Test
     fun aControlInTheTopHalfFailsAndTheMessageNamesItsTag() {
@@ -77,8 +72,7 @@ class ReachAssertionsTest {
             }
         }
 
-        assertSaw("scores.title")
-        val message = failure().message.orEmpty()
+        val message = failure("scores.title").message.orEmpty()
         assertTrue("R1 should be cited, got: $message", message.contains("R1"))
         assertTrue("the failing control should be named, got: $message", message.contains("scores.title"))
     }
@@ -97,8 +91,7 @@ class ReachAssertionsTest {
             }
         }
 
-        assertSaw("scores.refresh")
-        rule.assertPrimaryControlsReachable()
+        rule.assertPrimaryControlsReachable("scores.refresh")
     }
 
     @Test
@@ -115,8 +108,7 @@ class ReachAssertionsTest {
             }
         }
 
-        assertSaw("scores.dateStrip")
-        val message = failure().message.orEmpty()
+        val message = failure("scores.dateStrip").message.orEmpty()
         // 554 dp clears R1's 461.5 dp ceiling and breaks R2's 646.1 dp one, so citing R2 alone is the
         // point: a control can be in the bottom half and still be out of the frequent-control band.
         assertTrue("R2 should be cited, got: $message", message.contains("R2"))
@@ -137,8 +129,7 @@ class ReachAssertionsTest {
             }
         }
 
-        assertSaw("scores.narrowRow")
-        val message = failure().message.orEmpty()
+        val message = failure("scores.narrowRow").message.orEmpty()
         // 56 dp tall, so only the 48 dp minimum can fail here - the tall-enough primary floor is not
         // what this test is about.
         assertTrue("R4 should be cited, got: $message", message.contains("R4"))
@@ -159,8 +150,7 @@ class ReachAssertionsTest {
             }
         }
 
-        assertSaw("scores.shortRow")
-        val message = failure().message.orEmpty()
+        val message = failure("scores.shortRow").message.orEmpty()
         // 50 dp clears the 48 dp minimum and breaks the 56 dp primary height, so this is the case that
         // pins the second threshold on its own.
         assertTrue("R4 should be cited, got: $message", message.contains("R4"))
@@ -181,8 +171,7 @@ class ReachAssertionsTest {
             }
         }
 
-        assertSaw("scores.edgeChip")
-        val message = failure().message.orEmpty()
+        val message = failure("scores.edgeChip").message.orEmpty()
         assertTrue("R5 should be cited, got: $message", message.contains("R5"))
         assertTrue("the failing control should be named, got: $message", message.contains("scores.edgeChip"))
     }
@@ -211,8 +200,7 @@ class ReachAssertionsTest {
             }
         }
 
-        assertSaw("strip.first", "strip.second")
-        val message = failure().message.orEmpty()
+        val message = failure("strip.first", "strip.second").message.orEmpty()
         assertTrue("the gap rule should be cited, got: $message", message.contains("R4 target gap"))
         assertTrue("both neighbours should be named, got: $message", message.contains("strip.first") && message.contains("strip.second"))
     }
@@ -234,7 +222,7 @@ class ReachAssertionsTest {
         // Deliberately no primaryControl(): R4 is about the target, not about the tag. An icon nobody
         // tagged is exactly how a 40 dp tap target ships. minPrimary = 0 because there is nothing
         // primary here to require.
-        val message = failure(minPrimary = 0).message.orEmpty()
+        val message = failure().message.orEmpty()
         assertTrue("R4 should be cited, got: $message", message.contains("R4 target size"))
         assertTrue("the size should be reported, got: $message", message.contains("40.0 x 40.0 dp"))
     }
@@ -261,7 +249,7 @@ class ReachAssertionsTest {
             }
         }
 
-        val message = failure().message.orEmpty()
+        val message = failure("scores.card").message.orEmpty()
         // The 40 dp child is a real target and fails R4. The parent contains it, so reporting the two as
         // overlapping would be a false failure that makes every card with an icon fail.
         assertTrue("the child should fail R4 size, got: $message", message.contains("R4 target size"))
@@ -291,7 +279,7 @@ class ReachAssertionsTest {
 
         // 4 dp of clearance on each axis: not aligned, but a thumb cannot reliably pick between them,
         // and reading only aligned neighbours would call this fine.
-        val message = failure().message.orEmpty()
+        val message = failure("grid.topLeft", "grid.bottomRight").message.orEmpty()
         assertTrue("the gap rule should be cited, got: $message", message.contains("R4 target gap"))
         assertTrue(
             "both neighbours should be named, got: $message",
@@ -308,12 +296,12 @@ class ReachAssertionsTest {
         }
 
         val message =
-            assertThrows(AssertionError::class.java) { rule.assertPrimaryControlsReachable() }
+            assertThrows(AssertionError::class.java) { rule.assertPrimaryControlsReachable("scores.missing") }
                 .message
                 .orEmpty()
         assertTrue(
-            "an empty audit must not read as reachable, got: $message",
-            message.contains("found 0 primary control"),
+            "an audit that found nothing must say so, got: $message",
+            message.contains("primary controls are []") && message.contains("scores.missing"),
         )
     }
 
@@ -332,7 +320,7 @@ class ReachAssertionsTest {
 
         // 860 + 80 = 940 dp in a 923 dp window: R1, size and the horizontal insets all pass, and 17 dp
         // of the control cannot be touched.
-        val message = failure().message.orEmpty()
+        val message = failure("scores.overrun").message.orEmpty()
         assertTrue("containment should be cited, got: $message", message.contains("R5 containment"))
         // The exact dp depends on pixel rounding at 2.625 density, so assert the shape of the report.
         assertTrue("the overrun should be reported, got: $message", message.contains("dp past the bottom"))
@@ -351,7 +339,7 @@ class ReachAssertionsTest {
             "the button's top should be near the ceiling, was ${targets.first { it.primary }.rawTop}",
             targets.first { it.primary }.rawTop >= 200f,
         )
-        rule.assertPrimaryControlsReachable()
+        rule.assertPrimaryControlsReachable("scores.retry")
     }
 
     @Test
@@ -405,8 +393,7 @@ class ReachAssertionsTest {
             }
         }
 
-        assertSaw("scores.midPage")
-        rule.assertPrimaryControlsReachable()
+        rule.assertPrimaryControlsReachable("scores.midPage")
     }
 
     @Test
@@ -445,7 +432,7 @@ class ReachAssertionsTest {
 
         // A slider carries SetProgress rather than OnClick, so a click-only collector would miss it
         // entirely and R4 would clear a 40 dp control.
-        val message = failure(minPrimary = 0).message.orEmpty()
+        val message = failure().message.orEmpty()
         assertTrue("R4 should be cited for a non-click target, got: $message", message.contains("R4 target size"))
     }
 
@@ -477,7 +464,7 @@ class ReachAssertionsTest {
 
         // The second target is composed but 2000 dp below the window. Failing the audit for a control
         // nobody can see would make every scrollable screen unauditable.
-        rule.assertPrimaryControlsReachable()
+        rule.assertPrimaryControlsReachable("scroll.visible", "scroll.offscreen")
     }
 
     @Test
@@ -495,7 +482,7 @@ class ReachAssertionsTest {
 
         // Only 36 dp of this 56 dp control is on screen, so it is a 36 dp target however large its layout
         // box is - and no size rule can see that from the raw extent.
-        val message = failure().message.orEmpty()
+        val message = failure("scores.halfOff").message.orEmpty()
         assertTrue("containment should be cited, got: $message", message.contains("R5 containment"))
         assertTrue("the overrun should be reported, got: $message", message.contains("past the left edge"))
         assertTrue(
@@ -521,10 +508,10 @@ class ReachAssertionsTest {
         // The failure this guards against: someone deletes primaryControl() from a screen, an untagged
         // button keeps the target count healthy, and R1, R2 and the edge rules quietly check nothing.
         // Counted in primaries, the audit says so.
-        val message = failure().message.orEmpty()
+        val message = failure("scores.action").message.orEmpty()
         assertTrue(
             "the guard must count primaries, not targets, got: $message",
-            message.contains("found 0 primary control"),
+            message.contains("primary controls are []") && message.contains("scores.action"),
         )
     }
 
@@ -592,7 +579,7 @@ class ReachAssertionsTest {
 
         // The control's own layout box is 56 dp and sits inside the window, so a window-clipped
         // measurement clears it. Its parent only shows 30 dp of it, so a thumb only gets 30 dp.
-        val message = failure().message.orEmpty()
+        val message = failure("nested.inViewport").message.orEmpty()
         assertTrue("R4 should be cited for the clipped target, got: $message", message.contains("R4 target size"))
         assertTrue(
             "the visible height should be reported, got: $message",
@@ -618,9 +605,76 @@ class ReachAssertionsTest {
         // draggable exposes neither OnClick nor SetProgress, so the audit cannot discover it; the
         // explicit reachTarget() is what makes it measurable. Being at the top of the screen must not
         // make it fail R1, because R1 is about primary controls and a drag knob is not one.
-        val message = failure(minPrimary = 0).message.orEmpty()
+        val message = failure().message.orEmpty()
         assertTrue("R4 should be cited, got: $message", message.contains("R4 target size"))
         assertTrue("the knob should be named, got: $message", message.contains("drawer.knob"))
         assertTrue("a declared target is not primary, got: $message", !message.contains("R1"))
+    }
+
+    @Test
+    fun losingOnePrimaryTagIsCaughtEvenThoughAnotherRemains() {
+        rule.setContent {
+            Box(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 16.dp, bottom = 16.dp),
+                ) {
+                    Box(
+                        Modifier
+                            .size(width = 56.dp, height = 56.dp)
+                            .primaryControl("scores.refresh", frequent = true),
+                    )
+                    Spacer(Modifier.width(16.dp))
+                    Box(
+                        Modifier
+                            .size(width = 56.dp, height = 56.dp)
+                            .reachTarget("scores.filter"),
+                    )
+                }
+            }
+        }
+
+        // Both actions are on screen and both are measured for size, but only one is primary. A count
+        // guard is satisfied here; the declared set is not, and the missing action is outside R1/R2.
+        val message = failure("scores.refresh", "scores.filter").message.orEmpty()
+        assertTrue(
+            "the missing primary tag should be named, got: $message",
+            message.contains("primary controls are [scores.refresh]") &&
+                message.contains("scores.filter"),
+        )
+    }
+
+    @Test
+    fun aTagWithTheWrongNameIsCaughtEvenWhenTheCountAgrees() {
+        rule.setContent {
+            Box(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 16.dp, bottom = 16.dp),
+                ) {
+                    Box(
+                        Modifier
+                            .size(width = 56.dp, height = 56.dp)
+                            .primaryControl("scores.refresh", frequent = true),
+                    )
+                    Spacer(Modifier.width(16.dp))
+                    Box(
+                        Modifier
+                            .size(width = 56.dp, height = 56.dp)
+                            .primaryControl("scores.staleName", frequent = true),
+                    )
+                }
+            }
+        }
+
+        // Same number of primaries, different identity: a count comparison is satisfied, so only an
+        // exact match notices that the control the screen thinks it has is not the one it tagged.
+        val message = failure("scores.refresh", "scores.filter").message.orEmpty()
+        assertTrue(
+            "the wrong name should be reported, got: $message",
+            message.contains("scores.staleName") && message.contains("scores.filter"),
+        )
     }
 }

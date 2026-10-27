@@ -14,16 +14,18 @@ import androidx.compose.ui.test.onRoot
  * covered without Compose; the only thing this adds is a tree walk and a px-to-dp conversion. If a
  * reach bug is ever about the *rule*, it is not in here.
  */
-fun ComposeTestRule.assertPrimaryControlsReachable(minPrimary: Int = 1) {
+fun ComposeTestRule.assertPrimaryControlsReachable(vararg expectedPrimaryTags: String) {
     val targets = reachTargets()
-    // Counted in primaries, not in targets: if the tags were dropped the R1, R2 and R5 checks would run
-    // on nothing at all, while an untagged button kept the target count healthy and hid the mistake.
-    // A screen with no primary controls says so by passing 0.
-    val primaries = targets.count { it.primary }
-    if (primaries < minPrimary) {
+    // The screen states its primary controls, and the audit insists the tree agrees. A count guard only
+    // catches losing every tag; a screen with two primary actions would still lose one of them silently,
+    // and that action would keep its size check while losing R1, R2 and the edge insets. An empty list is
+    // a positive statement that this screen has no primary controls.
+    val actual = targets.filter { it.primary }.map { it.tag }.toSet()
+    val expected = expectedPrimaryTags.toSet()
+    if (actual != expected) {
         throw AssertionError(
-            "reach audit found $primaries primary control(s), expected at least $minPrimary - " +
-                "R1, R2 and the edge rules were checked against nothing",
+            "primary controls are ${actual.sorted()} but the screen declares ${expected.sorted()} - " +
+                "an untagged or reachTarget-declared action is outside R1, R2 and the edge rules",
         )
     }
     val violations = reachViolations(targets)
