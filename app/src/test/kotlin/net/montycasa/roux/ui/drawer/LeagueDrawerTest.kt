@@ -48,6 +48,7 @@ import net.montycasa.roux.domain.repo.ScoresRepository
 import net.montycasa.roux.domain.repo.TeamAlertPreferences
 import net.montycasa.roux.ui.reach.findReachViolations
 import net.montycasa.roux.ui.reach.reachTargets
+import net.montycasa.roux.ui.scores.DrawerUi
 import net.montycasa.roux.ui.scores.ScoresUiState
 import net.montycasa.roux.ui.scores.ScoresViewModel
 import net.montycasa.roux.ui.theme.RouxTheme
@@ -118,10 +119,18 @@ class LeagueDrawerTest {
                     val scope = rememberCoroutineScope()
                     closeDrawer = { scope.launch { drawer.close() } }
                     openDrawer = { scope.launch { drawer.open() } }
+                    val shown = vm?.uiState?.collectAsState()?.value ?: state.value
                     LeagueNavigationDrawer(
-                        drawer,
-                        vm?.uiState?.collectAsState()?.value ?: state.value,
-                        { only -> state.value = state.value.copy(favouritesOnly = only) },
+                        drawerState = drawer,
+                        drawer =
+                            DrawerUi(
+                                favouriteCount = shown.favouriteCount,
+                                favouritesOnly = shown.favouritesOnly,
+                                leagueOrder = shown.leagueOrder,
+                                selectedLeagueId = shown.selectedLeagueId,
+                            ),
+                        seasonDate = shown.loadedDate,
+                        onFavouritesOnly = { only -> state.value = state.value.copy(favouritesOnly = only) },
                         onLeagueOrder = { order ->
                             if (vm != null) vm.setLeagueOrder(order) else state.value = state.value.copy(leagueOrder = order)
                         },

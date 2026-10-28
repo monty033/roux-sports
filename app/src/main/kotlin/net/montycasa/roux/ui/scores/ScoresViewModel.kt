@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -58,6 +59,36 @@ class ScoresViewModel(
     private val favouritesOnly = MutableStateFlow<Boolean?>(null)
     private val preferenceWrites = Mutex()
     private val leagueOrder = MutableStateFlow<List<String>?>(null)
+
+    // Which league row the drawer highlights when the filter is off. Only the user's choice: the persisted order is
+    // an ordering, not a selection.
+    private val chosenLeague = MutableStateFlow<String?>(null)
+
+    /**
+     * What the drawer draws, independent of the feed.
+     *
+     * Nothing here reaches [scores], so the drawer can be collected from a tab that never shows games without
+     * starting a poll. That is the whole reason it is not part of the scores state.
+     */
+    val drawerState: StateFlow<DrawerUi> =
+        combine(settings(), chosenLeague) { settings, chosen ->
+            DrawerUi(
+                favouriteCount = settings.favourites.size,
+                favouritesOnly = settings.only,
+                leagueOrder = settings.order,
+                selectedLeagueId = if (settings.only) MY_TEAMS_LEAGUE else chosen ?: DEFAULT_LEAGUE,
+            )
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(GRACE_MILLIS), DrawerUi())
+
+    /** A drawer row was chosen: My Teams means the favourites filter, a league means show that league. */
+    fun selectLeague(leagueId: String) {
+        if (leagueId == MY_TEAMS_LEAGUE) {
+            setFavouritesOnly(true)
+        } else {
+            chosenLeague.value = leagueId
+            setFavouritesOnly(false)
+        }
+    }
 
     // Retain the selected day's unfiltered content across a cancelled request or upstream restart.
     // The repository remains the authority on freshness, including after time spent in the background.
@@ -151,16 +182,22 @@ class ScoresViewModel(
         }
     }
 
+    /**
+     * Stored preferences, with this session's unconfirmed choices taking precedence.
+     *
+     * The stored half observes: a favourite added on the team picker, or a write that lands after this screen opened,
+     * reaches the list without anyone re-reading the file.
+     */
     private fun settings(): Flow<Settings> =
-        flow {
-            val favourites = preferences.getFavourites()
-            val storedOnly = preferences.getFavouritesOnly()
-            val storedOrder = preferences.getLeagueOrder()
-            emitAll(
-                combine(favouritesOnly, leagueOrder) { only, order ->
-                    Settings(favourites, only ?: storedOnly, order ?: storedOrder)
-                },
-            )
+        combine(
+            combine(
+                preferences.observeFavourites(),
+                preferences.observeFavouritesOnly(),
+                preferences.observeLeagueOrder(),
+            ) { favourites, only, order -> Settings(favourites, only, order) },
+            combine(favouritesOnly, leagueOrder) { only, order -> only to order },
+        ) { stored, chosen ->
+            Settings(stored.favourites, chosen.first ?: stored.only, chosen.second ?: stored.order)
         }
 
     /**
@@ -287,6 +324,13 @@ class ScoresViewModel(
     private companion object {
         /** Long enough that flicking through dates does not prefetch every pass, short enough to feel instant. */
         const val PREFETCH_SETTLE_MS = 500L
+
+        /** Matches the list's grace period: a rotation must not restart the drawer's collection. */
+        const val GRACE_MILLIS = 5_000L
+
+        /** The drawer's My Teams row, which is the favourites filter rather than a league. */
+        const val MY_TEAMS_LEAGUE = "myTeams"
+        const val DEFAULT_LEAGUE = "nhl"
     }
 
     private data class DayLoad(
@@ -296,3 +340,16 @@ class ScoresViewModel(
         val refreshing: Boolean,
     )
 }
+
+/**
+ * The drawer's own state, derived from preferences alone.
+ *
+ * Deliberately not a slice of [ScoresUiState]: the drawer is reachable from every tab, including ones that show no
+ * games, and opening it must never be the reason a feed request happens.
+ */
+data class DrawerUi(
+    val favouriteCount: Int = 0,
+    val favouritesOnly: Boolean = true,
+    val leagueOrder: List<String> = LeagueOrder.canonical,
+    val selectedLeagueId: String = "myTeams",
+)

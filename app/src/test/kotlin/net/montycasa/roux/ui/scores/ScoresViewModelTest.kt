@@ -5,6 +5,8 @@ import app.cash.turbine.test
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
@@ -656,6 +658,70 @@ class ScoresViewModelTest {
             }
         }
 
+    @Test
+    fun drawerStateFollowsPreferenceEmissions() =
+        runTest {
+            val scores = FakeScoresRepository(testScheduler)
+            val preferences = FakePreferencesRepository()
+            val viewModel = viewModel(scores, preferences)
+
+            viewModel.drawerState.test {
+                awaitItem()
+                runCurrent()
+                assertEquals(0, viewModel.drawerState.value.favouriteCount)
+
+                preferences.emitFavourites(setOf(TeamKey("TOR"), TeamKey("MTL")))
+                runCurrent()
+                assertEquals(2, viewModel.drawerState.value.favouriteCount)
+
+                viewModel.setLeagueOrder(listOf("mlb", "nhl", "nfl"))
+                runCurrent()
+                assertEquals(listOf("mlb", "nhl", "nfl"), viewModel.drawerState.value.leagueOrder)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun drawerStateNeverStartsAPoll() =
+        runTest {
+            val scores = FakeScoresRepository(testScheduler)
+            val viewModel = viewModel(scores, FakePreferencesRepository())
+
+            viewModel.drawerState.test {
+                awaitItem()
+                runCurrent()
+                advanceTimeBy(60_000)
+                runCurrent()
+
+                assertTrue("the drawer must not be a reason to poll", scores.calls.isEmpty())
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun drawerSelectionFollowsTheFilter() =
+        runTest {
+            val scores = FakeScoresRepository(testScheduler)
+            val preferences = FakePreferencesRepository()
+            val viewModel = viewModel(scores, preferences)
+
+            viewModel.drawerState.test {
+                awaitItem()
+                runCurrent()
+
+                viewModel.selectLeague("myTeams")
+                runCurrent()
+                assertEquals("myTeams", viewModel.drawerState.value.selectedLeagueId)
+                assertTrue(preferences.onlyWrites.last())
+
+                viewModel.selectLeague("nfl")
+                runCurrent()
+                assertEquals("nfl", viewModel.drawerState.value.selectedLeagueId)
+                assertFalse(preferences.onlyWrites.last())
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
     private fun viewModel(
         scores: FakeScoresRepository,
         preferences: FakePreferencesRepository = FakePreferencesRepository(),
@@ -719,18 +785,42 @@ private class FakeScoresRepository(
 }
 
 private class FakePreferencesRepository(
-    var teams: Set<TeamKey> = emptySet(),
-    var storedOnly: Boolean? = null,
+    teams: Set<TeamKey> = emptySet(),
+    storedOnly: Boolean? = null,
 ) : PreferencesRepository {
+    // Backed by flows so the observing reads behave like the real store: a write reaches a collector. The plain
+    // properties below keep every existing test reading naturally.
+    private val favouritesFlow = MutableStateFlow(teams)
+    private val onlyFlow = MutableStateFlow(storedOnly ?: true)
+    private val orderFlow = MutableStateFlow(listOf("nhl", "nfl", "mlb"))
+
     val onlyWrites = mutableListOf<Boolean>()
+
+    var teams: Set<TeamKey>
+        get() = favouritesFlow.value
+        set(value) {
+            favouritesFlow.value = value
+        }
+
+    /** Simulates a write made elsewhere, e.g. the team picker, reaching this screen. */
+    fun emitFavourites(teams: Set<TeamKey>) {
+        favouritesFlow.value = teams
+    }
 
     override suspend fun getFavourites(): Set<TeamKey> = teams
 
     override suspend fun setFavourites(teams: Set<TeamKey>) {
-        this.teams = teams
+        favouritesFlow.value = teams
     }
 
-    var storedOrder = listOf("nhl", "nfl", "mlb")
+    override fun observeFavourites(): Flow<Set<TeamKey>> = favouritesFlow
+
+    var storedOrder: List<String>
+        get() = orderFlow.value
+        set(value) {
+            orderFlow.value = value
+        }
+
     val orderWrites = mutableListOf<List<String>>()
     var orderWriteDelay: suspend (List<String>) -> Unit = {}
 
@@ -738,17 +828,27 @@ private class FakePreferencesRepository(
 
     override suspend fun setLeagueOrder(order: List<String>) {
         orderWriteDelay(order)
-        storedOrder = order
+        orderFlow.value = order
         orderWrites += order
     }
 
-    override suspend fun getFavouritesOnly(): Boolean = storedOnly ?: true
+    override fun observeLeagueOrder(): Flow<List<String>> = orderFlow
+
+    var storedOnly: Boolean?
+        get() = onlyFlow.value
+        set(value) {
+            onlyFlow.value = value ?: true
+        }
+
+    override suspend fun getFavouritesOnly(): Boolean = onlyFlow.value
+
+    override fun observeFavouritesOnly(): Flow<Boolean> = onlyFlow
 
     var failOnlyWrites = false
 
     override suspend fun setFavouritesOnly(enabled: Boolean) {
         if (failOnlyWrites) throw IOException("preferences are read-only")
-        storedOnly = enabled
+        onlyFlow.value = enabled
         onlyWrites += enabled
     }
 
