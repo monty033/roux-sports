@@ -19,7 +19,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -93,6 +95,7 @@ fun LeagueNavigationDrawer(
     onLeagueOrder: (List<String>) -> Unit,
     catalog: List<DrawerLeague> = drawerCatalog,
     onLeagueSelected: (String) -> Unit = { onFavouritesOnly(false) },
+    contentInsets: WindowInsets = WindowInsets.systemBars,
     content: @Composable () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -135,6 +138,7 @@ fun LeagueNavigationDrawer(
                         onFavouritesOnly(only)
                         scope.launch { drawerState.close() }
                     },
+                    contentInsets = contentInsets,
                 )
             }
         },
@@ -161,8 +165,21 @@ fun LeagueDrawer(
     modifier: Modifier = Modifier,
     catalog: List<DrawerLeague> = drawerCatalog,
     onFavouritesOnly: (Boolean) -> Unit,
+    /**
+     * Window insets the drawer must clear. The app draws edge to edge, so the status bar sits on top of this panel
+     * and the wordmark was landing underneath it. Injected rather than read from the composition so a test can pin
+     * the clearance without a window.
+     */
+    contentInsets: WindowInsets = WindowInsets.systemBars,
 ) {
-    Column(modifier.fillMaxHeight().background(panel).padding(start = 16.dp, top = 20.dp, end = 16.dp, bottom = 24.dp)) {
+    // Background first, insets after: the panel still paints behind the status bar, only its content moves down.
+    Column(
+        modifier
+            .fillMaxHeight()
+            .background(panel)
+            .windowInsetsPadding(contentInsets)
+            .padding(start = 16.dp, top = 20.dp, end = 16.dp, bottom = 24.dp),
+    ) {
         Image(
             painterResource(R.drawable.wordmark_orange),
             stringResource(R.string.app_name),
