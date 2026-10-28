@@ -2,6 +2,7 @@ package net.montycasa.roux.ui.scores
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -35,6 +36,7 @@ import net.montycasa.roux.domain.policy.LeagueOrder
 import net.montycasa.roux.domain.policy.PollPolicy
 import net.montycasa.roux.domain.repo.PreferencesRepository
 import net.montycasa.roux.domain.repo.ScoresRepository
+import kotlin.random.Random
 import kotlin.time.Clock
 
 /** Collection owns all polling, including the five-second WhileSubscribed grace period. */
@@ -43,6 +45,8 @@ class ScoresViewModel(
     private val scores: ScoresRepository,
     private val preferences: PreferencesRepository,
     private val clock: Clock,
+    /** Jitter source for the failure backoff, injected so a test can pin the multiplier. */
+    private val jitter: () -> Double = { Random.Default.nextDouble() },
 ) : ViewModel() {
     private val leagueZone = TimeZone.of("America/New_York")
     private val selectedDate = MutableStateFlow(DateStrip.defaultSelection(emptyList(), leagueDay()))
@@ -108,8 +112,16 @@ class ScoresViewModel(
     fun setFavouritesOnly(enabled: Boolean) {
         viewModelScope.launch {
             preferenceWrites.withLock {
-                preferences.setFavouritesOnly(enabled)
+                // The filter applies now even if it cannot be stored: a disk that refuses the write must not take the
+                // process down, and a tap that appears to do nothing is worse than one that forgets after a restart.
                 favouritesOnly.value = enabled
+                try {
+                    preferences.setFavouritesOnly(enabled)
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Exception) {
+                    // Not persisted; the session still honours the choice.
+                }
             }
         }
     }
@@ -119,7 +131,15 @@ class ScoresViewModel(
         // Publish immediately so a held handle follows the finger while durable writes serialize.
         leagueOrder.value = reconciled
         viewModelScope.launch {
-            preferenceWrites.withLock { preferences.setLeagueOrder(reconciled) }
+            preferenceWrites.withLock {
+                try {
+                    preferences.setLeagueOrder(reconciled)
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Exception) {
+                    // The order is already applied in this session; losing it on restart beats losing the app.
+                }
+            }
         }
     }
 
@@ -145,6 +165,9 @@ class ScoresViewModel(
             // because a live game polling every 25 seconds would otherwise flash a progress indicator
             // on the primary screen for the length of every request.
             var announceProgress = true
+            // Consecutive failures, reset by any answer. The cadence cannot be derived from a slate we do not have:
+            // an offline cold start has no games, so the normal policy would return null and stop the loop for good.
+            var failedAttempts = 0
             while (currentCoroutineContext().isActive) {
                 if (announceProgress) {
                     emit(DayLoad(request.date, request.today, value, refreshing = true))
@@ -161,13 +184,24 @@ class ScoresViewModel(
                 // ("not retried on the normal cadence") true instead of merely written down.
                 if (value.error is LoadError.Blocked) break
                 val now = clock.now()
+                val error = value.error
                 val wait =
-                    PollPolicy.nextDelay(
-                        now,
-                        request.date,
-                        now.toLocalDateTime(leagueZone).date.toString(),
-                        value.data?.games.orEmpty(),
-                    ) ?: break
+                    if (error != null) {
+                        failedAttempts += 1
+                        val backoff = PollPolicy.backoff(failedAttempts, jitter)
+                        // A rate limit is an instruction, not a suggestion: wait at least as long as it asked, and
+                        // keep the larger of the two so a small Retry-After cannot short-circuit the backoff.
+                        val retryAfter = (error as? LoadError.Http)?.retryAfter
+                        if (retryAfter != null && retryAfter > backoff) retryAfter else backoff
+                    } else {
+                        failedAttempts = 0
+                        PollPolicy.nextDelay(
+                            now,
+                            request.date,
+                            now.toLocalDateTime(leagueZone).date.toString(),
+                            value.data?.games.orEmpty(),
+                        ) ?: break
+                    }
                 delay(wait)
             }
         }
