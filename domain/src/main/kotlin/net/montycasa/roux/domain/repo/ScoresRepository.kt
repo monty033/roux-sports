@@ -36,4 +36,20 @@ interface ScoresRepository {
         date: String,
         today: String,
     )
+
+    /**
+     * The slate for [date], requested even when a fresh copy already exists.
+     *
+     * [loadDay] deliberately answers a fresh cache without touching the network, which is right for
+     * a poll tick and wrong for a pull-to-refresh: the user asking for the current slate knows
+     * something the cache does not, and an immediate no-op reads as a broken gesture. A failure
+     * still returns whatever copy exists, marked stale.
+     *
+     * The default body keeps existing implementations and test doubles compiling; it is the
+     * cache-respecting load, and an implementation that cannot force should say so here.
+     */
+    suspend fun refreshDay(
+        date: String,
+        today: String,
+    ): Loadable<ScoreDay> = loadDay(date, today)
 }

@@ -58,11 +58,26 @@ internal class ScoresRepositoryImpl(
     override suspend fun loadDay(
         date: String,
         today: String,
+    ): Loadable<ScoreDay> = load(date, today, force = false)
+
+    override suspend fun refreshDay(
+        date: String,
+        today: String,
+    ): Loadable<ScoreDay> = load(date, today, force = true)
+
+    /**
+     * [force] skips the fresh-cache short-circuit. Everything after that point is identical, which is
+     * the reason this is one function with a flag rather than two copies that would drift.
+     */
+    private suspend fun load(
+        date: String,
+        today: String,
+        force: Boolean,
     ): Loadable<ScoreDay> =
         withContext(ioDispatcher) {
             val cached = readCached(date, today)
 
-            if (cached != null && !isStale(cached, clock.now(), today)) {
+            if (!force && cached != null && !isStale(cached, clock.now(), today)) {
                 return@withContext Loadable(cached.day, Freshness.Fresh, null)
             }
 

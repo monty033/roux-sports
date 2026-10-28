@@ -132,6 +132,50 @@ class ScoresRepositoryImplTest {
         }
 
     @Test
+    fun refreshDayFetchesEvenWhenTheCacheIsFresh() =
+        runBlocking {
+            // The poll tick wants the fresh-cache short-circuit; a pull-to-refresh does not. An immediate no-op here
+            // reads to the user as a gesture that did nothing.
+            val harness = harness()
+            val loaded = harness.repository.loadDay(date, date)
+            assertEquals(1, harness.requests.size)
+            assertEquals(Freshness.Fresh, loaded.freshness)
+
+            val refreshed = harness.repository.refreshDay(date, date)
+
+            assertEquals("a refresh must reach the network despite a fresh copy", 2, harness.requests.size)
+            assertEquals(Freshness.Fresh, refreshed.freshness)
+            assertNull(refreshed.error)
+            assertNotNull(refreshed.data)
+        }
+
+    @Test
+    fun refreshDayFallsBackToTheCachedDayWhenTheNetworkIsDown() =
+        runBlocking {
+            var down = false
+            val harness =
+                harness(responder = { request ->
+                    if (down) throw IOException("offline")
+                    val requested = request.url.encodedPath.substringAfterLast('/')
+                    respond(
+                        slateFor(requested),
+                        HttpStatusCode.OK,
+                        headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                })
+            val loaded = harness.repository.loadDay(date, date)
+            assertNotNull(loaded.data)
+            down = true
+
+            val refreshed = harness.repository.refreshDay(date, date)
+
+            // The forced fetch failed, so the copy on disk is all there is - and it must not be presented as current.
+            assertNotNull("a failed refresh must still show the cached slate", refreshed.data)
+            assertTrue("a copy after a failed fetch is stale", refreshed.freshness is Freshness.Stale)
+            assertEquals(LoadError.Network, refreshed.error)
+        }
+
+    @Test
     fun aFailedFetchReturnsTheCachedDayMarkedStale() =
         runBlocking {
             var fail = false
