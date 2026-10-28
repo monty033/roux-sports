@@ -9,6 +9,8 @@ import io.ktor.client.request.HttpResponseData
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -24,6 +26,7 @@ import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.ScoreDay
+import okio.FileHandle
 import okio.FileSystem
 import okio.ForwardingFileSystem
 import okio.Path
@@ -31,11 +34,14 @@ import okio.Path.Companion.toPath
 import okio.fakefilesystem.FakeFileSystem
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
+import java.util.Collections
+import java.util.concurrent.Executors
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
@@ -76,6 +82,7 @@ class ScoresRepositoryImplTest {
 
     private fun harness(
         files: ((FileSystem) -> FileSystem)? = null,
+        ioDispatcher: kotlin.coroutines.CoroutineContext = Dispatchers.IO,
         responder: (suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData?)? = null,
     ): Harness {
         val requests = mutableListOf<String>()
@@ -101,7 +108,7 @@ class ScoresRepositoryImplTest {
         // Through the factory, so the request boundary (429 handling, host allowlist) is part of the test.
         val api = NhlApi(NhlHttpClientFactory.create(engine, "test-version"))
         return Harness(
-            ScoresRepositoryImpl(api, NhlAdapter, cache, clock),
+            ScoresRepositoryImpl(api, NhlAdapter, cache, clock, ioDispatcher),
             requests,
             cache,
             clock,
@@ -491,6 +498,35 @@ class ScoresRepositoryImplTest {
             assertEquals(LoadError.Local, loadable.error)
             assertEquals(Freshness.Fresh, loadable.freshness)
         }
+
+    @Test
+    fun cacheFileWorkRunsOnTheInjectedDispatcherNotTheCaller() =
+        runBlocking {
+            val io = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "roux-io-test") }.asCoroutineDispatcher()
+            try {
+                lateinit var recorder: ThreadRecordingFileSystem
+                val harness =
+                    harness(
+                        files = { delegate -> ThreadRecordingFileSystem(delegate).also { recorder = it } },
+                        ioDispatcher = io,
+                    )
+
+                val caller = Thread.currentThread().name
+                harness.repository.loadDay(date, date)
+
+                // Every file operation the load caused - the read, the access stamp, the write and eviction - must
+                // have happened on the injected thread. Before this change they all ran on the caller's thread,
+                // which in the app is the main thread. Names carry a coroutine debug suffix, hence the prefix.
+                assertTrue("the cache must have been touched", recorder.threads.isNotEmpty())
+                assertTrue(
+                    "every file operation must run on the injected dispatcher, saw ${recorder.threads.toSet()}",
+                    recorder.threads.all { it.startsWith("roux-io-test") },
+                )
+                assertFalse("the caller's thread must not do file work", recorder.threads.any { it.startsWith(caller) })
+            } finally {
+                io.close()
+            }
+        }
 }
 
 /** Paging by one day crosses month and year boundaries; string arithmetic would be silently wrong. */
@@ -559,4 +595,53 @@ private class WriteFailingFileSystem(
         source: Path,
         target: Path,
     ): Unit = throw IOException("disk full")
+}
+
+/** Delegates everything to a real file system while recording the thread that reached it. */
+private class ThreadRecordingFileSystem(
+    delegate: FileSystem,
+) : ForwardingFileSystem(delegate) {
+    val threads: MutableList<String> = Collections.synchronizedList(mutableListOf())
+
+    private fun note() {
+        threads += Thread.currentThread().name
+    }
+
+    override fun openReadOnly(file: Path): FileHandle {
+        note()
+        return super.openReadOnly(file)
+    }
+
+    override fun openReadWrite(
+        file: Path,
+        mustCreate: Boolean,
+        mustExist: Boolean,
+    ): FileHandle {
+        note()
+        return super.openReadWrite(file, mustCreate, mustExist)
+    }
+
+    override fun atomicMove(
+        source: Path,
+        target: Path,
+    ) {
+        note()
+        super.atomicMove(source, target)
+    }
+
+    override fun delete(
+        path: Path,
+        mustExist: Boolean,
+    ) {
+        note()
+        super.delete(path, mustExist)
+    }
+
+    override fun createDirectory(
+        dir: Path,
+        mustCreate: Boolean,
+    ) {
+        note()
+        super.createDirectory(dir, mustCreate)
+    }
 }

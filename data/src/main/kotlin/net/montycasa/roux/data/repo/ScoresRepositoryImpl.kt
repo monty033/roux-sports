@@ -1,6 +1,8 @@
 package net.montycasa.roux.data.repo
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import net.montycasa.roux.data.cache.CacheKey
 import net.montycasa.roux.data.cache.CacheKind
 import net.montycasa.roux.data.cache.ResponseCache
@@ -24,6 +26,7 @@ import net.montycasa.roux.domain.policy.DaySlate
 import net.montycasa.roux.domain.policy.FreshnessPolicy
 import net.montycasa.roux.domain.repo.ScoresRepository
 import okio.IOException
+import kotlin.coroutines.CoroutineContext
 import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.time.Instant
@@ -45,75 +48,82 @@ internal class ScoresRepositoryImpl(
     private val adapter: NhlAdapter,
     private val cache: ResponseCache,
     private val clock: Clock = Clock.System,
+    /**
+     * Where parsing and cache file work runs. Not the caller's thread: the poll collects this on the main thread,
+     * and a ninety-kilobyte parse plus an access stamp and eviction sweep there is a visible hitch on every tick.
+     * A `CoroutineContext` rather than a `CoroutineDispatcher` so a test can hand in a named single thread.
+     */
+    private val ioDispatcher: CoroutineContext = Dispatchers.IO,
 ) : ScoresRepository {
     override suspend fun loadDay(
         date: String,
         today: String,
-    ): Loadable<ScoreDay> {
-        val cached = readCached(date, today)
+    ): Loadable<ScoreDay> =
+        withContext(ioDispatcher) {
+            val cached = readCached(date, today)
 
-        if (cached != null && !isStale(cached, clock.now(), today)) {
-            return Loadable(cached.day, Freshness.Fresh, null)
-        }
-
-        // The two exceptions the HTTP boundary raises on purpose are answers, not faults: a rate limit carries
-        // the pause the server asked for, and a blocked host is a refusal worth showing. Letting either escape
-        // took the process down instead of falling back to the cached slate.
-        val result =
-            try {
-                api.score(date)
-            } catch (limited: RateLimited) {
-                return fallBack(cached, LoadError.Http(status = 429, retryAfter = limited.retryAfter))
-            } catch (blocked: HostNotAllowedException) {
-                return fallBack(cached, LoadError.Blocked(blocked.host))
+            if (cached != null && !isStale(cached, clock.now(), today)) {
+                return@withContext Loadable(cached.day, Freshness.Fresh, null)
             }
 
-        return when (result) {
-            is ApiResult.Success -> {
-                when (val parsed = adapter.parseScore(result.bytes.decodeToString())) {
-                    is ParseResult.Success -> {
-                        if (isWrongDay(date, parsed.value, today)) {
-                            // Caching this would file another day's slate under this key, and a
-                            // finished slate never expires - the wrong day would then be permanent.
-                            fallBack(cached, LoadError.MismatchedDay(date, parsed.value.date))
-                        } else {
-                            // Write the bytes the server sent, not a re-encoding of the parsed
-                            // model: that is what lets the cache survive an adapter change. The
-                            // stamp is taken when the bytes arrived, not when the load began, so a
-                            // slow request cannot install an entry that is already past its own
-                            // lifetime and so refetch immediately.
-                            try {
-                                cache.put(CacheKey(CacheKind.Score, date), result.bytes, clock.now())
-                                Loadable(parsed.value, Freshness.Fresh, null)
-                            } catch (_: IOException) {
-                                // The feed answered and the answer is good; the disk is what failed. Reporting
-                                // that as a fetch failure would hide a perfectly usable slate behind an error,
-                                // so the data is returned and Local names the actual problem.
-                                Loadable(parsed.value, Freshness.Fresh, LoadError.Local)
+            // The two exceptions the HTTP boundary raises on purpose are answers, not faults: a rate limit carries
+            // the pause the server asked for, and a blocked host is a refusal worth showing. Letting either escape
+            // took the process down instead of falling back to the cached slate.
+            val result =
+                try {
+                    api.score(date)
+                } catch (limited: RateLimited) {
+                    return@withContext fallBack(cached, LoadError.Http(status = 429, retryAfter = limited.retryAfter))
+                } catch (blocked: HostNotAllowedException) {
+                    return@withContext fallBack(cached, LoadError.Blocked(blocked.host))
+                }
+
+            when (result) {
+                is ApiResult.Success -> {
+                    when (val parsed = adapter.parseScore(result.bytes.decodeToString())) {
+                        is ParseResult.Success -> {
+                            if (isWrongDay(date, parsed.value, today)) {
+                                // Caching this would file another day's slate under this key, and a
+                                // finished slate never expires - the wrong day would then be permanent.
+                                fallBack(cached, LoadError.MismatchedDay(date, parsed.value.date))
+                            } else {
+                                // Write the bytes the server sent, not a re-encoding of the parsed
+                                // model: that is what lets the cache survive an adapter change. The
+                                // stamp is taken when the bytes arrived, not when the load began, so a
+                                // slow request cannot install an entry that is already past its own
+                                // lifetime and so refetch immediately.
+                                try {
+                                    cache.put(CacheKey(CacheKind.Score, date), result.bytes, clock.now())
+                                    Loadable(parsed.value, Freshness.Fresh, null)
+                                } catch (_: IOException) {
+                                    // The feed answered and the answer is good; the disk is what failed. Reporting
+                                    // that as a fetch failure would hide a perfectly usable slate behind an error,
+                                    // so the data is returned and Local names the actual problem.
+                                    Loadable(parsed.value, Freshness.Fresh, LoadError.Local)
+                                }
                             }
                         }
-                    }
 
-                    is ParseResult.Failure -> {
-                        fallBack(cached, LoadError.Parse)
+                        is ParseResult.Failure -> {
+                            fallBack(cached, LoadError.Parse)
+                        }
                     }
                 }
-            }
 
-            is ApiResult.HttpError -> {
-                fallBack(cached, LoadError.Http(result.status))
-            }
+                is ApiResult.HttpError -> {
+                    fallBack(cached, LoadError.Http(result.status))
+                }
 
-            is ApiResult.NetworkError -> {
-                fallBack(cached, LoadError.Network)
+                is ApiResult.NetworkError -> {
+                    fallBack(cached, LoadError.Network)
+                }
             }
         }
-    }
 
     override suspend fun prefetchAdjacent(
         date: String,
         today: String,
-    ) {
+    ) = withContext(ioDispatcher) {
         // Paging is one day at a time, so warming both neighbours is the whole working set.
         for (offset in intArrayOf(-1, 1)) {
             try {
@@ -283,4 +293,5 @@ fun scoresRepository(
     api: NhlApi,
     cache: ResponseCache,
     clock: Clock = Clock.System,
-): ScoresRepository = ScoresRepositoryImpl(api, NhlAdapter, cache, clock)
+    ioDispatcher: CoroutineContext = Dispatchers.IO,
+): ScoresRepository = ScoresRepositoryImpl(api, NhlAdapter, cache, clock, ioDispatcher)
