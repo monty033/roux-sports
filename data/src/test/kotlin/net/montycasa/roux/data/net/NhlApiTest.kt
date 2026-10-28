@@ -53,7 +53,25 @@ class NhlApiTest {
     @Test
     fun everyGamecenterSectionRejectsTheSameBadIds() =
         withResponse { api, engine ->
-            for (bad in listOf("../x", "", "202602012", "20260201234", "20260201a3", " 2026020123")) {
+            for (
+            bad in
+            listOf(
+                "../x",
+                "",
+                "202602012",
+                "20260201234",
+                "20260201a3",
+                " 2026020123",
+                "2026020123 ",
+                "2026020123\n",
+                "+2026020123",
+                "-2026020123",
+                "2026-020123",
+                // Fullwidth digits: rejected today. This case is what would notice the pattern being swapped for
+                // a unicode-aware class, which is exactly how "ten digits" stops meaning ten digits.
+                "\uFF12\uFF10\uFF12\uFF16\uFF10\uFF12\uFF10\uFF11\uFF12\uFF13",
+            )
+            ) {
                 for (call in listOf<suspend NhlApi.() -> Unit>(
                     { gamecenterLanding(GameId(bad)) },
                     { gamecenterBoxscore(GameId(bad)) },

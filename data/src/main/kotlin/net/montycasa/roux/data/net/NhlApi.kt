@@ -51,13 +51,22 @@ class NhlApi(
 
     suspend fun seasons(): ApiResult = get("/v1/standings-season")
 
-    /** Path confirmed against the live API; the payloads are sampled by `scripts/capture-fixtures.sh gamecenter`. */
+    /**
+     * Path verified against the live API by hand. A captured corpus for these payloads is G1 work and is not in
+     * this tree yet, so nothing here claims a fixture exists.
+     */
     suspend fun gamecenterLanding(gameId: GameId): ApiResult = get(gamecenterPath(gameId, "landing"))
 
-    /** Path confirmed against the live API; the payloads are sampled by `scripts/capture-fixtures.sh gamecenter`. */
+    /**
+     * Path verified against the live API by hand. A captured corpus for these payloads is G1 work and is not in
+     * this tree yet, so nothing here claims a fixture exists.
+     */
     suspend fun gamecenterBoxscore(gameId: GameId): ApiResult = get(gamecenterPath(gameId, "boxscore"))
 
-    /** Path confirmed against the live API; the payloads are sampled by `scripts/capture-fixtures.sh gamecenter`. */
+    /**
+     * Path verified against the live API by hand. A captured corpus for these payloads is G1 work and is not in
+     * this tree yet, so nothing here claims a fixture exists.
+     */
     suspend fun gamecenterRightRail(gameId: GameId): ApiResult = get(gamecenterPath(gameId, "right-rail"))
 
     /**
@@ -125,6 +134,6 @@ class NhlApi(
 
     private companion object {
         val ISO_DATE = Regex("""\d{4}-\d{2}-\d{2}""")
-        val GAME_ID = Regex("""\d{10}""")
+        val GAME_ID = Regex("""[0-9]{10}""")
     }
 }
