@@ -66,14 +66,40 @@ class KmpBoundaryTest {
     }
 
     @Test
-    fun scanTreeMissingOrEmptyDirsIsEmpty() {
+    fun scanSourceQualifiedJavaReferenceHasSizeOne() {
+        // java.* compiles fine on the JVM, so an import-only scan cannot see this one.
+        assertEquals(1, scanSource("val f = java.io.File(\"x\")").size)
+    }
+
+    @Test
+    fun scanSourceJvmOnlyInteropCallHasSizeOne() {
+        // okio's Path.toFile() returns a java.io.File: no KMP target has one.
+        assertEquals(1, scanSource("val p = path.toFile()").size)
+    }
+
+    @Test
+    fun scanSourceJavaAsAPropertyNameHasSizeZero() {
+        // `a.java.b` is a property path, not the java package.
+        assertEquals(0, scanSource("val x = a.java.b").size)
+    }
+
+    @Test
+    fun realTreeHasSourcesAndNoViolations() {
         val root = File(System.getProperty("roux.rootDir"))
-        assertTrue(
-            scanTree(
+        val dirs =
+            listOf(
                 File(root, "domain/src/main"),
                 File(root, "data/src/main"),
-            ).isEmpty(),
-        )
+            )
+        for (dir in dirs) {
+            // Without both halves this test passes on a typo: a missing directory scans as clean.
+            assertTrue("$dir is missing, so the scan proves nothing", dir.isDirectory)
+            assertTrue(
+                "$dir holds no Kotlin, so the scan proves nothing",
+                dir.walkTopDown().any { it.isFile && it.extension == "kt" },
+            )
+        }
+        assertEquals(emptyList<String>(), scanTree(*dirs.toTypedArray()))
     }
 
     @Test
@@ -286,6 +312,12 @@ fun scanSource(text: String): List<String> {
             index = parsed.nextIndex
             continue
         }
+        qualifiedJavaReference(tokens, index)?.let { path ->
+            violations.add("line ${token.line}: qualified java reference: $path")
+        }
+        if (isJvmOnlyCall(tokens, index)) {
+            violations.add("line ${token.line}: JVM-only call: ${token.text}")
+        }
         index++
     }
     return violations
@@ -382,6 +414,48 @@ private fun unquote(text: String): String =
     } else {
         text
     }
+
+/**
+ * A `java.`/`javax.` package written inline rather than imported.
+ *
+ * `a.java.b` is a property path, not a package, so a segment preceded by a dot is not a reference root.
+ * `android.*` is deliberately left to the compiler: without android.jar it cannot build in these modules,
+ * whereas java.base is on the classpath and compiles happily.
+ */
+private fun qualifiedJavaReference(
+    tokens: List<Token>,
+    index: Int,
+): String? {
+    val token = tokens[index]
+    if (token.kind != TokenKind.IDENTIFIER || (token.text != "java" && token.text != "javax")) {
+        return null
+    }
+    if (tokens.getOrNull(index - 1)?.kind == TokenKind.DOT) {
+        return null
+    }
+    if (tokens.getOrNull(index + 1)?.kind != TokenKind.DOT) {
+        return null
+    }
+    return parseImportPath(tokens, index).path
+}
+
+/** Calls that exist only on the JVM, and therefore compile here but nowhere else. */
+private val jvmOnlyCalls = setOf("toFile")
+
+private fun isJvmOnlyCall(
+    tokens: List<Token>,
+    index: Int,
+): Boolean {
+    val token = tokens[index]
+    if (token.kind != TokenKind.IDENTIFIER || token.text !in jvmOnlyCalls) {
+        return false
+    }
+    // A declaration in this repo is our own function, not the escape hatch being watched for.
+    if (tokens.getOrNull(index - 1)?.text == "fun") {
+        return false
+    }
+    return tokens.getOrNull(index + 1)?.text == "("
+}
 
 private fun isForbiddenImport(importPath: String): Boolean {
     val root = importPath.substringBefore('.')
