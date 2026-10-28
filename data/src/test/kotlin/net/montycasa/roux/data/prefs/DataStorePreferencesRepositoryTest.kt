@@ -27,6 +27,7 @@ import okio.Path.Companion.toOkioPath
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Files
 import kotlin.time.Instant
@@ -37,6 +38,11 @@ import kotlin.time.Instant
  * pass for an in-memory map.
  */
 class DataStorePreferencesRepositoryTest {
+    private companion object {
+        /** Verbatim from datastore-core, which appends the offending file path. */
+        const val MULTIPLE_INSTANCES = "There are multiple DataStores active for the same file:"
+    }
+
     private fun newDirectory(): Path = Files.createTempDirectory("roux-prefs").toFile().toOkioPath()
 
     private fun newScope(): CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -64,14 +70,25 @@ class DataStorePreferencesRepositoryTest {
         directory: Path,
         scope: CoroutineScope,
     ): DataStorePreferencesRepository {
+        var contention: IllegalStateException? = null
         repeat(200) {
+            val repository = DataStorePreferencesRepository(directory, scope)
             try {
-                return DataStorePreferencesRepository(directory, scope)
-            } catch (_: IllegalStateException) {
+                // The claim on the file is taken by the first read, not by construction, so the read is what the
+                // retry has to cover.
+                repository.getFavourites()
+                return repository
+            } catch (failure: IllegalStateException) {
+                // Only a previous instance still holding the file is retryable. Anything else is a real fault and
+                // must not be swallowed into a delay loop.
+                if (!failure.message.orEmpty().startsWith(MULTIPLE_INSTANCES)) throw failure
+                contention = failure
                 delay(10)
             }
         }
-        return DataStorePreferencesRepository(directory, scope)
+        // Exhaustion reports the dependency's own failure: replacing it with a generic message would hide that
+        // another instance still holds the file, which is the one thing this retry exists to say.
+        throw contention ?: IllegalStateException("the store for $directory never became readable")
     }
 
     /** Raw store for assertions on the file itself, with the same release retry the repository uses. */
@@ -196,6 +213,49 @@ class DataStorePreferencesRepositoryTest {
             assertEquals("nfl,unknown,nfl", stored[stringPreferencesKey("league_order")])
             assertNull(stored[intPreferencesKey("prefs_version")])
             closeScope(raw)
+        }
+
+    @Test
+    fun aFileWrittenByTheLegacyFactorySurvivesTheSwitchAndStillWrites() =
+        runTest {
+            val directory = newDirectory()
+            val legacyScope = newScope()
+            try {
+                // The factory this app used before createWithPath wrote the very same file, through a File
+                // instead of a Path. Opening it here is the upgrade a real user runs on first launch.
+                PreferenceDataStoreFactory
+                    .create(
+                        scope = legacyScope,
+                        produceFile = { fileIn(directory) },
+                    ).edit { preferences ->
+                        preferences[stringSetPreferencesKey("favourites_abbreviations")] = setOf("TOR", "MTL")
+                    }
+            } finally {
+                closeScope(legacyScope)
+            }
+            assertTrue("the legacy write must land where the new store reads", Files.exists(fileIn(directory).toPath()))
+
+            val scope = newScope()
+            try {
+                val repository = openWhenReleased(directory, scope)
+
+                assertEquals(
+                    "changing the factory must not lose what was already saved",
+                    setOf(TeamKey("TOR"), TeamKey("MTL")),
+                    repository.getFavourites(),
+                )
+
+                repository.setFavouritesOnly(false)
+
+                assertEquals(false, repository.getFavouritesOnly())
+                assertEquals(
+                    "writing through the new store must not drop the legacy favourites",
+                    setOf(TeamKey("TOR"), TeamKey("MTL")),
+                    repository.getFavourites(),
+                )
+            } finally {
+                closeScope(scope)
+            }
         }
 
     @Test

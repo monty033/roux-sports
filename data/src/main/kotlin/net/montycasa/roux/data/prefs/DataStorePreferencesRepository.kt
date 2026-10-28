@@ -50,10 +50,12 @@ class DataStorePreferencesRepository(
     scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) : PreferencesRepository {
     private val store: DataStore<Preferences> =
-        PreferenceDataStoreFactory.create(
+        PreferenceDataStoreFactory.createWithPath(
             corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
             scope = scope,
-            produceFile = { directory.resolve(FILE_NAME).toFile() },
+            // The path form, not the File form: it is what a KMP core needs, and it keeps the file exactly where
+            // every earlier build put it. The name is unchanged on purpose - moving it would orphan saved state.
+            produceFile = { directory.resolve(FILE_NAME) },
         )
 
     override suspend fun getFavourites(): Set<TeamKey> {
