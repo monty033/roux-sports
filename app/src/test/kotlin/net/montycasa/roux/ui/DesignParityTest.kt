@@ -7,12 +7,15 @@ import net.montycasa.roux.ui.nav.RouxNavHost
 import net.montycasa.roux.ui.scores.ScoresIntegrationApp
 import net.montycasa.roux.ui.scores.waitForFixtureScores
 import net.montycasa.roux.ui.theme.RouxTheme
+import org.junit.After
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import java.util.TimeZone
 
 /**
  * The pictures the parity claims are measured against: the whole shell at the design's own canvas, in both weights.
@@ -28,7 +31,12 @@ import org.robolectric.annotation.GraphicsMode
  * beside the design file at 1:1. At the device's 420 dpi they came out 2.625x larger - a correct capture of the wrong
  * thing.
  *
- * Record with `recordRoborazziDebug`, then verify.
+ * The zone is pinned rather than inherited from the machine: game times render in the device zone, so a baseline
+ * recorded in one timezone and verified in another differs in every time label on the screen. The pin makes the
+ * comparison about layout, which is the thing the design file specifies.
+ *
+ * Record with `recordRoborazziDebug`, then verify. `roborazzi.test.verify=true` in `gradle.properties` is what makes
+ * the ordinary test task compare rather than silently pass.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = ScoresIntegrationApp::class, qualifiers = "en-rUS-w411dp-h923dp-mdpi")
@@ -36,6 +44,19 @@ import org.robolectric.annotation.GraphicsMode
 class DesignParityTest {
     @get:Rule
     val rule = createComposeRule()
+
+    private lateinit var previousZone: TimeZone
+
+    @Before
+    fun pinTheZone() {
+        previousZone = TimeZone.getDefault()
+        TimeZone.setDefault(TimeZone.getTimeZone("America/New_York"))
+    }
+
+    @After
+    fun restoreTheZone() {
+        TimeZone.setDefault(previousZone)
+    }
 
     @Test
     fun scores411x923Light() = record("scores-411x923-light", dark = false)
