@@ -28,6 +28,7 @@ import net.montycasa.roux.domain.repo.NotificationLedgerEntry
 import net.montycasa.roux.domain.repo.PreferencesRepository
 import net.montycasa.roux.domain.repo.ScoresRepository
 import net.montycasa.roux.domain.repo.TeamAlertPreferences
+import okio.IOException
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -37,6 +38,7 @@ import org.junit.Test
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -95,6 +97,95 @@ class ScoresViewModelTest {
                 // A live slate would otherwise schedule five loads in two minutes at the 25 s cadence.
                 assertEquals(1, scores.calls.size)
                 assertEquals(LoadError.Blocked("evil.example"), viewModel.uiState.value.error)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun failuresBackOffAndAnEmptyColdStartKeepsTrying() =
+        runTest {
+            val scores = FakeScoresRepository(testScheduler)
+            val offline = Loadable<ScoreDay>(null, Freshness.Missing, LoadError.Network)
+            scores.respond = { _, _ -> offline }
+            val viewModel = viewModel(scores, jitter = { 0.5 })
+
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                advanceTimeBy(400_000)
+                runCurrent()
+
+                // 25 s, doubled each failure: the loop must never stop just because there is nothing cached to reason from.
+                assertEquals(listOf(0L, 25_000L, 75_000L, 175_000L, 375_000L), scores.times)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun aRetryAfterOutranksTheBackoff() =
+        runTest {
+            val scores = FakeScoresRepository(testScheduler)
+            val limited =
+                Loadable<ScoreDay>(null, Freshness.Missing, LoadError.Http(429, 120.seconds))
+            scores.respond = { _, _ -> limited }
+            val viewModel = viewModel(scores, jitter = { 0.5 })
+
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                advanceTimeBy(130_000)
+                runCurrent()
+
+                assertEquals(listOf(0L, 120_000L), scores.times)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun aSuccessResetsTheFailureCadence() =
+        runTest {
+            val scores = FakeScoresRepository(testScheduler)
+            var failing = true
+            scores.respond = { date, _ ->
+                if (failing) Loadable(null, Freshness.Missing, LoadError.Network) else freshDay(date)
+            }
+            val viewModel = viewModel(scores, jitter = { 0.5 })
+
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                advanceTimeBy(25_000)
+                runCurrent()
+                // Two failures in: the wait in force is 50 s, so the next load lands at 75 s and succeeds.
+                failing = false
+                advanceTimeBy(80_000)
+                runCurrent()
+
+                // After the success the cadence is 25 s again (75 000 -> 100 000), not the 100 s a third
+                // consecutive failure would have waited.
+                assertEquals(listOf(0L, 25_000L, 75_000L, 100_000L), scores.times)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun aThrowingFavouriteWriteDoesNotTakeTheAppDownOrLockTheNextOne() =
+        runTest {
+            val preferences = FakePreferencesRepository().apply { failOnlyWrites = true }
+            val viewModel = viewModel(FakeScoresRepository(testScheduler), preferences)
+
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                viewModel.setFavouritesOnly(false)
+                runCurrent()
+
+                preferences.failOnlyWrites = false
+                viewModel.setFavouritesOnly(true)
+                runCurrent()
+
+                // The refused write neither crashed the scope nor left the mutex held.
+                assertEquals(listOf(true), preferences.onlyWrites)
                 cancelAndIgnoreRemainingEvents()
             }
         }
@@ -497,8 +588,9 @@ class ScoresViewModelTest {
         scores: FakeScoresRepository,
         preferences: FakePreferencesRepository = FakePreferencesRepository(),
         clock: Clock = SchedulerClock(testScheduler, origin),
+        jitter: () -> Double = { 0.5 },
     ): ScoresViewModel =
-        ScoresViewModel(scores, preferences, clock).also { viewModel ->
+        ScoresViewModel(scores, preferences, clock, jitter).also { viewModel ->
             stores += ViewModelStore().apply { put("scores", viewModel) }
         }
 }
@@ -565,7 +657,10 @@ private class FakePreferencesRepository(
 
     override suspend fun getFavouritesOnly(): Boolean = storedOnly ?: true
 
+    var failOnlyWrites = false
+
     override suspend fun setFavouritesOnly(enabled: Boolean) {
+        if (failOnlyWrites) throw IOException("preferences are read-only")
         storedOnly = enabled
         onlyWrites += enabled
     }
