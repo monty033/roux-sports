@@ -50,7 +50,10 @@ class ScoresViewModel(
 ) : ViewModel() {
     private val leagueZone = TimeZone.of("America/New_York")
     private val selectedDate = MutableStateFlow(DateStrip.defaultSelection(emptyList(), leagueDay()))
-    private val refreshTrigger = MutableStateFlow(0L)
+
+    // The trigger carries whether this upstream start was the user asking. A pull must reach the network even when
+    // the cache is fresh, which is exactly what loadDay refuses to do; everything else keeps the cache-aware load.
+    private val refreshTrigger = MutableStateFlow(Trigger())
     private val favouritesOnly = MutableStateFlow<Boolean?>(null)
     private val preferenceWrites = Mutex()
     private val leagueOrder = MutableStateFlow<List<String>?>(null)
@@ -98,9 +101,9 @@ class ScoresViewModel(
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ScoresUiState(selectedDate.value, leagueDay()))
 
-    /** Calls the cache-aware repository immediately, even when the cadence has stopped. */
+    /** Loads immediately, even when the cadence has stopped. A pull also reaches past a fresh cache. */
     fun refresh() {
-        refreshTrigger.update { it + 1 }
+        refreshTrigger.update { Trigger(count = it.count + 1, force = true) }
     }
 
     fun onPullToRefresh() = refresh()
@@ -168,12 +171,21 @@ class ScoresViewModel(
             // Consecutive failures, reset by any answer. The cadence cannot be derived from a slate we do not have:
             // an offline cold start has no games, so the normal policy would return null and stop the loop for good.
             var failedAttempts = 0
+            // Only the load that starts this flow can be forced. The cadence below it is polling, and polling must
+            // keep honouring a fresh cache instead of hammering the feed every 25 seconds.
+            var forceNext = request.trigger.force
             while (currentCoroutineContext().isActive) {
                 if (announceProgress) {
                     emit(DayLoad(request.date, request.today, value, refreshing = true))
                 }
                 // Always load first on resubscription; loadDay checks FreshnessPolicy itself.
-                value = scores.loadDay(request.date, request.today)
+                value =
+                    if (forceNext) {
+                        forceNext = false
+                        scores.refreshDay(request.date, request.today)
+                    } else {
+                        scores.loadDay(request.date, request.today)
+                    }
                 val loaded = DayLoad(request.date, request.today, value, refreshing = false)
                 retained = loaded
                 emit(loaded)
@@ -227,7 +239,16 @@ class ScoresViewModel(
     private data class Request(
         val date: String,
         val today: String,
-        val trigger: Long,
+        val trigger: Trigger,
+    )
+
+    /**
+     * [count] exists so a refresh is a distinct event even when nothing else changed; [force] says the load that
+     * starts this flow came from the user, and only that first load may bypass a fresh cache.
+     */
+    private data class Trigger(
+        val count: Long = 0,
+        val force: Boolean = false,
     )
 
     private data class Settings(
