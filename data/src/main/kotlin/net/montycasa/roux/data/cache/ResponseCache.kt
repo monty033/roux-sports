@@ -15,7 +15,13 @@ enum class CacheKind(
     Score(30, "score"),
     Standings(3, "standings"),
     Seasons(1, "seasons"),
-    Detail(20, "detail"),
+
+    // One kind per detail endpoint, so a burst of landing pages for a busy night cannot evict the boxscore a
+    // fan is reading. The caps are per kind; a shared Detail kind would have made the busiest endpoint the
+    // one that decides what survives.
+    DetailLanding(20, "detail-landing"),
+    DetailBoxscore(20, "detail-boxscore"),
+    DetailRightRail(20, "detail-right-rail"),
 }
 
 data class CacheKey(
