@@ -2,7 +2,6 @@
 
 package net.montycasa.roux.ui.scores
 
-import android.text.format.DateFormat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -35,8 +34,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -58,10 +55,8 @@ import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.TeamRef
+import net.montycasa.roux.ui.common.rememberStartTimeLabel
 import net.montycasa.roux.ui.theme.Roux
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.TimeZone
 
 /** Test tag for the logo image, so a test can assert the request was attempted. */
 const val LOGO_TAG = "gameRowLogo"
@@ -430,16 +425,4 @@ private fun periodLabel(period: PeriodInfo?): String =
     )
 
 @Composable
-private fun startTimeLabel(game: Game): String {
-    val instant = game.startTimeUtc ?: return stringResource(R.string.game_row_time_tbd)
-    val locale = LocalConfiguration.current.locales[0]
-    val twentyFourHour = DateFormat.is24HourFormat(LocalContext.current)
-    return remember(instant, locale, twentyFourHour) {
-        // The device's own 12/24-hour setting decides the skeleton; a hockey app has no business
-        // overriding a system preference. Toronto is intentional, independent of the device zone.
-        val skeleton = if (twentyFourHour) "Hma" else "hma"
-        SimpleDateFormat(DateFormat.getBestDateTimePattern(locale, skeleton), locale)
-            .apply { timeZone = TimeZone.getTimeZone("America/Toronto") }
-            .format(Date(instant.toEpochMilliseconds()))
-    }
-}
+private fun startTimeLabel(game: Game): String = rememberStartTimeLabel(game)

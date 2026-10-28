@@ -1,6 +1,7 @@
 <resources>
     <string name="common_retry">Retry</string>
     <string name="common_refreshing">Refreshing…</string>
+    <string name="common_yesterday">yesterday</string>
     <string name="common_updated">Updated %1$s</string>
     <string name="common_stale_scores">Showing saved scores. They may be out of date.</string>
 </resources>
