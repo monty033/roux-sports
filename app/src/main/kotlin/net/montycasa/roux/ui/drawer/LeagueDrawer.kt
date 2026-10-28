@@ -75,7 +75,7 @@ import kotlinx.coroutines.launch
 import net.montycasa.roux.R
 import net.montycasa.roux.domain.policy.LeagueOrder
 import net.montycasa.roux.ui.reach.reachTarget
-import net.montycasa.roux.ui.scores.ScoresUiState
+import net.montycasa.roux.ui.scores.DrawerUi
 import java.time.LocalDate
 import java.time.format.DateTimeParseException
 
@@ -89,9 +89,10 @@ private val rule = Color(0xFF1B1D22)
 @Composable
 fun LeagueNavigationDrawer(
     drawerState: DrawerState,
-    state: ScoresUiState,
+    drawer: DrawerUi,
     onFavouritesOnly: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    seasonDate: String? = null,
     onLeagueOrder: (List<String>) -> Unit,
     catalog: List<DrawerLeague> = drawerCatalog,
     onLeagueSelected: (String) -> Unit = { onFavouritesOnly(false) },
@@ -125,7 +126,8 @@ fun LeagueNavigationDrawer(
                 windowInsets = WindowInsets(0, 0, 0, 0),
             ) {
                 LeagueDrawer(
-                    state = state,
+                    drawer = drawer,
+                    seasonDate = seasonDate,
                     editing = editing,
                     onEditing = { editing = it },
                     catalog = catalog,
@@ -157,12 +159,13 @@ fun LeagueNavigationDrawer(
 
 @Composable
 fun LeagueDrawer(
-    state: ScoresUiState,
+    drawer: DrawerUi,
     editing: Boolean,
     onEditing: (Boolean) -> Unit,
     onLeagueOrder: (List<String>) -> Unit,
     onLeagueSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
+    seasonDate: String? = null,
     catalog: List<DrawerLeague> = drawerCatalog,
     onFavouritesOnly: (Boolean) -> Unit,
     /**
@@ -185,7 +188,7 @@ fun LeagueDrawer(
             stringResource(R.string.app_name),
             Modifier.width(108.dp).alpha(0.95f).testTag("leagues.wordmark"),
         )
-        leagueSeason(state.loadedDate)?.let { season ->
+        leagueSeason(seasonDate)?.let { season ->
             Text(
                 season,
                 Modifier.padding(top = 8.dp).testTag("leagues.season"),
@@ -197,7 +200,15 @@ fun LeagueDrawer(
         }
         Spacer(Modifier.weight(1f).height(8.dp))
         DrawerLabel(stringResource(R.string.drawer_favourites))
-        DrawerRow(stringResource(R.string.drawer_my_teams), state.favouriteCount.toString(), tag = "leagues.myTeams", team = true) {
+        DrawerRow(
+            label = stringResource(R.string.drawer_my_teams),
+            trailing = drawer.favouriteCount.toString(),
+            tag = "leagues.myTeams",
+            team = true,
+            // My Teams is a filter, so it is the selected row whenever that filter is on - including on a tab that
+            // has never loaded a score.
+            selected = drawer.favouritesOnly,
+        ) {
             onFavouritesOnly(true)
         }
         DrawerRule()
@@ -236,7 +247,7 @@ fun LeagueDrawer(
                 }
             }
         }
-        val order = LeagueOrder.reconcile(state.leagueOrder, catalog.map { it.id })
+        val order = LeagueOrder.reconcile(drawer.leagueOrder, catalog.map { it.id })
         // The drawer renders the persisted order directly. Every league in the catalog is arrangeable, including
         // ones with no data yet: greying says "nothing to show", not "not yours to arrange".
         order.forEach { id ->
@@ -244,7 +255,9 @@ fun LeagueDrawer(
                 val league = catalog.first { it.id == id }
                 ReorderableLeagueRow(
                     league = league,
-                    selected = id == state.selectedLeagueId,
+                    // DrawerUi already resolves "My Teams" when the filter is on, so one comparison covers both
+                    // cases: the second rule here would be a guard that could never fire.
+                    selected = id == drawer.selectedLeagueId,
                     editing = editing,
                     order = order,
                     onLeagueOrder = onLeagueOrder,

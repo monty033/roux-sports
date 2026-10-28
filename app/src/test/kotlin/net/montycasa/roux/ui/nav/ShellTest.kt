@@ -1,7 +1,10 @@
 package net.montycasa.roux.ui.nav
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
@@ -14,6 +17,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -47,6 +52,63 @@ class ShellTest {
 
     // Bar assertions match the selectable item rather than the text alone: a destination's own screen
     // may legitimately render the same word, and matching the item keeps the assertion unambiguous.
+    @Test
+    fun theDrawerOpensOnStandingsAndReordersThere() {
+        launchShell()
+        barItem("Standings").performClick()
+        rule.waitForIdle()
+
+        // Standings has no header button: the edge swipe is the only way in, so this is what "live on every tab" means.
+        rule.onRoot().performTouchInput { swipeRight() }
+        rule.onNodeWithTag("leagues.drawer").assertIsDisplayed()
+
+        rule.onNodeWithTag("leagues.edit").performClick()
+        // The handle only drags after a long press, and only crosses into the next slot past half a row, so the
+        // move is measured from the row rather than guessed in dp.
+        val rowHeight =
+            rule
+                .onNodeWithTag("leagues.nfl")
+                .fetchSemanticsNode()
+                .size.height
+                .toFloat()
+        val handle = rule.onNodeWithTag("leagues.nfl.handle")
+        handle.performTouchInput {
+            down(center)
+            advanceEventTime(700)
+            moveBy(Offset(0f, -(rowHeight * 0.6f)))
+        }
+        handle.performTouchInput { moveBy(Offset(0f, -4f)) }
+        handle.performTouchInput { up() }
+        rule.waitForIdle()
+
+        val nflTop =
+            rule
+                .onNodeWithTag("leagues.nfl")
+                .fetchSemanticsNode()
+                .boundsInRoot.top
+        val nhlTop =
+            rule
+                .onNodeWithTag("leagues.nhl")
+                .fetchSemanticsNode()
+                .boundsInRoot.top
+        assertTrue("NFL should now sit above NHL", nflTop < nhlTop)
+    }
+
+    @Test
+    fun myTeamsIsTheSelectedRowWhenTheDrawerReopens() {
+        launchShell()
+        rule.onNodeWithContentDescription("Open leagues").performClick()
+        rule.onNodeWithText("My Teams").performClick()
+        rule.waitUntil(10_000) {
+            rule.onNodeWithContentDescription("Open leagues").fetchSemanticsNode()
+            true
+        }
+
+        rule.onNodeWithContentDescription("Open leagues").performClick()
+        rule.onNodeWithTag("leagues.myTeams").assertIsSelected()
+        rule.onNodeWithTag("leagues.nhl").assertIsNotSelected()
+    }
+
     private fun barItem(label: String) = rule.onNode(hasText(label) and isSelectable())
 
     private val declaredPrimaries = listOf("nav.scores", "nav.standings", "nav.teams")

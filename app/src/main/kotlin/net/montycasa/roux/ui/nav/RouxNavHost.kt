@@ -20,6 +20,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -105,7 +106,14 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
     var calendarOpen by rememberSaveable { mutableStateOf(false) }
     Box(modifier.fillMaxSize()) {
         Box(Modifier.then(if (calendarOpen) Modifier.clearAndSetSemantics { } else Modifier)) {
-            LeagueNavigationDrawer(drawerState, scoresState, scores::setFavouritesOnly, onLeagueOrder = scores::setLeagueOrder) {
+            LeagueNavigationDrawer(
+                drawerState = drawerState,
+                drawer = scores.drawerState.collectAsState().value,
+                seasonDate = scoresState.loadedDate,
+                onFavouritesOnly = scores::setFavouritesOnly,
+                onLeagueOrder = scores::setLeagueOrder,
+                onLeagueSelected = scores::selectLeague,
+            ) {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     bottomBar = {
