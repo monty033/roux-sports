@@ -21,6 +21,7 @@ import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.Season
 import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.policy.FreshnessPolicy
+import net.montycasa.roux.domain.policy.LeagueCalendar
 import net.montycasa.roux.domain.repo.StandingsRepository
 import okio.IOException
 import kotlin.coroutines.CoroutineContext
@@ -31,16 +32,18 @@ import kotlin.time.Instant
 /**
  * Cache-first league table.
  *
- * The league day is the date in New York, not the device's date and not UTC: a viewer in Tokyo at
- * 11:00 local is still on last night's slate in NHL terms, and the table is addressed by that date.
- * Getting this wrong is a whole-table-wrong bug that looks like a data problem, so the conversion
- * happens in exactly one place - [leagueDay] - and the tests pin both sides of a DST change.
+ * The league day is the device's civil date, from [LeagueCalendar]: the same day the scores screen is showing, so the
+ * table a fan reads and the games they are browsing always agree. Getting this wrong is a whole-table-wrong bug that
+ * looks like a data problem, so the conversion happens in exactly one place and the tests pin both sides of a DST
+ * change. The zone is injected rather than read from ambient state, which keeps this testable and :data honest.
  */
 internal class StandingsRepositoryImpl(
     private val api: NhlApi,
     private val adapter: NhlAdapter,
     private val cache: ResponseCache,
     private val clock: Clock = Clock.System,
+    /** The device's zone, supplied by the caller; see the class note for why it is not read here. */
+    private val zone: TimeZone = TimeZone.currentSystemDefault(),
     /** Where parsing and cache work runs; see ScoresRepositoryImpl for why this is not the caller's thread. */
     private val ioDispatcher: CoroutineContext = Dispatchers.IO,
 ) : StandingsRepository {
@@ -160,11 +163,10 @@ internal class StandingsRepositoryImpl(
 
     private companion object {
         const val SEASONS_KEY = "season-list"
-        val LEAGUE_ZONE = TimeZone.of("America/New_York")
     }
 
-    /** The NHL league day: the calendar date in New York for [now]. */
-    internal fun leagueDay(now: Instant): String = now.toLocalDateTime(LEAGUE_ZONE).date.toString()
+    /** The day this install is browsing: the device's civil date for [now]. */
+    internal fun leagueDay(now: Instant): String = LeagueCalendar.leagueDay(now, zone)
 }
 
 /**
@@ -177,5 +179,7 @@ fun standingsRepository(
     api: NhlApi,
     cache: ResponseCache,
     clock: Clock = Clock.System,
+    /** The device's zone: the standings day follows the same civil date the scores screen browses. */
+    zone: TimeZone = TimeZone.currentSystemDefault(),
     ioDispatcher: CoroutineContext = Dispatchers.IO,
-): StandingsRepository = StandingsRepositoryImpl(api, NhlAdapter, cache, clock, ioDispatcher)
+): StandingsRepository = StandingsRepositoryImpl(api, NhlAdapter, cache, clock, zone, ioDispatcher)

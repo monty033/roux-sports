@@ -26,6 +26,7 @@ import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import net.montycasa.roux.domain.policy.LeagueCalendar
 import net.montycasa.roux.ui.nav.RouxNavHost
 import net.montycasa.roux.ui.reach.PrimaryControlTag
 import net.montycasa.roux.ui.scores.ScoreFixture
@@ -98,10 +99,10 @@ class StandingsIntegrationTest {
         openStandingsFromColdStart()
 
         val leagueDay =
-            app.container.clock
-                .now()
-                .toLocalDateTime(TimeZone.of("America/New_York"))
-                .date
+            LeagueCalendar.leagueDay(
+                app.container.clock.now(),
+                TimeZone.currentSystemDefault(),
+            )
         val expectedUrl = "https://api-web.nhle.com/v1/standings/$leagueDay"
         val standingsUrls = app.requests.filter { it.encodedPath.startsWith("/v1/standings/") }.map { it.toString() }
         assertEquals(listOf(expectedUrl), standingsUrls)

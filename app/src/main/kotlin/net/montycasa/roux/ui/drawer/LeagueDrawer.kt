@@ -385,7 +385,7 @@ private fun DrawerRow(
     }
 }
 
-/** A loaded score date is already a calendar day in the NHL's America/New_York zone. */
+/** A loaded score date is already a calendar day on the device's clock. */
 internal fun leagueSeason(loadedDate: String?): String? {
     val date =
         try {

@@ -10,6 +10,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.runBlocking
+import kotlinx.datetime.TimeZone
 import net.montycasa.roux.data.Fixtures
 import net.montycasa.roux.data.cache.CacheKey
 import net.montycasa.roux.data.cache.CacheKind
@@ -19,6 +20,7 @@ import net.montycasa.roux.data.net.NhlHttpClientFactory
 import net.montycasa.roux.data.nhl.NhlAdapter
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
+import net.montycasa.roux.domain.policy.LeagueCalendar
 import okio.FileHandle
 import okio.FileSystem
 import okio.ForwardingFileSystem
@@ -53,8 +55,34 @@ class StandingsRepositoryImplTest {
         val cache: ResponseCache,
     )
 
+    /**
+     * The standings request carries the same day the scores screen is showing, hour by hour across the DST weekend.
+     *
+     * Two modules used to answer this question separately - one in New York, one in New York for a different reason -
+     * and the table a fan read could name a day the games did not. One function, both callers.
+     */
+    @Test
+    fun theRequestedDayIsTheDeviceCivilDayAcrossTheWholeDstWeekend() =
+        runBlocking {
+            // Three hours off the league's zone and transitioning the same night: Toronto would have agreed with the bug.
+            val zone = TimeZone.of("America/Los_Angeles")
+            val start = Instant.parse("2026-10-31T12:00:00Z")
+            repeat(48) { hour ->
+                val now = start + hour.hours
+                val harness = harness(zone = zone, clock = MutableClock().apply { set(now.toString()) })
+
+                harness.repository.standings(anyGameLive = false)
+
+                val expected = "/v1/standings/" + LeagueCalendar.leagueDay(now, zone)
+                assertEquals("hour $hour at $now", listOf(expected), harness.requests)
+            }
+        }
+
     private fun harness(
         files: ((FileSystem) -> FileSystem)? = null,
+        zone: TimeZone = TimeZone.of("America/Toronto"),
+        clock: MutableClock = MutableClock(),
+        // Last, so the existing `harness { ... }` shape keeps binding the responder.
         responder: (suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData?)? = null,
     ): Harness {
         val requests = mutableListOf<String>()
@@ -71,11 +99,10 @@ class StandingsRepositoryImplTest {
                         )
                     }
             }
-        val clock = MutableClock()
         val cache = ResponseCache(files?.invoke(FakeFileSystem(clock)) ?: FakeFileSystem(clock), DIRECTORY.toPath(), clock)
         // Through the factory, so the request boundary (429 handling, host allowlist) is part of the test.
         val api = NhlApi(NhlHttpClientFactory.create(engine, "test-version"))
-        return Harness(StandingsRepositoryImpl(api, NhlAdapter, cache, clock), requests, clock, cache)
+        return Harness(StandingsRepositoryImpl(api, NhlAdapter, cache, clock, zone), requests, clock, cache)
     }
 
     @Test
