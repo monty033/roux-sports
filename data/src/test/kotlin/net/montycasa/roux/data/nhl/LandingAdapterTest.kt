@@ -51,7 +51,16 @@ class LandingAdapterTest {
      * for.
      */
     @Test
-    fun notStartedPayloadSucceedsWithNoSections() {
+    fun realNotStartedPayloadSucceedsWithNoSections() {
+        // 22 KB of matchup, season comparisons and ticket links: a two-field stub would pass while the decoder choked on
+        // any of the other keys, so the fixture is the test.
+        val landing = successOf(Fixtures.text("gc-fut-landing.json"))
+        assertEquals(emptyList<PeriodScoring>(), landing.periodScoring)
+        assertEquals(emptyList<Any>(), landing.threeStars)
+    }
+
+    @Test
+    fun minimalNotStartedPayloadAlsoSucceeds() {
         val landing = successOf("""{"id":2026020199,"gameState":"FUT"}""")
         assertEquals(emptyList<PeriodScoring>(), landing.periodScoring)
         assertEquals(emptyList<Any>(), landing.threeStars)
