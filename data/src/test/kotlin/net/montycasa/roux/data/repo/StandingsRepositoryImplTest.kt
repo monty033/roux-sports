@@ -15,9 +15,14 @@ import net.montycasa.roux.data.cache.CacheKey
 import net.montycasa.roux.data.cache.CacheKind
 import net.montycasa.roux.data.cache.ResponseCache
 import net.montycasa.roux.data.net.NhlApi
+import net.montycasa.roux.data.net.NhlHttpClientFactory
 import net.montycasa.roux.data.nhl.NhlAdapter
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
+import okio.FileHandle
+import okio.FileSystem
+import okio.ForwardingFileSystem
+import okio.Path
 import okio.Path.Companion.toPath
 import okio.fakefilesystem.FakeFileSystem
 import org.junit.Assert.assertEquals
@@ -30,6 +35,7 @@ import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 /**
@@ -47,7 +53,10 @@ class StandingsRepositoryImplTest {
         val cache: ResponseCache,
     )
 
-    private fun harness(responder: (suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData?)? = null): Harness {
+    private fun harness(
+        files: ((FileSystem) -> FileSystem)? = null,
+        responder: (suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData?)? = null,
+    ): Harness {
         val requests = mutableListOf<String>()
         val engine =
             MockEngine { request ->
@@ -63,8 +72,9 @@ class StandingsRepositoryImplTest {
                     }
             }
         val clock = MutableClock()
-        val cache = ResponseCache(FakeFileSystem(clock), DIRECTORY.toPath(), clock)
-        val api = NhlApi(HttpClient(engine))
+        val cache = ResponseCache(files?.invoke(FakeFileSystem(clock)) ?: FakeFileSystem(clock), DIRECTORY.toPath(), clock)
+        // Through the factory, so the request boundary (429 handling, host allowlist) is part of the test.
+        val api = NhlApi(NhlHttpClientFactory.create(engine, "test-version"))
         return Harness(StandingsRepositoryImpl(api, NhlAdapter, cache, clock), requests, clock, cache)
     }
 
@@ -246,6 +256,63 @@ class StandingsRepositoryImplTest {
             assertNotNull(result.data)
         }
 
+    @Test
+    fun aRateLimitIsAnAnswerRatherThanACrash() =
+        runBlocking {
+            // 429 with Retry-After: the boundary raises RateLimited on purpose. It used to escape the repository and
+            // take the standings screen down with it instead of showing an error next to a cached table.
+            val harness =
+                harness(responder = { _ ->
+                    respond("", HttpStatusCode.TooManyRequests, headersOf(HttpHeaders.RetryAfter, "30"))
+                })
+
+            val loadable = harness.repository.standings(anyGameLive = false)
+
+            assertEquals(LoadError.Http(status = 429, retryAfter = 30.seconds), loadable.error)
+            assertNull(loadable.data)
+        }
+
+    @Test
+    fun aRedirectToAnUnlistedHostIsBlockedNotThrown() =
+        runBlocking {
+            val harness =
+                harness(responder = { _ ->
+                    respond("", HttpStatusCode.MovedPermanently, headersOf(HttpHeaders.Location, "https://evil.example/steal"))
+                })
+
+            val loadable = harness.repository.standings(anyGameLive = false)
+
+            assertEquals(LoadError.Blocked("evil.example"), loadable.error)
+            assertEquals("the engine must never be asked for the blocked host", 1, harness.requests.size)
+        }
+
+    @Test
+    fun aCacheThatCannotBeWrittenStillReturnsTheTableAsLocal() =
+        runBlocking {
+            val harness = harness(files = { delegate -> StandingsWriteFailingFileSystem(delegate) })
+
+            val loadable = harness.repository.standings(anyGameLive = false)
+
+            assertNotNull("a cache failure must not hide a good response", loadable.data)
+            assertEquals(LoadError.Local, loadable.error)
+            assertEquals(Freshness.Fresh, loadable.freshness)
+        }
+
+    @Test
+    fun aCacheThatCannotBeReadStillReachesTheNetwork() =
+        runBlocking {
+            // ResponseCache.get swallows IOException and answers null, so this pins the combined behaviour rather
+            // than a catch inside the repository: an unreadable entry must behave like a missing one, not like an
+            // error and not like a reason to skip the network.
+            val harness = harness(files = { delegate -> StandingsReadFailingFileSystem(delegate) })
+
+            val loadable = harness.repository.standings(anyGameLive = false)
+
+            assertEquals("an unreadable cache must not stop the fetch", 1, harness.requests.size)
+            assertNotNull(loadable.data)
+            assertEquals(Freshness.Fresh, loadable.freshness)
+        }
+
     private class MutableClock : Clock {
         private var instant: Instant = Instant.parse("2026-10-26T02:00:00Z")
 
@@ -263,4 +330,23 @@ class StandingsRepositoryImplTest {
     private companion object {
         const val DIRECTORY = "/cache"
     }
+}
+
+/** Delegates everything, but fails the atomic move a cache write ends with. */
+private class StandingsWriteFailingFileSystem(
+    delegate: FileSystem,
+) : ForwardingFileSystem(delegate) {
+    override fun atomicMove(
+        source: Path,
+        target: Path,
+    ): Unit = throw IOException("disk full")
+}
+
+/** Delegates everything, but cannot hand back a previously written cache entry. */
+private class StandingsReadFailingFileSystem(
+    delegate: FileSystem,
+) : ForwardingFileSystem(delegate) {
+    override fun openReadOnly(file: Path): FileHandle = throw IOException("permission denied")
+
+    override fun metadataOrNull(path: Path): okio.FileMetadata? = throw IOException("permission denied")
 }
