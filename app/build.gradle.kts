@@ -31,6 +31,19 @@ android {
         compose = true
     }
 
+    buildTypes {
+        // Device performance testing: the shipping code path with none of the debug runtime overhead that
+        // makes every Compose scroll feel heavier than it will on a release build. Minification stays off
+        // so this measures the runtime difference alone; R8 becomes its own reviewed step.
+        // Signed with the debug key so it installs over the debug build - which is exactly why it must
+        // never be published, and why it is not called "release".
+        create("perf") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
