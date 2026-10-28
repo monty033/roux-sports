@@ -1,5 +1,7 @@
 package net.montycasa.roux.data.repo
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import net.montycasa.roux.data.cache.CacheKey
@@ -18,6 +20,7 @@ import net.montycasa.roux.domain.model.Season
 import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.policy.FreshnessPolicy
 import net.montycasa.roux.domain.repo.StandingsRepository
+import kotlin.coroutines.CoroutineContext
 import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.time.Instant
@@ -35,6 +38,8 @@ internal class StandingsRepositoryImpl(
     private val adapter: NhlAdapter,
     private val cache: ResponseCache,
     private val clock: Clock = Clock.System,
+    /** Where parsing and cache work runs; see ScoresRepositoryImpl for why this is not the caller's thread. */
+    private val ioDispatcher: CoroutineContext = Dispatchers.IO,
 ) : StandingsRepository {
     override suspend fun standings(anyGameLive: Boolean): Loadable<List<StandingRow>> {
         val day = leagueDay(clock.now())
@@ -67,39 +72,42 @@ internal class StandingsRepositoryImpl(
         maxAge: Duration,
         fetch: suspend () -> ApiResult,
         parse: (String) -> ParseResult<T>,
-    ): Loadable<T> {
-        val cached = readCached(key, parse)
-        if (cached != null &&
-            !FreshnessPolicy.isStale(fetchedAt = cached.fetchedAt, now = clock.now(), maxAge = maxAge)
-        ) {
-            return Loadable(cached.value, Freshness.Fresh, null)
-        }
+    ): Loadable<T> =
+        // Parsing and cache file work must not run on the caller's thread: the screens collect this from the main
+        // thread, and a table-sized parse plus an access stamp there is a hitch.
+        withContext(ioDispatcher) {
+            val cached = readCached(key, parse)
+            if (cached != null &&
+                !FreshnessPolicy.isStale(fetchedAt = cached.fetchedAt, now = clock.now(), maxAge = maxAge)
+            ) {
+                return@withContext Loadable(cached.value, Freshness.Fresh, null)
+            }
 
-        return when (val result = fetch()) {
-            is ApiResult.Success -> {
-                when (val parsed = parse(result.bytes.decodeToString())) {
-                    is ParseResult.Success -> {
-                        // Stamped when the bytes arrive: a slow request must not install an entry
-                        // that is already past its own lifetime.
-                        cache.put(key, result.bytes, clock.now())
-                        Loadable(parsed.value, Freshness.Fresh, null)
-                    }
+            return@withContext when (val result = fetch()) {
+                is ApiResult.Success -> {
+                    when (val parsed = parse(result.bytes.decodeToString())) {
+                        is ParseResult.Success -> {
+                            // Stamped when the bytes arrive: a slow request must not install an entry
+                            // that is already past its own lifetime.
+                            cache.put(key, result.bytes, clock.now())
+                            Loadable(parsed.value, Freshness.Fresh, null)
+                        }
 
-                    is ParseResult.Failure -> {
-                        fallBack(cached, LoadError.Parse)
+                        is ParseResult.Failure -> {
+                            fallBack(cached, LoadError.Parse)
+                        }
                     }
                 }
-            }
 
-            is ApiResult.HttpError -> {
-                fallBack(cached, LoadError.Http(result.status))
-            }
+                is ApiResult.HttpError -> {
+                    fallBack(cached, LoadError.Http(result.status))
+                }
 
-            is ApiResult.NetworkError -> {
-                fallBack(cached, LoadError.Network)
+                is ApiResult.NetworkError -> {
+                    fallBack(cached, LoadError.Network)
+                }
             }
         }
-    }
 
     /** A cached body that no longer parses is absent, not evidence that the network will fail. */
     private suspend fun <T> readCached(
@@ -145,4 +153,5 @@ fun standingsRepository(
     api: NhlApi,
     cache: ResponseCache,
     clock: Clock = Clock.System,
-): StandingsRepository = StandingsRepositoryImpl(api, NhlAdapter, cache, clock)
+    ioDispatcher: CoroutineContext = Dispatchers.IO,
+): StandingsRepository = StandingsRepositoryImpl(api, NhlAdapter, cache, clock, ioDispatcher)
