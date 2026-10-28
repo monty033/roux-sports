@@ -74,6 +74,32 @@ class ScoresViewModelTest {
         }
 
     @Test
+    fun aBlockedHostStopsThePollInsteadOfReaskingEveryTwentyFiveSeconds() =
+        runTest {
+            val scores = FakeScoresRepository(testScheduler)
+            val blocked =
+                Loadable(
+                    ScoreDay("2026-10-26", listOf(game(date = "2026-10-26")), emptyList(), 0),
+                    Freshness.Stale(Instant.parse("2026-10-26T20:00:00Z")),
+                    LoadError.Blocked("evil.example"),
+                )
+            scores.respond = { _, _ -> blocked }
+            val viewModel = viewModel(scores)
+
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                advanceTimeBy(120_000)
+                runCurrent()
+
+                // A live slate would otherwise schedule five loads in two minutes at the 25 s cadence.
+                assertEquals(1, scores.calls.size)
+                assertEquals(LoadError.Blocked("evil.example"), viewModel.uiState.value.error)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
     fun allFinalPastDateDoesNotPoll() =
         runTest {
             val scores = FakeScoresRepository(testScheduler)

@@ -25,6 +25,7 @@ import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
 import net.montycasa.roux.domain.Freshness
+import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.ScoreDay
 import net.montycasa.roux.domain.model.TeamKey
@@ -154,6 +155,11 @@ class ScoresViewModel(
                 retained = loaded
                 emit(loaded)
                 announceProgress = false
+                // A blocked host is a refusal, not a transport failure: asking again earns the same refusal. Stop
+                // the loop rather than re-asking on the normal cadence; a new upstream start - a refresh, a date
+                // change, the midnight rollover - tries once more. This is what makes LoadError.Blocked's promise
+                // ("not retried on the normal cadence") true instead of merely written down.
+                if (value.error is LoadError.Blocked) break
                 val now = clock.now()
                 val wait =
                     PollPolicy.nextDelay(
