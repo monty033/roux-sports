@@ -8,7 +8,9 @@ import net.montycasa.roux.data.cache.CacheKey
 import net.montycasa.roux.data.cache.CacheKind
 import net.montycasa.roux.data.cache.ResponseCache
 import net.montycasa.roux.data.net.ApiResult
+import net.montycasa.roux.data.net.HostNotAllowedException
 import net.montycasa.roux.data.net.NhlApi
+import net.montycasa.roux.data.net.RateLimited
 import net.montycasa.roux.data.nhl.NhlAdapter
 import net.montycasa.roux.data.nhl.ParseResult
 import net.montycasa.roux.domain.Cached
@@ -20,6 +22,7 @@ import net.montycasa.roux.domain.model.Season
 import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.policy.FreshnessPolicy
 import net.montycasa.roux.domain.repo.StandingsRepository
+import okio.IOException
 import kotlin.coroutines.CoroutineContext
 import kotlin.time.Clock
 import kotlin.time.Duration
@@ -83,14 +86,32 @@ internal class StandingsRepositoryImpl(
                 return@withContext Loadable(cached.value, Freshness.Fresh, null)
             }
 
-            return@withContext when (val result = fetch()) {
+            val result =
+                try {
+                    fetch()
+                } catch (limited: RateLimited) {
+                    // A rate limit is an answer, not a fault: it carries the pause the server asked for, and letting it
+                    // escape took the process down instead of falling back to the cached table.
+                    return@withContext fallBack(cached, LoadError.Http(status = 429, retryAfter = limited.retryAfter))
+                } catch (blocked: HostNotAllowedException) {
+                    return@withContext fallBack(cached, LoadError.Blocked(blocked.host))
+                }
+
+            when (result) {
                 is ApiResult.Success -> {
                     when (val parsed = parse(result.bytes.decodeToString())) {
                         is ParseResult.Success -> {
-                            // Stamped when the bytes arrive: a slow request must not install an entry
-                            // that is already past its own lifetime.
-                            cache.put(key, result.bytes, clock.now())
-                            Loadable(parsed.value, Freshness.Fresh, null)
+                            try {
+                                // Stamped when the bytes arrive: a slow request must not install an entry
+                                // that is already past its own lifetime.
+                                cache.put(key, result.bytes, clock.now())
+                                Loadable(parsed.value, Freshness.Fresh, null)
+                            } catch (_: IOException) {
+                                // The feed answered and the answer is good; the disk is what failed. Reporting
+                                // that as a fetch failure would hide a usable table behind an error, so the data
+                                // is returned and Local names the actual problem.
+                                Loadable(parsed.value, Freshness.Fresh, LoadError.Local)
+                            }
                         }
 
                         is ParseResult.Failure -> {
@@ -114,6 +135,9 @@ internal class StandingsRepositoryImpl(
         key: CacheKey,
         parse: (String) -> ParseResult<T>,
     ): CachedValue<T>? {
+        // ResponseCache.get already swallows IOException and answers null, so an unreadable entry is simply absent,
+        // and a defensive catch here would be unreachable. The behaviour is pinned by
+        // aCacheThatCannotBeReadStillReachesTheNetwork instead.
         val entry = cache.get(key) ?: return null
         val parsed = parse(entry.bytes.decodeToString())
         if (parsed !is ParseResult.Success) return null
