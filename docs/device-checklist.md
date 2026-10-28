@@ -191,6 +191,7 @@ perfectly in debug.
 `DesignParityTest` records the whole shell at the design's own canvas - 411 x 923 and 360 x 780, light and dark, at
 mdpi so one PNG pixel is one CSS pixel - into `app/src/test/screenshots/design-parity/`.
 
-- [ ] The four baselines have been compared against `roux-sports-design/final/scores-screen.html` and signed off.
-      Recorded as pending rather than passed: the capture proves the app renders at those sizes, not that it matches the
-      design. That judgement is Patrick's, and it is the only reason the pictures exist.
+- [x] The four baselines have been compared against `roux-sports-design/final/scores-screen.html` and signed off.
+      Signed off by Patrick on 2026-10-28 after viewing all four in chat ("Looks good"). Recorded with the date because
+      this is a human judgement, not a test: the capture proves the app renders at those sizes, the sign-off says it
+      matches the design. If a later change alters the frames, the sign-off is stale and the comparison repeats.
