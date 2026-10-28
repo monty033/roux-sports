@@ -63,12 +63,18 @@ that rule; its 8 dp top and bottom (`GameRow.kt:276`) do not come from the final
 
 ## Deltas nobody had recorded
 
-- **Navigation bar glyphs.** The design draws dotted lines, a bar chart and a shield (`:447-449`) inside a 44 × 28 dp
-  indicator pill (`:148-150`). The app hand-draws its own and its source comment admits the icon set "is not settled".
-- **Drag lift.** `.ditem.drag` (`:293`) lifts a dragged drawer row; the app only raises its z-index.
-- **Capsule gap.** 5 px in the design (`:111`), 4 dp in the app (`GameRow.kt:359`).
-- **My Teams star colour, unverified.** `.ditem .icn` is orange `#FF4B12` at 18 px (`:178`); the app tints the star with
-  ink (`LeagueDrawer.kt:326`). Whether the design's star actually uses `.icn` in its markup was not checked.
+Each row was checked against the file rather than assumed. The verdict is the honest one, not the hoped-for one.
+
+| Item | The file says | The app does | Verdict |
+|---|---|---|---|
+| Navigation bar glyphs | 24 × 24 SVG line art at 1.7 px stroke — sliders, a ranking chart, a shield (`:595-597`) inside a 44 × 28 pill (`:148`) | 24 dp hand-drawn **filled** `ImageVector`s — two bars, narrowing rows, four boxes (`RouxNavHost.kt:249`), inside Material 3's stock indicator | **not matched.** The 24 dp box agrees; the artwork does not: fills where the file strokes, four boxes where it draws a shield, and a wider pill. |
+| Drag lift | `.ditem.drag` (`:293`) lifts the dragged row: `background:#1C1E24`, `box-shadow:0 14px 26px -10px #000`, `border-radius:.625rem` | `zIndex` plus a `translationY` (`LeagueDrawer.kt:447`) — no shadow, no background, no radius change | **not matched.** The row rises above its neighbours and nothing else happens, so a drag reads as "moved" rather than "picked up". |
+| Drawer icon colour | `.drawer .ditem .icn` (`:178`): `#FF4B12`, 18 px, on every row's leading icon | The My Teams star is 17 dp tinted ink; only the edit pencil is 20 dp at `#FF4B12` (`LeagueDrawer.kt:246,356`) | **not matched.** The file's orange-per-row treatment is implemented nowhere; one control happens to be orange. |
+| State capsule gap | `.tk .st` `gap:.3125rem` = 5 px (`:110-111`) | `Arrangement.spacedBy(4.dp)` between dot and label (`GameRow.kt:354`) | not matched, by 1 px. The earlier citation for this row pointed at the dot itself, not the gap. |
+
+None of the three not-matched rows above is a regression — they were never built, and no test claimed them. That is the
+point of recording them: the rest of this document is a table of things that *were* matched, and a reader could
+reasonably have assumed the list was complete.
 
 ## Two assertions were weaker than they looked, and are now equalities
 
@@ -86,8 +92,10 @@ number, and both pass, which is the useful outcome: the parity claim is now chec
 4. **Type sizes in the rail** sit at 9–12 sp where the file's smallest sizes are 8–9 sp — the accepted legibility
    deviation recorded in the plan, unchanged.
 
-## Open question for Patrick
+## Settled: the sheet holds a draft
 
-In the sheet, tapping a day selects it immediately, so `DONE` and dismissing with the scrim have the same effect. The
-file shows both `TODAY` and `DONE`, which implies a confirm step. Current behaviour is "pick immediately, dismiss when
-done", documented in the composable. Say if you want the sheet to hold a draft selection until `DONE`.
+This document used to end with an open question: tapping a day selected it immediately, so `DONE` and the scrim did the
+same thing, while the file showed both `TODAY` and `DONE` and implied a confirm step.
+
+Patrick answered it by having the sheet hold a draft. Tapping a day, or `TODAY`, moves the draft only; `DONE` applies
+it, and the scrim or back discards it. The two controls now mean different things, which is why the file draws both.
