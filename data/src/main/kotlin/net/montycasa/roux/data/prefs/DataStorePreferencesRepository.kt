@@ -14,7 +14,9 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.policy.LeagueOrder
 import net.montycasa.roux.domain.repo.NotificationLedgerEntry
@@ -169,14 +171,38 @@ class DataStorePreferencesRepository(
         }
     }
 
+    override fun observeFavourites(): Flow<Set<TeamKey>> =
+        readablePreferencesFlow().map { preferences ->
+            // A file from a newer build is not interpreted: it answers defaults, exactly like the one-shot read.
+            preferences?.get(FAVOURITES).orEmpty().mapTo(mutableSetOf(), ::TeamKey)
+        }
+
+    override fun observeFavouritesOnly(): Flow<Boolean> =
+        readablePreferencesFlow().map { preferences ->
+            preferences?.get(FAVOURITES_ONLY) ?: DEFAULT_FAVOURITES_ONLY
+        }
+
+    override fun observeLeagueOrder(): Flow<List<String>> =
+        readablePreferencesFlow().map { preferences ->
+            LeagueOrder.reconcile(preferences?.get(LEAGUE_ORDER)?.split(",").orEmpty())
+        }
+
     override suspend fun isWritable(): Boolean = readablePreferences() != null
 
+    /**
+     * The stored snapshot as it changes, or null when the file was written by a newer build.
+     *
+     * One place decides what "readable" means, so the observing reads and the one-shot reads cannot
+     * disagree about which files this build is allowed to interpret.
+     */
+    private fun readablePreferencesFlow(): Flow<Preferences?> =
+        store.data.map { preferences ->
+            val stored = preferences[VERSION]
+            if (stored != null && stored > PREFERENCES_VERSION) null else preferences
+        }
+
     /** Null when the file was written by a newer build and cannot be interpreted by this one. */
-    private suspend fun readablePreferences(): Preferences? {
-        val preferences = store.data.first()
-        val stored = preferences[VERSION]
-        return if (stored != null && stored > PREFERENCES_VERSION) null else preferences
-    }
+    private suspend fun readablePreferences(): Preferences? = readablePreferencesFlow().first()
 
     private suspend fun requireWritable() {
         val stored = store.data.first()[VERSION]

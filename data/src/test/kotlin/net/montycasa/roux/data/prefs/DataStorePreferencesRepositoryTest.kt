@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
+import app.cash.turbine.test
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -195,6 +196,46 @@ class DataStorePreferencesRepositoryTest {
             assertEquals("nfl,unknown,nfl", stored[stringPreferencesKey("league_order")])
             assertNull(stored[intPreferencesKey("prefs_version")])
             closeScope(raw)
+        }
+
+    @Test
+    fun observeFavouritesEmitsWhatIsStoredAndThenTheChange() =
+        runTest {
+            val directory = newDirectory()
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(directory, scope)
+
+                repository.observeFavourites().test {
+                    assertEquals("a store with nothing saved is empty, not absent", emptySet<TeamKey>(), awaitItem())
+
+                    repository.setFavourites(setOf(TeamKey("TOR")))
+
+                    assertEquals("an observer must see the write without asking again", setOf(TeamKey("TOR")), awaitItem())
+                    cancelAndIgnoreRemainingEvents()
+                }
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun observeFavouritesOnANewerFileEmitsDefaultsInsteadOfThrowing() =
+        runTest {
+            val directory = newDirectory()
+            // Written by a build that understands more than this one: readable, but not interpretable here.
+            writeRawLedgerEntry(directory, gameId = "game-1", version = 2, favourites = setOf("TOR"))
+
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(directory, scope)
+                repository.observeFavourites().test {
+                    assertEquals("a newer file must answer defaults, not its contents", emptySet<TeamKey>(), awaitItem())
+                    cancelAndIgnoreRemainingEvents()
+                }
+            } finally {
+                closeScope(scope)
+            }
         }
 
     @Test

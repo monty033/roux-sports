@@ -28,6 +28,9 @@ lint {
 }
 
 dependencies {
+    // kotlinx-coroutines is multiplatform, so observing flows does not tie :domain to Android or the JVM.
+    // It is a real dependency rather than a transitive one: the contract itself declares Flow now.
+    implementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.compiler.embeddable)
 }
