@@ -103,23 +103,26 @@ class ScoresScreenTest {
     }
 
     @Test
-    fun staleShowsUpdated1942InTorontoAndRetryIsAPrimaryInTheBottomThirtyPercent() {
+    fun staleShowsTheDeviceClockAndRetryIsAPrimaryInTheBottomThirtyPercent() {
         val originalZone = TimeZone.getDefault()
         try {
             TimeZone.setDefault(TimeZone.getTimeZone("Pacific/Honolulu"))
             var retries = 0
             launchScreen(stale, onRefresh = { retries++ })
-            rule.onNodeWithText("Updated 19:42").assertIsDisplayed()
+            rule.onNodeWithText("Updated", substring = true).assertIsDisplayed()
+            // The fixture is an older day, so it carries its date; 23:42Z is 1:42 PM in Honolulu.
+            rule.onNodeWithText("Oct 25, 1:42 PM", substring = true).assertIsDisplayed()
             rule.onNodeWithText("Showing saved scores. They may be out of date.").assertIsDisplayed()
             rule.onNodeWithText("Retry").assertIsDisplayed().performClick()
             assertEquals(1, retries)
             assertReach(stale, "scores.retry")
             assertRecoveryInBottomThirtyPercent()
-            // Toronto's standard-time offset differs from the October fixture's daylight offset.
+            // A cache from another day carries its date instead of a bare clock that would read as today.
             rule.runOnIdle {
                 suppliedState.value = stale.copy(freshness = Freshness.Stale(Instant.parse("2025-12-26T00:42:00Z")))
             }
-            rule.onNodeWithText("Updated 19:42").assertIsDisplayed()
+            rule.onNodeWithText("Updated", substring = true).assertIsDisplayed()
+            rule.onNodeWithText("Dec 25", substring = true).assertIsDisplayed()
         } finally {
             TimeZone.setDefault(originalZone)
         }
@@ -229,13 +232,14 @@ class ScoresScreenTest {
         errors.forEach { error ->
             rule.runOnIdle { suppliedState.value = stale.copy(error = error) }
             rule.onNodeWithTag("scores.game.${game.id.value}").assertIsDisplayed()
-            rule.onNodeWithText("Updated 19:42").assertIsDisplayed()
+            rule.onNodeWithText("Updated", substring = true).assertIsDisplayed()
+            rule.onNodeWithText("7:42 PM", substring = true).assertIsDisplayed()
             rule.onNodeWithText("Couldn’t refresh. Showing saved scores.").assertIsDisplayed()
             rule.onNodeWithTag("scores.error").assertDoesNotExist()
             rule.onNodeWithText("Retry").assertIsDisplayed()
         }
         rule.runOnIdle { suppliedState.value = fresh.copy(rows = listOf(game)) }
-        rule.onNodeWithText("Updated 19:42").assertDoesNotExist()
+        rule.onNodeWithText("7:42 PM", substring = true).assertDoesNotExist()
         rule.onNodeWithText("Retry").assertDoesNotExist()
         rule.onNodeWithTag("scores.game.${game.id.value}").assertIsDisplayed()
     }

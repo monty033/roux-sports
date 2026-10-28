@@ -20,6 +20,7 @@ import net.montycasa.roux.ui.reach.Reach
 import net.montycasa.roux.ui.reach.primaryControl
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.time.Clock
 import kotlin.time.Instant
 
 /**
@@ -35,15 +36,10 @@ fun StaleBanner(
     supportingText: String? = null,
     /** The retry's tag, so a screen can name its own control without removing it from the reach audit. */
     retryTag: String = "scores.retry",
+    /** The clock the day comparison is made against, injected so a test can stand on a fixed day. */
+    now: Instant = Clock.System.now(),
 ) {
-    val locale = LocalConfiguration.current.locales[0]
-    val updated =
-        remember(since, locale) {
-            DateTimeFormatter
-                .ofPattern("HH:mm", locale)
-                .withZone(ZoneId.of("America/Toronto"))
-                .format(java.time.Instant.ofEpochMilli(since.toEpochMilliseconds()))
-        }
+    val updated = rememberUpdatedLabel(since, now)
     Column(modifier, verticalArrangement = Arrangement.spacedBy(Reach.MIN_TARGET_GAP_DP.dp)) {
         Text(stringResource(R.string.common_updated, updated), style = MaterialTheme.typography.bodyMedium)
         Text(

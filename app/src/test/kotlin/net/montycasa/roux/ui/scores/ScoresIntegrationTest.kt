@@ -119,7 +119,8 @@ class ScoresIntegrationTest {
                         .jsonPrimitive.content,
                 ).assertIsDisplayed()
         }
-        rule.onNodeWithText("Updated 15:00").assertIsDisplayed()
+        rule.onNodeWithText("Updated", substring = true).assertIsDisplayed()
+        rule.onNodeWithText("3:00 PM", substring = true).assertIsDisplayed()
         rule.onNodeWithText("Couldn’t refresh. Showing saved scores.").assertIsDisplayed()
         rule.onNodeWithText("Retry").assertIsDisplayed()
         rule.onNodeWithTag("scores.error").assertDoesNotExist()

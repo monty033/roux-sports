@@ -132,10 +132,12 @@ class GameRowTest {
     }
 
     @Test
-    fun scheduledUsesTorontoEvenWhenTheDeviceZoneDiffers() {
+    fun scheduledUsesTheDeviceClockAndCarriesNoZoneLabel() {
         TimeZone.setDefault(TimeZone.getTimeZone("Asia/Tokyo"))
         launch()
-        rule.onNodeWithText("7:00 PM").assertIsDisplayed()
+        // 23:00Z is 08:00 the next morning in Tokyo. The device clock decides, and nothing appends "ET".
+        rule.onNodeWithText("8:00 AM").assertIsDisplayed()
+        rule.onNodeWithText("7:00 PM").assertDoesNotExist()
     }
 
     @Test

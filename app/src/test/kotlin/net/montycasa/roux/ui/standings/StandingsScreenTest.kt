@@ -186,7 +186,8 @@ class StandingsScreenTest {
         launchScreen(fresh.copy(stale = Freshness.Stale(Instant.parse("2026-10-26T23:42:00Z")), error = LoadError.Network), onRefresh = {
             refreshes++
         })
-        rule.onNodeWithText("Updated 19:42").assertIsDisplayed()
+        rule.onNodeWithText("Updated", substring = true).assertIsDisplayed()
+        rule.onNodeWithText("7:42 PM", substring = true).assertIsDisplayed()
         rule.onNodeWithText("Couldn’t refresh. Showing saved standings.").assertIsDisplayed()
         rule.onAllNodes(rowMatcher).assertCountEquals(32)
         rule.onNodeWithText("Retry").performClick()
