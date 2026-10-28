@@ -590,6 +590,72 @@ class ScoresViewModelTest {
             }
         }
 
+    @Test
+    fun selectingADayPrefetchesItOnceTheSelectionSettles() =
+        runTest {
+            val scores = FakeScoresRepository(testScheduler)
+            scores.respond = { date, _ -> freshDay(date, emptyList()) }
+            val viewModel = viewModel(scores)
+
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                viewModel.selectDate("2026-10-27")
+                runCurrent()
+                // Nothing is warmed while the finger is still moving.
+                advanceTimeBy(400)
+                runCurrent()
+                assertEquals(emptyList<String>(), scores.prefetchCalls.map { it.date })
+
+                advanceTimeBy(200)
+                runCurrent()
+                assertEquals(listOf("2026-10-27"), scores.prefetchCalls.map { it.date })
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun flickingThroughDaysPrefetchesOnlyWhereTheUserStopped() =
+        runTest {
+            val scores = FakeScoresRepository(testScheduler)
+            scores.respond = { date, _ -> freshDay(date, emptyList()) }
+            val viewModel = viewModel(scores)
+
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                viewModel.selectDate("2026-10-28")
+                runCurrent()
+                advanceTimeBy(200)
+                viewModel.selectDate("2026-10-29")
+                runCurrent()
+                advanceTimeBy(1_000)
+                runCurrent()
+
+                assertEquals("only the day they stopped on", listOf("2026-10-29"), scores.prefetchCalls.map { it.date })
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun aFailedLoadWithNoDataDoesNotPrefetch() =
+        runTest {
+            val scores = FakeScoresRepository(testScheduler)
+            scores.respond = { _, _ -> Loadable(null, Freshness.Missing, LoadError.Network) }
+            val viewModel = viewModel(scores)
+
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                advanceTimeBy(2_000)
+                runCurrent()
+
+                // The neighbours would fail the same way; a request whose only outcome is an error is battery for nothing.
+                assertEquals(emptyList<String>(), scores.prefetchCalls.map { it.date })
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
     private fun viewModel(
         scores: FakeScoresRepository,
         preferences: FakePreferencesRepository = FakePreferencesRepository(),
@@ -642,10 +708,14 @@ private class FakeScoresRepository(
         return respond(date, today)
     }
 
+    val prefetchCalls = mutableListOf<Call>()
+
     override suspend fun prefetchAdjacent(
         date: String,
         today: String,
-    ) = Unit
+    ) {
+        prefetchCalls += Call(scheduler.currentTime, date, today)
+    }
 }
 
 private class FakePreferencesRepository(
