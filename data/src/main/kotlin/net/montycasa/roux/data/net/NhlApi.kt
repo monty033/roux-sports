@@ -4,6 +4,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.discardRemaining
 import io.ktor.client.statement.readRawBytes
+import net.montycasa.roux.domain.model.GameId
 import okio.IOException
 
 sealed interface ApiResult {
@@ -50,14 +51,32 @@ class NhlApi(
 
     suspend fun seasons(): ApiResult = get("/v1/standings-season")
 
-    /** PROVISIONAL: this path and response shape are expected but unverified until S7.1. */
-    suspend fun gamecenterLanding(gameId: Long): ApiResult = get("/v1/gamecenter/$gameId/landing")
+    /** Path confirmed against the live API; the payloads are sampled by `scripts/capture-fixtures.sh gamecenter`. */
+    suspend fun gamecenterLanding(gameId: GameId): ApiResult = get(gamecenterPath(gameId, "landing"))
 
-    /** PROVISIONAL: this path and response shape are expected but unverified until S7.1. */
-    suspend fun gamecenterBoxscore(gameId: Long): ApiResult = get("/v1/gamecenter/$gameId/boxscore")
+    /** Path confirmed against the live API; the payloads are sampled by `scripts/capture-fixtures.sh gamecenter`. */
+    suspend fun gamecenterBoxscore(gameId: GameId): ApiResult = get(gamecenterPath(gameId, "boxscore"))
 
-    /** PROVISIONAL: this path and response shape are expected but unverified until S7.1. */
-    suspend fun gamecenterRightRail(gameId: Long): ApiResult = get("/v1/gamecenter/$gameId/right-rail")
+    /** Path confirmed against the live API; the payloads are sampled by `scripts/capture-fixtures.sh gamecenter`. */
+    suspend fun gamecenterRightRail(gameId: GameId): ApiResult = get(gamecenterPath(gameId, "right-rail"))
+
+    /**
+     * Builds a gamecenter path, rejecting anything that is not a bare ten-digit id.
+     *
+     * [GameId] itself stays opaque on purpose: an adapter must be able to represent an id it read from a
+     * messy feed, so the value type cannot be the place that refuses one. The URL is the boundary, and it
+     * is also the last point before the id becomes part of a request, so a traversal attempt such as
+     * `"../x"` throws here having built nothing.
+     */
+    private fun gamecenterPath(
+        gameId: GameId,
+        section: String,
+    ): String {
+        require(gameId.value.matches(GAME_ID)) {
+            "Game id must be ten digits, was '${gameId.value}'"
+        }
+        return "/v1/gamecenter/${gameId.value}/$section"
+    }
 
     private suspend fun get(path: String): ApiResult =
         try {
@@ -106,5 +125,6 @@ class NhlApi(
 
     private companion object {
         val ISO_DATE = Regex("""\d{4}-\d{2}-\d{2}""")
+        val GAME_ID = Regex("""\d{10}""")
     }
 }

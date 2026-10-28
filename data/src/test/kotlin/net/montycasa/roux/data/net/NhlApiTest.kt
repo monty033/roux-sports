@@ -7,6 +7,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.runBlocking
+import net.montycasa.roux.domain.model.GameId
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -27,13 +28,54 @@ class NhlApiTest {
     fun seasonsUsesExactPath() = assertPath("/v1/standings-season") { seasons() }
 
     @Test
-    fun gamecenterLandingUsesExactPath() = assertPath("/v1/gamecenter/2026020123/landing") { gamecenterLanding(2026020123L) }
+    fun gamecenterLandingUsesExactPath() = assertPath("/v1/gamecenter/2026020123/landing") { gamecenterLanding(GameId("2026020123")) }
 
     @Test
-    fun gamecenterBoxscoreUsesExactPath() = assertPath("/v1/gamecenter/2026020123/boxscore") { gamecenterBoxscore(2026020123L) }
+    fun gamecenterBoxscoreUsesExactPath() = assertPath("/v1/gamecenter/2026020123/boxscore") { gamecenterBoxscore(GameId("2026020123")) }
 
     @Test
-    fun gamecenterRightRailUsesExactPath() = assertPath("/v1/gamecenter/2026020123/right-rail") { gamecenterRightRail(2026020123L) }
+    fun gamecenterRightRailUsesExactPath() =
+        assertPath("/v1/gamecenter/2026020123/right-rail") { gamecenterRightRail(GameId("2026020123")) }
+
+    /**
+     * A traversal attempt must die at the URL builder, having built nothing. Checking the exception
+     * alone would pass even if a request had already gone out and been discarded.
+     */
+    @Test
+    fun traversalGameIdIsRejectedBeforeAnyRequest() =
+        withResponse { api, engine ->
+            assertThrows(IllegalArgumentException::class.java) {
+                runBlocking { api.gamecenterLanding(GameId("../x")) }
+            }
+            assertTrue("No request may be built for a rejected id", engine.requestHistory.isEmpty())
+        }
+
+    @Test
+    fun everyGamecenterSectionRejectsTheSameBadIds() =
+        withResponse { api, engine ->
+            for (bad in listOf("../x", "", "202602012", "20260201234", "20260201a3", " 2026020123")) {
+                for (call in listOf<suspend NhlApi.() -> Unit>(
+                    { gamecenterLanding(GameId(bad)) },
+                    { gamecenterBoxscore(GameId(bad)) },
+                    { gamecenterRightRail(GameId(bad)) },
+                )) {
+                    assertThrows("'$bad' must be rejected", IllegalArgumentException::class.java) {
+                        runBlocking { api.call() }
+                    }
+                }
+            }
+            assertTrue("A rejected id must not reach the network", engine.requestHistory.isEmpty())
+        }
+
+    /**
+     * The value type stays opaque so an adapter can represent a garbage id from the feed and let the
+     * caller decide; the refusal belongs to the URL, which this pins.
+     */
+    @Test
+    fun gameIdItselfDoesNotValidate() {
+        GameId("../x")
+        GameId("")
+    }
 
     @Test
     fun everyPublicMethodAvoidsNowPath() =
@@ -41,9 +83,9 @@ class NhlApiTest {
             api.score("2026-10-25")
             api.standings("2026-10-25")
             api.seasons()
-            api.gamecenterLanding(2026020123L)
-            api.gamecenterBoxscore(2026020123L)
-            api.gamecenterRightRail(2026020123L)
+            api.gamecenterLanding(GameId("2026020123"))
+            api.gamecenterBoxscore(GameId("2026020123"))
+            api.gamecenterRightRail(GameId("2026020123"))
 
             val paths = engine.requestHistory.map { it.url.encodedPath }
             assertEquals(6, paths.size)
