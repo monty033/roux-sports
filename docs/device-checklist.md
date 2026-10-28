@@ -185,3 +185,12 @@ perfectly in debug.
 - [ ] Tag the release only when every **applicable** check above has passed and every
       non-applicable or uninspected one has been explicitly recorded as such. A check that
       could not be performed is a known gap, not a pass; the record should read like one.
+
+## Design-parity screenshots
+
+`DesignParityTest` records the whole shell at the design's own canvas - 411 x 923 and 360 x 780, light and dark, at
+mdpi so one PNG pixel is one CSS pixel - into `app/src/test/screenshots/design-parity/`.
+
+- [ ] The four baselines have been compared against `roux-sports-design/final/scores-screen.html` and signed off.
+      Recorded as pending rather than passed: the capture proves the app renders at those sizes, not that it matches the
+      design. That judgement is Patrick's, and it is the only reason the pictures exist.

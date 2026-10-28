@@ -332,9 +332,11 @@ STEP H17: Design-parity screenshots (the original S6b.6)
 - Reviewer: deepseek-v4.1-flash via OpenCode Go; routine
 - Reason: Test only (Q1, Q2, Q4)
 
-STEP H18: Calendar holds a draft until DONE (conditional)
-- Files: `appM/ui/scores/CalendarMonthSheet.kt`
-- Depends on: Patrick's answer to the open calendar question
+STEP H18: Calendar holds a draft until DONE - ALREADY SHIPPED, struck from the plan
+- Files: none. The draft-then-DONE behaviour and its tests already exist in `CalendarMonthSheet.kt` and
+  `DateShelfCalendarTest.kt`
+- Status: confirmed by Patrick on 2026-10-28 as in the app and working. Nothing to build; the acceptance below already
+  passes, and recording it as pending would invite a second implementation.
 - Acceptance test (file + assertion): `appT/ui/scores/DateShelfCalendarTest.kt`:
   - tap a day, then the scrim → `onSelect` is never called
   - tap a day, then DONE → called once with that day
