@@ -266,7 +266,7 @@ class ScoresViewModelTest {
         }
 
     @Test
-    fun resubscribingRefreshesImmediatelyWhenStale() =
+    fun resubscribingUsesTheCacheAwareLoad() =
         runTest {
             val scores = FakeScoresRepository(testScheduler)
             val viewModel = viewModel(scores)
@@ -285,12 +285,13 @@ class ScoresViewModelTest {
                 awaitItem()
                 runCurrent()
                 assertEquals(listOf(0L, 60_000L), scores.times)
+                assertEquals("resubscription must stay cache-aware, not forced", emptyList<Long>(), scores.refreshCalls.map { it.at })
                 cancelAndIgnoreRemainingEvents()
             }
         }
 
     @Test
-    fun pullToRefreshForcesAFetch() =
+    fun pullToRefreshBypassesTheFreshCache() =
         runTest {
             val scores = FakeScoresRepository(testScheduler)
             val viewModel = viewModel(scores)
@@ -302,11 +303,14 @@ class ScoresViewModelTest {
                 viewModel.onPullToRefresh()
                 runCurrent()
 
-                assertEquals(listOf(0L, 1_000L), scores.times)
-                // A forced fetch also restarts the cadence from that fetch.
+                // The pull is exactly one forced load, and it is not a cache-aware one.
+                assertEquals("a pull must ask the repository to refresh", listOf(1_000L), scores.refreshCalls.map { it.at })
+                assertEquals("a pull must not go through loadDay's fresh-cache short-circuit", listOf(0L), scores.times)
+                // The forced load restarts the cadence from itself, and that cadence is polling: cache-aware.
                 advanceTimeBy(25_000)
                 runCurrent()
-                assertEquals(listOf(0L, 1_000L, 26_000L), scores.times)
+                assertEquals(listOf(0L, 26_000L), scores.times)
+                assertEquals("polling ticks must not force", listOf(1_000L), scores.refreshCalls.map { it.at })
                 cancelAndIgnoreRemainingEvents()
             }
         }
@@ -400,7 +404,9 @@ class ScoresViewModelTest {
 
                 viewModel.refresh()
                 runCurrent()
-                assertEquals(listOf(0L, 120_000L), scores.times)
+                // refresh() is the user asking, so it forces: refreshDay, not the cache-aware loadDay.
+                assertEquals(listOf(0L), scores.times)
+                assertEquals(listOf(120_000L), scores.refreshCalls.map { it.at })
                 cancelAndIgnoreRemainingEvents()
             }
         }
@@ -622,6 +628,17 @@ private class FakeScoresRepository(
         today: String,
     ): Loadable<ScoreDay> {
         calls += Call(scheduler.currentTime, date, today)
+        return respond(date, today)
+    }
+
+    /** Forced loads are recorded apart from ordinary ones: the whole point of refreshDay is that it is not loadDay. */
+    val refreshCalls = mutableListOf<Call>()
+
+    override suspend fun refreshDay(
+        date: String,
+        today: String,
+    ): Loadable<ScoreDay> {
+        refreshCalls += Call(scheduler.currentTime, date, today)
         return respond(date, today)
     }
 
