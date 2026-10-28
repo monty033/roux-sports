@@ -372,7 +372,11 @@ STEP G2: Gamecenter paths take GameId
 - Depends on: none
 - Acceptance test (file + assertion): `datT/net/NhlApiTest.kt`:
   - `gamecenterLanding(GameId("2025020123"))` requests `/v1/gamecenter/2025020123/landing`
-  - `GameId("../x")` → `IllegalArgumentException`, with no request made
+  - `GameId("../x")` passed to any gamecenter method → `IllegalArgumentException`, with no request made
+- Note: the refusal lives in the URL builder, not in `GameId`'s constructor. `Game.kt` requires value types to
+  tolerate messy feed data so an adapter can represent a bad id and let the caller decide; a constructor that threw
+  would make such a row unrepresentable. The URL is the boundary and the last point before the id becomes part of a
+  request, so it is where the check belongs.
 - Risk class: sync
 - Privacy class: public-repo
 - Q1 / Q2 / Q3 / Q4 / Q5: Y / Y / N / Y / N
