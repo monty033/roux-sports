@@ -7,8 +7,10 @@ import kotlin.time.Instant
 /**
  * A block of a game page. Declaration order is page order, and no caller may reorder it.
  *
- * The five sections come from two endpoints: the first four from the boxscore, three stars from the landing payload. That
- * split is why a page can show a scoreless-but-complete game when one of the two requests fails.
+ * The five sections come from all three endpoints, and the mapping is not the obvious one: period scoring and the three
+ * stars come from the landing payload, goalies from the boxscore, and shots and power play from the right rail. That is
+ * where the league actually puts them - the boxscore carries no scoring at all - and the split is why a page can still
+ * show goals when the boxscore request fails.
  */
 enum class GameSection {
     PeriodScoring,
@@ -36,15 +38,26 @@ data class GameDetail(
      * Presence is decided by the payload, not by freshness: a stale boxscore still holds real goals, and hiding them
      * because a refresh failed would be a worse answer than showing them with the banner that says they are old.
      */
-    fun sections(): List<GameSection> =
-        buildList {
-            boxscore.data?.let { box ->
-                if (box.periodScoring.isNotEmpty()) add(GameSection.PeriodScoring)
-                if (box.shots != null) add(GameSection.Shots)
-                if (box.powerPlay != null) add(GameSection.PowerPlay)
-                if (box.goalies.isNotEmpty()) add(GameSection.Goalies)
-            }
-            landing.data?.let { landing -> if (landing.threeStars.isNotEmpty()) add(GameSection.ThreeStars) }
+    fun sections(): List<GameSection> = GameSection.entries.filter { section -> section.isPresentIn(landing, boxscore, rightRail) }
+
+    /**
+     * Presence, per section, read from the endpoint that actually carries it.
+     *
+     * Filtering the declaration order - rather than appending as each payload is inspected - is what keeps page order
+     * independent of source order. Appending per endpoint put the three stars directly after the goals, which is only
+     * correct while every section came from one payload.
+     */
+    private fun GameSection.isPresentIn(
+        landing: Loadable<GameLanding>,
+        boxscore: Loadable<GameBoxscore>,
+        rightRail: Loadable<GameRightRail>,
+    ): Boolean =
+        when (this) {
+            GameSection.PeriodScoring -> landing.data?.periodScoring?.isNotEmpty() == true
+            GameSection.ThreeStars -> landing.data?.threeStars?.isNotEmpty() == true
+            GameSection.Shots -> rightRail.data?.shots != null
+            GameSection.PowerPlay -> rightRail.data?.powerPlay != null
+            GameSection.Goalies -> boxscore.data?.goalies?.isNotEmpty() == true
         }
 
     /**
@@ -60,12 +73,14 @@ data class GameDetail(
 }
 
 /**
- * The landing payload: the three stars, which is the only section of it the page renders as a block.
+ * The landing payload: period scoring and the three stars.
  *
- * Field shapes here are provisional - G1 captures the real endpoints, and this model carries only what the page needs to
- * decide whether a section exists and what to label it.
+ * Both are empty for a game that has not started, which is the normal shape for most of the day rather than a failure -
+ * the payload carries `matchup` instead of `summary`. Presence of these sections is therefore decided by what arrived,
+ * never by how fresh the response was.
  */
 data class GameLanding(
+    val periodScoring: List<PeriodScoring> = emptyList(),
     val threeStars: List<ThreeStar> = emptyList(),
 )
 
@@ -81,11 +96,12 @@ data class PlayerRef(
     val teamAbbrev: String = "",
 )
 
-/** The boxscore payload: the four sections the page draws between the header and the three stars. */
+/**
+ * The boxscore payload: the goalie lines, and nothing else the page draws.
+ *
+ * It carries no scoring at all, which is worth stating because it is the natural place to look for it.
+ */
 data class GameBoxscore(
-    val periodScoring: List<PeriodScoring> = emptyList(),
-    val shots: ShotTotals? = null,
-    val powerPlay: PowerPlaySummary? = null,
     val goalies: List<GoalieLine> = emptyList(),
 )
 
@@ -117,8 +133,10 @@ data class GoalieLine(
     val shotsAgainst: Int,
 )
 
-/** The right rail payload: per-team totals the page shows beside the boxscore. */
+/** The right rail payload: the per-team totals the page shows beside the boxscore, including shots and power play. */
 data class GameRightRail(
+    val shots: ShotTotals? = null,
+    val powerPlay: PowerPlaySummary? = null,
     val teamStats: List<TeamStat> = emptyList(),
 )
 
