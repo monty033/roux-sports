@@ -57,7 +57,29 @@ class ResponseCacheTest {
     fun standingsKeepsLatestThree() = assertCap(CacheKind.Standings, 3)
 
     @Test
-    fun detailKeepsLatestTwenty() = assertCap(CacheKind.Detail, 20)
+    fun eachDetailEndpointKeepsItsLatestTwenty() {
+        assertCap(CacheKind.DetailLanding, 20)
+        assertCap(CacheKind.DetailBoxscore, 20)
+        assertCap(CacheKind.DetailRightRail, 20)
+    }
+
+    @Test
+    fun aLandingBurstEvictsOnlyLanding() =
+        withCache { fs, cache, clock ->
+            val boxscore = CacheKey(CacheKind.DetailBoxscore, "2025020123")
+            cache.put(boxscore, RAW, FETCHED_AT)
+            repeat(21) { index ->
+                cache.put(CacheKey(CacheKind.DetailLanding, "$index"), RAW, FETCHED_AT)
+                clock.advance()
+            }
+
+            assertNull(
+                "the 21st landing put evicts the first landing entry",
+                cache.get(CacheKey(CacheKind.DetailLanding, "0")),
+            )
+            assertNotNull("the boxscore a fan is reading survives", cache.get(boxscore))
+            assertEquals("20 landing entries plus the boxscore", 21, entriesIn(fs).size)
+        }
 
     @Test
     fun seasonsKeepsLatestOne() = assertCap(CacheKind.Seasons, 1)
