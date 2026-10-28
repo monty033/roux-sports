@@ -60,11 +60,6 @@ internal data class LandingStarDto(
     val star: Int? = null,
     /** A plain string here, unlike a goal's `teamAbbrev`. */
     val teamAbbrev: String? = null,
-    val name: LandingNameDto? = null,
+    val name: LocalizedNameDto? = null,
     val position: String? = null,
-)
-
-@Serializable
-internal data class LandingNameDto(
-    val default: String? = null,
 )
