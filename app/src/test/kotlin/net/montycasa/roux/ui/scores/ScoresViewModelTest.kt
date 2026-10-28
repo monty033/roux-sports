@@ -74,6 +74,32 @@ class ScoresViewModelTest {
         }
 
     @Test
+    fun aBlockedHostStopsThePollInsteadOfReaskingEveryTwentyFiveSeconds() =
+        runTest {
+            val scores = FakeScoresRepository(testScheduler)
+            val blocked =
+                Loadable(
+                    ScoreDay("2026-10-26", listOf(game(date = "2026-10-26")), emptyList(), 0),
+                    Freshness.Stale(Instant.parse("2026-10-26T20:00:00Z")),
+                    LoadError.Blocked("evil.example"),
+                )
+            scores.respond = { _, _ -> blocked }
+            val viewModel = viewModel(scores)
+
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                advanceTimeBy(120_000)
+                runCurrent()
+
+                // A live slate would otherwise schedule five loads in two minutes at the 25 s cadence.
+                assertEquals(1, scores.calls.size)
+                assertEquals(LoadError.Blocked("evil.example"), viewModel.uiState.value.error)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
     fun allFinalPastDateDoesNotPoll() =
         runTest {
             val scores = FakeScoresRepository(testScheduler)
@@ -437,6 +463,36 @@ class ScoresViewModelTest {
             }
         }
 
+    @Test fun leagueOrderWritesAreSerializedAndRestoredByANewViewModel() =
+        runTest {
+            val preferences = FakePreferencesRepository()
+            val scores = FakeScoresRepository(testScheduler)
+            preferences.orderWriteDelay = { if (it.first() == "nfl") delay(100) }
+            val viewModel = viewModel(scores, preferences)
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                assertEquals(listOf("nhl", "nfl", "mlb"), expectMostRecentItem().leagueOrder)
+                viewModel.setLeagueOrder(listOf("nfl", "nhl", "mlb"))
+                viewModel.setLeagueOrder(listOf("mlb", "nfl", "nhl"))
+                runCurrent()
+                assertTrue(preferences.orderWrites.isEmpty())
+                assertEquals(listOf("mlb", "nfl", "nhl"), expectMostRecentItem().leagueOrder)
+                advanceTimeBy(100)
+                runCurrent()
+                assertEquals(listOf(listOf("nfl", "nhl", "mlb"), listOf("mlb", "nfl", "nhl")), preferences.orderWrites)
+                assertEquals(preferences.storedOrder, viewModel.uiState.value.leagueOrder)
+                cancelAndIgnoreRemainingEvents()
+            }
+            val recreated = viewModel(scores, preferences)
+            recreated.uiState.test {
+                awaitItem()
+                runCurrent()
+                assertEquals(listOf("mlb", "nfl", "nhl"), expectMostRecentItem().leagueOrder)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
     private fun viewModel(
         scores: FakeScoresRepository,
         preferences: FakePreferencesRepository = FakePreferencesRepository(),
@@ -493,6 +549,18 @@ private class FakePreferencesRepository(
 
     override suspend fun setFavourites(teams: Set<TeamKey>) {
         this.teams = teams
+    }
+
+    var storedOrder = listOf("nhl", "nfl", "mlb")
+    val orderWrites = mutableListOf<List<String>>()
+    var orderWriteDelay: suspend (List<String>) -> Unit = {}
+
+    override suspend fun getLeagueOrder(): List<String> = storedOrder
+
+    override suspend fun setLeagueOrder(order: List<String>) {
+        orderWriteDelay(order)
+        storedOrder = order
+        orderWrites += order
     }
 
     override suspend fun getFavouritesOnly(): Boolean = storedOnly ?: true

@@ -18,11 +18,15 @@ import net.montycasa.roux.data.cache.CacheKey
 import net.montycasa.roux.data.cache.CacheKind
 import net.montycasa.roux.data.cache.ResponseCache
 import net.montycasa.roux.data.net.NhlApi
+import net.montycasa.roux.data.net.NhlHttpClientFactory
 import net.montycasa.roux.data.nhl.NhlAdapter
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.ScoreDay
+import okio.FileSystem
+import okio.ForwardingFileSystem
+import okio.Path
 import okio.Path.Companion.toPath
 import okio.fakefilesystem.FakeFileSystem
 import org.junit.Assert.assertArrayEquals
@@ -34,6 +38,7 @@ import org.junit.Test
 import java.io.IOException
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 /**
@@ -69,7 +74,10 @@ class ScoresRepositoryImplTest {
     private fun slateFor(requested: String): ByteArray =
         fixtureText.replace(Regex("\"currentDate\":\"[0-9-]+\""), "\"currentDate\":\"$requested\"").toByteArray()
 
-    private fun harness(responder: (suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData?)? = null): Harness {
+    private fun harness(
+        files: ((FileSystem) -> FileSystem)? = null,
+        responder: (suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData?)? = null,
+    ): Harness {
         val requests = mutableListOf<String>()
         val lastBody = mutableListOf<ByteArray>()
         val engine =
@@ -88,9 +96,10 @@ class ScoresRepositoryImplTest {
                     }
             }
         val clock = MutableClock()
-        val fileSystem = FakeFileSystem(clock)
-        val cache = ResponseCache(fileSystem, DIRECTORY.toPath(), clock)
-        val api = NhlApi(HttpClient(engine))
+        val fake = FakeFileSystem(clock)
+        val cache = ResponseCache(files?.invoke(fake) ?: fake, DIRECTORY.toPath(), clock)
+        // Through the factory, so the request boundary (429 handling, host allowlist) is part of the test.
+        val api = NhlApi(NhlHttpClientFactory.create(engine, "test-version"))
         return Harness(
             ScoresRepositoryImpl(api, NhlAdapter, cache, clock),
             requests,
@@ -409,6 +418,79 @@ class ScoresRepositoryImplTest {
     private companion object {
         const val DIRECTORY = "/cache"
     }
+
+    @Test
+    fun aRateLimitIsAnErrorWithTheServerPauseAndNeverAnException() =
+        runBlocking {
+            var limited = false
+            val harness =
+                harness { _ ->
+                    if (limited) {
+                        respond(
+                            "slow down",
+                            HttpStatusCode.TooManyRequests,
+                            headersOf(HttpHeaders.RetryAfter, "30"),
+                        )
+                    } else {
+                        null
+                    }
+                }
+            val warm = harness.repository.loadDay(date, date)
+
+            limited = true
+            harness.clock.advance(1.hours)
+            val second = harness.repository.loadDay(date, requireNotNull(warm.data).date)
+
+            assertEquals(LoadError.Http(status = 429, retryAfter = 30.seconds), second.error)
+            assertNotNull("the cached slate must still be shown", second.data)
+            assertEquals(Freshness.Stale(since = harness.clock.now() - 1.hours), second.freshness)
+        }
+
+    @Test
+    fun aRateLimitWithNothingCachedReportsTheErrorInsteadOfCrashing() =
+        runBlocking {
+            val harness =
+                harness { _ ->
+                    respond("slow down", HttpStatusCode.TooManyRequests, headersOf(HttpHeaders.RetryAfter, "30"))
+                }
+
+            val loadable = harness.repository.loadDay(date, date)
+
+            assertNull(loadable.data)
+            assertEquals(LoadError.Http(status = 429, retryAfter = 30.seconds), loadable.error)
+        }
+
+    @Test
+    fun aRedirectToAnUnlistedHostIsBlockedAndThatHostIsNeverContacted() =
+        runBlocking {
+            val harness =
+                harness { _ ->
+                    respond(
+                        "",
+                        HttpStatusCode.MovedPermanently,
+                        headersOf(HttpHeaders.Location, "https://evil.example/steal"),
+                    )
+                }
+
+            val loadable = harness.repository.loadDay(date, date)
+
+            assertEquals(LoadError.Blocked("evil.example"), loadable.error)
+            assertNull(loadable.data)
+            assertEquals("the engine must never be asked for the blocked host", 1, harness.requests.size)
+        }
+
+    @Test
+    fun aCacheThatCannotBeWrittenStillReturnsTheSlateAsLocal() =
+        runBlocking {
+            val harness =
+                harness(files = { delegate -> WriteFailingFileSystem(delegate) })
+
+            val loadable = harness.repository.loadDay(date, date)
+
+            assertNotNull("a cache failure must not hide a good response", loadable.data)
+            assertEquals(LoadError.Local, loadable.error)
+            assertEquals(Freshness.Fresh, loadable.freshness)
+        }
 }
 
 /** Paging by one day crosses month and year boundaries; string arithmetic would be silently wrong. */
@@ -467,4 +549,14 @@ class IsoDateTest {
         }
         throw AssertionError("expected IllegalArgumentException for $date")
     }
+}
+
+/** Delegates everything, but refuses the atomic move a cache write ends with. */
+private class WriteFailingFileSystem(
+    delegate: FileSystem,
+) : ForwardingFileSystem(delegate) {
+    override fun atomicMove(
+        source: Path,
+        target: Path,
+    ): Unit = throw IOException("disk full")
 }

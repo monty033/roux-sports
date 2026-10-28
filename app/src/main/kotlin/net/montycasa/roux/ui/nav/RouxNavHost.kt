@@ -105,7 +105,7 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
     var calendarOpen by rememberSaveable { mutableStateOf(false) }
     Box(modifier.fillMaxSize()) {
         Box(Modifier.then(if (calendarOpen) Modifier.clearAndSetSemantics { } else Modifier)) {
-            LeagueNavigationDrawer(drawerState, scoresState, scores::setFavouritesOnly) {
+            LeagueNavigationDrawer(drawerState, scoresState, scores::setFavouritesOnly, onLeagueOrder = scores::setLeagueOrder) {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     bottomBar = {

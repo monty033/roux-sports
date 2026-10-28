@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -97,11 +98,13 @@ class DataStorePreferencesRepositoryTest {
         version: Int? = null,
         favourites: Set<String>? = null,
         favouritesOnly: Boolean? = null,
+        leagueOrder: String? = null,
     ) {
         val scope = newScope()
         try {
             openRawStore(directory, scope)
                 .edit { preferences ->
+                    leagueOrder?.let { preferences[stringPreferencesKey("league_order")] = it }
                     version?.let { preferences[intPreferencesKey("prefs_version")] = it }
                     favourites?.let { preferences[stringSetPreferencesKey("favourites_abbreviations")] = it }
                     favouritesOnly?.let { preferences[booleanPreferencesKey("favourites_only")] = it }
@@ -158,6 +161,40 @@ class DataStorePreferencesRepositoryTest {
                 openWhenReleased(directory, second).getFavouritesOnly(),
             )
             closeScope(second)
+        }
+
+    @Test fun leagueOrderDefaultsToCanonical() =
+        runTest {
+            val scope = newScope()
+            assertEquals(listOf("nhl", "nfl", "mlb"), DataStorePreferencesRepository(newDirectory(), scope).getLeagueOrder())
+            closeScope(scope)
+        }
+
+    @Test fun leagueOrderPersistsAcrossInstances() =
+        runTest {
+            val directory = newDirectory()
+            val first = newScope()
+            val writer = DataStorePreferencesRepository(directory, first)
+            writer.setLeagueOrder(listOf("nfl", "mlb", "nhl"))
+            writer.setLeagueOrder(listOf("mlb", "nhl", "nfl"))
+            closeScope(first)
+            val second = newScope()
+            assertEquals(listOf("mlb", "nhl", "nfl"), openWhenReleased(directory, second).getLeagueOrder())
+            closeScope(second)
+        }
+
+    @Test fun rawLeagueOrderIsReconciledWithoutRewritingStorage() =
+        runTest {
+            val directory = newDirectory()
+            writeRawLedgerEntry(directory, "unused", leagueOrder = "nfl,unknown,nfl")
+            val scope = newScope()
+            assertEquals(listOf("nfl", "nhl", "mlb"), openWhenReleased(directory, scope).getLeagueOrder())
+            closeScope(scope)
+            val raw = newScope()
+            val stored = openRawStore(directory, raw).data.first()
+            assertEquals("nfl,unknown,nfl", stored[stringPreferencesKey("league_order")])
+            assertNull(stored[intPreferencesKey("prefs_version")])
+            closeScope(raw)
         }
 
     @Test
@@ -241,6 +278,7 @@ class DataStorePreferencesRepositoryTest {
             val repository = DataStorePreferencesRepository(directory, scope)
             assertEquals(emptySet<TeamKey>(), repository.getFavourites())
             assertEquals(true, repository.getFavouritesOnly())
+            assertEquals(listOf("nhl", "nfl", "mlb"), repository.getLeagueOrder())
             assertEquals(TeamAlertPreferences(), repository.getTeamAlertPreferences(TeamKey("TOR")))
             closeScope(scope)
         }
@@ -298,6 +336,7 @@ class DataStorePreferencesRepositoryTest {
                 version = 99,
                 favourites = setOf("TOR"),
                 favouritesOnly = false,
+                leagueOrder = "mlb,nfl,nhl",
             )
 
             val scope = newScope()
@@ -306,6 +345,7 @@ class DataStorePreferencesRepositoryTest {
             // getter would return it rather than the default.
             assertEquals(emptySet<TeamKey>(), repository.getFavourites())
             assertEquals(true, repository.getFavouritesOnly())
+            assertEquals(listOf("nhl", "nfl", "mlb"), repository.getLeagueOrder())
             assertEquals(TeamAlertPreferences(), repository.getTeamAlertPreferences(TeamKey("TOR")))
             assertEquals(null, repository.getNotificationLedgerEntry("2024020001"))
             assertEquals(false, repository.isWritable())
@@ -315,6 +355,7 @@ class DataStorePreferencesRepositoryTest {
                 listOf(
                     { repository.setFavourites(setOf(TeamKey("MTL"))) },
                     { repository.setFavouritesOnly(false) },
+                    { repository.setLeagueOrder(listOf("mlb", "nhl", "nfl")) },
                     { repository.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(start = false, goals = false)) },
                     {
                         repository.setNotificationLedgerEntry(
@@ -341,6 +382,7 @@ class DataStorePreferencesRepositoryTest {
             assertEquals(9, stored[intPreferencesKey("ledger_goals_2024020001")])
             assertEquals(setOf("TOR"), stored[stringSetPreferencesKey("favourites_abbreviations")])
             assertEquals(false, stored[booleanPreferencesKey("favourites_only")])
+            assertEquals("mlb,nfl,nhl", stored[stringPreferencesKey("league_order")])
             closeScope(readerScope)
         }
 

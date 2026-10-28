@@ -30,6 +30,12 @@ interface PreferencesRepository {
     /** Set whether to show only favourite teams. */
     suspend fun setFavouritesOnly(enabled: Boolean)
 
+    /** Read the saved league order, or the canonical order when unset. */
+    suspend fun getLeagueOrder(): List<String>
+
+    /** Replace the saved league order. */
+    suspend fun setLeagueOrder(order: List<String>)
+
     /** Read alert controls for a team, returning enabled defaults when unset. */
     suspend fun getTeamAlertPreferences(team: TeamKey): TeamAlertPreferences
 

@@ -5,6 +5,7 @@ import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.model.DateIndexEntry
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.policy.FavoritesHint
+import net.montycasa.roux.domain.policy.LeagueOrder
 
 data class ScoresUiState(
     val selectedDate: String,
@@ -24,6 +25,8 @@ data class ScoresUiState(
     /** Counted before the favourites filter, from the loaded day without another request. */
     val liveCount: Int = 0,
     val favouriteCount: Int = 0,
+    val leagueOrder: List<String> = LeagueOrder.canonical,
+    val selectedLeagueId: String = "nhl",
     /** Feed day in the league zone; null until a day has actually loaded. */
     val loadedDate: String? = null,
 )

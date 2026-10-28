@@ -56,7 +56,8 @@ class ScoresHeaderTest {
     fun geometryAndAccessibleNavigationMatchTheReference() {
         var opens = 0
         launch(onOpen = { opens++ })
-        rule.onNodeWithTag("scores.header").assertHeightIsAtLeast(64.dp)
+        // The file says 64 dp; a floor would pass an accidental 72.
+        rule.onNodeWithTag("scores.header").assertHeightIsEqualTo(64.dp)
         rule
             .onNodeWithContentDescription("Open leagues")
             .assertWidthIsEqualTo(48.dp)

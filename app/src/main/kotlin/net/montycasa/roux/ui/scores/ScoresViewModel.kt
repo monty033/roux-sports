@@ -13,7 +13,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -26,11 +25,13 @@ import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
 import net.montycasa.roux.domain.Freshness
+import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.ScoreDay
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.policy.DateStrip
 import net.montycasa.roux.domain.policy.FavoritesOrdering
+import net.montycasa.roux.domain.policy.LeagueOrder
 import net.montycasa.roux.domain.policy.PollPolicy
 import net.montycasa.roux.domain.repo.PreferencesRepository
 import net.montycasa.roux.domain.repo.ScoresRepository
@@ -48,6 +49,7 @@ class ScoresViewModel(
     private val refreshTrigger = MutableStateFlow(0L)
     private val favouritesOnly = MutableStateFlow<Boolean?>(null)
     private val preferenceWrites = Mutex()
+    private val leagueOrder = MutableStateFlow<List<String>?>(null)
 
     // Retain the selected day's unfiltered content across a cancelled request or upstream restart.
     // The repository remains the authority on freshness, including after time spent in the background.
@@ -77,6 +79,7 @@ class ScoresViewModel(
                         .orEmpty()
                         .count { it.isLive },
                 favouriteCount = settings.favourites.size,
+                leagueOrder = settings.order,
                 loadedDate = load.value.data?.date,
                 rows = if (settings.only) filtered.rows else FavoritesOrdering.pin(filtered.rows, settings.favourites),
                 favoritesHint = filtered.hint,
@@ -111,11 +114,25 @@ class ScoresViewModel(
         }
     }
 
+    fun setLeagueOrder(order: List<String>) {
+        val reconciled = LeagueOrder.reconcile(order)
+        // Publish immediately so a held handle follows the finger while durable writes serialize.
+        leagueOrder.value = reconciled
+        viewModelScope.launch {
+            preferenceWrites.withLock { preferences.setLeagueOrder(reconciled) }
+        }
+    }
+
     private fun settings(): Flow<Settings> =
         flow {
             val favourites = preferences.getFavourites()
             val storedOnly = preferences.getFavouritesOnly()
-            emitAll(favouritesOnly.map { Settings(favourites, it ?: storedOnly) })
+            val storedOrder = preferences.getLeagueOrder()
+            emitAll(
+                combine(favouritesOnly, leagueOrder) { only, order ->
+                    Settings(favourites, only ?: storedOnly, order ?: storedOrder)
+                },
+            )
         }
 
     private fun pollDay(request: Request): Flow<DayLoad> =
@@ -138,6 +155,11 @@ class ScoresViewModel(
                 retained = loaded
                 emit(loaded)
                 announceProgress = false
+                // A blocked host is a refusal, not a transport failure: asking again earns the same refusal. Stop
+                // the loop rather than re-asking on the normal cadence; a new upstream start - a refresh, a date
+                // change, the midnight rollover - tries once more. This is what makes LoadError.Blocked's promise
+                // ("not retried on the normal cadence") true instead of merely written down.
+                if (value.error is LoadError.Blocked) break
                 val now = clock.now()
                 val wait =
                     PollPolicy.nextDelay(
@@ -177,6 +199,7 @@ class ScoresViewModel(
     private data class Settings(
         val favourites: Set<TeamKey>,
         val only: Boolean,
+        val order: List<String>,
     )
 
     private data class DayLoad(

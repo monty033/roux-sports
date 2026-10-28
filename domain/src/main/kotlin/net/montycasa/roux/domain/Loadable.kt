@@ -1,5 +1,6 @@
 package net.montycasa.roux.domain
 
+import kotlin.time.Duration
 import kotlin.time.Instant
 
 sealed interface Freshness {
@@ -17,6 +18,8 @@ sealed interface LoadError {
 
     data class Http(
         val status: Int,
+        /** A usable server-requested pause. Null means the server did not say, never "retry at once". */
+        val retryAfter: Duration? = null,
     ) : LoadError
 
     data object Parse : LoadError
@@ -40,6 +43,18 @@ sealed interface LoadError {
      * problem, and from [Parse] because the response may have been perfectly good.
      */
     data object Local : LoadError
+
+    /**
+     * A request refused before it was sent, because its host is not on the allowlist: an unexpected URL, or a
+     * redirect somewhere the app never agreed to talk to.
+     *
+     * Carries the host so the refusal can be traced, and is deliberately not retried on the normal cadence -
+     * repeating the same request earns the same refusal, and a retry loop would present a bug or an attack as
+     * an endless "offline".
+     */
+    data class Blocked(
+        val host: String,
+    ) : LoadError
 }
 
 /**

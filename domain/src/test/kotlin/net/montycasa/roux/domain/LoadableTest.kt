@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Test
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 class LoadableTest {
@@ -67,5 +68,17 @@ class LoadableTest {
         assertEquals(Freshness.Stale(since = fetchedAt), result.freshness)
         assertSame(cached.data, result.data)
         assertEquals(error, result.error)
+    }
+
+    @Test
+    fun httpCarriesTheServerRetryAfterAndAnUnspecifiedPauseIsNull() {
+        assertEquals(30.seconds, LoadError.Http(429, 30.seconds).retryAfter)
+        // Null means the server did not say, which the poller treats as "no pause offered" - never as zero.
+        assertNull(LoadError.Http(500).retryAfter)
+    }
+
+    @Test
+    fun blockedCarriesTheHostThatWasRefused() {
+        assertEquals("evil.example", LoadError.Blocked("evil.example").host)
     }
 }
