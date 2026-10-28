@@ -2,6 +2,7 @@ package net.montycasa.roux.ui.drawer
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.DrawerState
 import androidx.compose.material3.DrawerValue
@@ -87,6 +88,7 @@ class LeagueDrawerTest {
         fontScale: Float = 1f,
         catalog: List<DrawerLeague> = drawerCatalog,
         preferences: DrawerPreferences? = null,
+        insets: WindowInsets = WindowInsets(0, 0, 0, 0),
     ) {
         val vm =
             preferences?.let {
@@ -128,12 +130,24 @@ class LeagueDrawerTest {
                             navigations += id
                             state.value = state.value.copy(favouritesOnly = false, selectedLeagueId = id)
                         },
+                        contentInsets = insets,
                     ) {
                         Box(Modifier.fillMaxSize().background(if (dark) Color(0xFF08090B) else Color(0xFFF2F2EF)))
                     }
                 }
             }
         }
+    }
+
+    @Test
+    fun theWordmarkClearsTheStatusBarItNowDrawsBehind() {
+        // The app is edge to edge, so the panel paints under the status bar and its content has to step down past it.
+        // Before this, the wordmark sat 20 dp from the very top of the window, which on a device put it inside the
+        // status bar. 47 dp stands in for a typical status bar height.
+        launch(insets = WindowInsets(0.dp, 47.dp, 0.dp, 0.dp))
+
+        val top = rule.onNodeWithTag("leagues.wordmark").getUnclippedBoundsInRoot().top
+        assertEquals(67f, top.value, 0.5f) // 47 dp of status bar plus the panel's own 20 dp
     }
 
     @Test
