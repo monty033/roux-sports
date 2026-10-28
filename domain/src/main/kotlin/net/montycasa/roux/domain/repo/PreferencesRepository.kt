@@ -1,5 +1,7 @@
 package net.montycasa.roux.domain.repo
 
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import net.montycasa.roux.domain.model.TeamKey
 import kotlin.time.Instant
 
@@ -44,6 +46,21 @@ interface PreferencesRepository {
         team: TeamKey,
         preferences: TeamAlertPreferences,
     )
+
+    /**
+     * Favourites as they change, starting with what is stored now.
+     *
+     * The default body reads once and completes, which is honest for a store that cannot notify: a
+     * caller that needs live updates gets a stale value rather than a lie about the future. The
+     * DataStore implementation overrides all three to observe the file.
+     */
+    fun observeFavourites(): Flow<Set<TeamKey>> = flow { emit(getFavourites()) }
+
+    /** Whether to show only favourites, as it changes. See [observeFavourites] for the default body. */
+    fun observeFavouritesOnly(): Flow<Boolean> = flow { emit(getFavouritesOnly()) }
+
+    /** The league order as it changes. See [observeFavourites] for the default body. */
+    fun observeLeagueOrder(): Flow<List<String>> = flow { emit(getLeagueOrder()) }
 
     /** Read a game's deduplication entry, or null if no notification state was saved. */
     suspend fun getNotificationLedgerEntry(gameId: String): NotificationLedgerEntry?
