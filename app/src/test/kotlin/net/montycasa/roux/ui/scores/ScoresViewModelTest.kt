@@ -16,6 +16,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.datetime.TimeZone
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
@@ -26,6 +27,7 @@ import net.montycasa.roux.domain.model.ScoreDay
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.domain.policy.FavoritesHint
+import net.montycasa.roux.domain.policy.LeagueCalendar
 import net.montycasa.roux.domain.repo.NotificationLedgerEntry
 import net.montycasa.roux.domain.repo.PreferencesRepository
 import net.montycasa.roux.domain.repo.ScoresRepository
@@ -38,6 +40,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -722,13 +725,51 @@ class ScoresViewModelTest {
             }
         }
 
+    /**
+     * The day the scores screen browses is the device's civil day, hour by hour across the weekend the clocks change.
+     *
+     * A table rather than one instant: the failure this guards against is a boundary that moves with DST, and a single
+     * case would sit comfortably inside one offset.
+     */
+    @Test
+    fun todayIsTheDeviceCivilDayAcrossTheWholeDstWeekend() =
+        runTest {
+            // Los Angeles, not the league's zone: it transitions on the same night and sits three hours away, so a
+            // table run in Toronto would agree with the bug it is meant to catch.
+            val zone = TimeZone.of("America/Los_Angeles")
+            val start = Instant.parse("2026-10-31T12:00:00Z")
+            repeat(48) { hour ->
+                val now = start + hour.hours
+                val viewModel = viewModel(FakeScoresRepository(testScheduler), clock = FixedClock(now), zone = zone)
+                assertEquals(
+                    "hour $hour at $now must be the device's day",
+                    LeagueCalendar.leagueDay(now, zone),
+                    viewModel.uiState.value.today,
+                )
+            }
+        }
+
+    @Test
+    fun aLatePacificEveningStaysOnTheDevicesDay() =
+        runTest {
+            // 04:30Z on 1 November is 00:30 in Toronto and 21:30 on 31 October in Vancouver. The league's zone would
+            // already be showing tomorrow's slate to that fan; the device's clock is the decision, so it is the 31st.
+            val now = Instant.parse("2026-11-01T04:30:00Z")
+            val vancouver = TimeZone.of("America/Vancouver")
+            val viewModel = viewModel(FakeScoresRepository(testScheduler), clock = FixedClock(now), zone = vancouver)
+
+            assertEquals("2026-10-31", viewModel.uiState.value.today)
+            assertEquals("2026-11-01", LeagueCalendar.leagueDay(now, TimeZone.of("America/Toronto")))
+        }
+
     private fun viewModel(
         scores: FakeScoresRepository,
         preferences: FakePreferencesRepository = FakePreferencesRepository(),
         clock: Clock = SchedulerClock(testScheduler, origin),
         jitter: () -> Double = { 0.5 },
+        zone: TimeZone = TimeZone.of("America/Toronto"),
     ): ScoresViewModel =
-        ScoresViewModel(scores, preferences, clock, jitter).also { viewModel ->
+        ScoresViewModel(scores, preferences, clock, zone, jitter).also { viewModel ->
             stores += ViewModelStore().apply { put("scores", viewModel) }
         }
 }
@@ -892,3 +933,10 @@ private fun freshDay(
     date: String,
     games: List<Game> = listOf(game(date)),
 ): Loadable<ScoreDay> = Loadable(ScoreDay(date, games, emptyList(), 0), Freshness.Fresh, null)
+
+/** A clock pinned to one instant: these tests are about which day that instant falls on, not about the passage of time. */
+private class FixedClock(
+    private val instant: Instant,
+) : Clock {
+    override fun now(): Instant = instant
+}

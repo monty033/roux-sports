@@ -1,5 +1,6 @@
 package net.montycasa.roux.domain.policy
 
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
@@ -13,9 +14,15 @@ import kotlin.time.Instant
  * state, and a caller who forgets it gets a compile error instead of a quietly wrong slate.
  */
 object LeagueCalendar {
+    /** [instant]'s civil date in [zone], for callers that need calendar arithmetic such as the next midnight. */
+    fun leagueDate(
+        instant: Instant,
+        zone: TimeZone,
+    ): LocalDate = instant.toLocalDateTime(zone).date
+
     /** [instant]'s date in [zone] as ISO YYYY-MM-DD, the same shape the feed uses for its own date keys. */
     fun leagueDay(
         instant: Instant,
         zone: TimeZone,
-    ): String = instant.toLocalDateTime(zone).date.toString()
+    ): String = leagueDate(instant, zone).toString()
 }

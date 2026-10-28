@@ -34,6 +34,7 @@ import net.montycasa.roux.domain.model.ScoreDay
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.policy.DateStrip
 import net.montycasa.roux.domain.policy.FavoritesOrdering
+import net.montycasa.roux.domain.policy.LeagueCalendar
 import net.montycasa.roux.domain.policy.LeagueOrder
 import net.montycasa.roux.domain.policy.PollPolicy
 import net.montycasa.roux.domain.repo.PreferencesRepository
@@ -47,10 +48,11 @@ class ScoresViewModel(
     private val scores: ScoresRepository,
     private val preferences: PreferencesRepository,
     private val clock: Clock,
+    /** The device's zone: the league day is this phone's civil date, so it is injected rather than assumed. */
+    private val deviceZone: TimeZone = TimeZone.currentSystemDefault(),
     /** Jitter source for the failure backoff, injected so a test can pin the multiplier. */
     private val jitter: () -> Double = { Random.Default.nextDouble() },
 ) : ViewModel() {
-    private val leagueZone = TimeZone.of("America/New_York")
     private val selectedDate = MutableStateFlow(DateStrip.defaultSelection(emptyList(), leagueDay()))
 
     // The trigger carries whether this upstream start was the user asking. A pull must reach the network even when
@@ -274,7 +276,7 @@ class ScoresViewModel(
                         PollPolicy.nextDelay(
                             now,
                             request.date,
-                            now.toLocalDateTime(leagueZone).date.toString(),
+                            LeagueCalendar.leagueDay(now, deviceZone),
                             value.data?.games.orEmpty(),
                         ) ?: break
                     }
@@ -287,18 +289,14 @@ class ScoresViewModel(
         flow {
             while (currentCoroutineContext().isActive) {
                 val now = clock.now()
-                val date = now.toLocalDateTime(leagueZone).date
+                val date = LeagueCalendar.leagueDate(now, deviceZone)
                 emit(date.toString())
-                delay(date.plus(1, DateTimeUnit.DAY).atStartOfDayIn(leagueZone) - now)
+                delay(date.plus(1, DateTimeUnit.DAY).atStartOfDayIn(deviceZone) - now)
             }
         }
 
-    private fun leagueDay(): String =
-        clock
-            .now()
-            .toLocalDateTime(leagueZone)
-            .date
-            .toString()
+    /** The day the app is browsing. One definition, shared with Standings, so the two tabs never disagree. */
+    private fun leagueDay(): String = LeagueCalendar.leagueDay(clock.now(), deviceZone)
 
     private data class Request(
         val date: String,
