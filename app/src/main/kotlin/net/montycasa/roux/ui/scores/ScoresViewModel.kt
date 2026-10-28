@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -61,6 +62,10 @@ class ScoresViewModel(
     // Retain the selected day's unfiltered content across a cancelled request or upstream restart.
     // The repository remains the authority on freshness, including after time spent in the background.
     private var retained: DayLoad? = null
+
+    // The pending neighbour warm-up. Kept so a new selection can cancel the previous one: a user flicking through
+    // dates should cost one prefetch for the day they stopped on, not one per day they passed through.
+    private var prefetchJob: Job? = null
 
     val uiState: StateFlow<ScoresUiState> =
         combine(
@@ -158,6 +163,27 @@ class ScoresViewModel(
             )
         }
 
+    /**
+     * Warms the days either side of [date] once the selection has settled.
+     *
+     * The delay is the whole point: without it every day the user flicks past would start two speculative fetches.
+     * A load that produced no slate schedules nothing - its neighbours would fail the same way, and a request whose
+     * only outcome is an error is noise on a battery.
+     */
+    private fun schedulePrefetch(
+        date: String,
+        today: String,
+        hasSlate: Boolean,
+    ) {
+        prefetchJob?.cancel()
+        if (!hasSlate) return
+        prefetchJob =
+            viewModelScope.launch {
+                delay(PREFETCH_SETTLE_MS)
+                scores.prefetchAdjacent(date, today)
+            }
+    }
+
     private fun pollDay(request: Request): Flow<DayLoad> =
         flow {
             var value: Loadable<ScoreDay> =
@@ -188,6 +214,7 @@ class ScoresViewModel(
                     }
                 val loaded = DayLoad(request.date, request.today, value, refreshing = false)
                 retained = loaded
+                schedulePrefetch(request.date, request.today, hasSlate = value.data != null)
                 emit(loaded)
                 announceProgress = false
                 // A blocked host is a refusal, not a transport failure: asking again earns the same refusal. Stop
@@ -256,6 +283,11 @@ class ScoresViewModel(
         val only: Boolean,
         val order: List<String>,
     )
+
+    private companion object {
+        /** Long enough that flicking through dates does not prefetch every pass, short enough to feel instant. */
+        const val PREFETCH_SETTLE_MS = 500L
+    }
 
     private data class DayLoad(
         val date: String,
