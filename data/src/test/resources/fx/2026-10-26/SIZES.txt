@@ -15,3 +15,4 @@ gc-final-landing.json transfer_bytes=2551 stored_bytes=13412 url=https://api-web
 gc-final-boxscore.json transfer_bytes=2442 stored_bytes=13478 url=https://api-web.nhle.com/v1/gamecenter/2026020188/boxscore
 gc-final-right-rail.json transfer_bytes=1302 stored_bytes=5455 url=https://api-web.nhle.com/v1/gamecenter/2026020188/right-rail
 gc-fut-landing.json transfer_bytes=6120 stored_bytes=22782 url=https://api-web.nhle.com/v1/gamecenter/2026020199/landing
+gc-fut-boxscore.json transfer_bytes=1123 stored_bytes=3122 url=https://api-web.nhle.com/v1/gamecenter/2026020199/boxscore
