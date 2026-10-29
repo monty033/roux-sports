@@ -53,7 +53,7 @@ class ScoresIntegrationTest {
     }
 
     @Test
-    fun fixtureRowsShowTeamAbbreviationsAndGameClicksRemainSafe() {
+    fun fixtureRowsShowTeamAbbreviationsAndGameClicksOpenTheGamePage() {
         launchScores()
 
         // Visit every row: LazyColumn intentionally composes only the visible part of the corpus.
@@ -79,7 +79,15 @@ class ScoresIntegrationTest {
                 .last()
                 .getValue("id")
                 .jsonPrimitive.content
-        rule.onNodeWithTag("scores.game.$lastId").performClick().assertIsDisplayed()
+        // A row now opens its game page; the click is safe in the sense that it cannot throw or blank the app.
+        rule.onNodeWithTag("scores.game.$lastId").performClick()
+        rule.waitUntil(timeoutMillis = 10_000) {
+            rule.onAllNodesWithTag("detail.back").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithTag("detail.back").performClick()
+        rule.waitUntil(timeoutMillis = 10_000) {
+            rule.onAllNodesWithTag("scores.game.$lastId").fetchSemanticsNodes().isNotEmpty()
+        }
         rule.onNodeWithTag("scores.error").assertDoesNotExist()
         assertTrue(app.requests.any { it.host == "api-web.nhle.com" && it.encodedPath == "/v1/score/${ScoreFixture.date}" })
 

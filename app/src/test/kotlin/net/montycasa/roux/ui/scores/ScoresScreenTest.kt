@@ -79,7 +79,7 @@ class ScoresScreenTest {
     private fun launchScreen(
         state: ScoresUiState = fresh,
         onRefresh: () -> Unit = {},
-        onGameClick: (GameId) -> Unit = {},
+        onGameClick: (Game) -> Unit = {},
         onSelectDate: (String) -> Unit = {},
     ) {
         suppliedState.value = state
@@ -165,11 +165,13 @@ class ScoresScreenTest {
     }
 
     @Test
-    fun tappingAGameRowCallsOnGameClickWithTheDomainId() {
-        val clicked = mutableListOf<GameId>()
+    fun tappingAGameRowCallsOnGameClickWithTheWholeRow() {
+        // The detail route needs the row's teams, score and state to draw its hero before any endpoint answers.
+        val clicked = mutableListOf<Game>()
         launchScreen(fresh.copy(rows = listOf(game)), onGameClick = { clicked += it })
         rule.onNodeWithTag("scores.game.${game.id.value}").performClick()
-        assertEquals(listOf(game.id), clicked)
+        assertEquals(listOf(game.id), clicked.map { it.id })
+        assertEquals(listOf(game.away), clicked.map { it.away })
     }
 
     @Test

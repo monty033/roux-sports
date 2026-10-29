@@ -2,6 +2,7 @@ package net.montycasa.roux.domain.model
 
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.Loadable
+import kotlin.math.roundToInt
 import kotlin.time.Instant
 
 /**
@@ -97,12 +98,15 @@ data class PlayerRef(
 )
 
 /**
- * The boxscore payload: the goalie lines, and nothing else the page draws.
+ * The boxscore payload: both clubs' skaters, and the goalie lines.
  *
- * It carries no scoring at all, which is worth stating because it is the natural place to look for it.
+ * It carries no scoring at all, which is worth stating because it is the natural place to look for it. Skaters arrive
+ * in feed order - forwards first, then defencemen, as the league lists them - and that order is kept rather than sorted,
+ * so the page reads the same as the source. Goalies who did not play are excluded by the adapter, not here.
  */
 data class GameBoxscore(
     val goalies: List<GoalieLine> = emptyList(),
+    val skaters: List<SkaterLine> = emptyList(),
 )
 
 /** Goals by period, for both clubs. */
@@ -131,7 +135,51 @@ data class GoalieLine(
     val goalie: PlayerRef,
     val saves: Int,
     val shotsAgainst: Int,
-)
+    /** Goals allowed. Needed for a goals-against average, which is not in the payload. */
+    val goalsAgainst: Int = 0,
+    /** Ice time in seconds; `00:00` for a goalie who dressed but never played. */
+    val toiSeconds: Long = 0,
+) {
+    /**
+     * Goals-against average: goals allowed per 60 minutes played.
+     *
+     * The league does not publish this in the boxscore, so it is derived, and the denominator is the goalie's own ice
+     * time rather than the game length - a goalie pulled after two periods has a worse average for the same goals.
+     * Null when there is no ice time, because dividing by it would produce an average for someone who did not play.
+     */
+    fun goalsAgainstAverage(): Double? = if (toiSeconds > 0) goalsAgainst * SECONDS_PER_HOUR.toDouble() / toiSeconds else null
+
+    /** Save percentage over shots faced, or null when no shot was faced - not 0%, which would be a false claim. */
+    fun savePercentage(): Double? = if (shotsAgainst > 0) saves.toDouble() / shotsAgainst else null
+
+    private companion object {
+        const val SECONDS_PER_HOUR = 3600
+    }
+}
+
+/**
+ * One skater's line for this game.
+ *
+ * Only the columns the page draws are kept. The payload carries several more - shifts, giveaways, takeaways, blocked
+ * shots - and they are deliberately not modelled: a domain field nobody reads is a field that silently rots.
+ */
+data class SkaterLine(
+    val skater: PlayerRef,
+    /** The league's position code: C, L, R or D. */
+    val position: String,
+    val goals: Int,
+    val assists: Int,
+    val points: Int,
+    val plusMinus: Int,
+    val shotsOnGoal: Int,
+    val penaltyMinutes: Int,
+    val toiSeconds: Long,
+    /** Faceoff wins as a fraction 0..1, or null for a skater who did not take a draw. */
+    val faceoffFraction: Double?,
+) {
+    /** Faceoff percentage as a whole number, or null when no draw was taken. */
+    fun faceoffPercent(): Int? = faceoffFraction?.let { (it * 100).roundToInt() }
+}
 
 /** The right rail payload: the per-team totals the page shows beside the boxscore, including shots and power play. */
 data class GameRightRail(

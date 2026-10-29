@@ -4,17 +4,19 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import net.montycasa.roux.data.nhl.dto.BoxscoreDto
 import net.montycasa.roux.data.nhl.dto.BoxscoreGoalieDto
+import net.montycasa.roux.data.nhl.dto.BoxscoreSkaterDto
 import net.montycasa.roux.data.nhl.dto.BoxscoreTeamPlayersDto
 import net.montycasa.roux.domain.model.GameBoxscore
 import net.montycasa.roux.domain.model.GoalieLine
 import net.montycasa.roux.domain.model.PlayerRef
+import net.montycasa.roux.domain.model.SkaterLine
 
 /**
- * Turns the boxscore payload into the one section it owns: the goalie lines.
+ * Turns the boxscore payload into the two sections it owns: the skater lines and the goalie lines.
  *
- * The boxscore carries the full player table for both teams - skaters, goalies, ice time, faceoff splits - and the page
- * shows none of it except the goalies. That is worth stating because it is the natural place to look for scoring, and it
- * has no scoring at all.
+ * The boxscore carries the full player table for both teams - skaters, goalies, ice time, faceoff splits - and it has
+ * no scoring at all. That is worth stating because it is the natural place to look for goals; the goals come from the
+ * landing payload's period summary instead.
  */
 internal object BoxscoreAdapter {
     private val feedJson =
@@ -43,7 +45,42 @@ internal object BoxscoreAdapter {
             players.awayTeam.goalieLines(boxscore.awayTeam?.abbrev) +
                 players.homeTeam.goalieLines(boxscore.homeTeam?.abbrev)
 
-        return ParseResult.Success(GameBoxscore(goalies = goalies))
+        val skaters =
+            players.awayTeam.skaterLines(boxscore.awayTeam?.abbrev) +
+                players.homeTeam.skaterLines(boxscore.homeTeam?.abbrev)
+
+        return ParseResult.Success(GameBoxscore(goalies = goalies, skaters = skaters))
+    }
+
+    /**
+     * Every skater who dressed, away side first, forwards then defencemen.
+     *
+     * No filtering by ice time: unlike the goalie list, which mixes starters with backups who never played, every
+     * skater in these two lists took a shift. A blank name is the only thing dropped, because there would be no way to
+     * label the row.
+     */
+    private fun BoxscoreTeamPlayersDto?.skaterLines(abbrev: String?): List<SkaterLine> {
+        val listed = this?.forwards.orEmpty() + this?.defense.orEmpty()
+        return listed
+            .mapNotNull { it }
+            .mapNotNull { it.toLine(abbrev) }
+            .distinctBy { it.skater.name }
+    }
+
+    private fun BoxscoreSkaterDto.toLine(abbrev: String?): SkaterLine? {
+        val skaterName = name?.default?.takeIf { it.isNotBlank() } ?: return null
+        return SkaterLine(
+            skater = PlayerRef(name = skaterName, teamAbbrev = abbrev.orEmpty()),
+            position = position?.trim().orEmpty(),
+            goals = goals ?: 0,
+            assists = assists ?: 0,
+            points = points ?: 0,
+            plusMinus = plusMinus ?: 0,
+            shotsOnGoal = sog ?: 0,
+            penaltyMinutes = pim ?: 0,
+            toiSeconds = toi?.trim().orEmpty().toSeconds(),
+            faceoffFraction = faceoffWinningPctg,
+        )
     }
 
     /**
@@ -80,6 +117,8 @@ internal object BoxscoreAdapter {
             goalie = PlayerRef(name = goalieName, teamAbbrev = abbrev.orEmpty()),
             saves = saves ?: 0,
             shotsAgainst = shotsAgainst ?: 0,
+            goalsAgainst = goalsAgainst ?: 0,
+            toiSeconds = toi?.trim().orEmpty().toSeconds(),
         )
     }
 }

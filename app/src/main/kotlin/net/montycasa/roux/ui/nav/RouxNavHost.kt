@@ -4,6 +4,7 @@
 
 package net.montycasa.roux.ui.nav
 
+import android.net.Uri
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
@@ -20,6 +21,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,14 +42,26 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.navigation.NamedNavArgument
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import kotlinx.coroutines.launch
+import net.montycasa.roux.AppContainer
 import net.montycasa.roux.R
 import net.montycasa.roux.RouxApp
+import net.montycasa.roux.domain.model.Game
+import net.montycasa.roux.domain.model.GameId
+import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.TeamKey
+import net.montycasa.roux.domain.model.TeamRef
+import net.montycasa.roux.ui.detail.GameDetailScreen
+import net.montycasa.roux.ui.detail.GameDetailViewModel
 import net.montycasa.roux.ui.drawer.LeagueNavigationDrawer
 import net.montycasa.roux.ui.reach.Reach
 import net.montycasa.roux.ui.reach.primaryControl
@@ -58,6 +72,7 @@ import net.montycasa.roux.ui.standings.StandingsScreen
 import net.montycasa.roux.ui.standings.StandingsViewModel
 import net.montycasa.roux.ui.teams.TeamsScreen
 import net.montycasa.roux.ui.teams.TeamsViewModel
+import kotlin.time.Instant
 
 /**
  * The three places the app goes. Scores is the reason the app exists; the other two are peers, not
@@ -149,6 +164,7 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
                                     label = { Text(label) },
                                 )
                             }
+
                             Spacer(Modifier.width(Reach.EDGE_INSET_DP.dp))
                         }
                     },
@@ -165,7 +181,9 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
                                         ScoresScreen(
                                             state = scoresState,
                                             onRefresh = scores::onPullToRefresh,
-                                            onGameClick = {},
+                                            onGameClick = { game ->
+                                                navController.navigate(detailRoute(game))
+                                            },
                                             onSelectDate = scores::selectDate,
                                             onOpenLeagues = { scope.launch { drawerState.open() } },
                                             onOpenCalendar = { calendarOpen = true },
@@ -179,6 +197,23 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
                                     TopLevelDestination.Standings -> {
                                         StandingsDestination()
                                     }
+                                }
+                            }
+
+                            composable(
+                                route = DETAIL_ROUTE,
+                                arguments = detailArguments(),
+                            ) { entry ->
+                                val game = gameFromRoute(entry)
+                                if (game == null) {
+                                    // A link we cannot read is not a crash; it is a dead end, so leave.
+                                    LaunchedEffect(Unit) { navController.popBackStack() }
+                                } else {
+                                    DetailDestination(
+                                        container = container,
+                                        game = game,
+                                        onBack = { navController.popBackStack() },
+                                    )
                                 }
                             }
                         }
@@ -271,3 +306,139 @@ private fun glyph(
             viewportHeight = 24f,
         ).addPath(pathData = addPathNodes(path), fill = SolidColor(Color.Black))
         .build()
+
+/* ---------------------------------------------------------------------------------------------------------------
+ * The game page's route
+ * ------------------------------------------------------------------------------------------------------------ */
+
+/**
+ * A game's page as a URL.
+ *
+ * The row that was tapped travels in the route rather than in a holder up the tree: a holder dies with the process,
+ * and the reader would come back to an empty page. Every field is one the tapped row already had, so the page can
+ * draw its hero before any endpoint answers.
+ */
+internal const val DETAIL_ROUTE =
+    "detail/{gameId}?away={away}&home={home}&awayLogo={awayLogo}&homeLogo={homeLogo}" +
+        "&awayScore={awayScore}&homeScore={homeScore}&state={state}&start={start}"
+
+internal fun detailRoute(game: Game): String =
+    "detail/${Uri.encode(game.id.value)}" +
+        "?away=${Uri.encode(game.away.abbrev)}" +
+        "&home=${Uri.encode(game.home.abbrev)}" +
+        "&awayLogo=${Uri.encode(game.away.logoUrl.orEmpty())}" +
+        "&homeLogo=${Uri.encode(game.home.logoUrl.orEmpty())}" +
+        "&awayScore=${game.awayScore ?: MISSING_SCORE}" +
+        "&homeScore=${game.homeScore ?: MISSING_SCORE}" +
+        "&state=${Uri.encode(encodeState(game.state))}" +
+        "&start=${game.startTimeUtc?.epochSeconds ?: MISSING_SCORE}"
+
+private const val MISSING_SCORE = "-1"
+
+private fun encodeState(state: GameState): String =
+    when (state) {
+        GameState.Final -> "FINAL"
+        is GameState.Live -> if (state.critical) "CRIT" else "LIVE"
+        GameState.Pre -> "PRE"
+        GameState.Scheduled -> "SCHED"
+        is GameState.Unknown -> "U:" + state.raw
+    }
+
+private fun decodeState(raw: String?): GameState =
+    when {
+        raw == null -> GameState.Scheduled
+        raw == "FINAL" -> GameState.Final
+        raw == "LIVE" -> GameState.Live()
+        raw == "CRIT" -> GameState.Live(critical = true)
+        raw == "PRE" -> GameState.Pre
+        raw == "SCHED" -> GameState.Scheduled
+        raw.startsWith("U:") -> GameState.Unknown(raw.removePrefix("U:"))
+        else -> GameState.Unknown(raw)
+    }
+
+private fun detailArguments(): List<NamedNavArgument> =
+    listOf(
+        navArgument("gameId") { type = NavType.StringType },
+        navArgument("away") {
+            type = NavType.StringType
+            nullable = true
+            defaultValue = null
+        },
+        navArgument("home") {
+            type = NavType.StringType
+            nullable = true
+            defaultValue = null
+        },
+        navArgument("awayScore") {
+            type = NavType.StringType
+            nullable = true
+            defaultValue = null
+        },
+        navArgument("homeScore") {
+            type = NavType.StringType
+            nullable = true
+            defaultValue = null
+        },
+        navArgument("state") {
+            type = NavType.StringType
+            nullable = true
+            defaultValue = null
+        },
+        navArgument("start") {
+            type = NavType.StringType
+            nullable = true
+            defaultValue = null
+        },
+    )
+
+/** Null when the link carries nothing playable - the caller then backs out rather than showing a guess. */
+internal fun gameFromRoute(entry: NavBackStackEntry): Game? {
+    val args = entry.arguments ?: return null
+    val id = args.getString("gameId")?.takeIf { it.isNotBlank() } ?: return null
+    val away = args.getString("away")?.takeIf { it.isNotBlank() } ?: return null
+    val home = args.getString("home")?.takeIf { it.isNotBlank() } ?: return null
+    val start = args.getString("start")?.toLongOrNull()?.takeIf { it > 0 }
+    return Game(
+        id = GameId(id),
+        date = "",
+        state = decodeState(args.getString("state")),
+        // The crest travels with the route so the hero is drawn from the row the reader tapped, not from an endpoint
+        // that may not have answered yet. A missing URL is fine: the badge falls back to the club's abbreviation.
+        home = TeamRef(TeamKey(home), logoUrl = args.getString("homeLogo")?.takeIf { it.isNotBlank() }),
+        away = TeamRef(TeamKey(away), logoUrl = args.getString("awayLogo")?.takeIf { it.isNotBlank() }),
+        homeScore = args.getString("homeScore")?.toIntOrNull()?.takeIf { it >= 0 },
+        awayScore = args.getString("awayScore")?.toIntOrNull()?.takeIf { it >= 0 },
+        startTimeUtc = start?.let { Instant.fromEpochSeconds(it) },
+    )
+}
+
+@Composable
+private fun DetailDestination(
+    container: AppContainer,
+    game: Game,
+    onBack: () -> Unit,
+) {
+    // Keyed by the game and its state: a rotation from scheduled to live is a different polling contract.
+    val detail: GameDetailViewModel =
+        viewModel(
+            key = "detail:${game.id.value}:${encodeState(game.state)}",
+            factory =
+                viewModelFactory {
+                    initializer {
+                        GameDetailViewModel(
+                            gameId = game.id,
+                            state = game.state,
+                            details = container.gameDetail,
+                            clock = container.clock,
+                        )
+                    }
+                },
+        )
+    val state by detail.uiState.collectAsStateWithLifecycle()
+    GameDetailScreen(
+        game = game,
+        state = state,
+        onBack = onBack,
+        onRetry = detail::refresh,
+    )
+}

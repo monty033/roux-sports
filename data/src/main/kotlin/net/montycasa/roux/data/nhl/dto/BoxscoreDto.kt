@@ -30,6 +30,32 @@ internal data class BoxscorePlayersDto(
 @Serializable
 internal data class BoxscoreTeamPlayersDto(
     val goalies: List<BoxscoreGoalieDto?>? = null,
+    /**
+     * Skaters arrive as two lists, not one: `forwards` then `defense`. Both are needed - a page that reads only
+     * `forwards` loses every defenceman, and none of the other keys in the payload hint that they exist.
+     */
+    val forwards: List<BoxscoreSkaterDto?>? = null,
+    val defense: List<BoxscoreSkaterDto?>? = null,
+)
+
+@Serializable
+internal data class BoxscoreSkaterDto(
+    val playerId: Long? = null,
+    val name: LocalizedNameDto? = null,
+    val position: String? = null,
+    val goals: Int? = null,
+    val assists: Int? = null,
+    val points: Int? = null,
+    val plusMinus: Int? = null,
+    val sog: Int? = null,
+    val pim: Int? = null,
+    /** "19:36". A skater always has some, so no fallback is needed here. */
+    val toi: String? = null,
+    /**
+     * A fraction 0..1, not a percentage, and absent for skaters who never took a draw. The payload also sends 0.0 for
+     * some players, which is a real "lost every draw they took" - kept as-is, because null and 0 mean different things.
+     */
+    val faceoffWinningPctg: Double? = null,
 )
 
 @Serializable
