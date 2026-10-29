@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -79,7 +80,7 @@ import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.ui.detail.GameDetailScreen
 import net.montycasa.roux.ui.detail.GameDetailViewModel
 import net.montycasa.roux.ui.drawer.BottomLeaguesSheet
-import net.montycasa.roux.ui.drawer.LeaguesGrabber
+import net.montycasa.roux.ui.drawer.LeagueCarousel
 import net.montycasa.roux.ui.drawer.LeaguesPanel
 import net.montycasa.roux.ui.drawer.LeaguesSheetState
 import net.montycasa.roux.ui.drawer.rememberLeaguesSheetSettler
@@ -218,14 +219,24 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
                                 }
                             },
                     ) {
-                        LeaguesGrabber(
-                            Modifier.clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = openLeagues,
-                            ),
+                        // The dial: logos only, looping, and it is also the sheet's handle. It sits below the tabs so
+                        // the thumb finds it without reaching, and the bar keeps its own shape while the menu opens.
+                        LeagueCarousel(
+                            order = drawerUi.leagueOrder,
+                            selectedId = drawerUi.selectedLeagueId,
+                            onSelect = { id ->
+                                scores.selectLeague(id)
+                                if (currentRoute != HOME_ROUTE) {
+                                    navController.popBackStack(HOME_ROUTE, inclusive = false)
+                                }
+                            },
+                            onOpenMenu = openLeagues,
                         )
-                        NavigationBar {
+                        NavigationBar(
+                            // A stock NavigationBar sits on Material's tonal grey, which is the one cool surface the
+                            // warm palette does not have. The bar and the dial below it are one piece.
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        ) {
                             // R5 keeps primary controls 16 dp clear of the screen edges, where the back gesture
                             // lives. A stock NavigationBar puts its outer items flush to the edges, so the bar's
                             // own background stays full-bleed and the items are pushed inside it by spacers -

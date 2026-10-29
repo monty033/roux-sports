@@ -69,38 +69,6 @@ private val muted = Color(0xFF565B64)
 private val orange = Color(0xFFFF4B12)
 private val rule = Color(0xFF1B1D22)
 
-/** Height of the grabber strip that sits between the page and the bar. */
-val GRABBER_HEIGHT = 18.dp
-
-/** The grabber's pill: a handle that says "this surface moves" without a label. */
-private val GRABBER_PILL = 36.dp
-
-/**
- * The strip above the bottom bar that the sheet is pulled up from.
- *
- * It is drawn by the shell rather than by the sheet, because it has to exist while the sheet is shut - it is the only
- * thing on a parked screen that says the menu is there at all. It never moves: the sheet rises past it.
- */
-@Composable
-fun LeaguesGrabber(
-    modifier: Modifier = Modifier,
-    colour: Color = Color(0xFFC4C4BB),
-) {
-    Box(
-        modifier
-            .fillMaxWidth()
-            .height(GRABBER_HEIGHT)
-            .testTag("leagues.grabber"),
-        contentAlignment = Alignment.Center,
-    ) {
-        Box(
-            Modifier
-                .size(width = GRABBER_PILL, height = 4.dp)
-                .background(colour, RoundedCornerShape(2.dp)),
-        )
-    }
-}
-
 /**
  * The menu itself: the same rows the drawer had, without the container.
  *
