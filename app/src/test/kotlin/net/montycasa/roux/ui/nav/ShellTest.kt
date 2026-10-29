@@ -290,9 +290,9 @@ class ShellTest {
 
         val sheet = sheetBounds()
         val window = rule.onRoot().fetchSemanticsNode().boundsInRoot
-        // A tap and a pull land in the same place: open is open.
+        // A tap and a pull land in the same place: open is open, and it covers the bar rather than resting on it.
         assertTrue("sheet should be open", sheet.height > 0f)
-        assertEquals(barBounds().top, sheet.bottom, 1f)
+        assertEquals(window.bottom, sheet.bottom, 1f)
         assertTrue("a tap should open the whole menu", sheet.height > window.height * 0.4f)
         assertTrue("but never the whole screen", sheet.height < window.height * 0.7f)
     }
@@ -511,11 +511,13 @@ class ShellTest {
         pullSheetOpen()
 
         val pageAfter = rule.onNodeWithTag(PAGER_TAG, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        // No sideways push any more: the sheet comes up over a page that stays exactly where it was, and it stops at
-        // the bar's edge instead of covering it.
+        // No sideways push any more: the sheet comes up over a page that stays exactly where it was, and it runs to the
+        // bottom of the window, covering the tabs and the dial rather than stopping on top of them.
         assertEquals(pageBefore.left, pageAfter.left, 1f)
         assertEquals(pageBefore.top, pageAfter.top, 1f)
-        assertEquals(barBounds().top, sheetBounds().bottom, 1f)
+        val window = rule.onRoot().fetchSemanticsNode().boundsInRoot
+        assertEquals(window.bottom, sheetBounds().bottom, 1f)
+        assertTrue("the sheet must cover the bar", sheetBounds().top < barBounds().top)
     }
 
     @Test

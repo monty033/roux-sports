@@ -17,11 +17,14 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -53,8 +56,11 @@ import kotlinx.coroutines.launch
 import net.montycasa.roux.ui.scores.MY_TEAMS_LEAGUE
 import kotlin.math.abs
 
-/** The strip's height. One number, so the sheet's offset and the page's inset move together when it changes. */
+/** The strip's height. One number: the bar's height and the page's inset both follow it. */
 val CAROUSEL_HEIGHT = 70.dp
+
+/** Air between the logos and the bottom of the screen, on top of the system gesture inset. */
+private val BOTTOM_BUFFER = 12.dp
 
 private val SLOT = 52.dp
 private val LOGO = 40.dp
@@ -95,9 +101,13 @@ fun LeagueCarousel(
     BoxWithConstraints(
         modifier
             .fillMaxWidth()
-            .height(CAROUSEL_HEIGHT)
             .background(surface)
-            .testTag("leagues.carousel"),
+            .testTag("leagues.carousel")
+            // The dial owns the bottom of the window now, so it carries the system inset itself and then a little air:
+            // logos pressed against the gesture bar read as a mistake rather than as a footer.
+            .windowInsetsPadding(WindowInsets.navigationBars)
+            .padding(bottom = BOTTOM_BUFFER)
+            .height(CAROUSEL_HEIGHT),
     ) {
         val edge = (maxWidth - SLOT) / 2
 

@@ -83,7 +83,6 @@ class LeagueDrawerTest {
     }
 
     /** The bar's height in the harness: the sheet is laid out above it and never over it. */
-    private val barHeightPx = 80
 
     private fun launch(
         dark: Boolean = false,
@@ -134,7 +133,6 @@ class LeagueDrawerTest {
                     Box(Modifier.fillMaxSize().background(if (dark) Color(0xFF08090B) else Color(0xFFF2F2EF))) {
                         BottomLeaguesSheet(
                             state = sheet,
-                            barHeightPx = barHeightPx,
                             onDismissRequest = { closeSheet() },
                         ) {
                             LeaguesPanel(
@@ -215,7 +213,7 @@ class LeagueDrawerTest {
                 .fetchSemanticsNode()
                 .size.height
                 .toFloat()
-        assertTrue(sheet.capPx < (rootHeightPx - barHeightPx) * 0.6f)
+        assertTrue(sheet.capPx < rootHeightPx * 0.6f)
         val sheetTop = rule.onNodeWithTag("leagues.sheet").getUnclippedBoundsInRoot().top
         assertTrue("sheet top was ${sheetTop.value}", sheetTop.value > 300f)
     }

@@ -166,7 +166,6 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
     val settle = rememberLeaguesSheetSettler(sheetState)
     // The bar's own height, measured: the sheet stops above it instead of covering it, and the strip of bar that
     // would otherwise be left showing is the reason the height is measured rather than assumed.
-    var bottomBarPx by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
     var calendarOpen by rememberSaveable { mutableStateOf(false) }
     // Editing is a mode of the panel, not of the app: however the sheet closes, it reopens read-only.
@@ -206,7 +205,6 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
                     Column(
                         Modifier
                             .testTag("nav.bar")
-                            .onGloballyPositioned { bottomBarPx = it.size.height }
                             .pointerInput(sheetState) {
                                 detectVerticalDragGestures(
                                     onDragStart = { tracker.resetTracking() },
@@ -224,6 +222,8 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
                             // A stock NavigationBar sits on Material's tonal grey, which is the one cool surface the
                             // warm palette does not have. The bar and the dial below it are one piece.
                             containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            // The dial below owns the window's bottom inset; the tabs would otherwise add it twice.
+                            windowInsets = WindowInsets(0, 0, 0, 0),
                         ) {
                             // R5 keeps primary controls 16 dp clear of the screen edges, where the back gesture
                             // lives. A stock NavigationBar puts its outer items flush to the edges, so the bar's
@@ -336,7 +336,6 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
         }
         BottomLeaguesSheet(
             state = sheetState,
-            barHeightPx = bottomBarPx,
             onDismissRequest = closeLeagues,
         ) {
             LeaguesPanel(
