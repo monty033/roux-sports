@@ -28,6 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -219,19 +220,6 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
                                 }
                             },
                     ) {
-                        // The dial: logos only, looping, and it is also the sheet's handle. It sits below the tabs so
-                        // the thumb finds it without reaching, and the bar keeps its own shape while the menu opens.
-                        LeagueCarousel(
-                            order = drawerUi.leagueOrder,
-                            selectedId = drawerUi.selectedLeagueId,
-                            onSelect = { id ->
-                                scores.selectLeague(id)
-                                if (currentRoute != HOME_ROUTE) {
-                                    navController.popBackStack(HOME_ROUTE, inclusive = false)
-                                }
-                            },
-                            onOpenMenu = openLeagues,
-                        )
                         NavigationBar(
                             // A stock NavigationBar sits on Material's tonal grey, which is the one cool surface the
                             // warm palette does not have. The bar and the dial below it are one piece.
@@ -247,6 +235,12 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
                                 NavigationBarItem(
                                     // Primary navigation is the most-used control on every screen, so it is
                                     // tagged frequent: R2 holds it to the thumb-zone ceiling, not the looser one.
+                                    colors =
+                                        NavigationBarItemDefaults.colors(
+                                            // The default selected pill is Material's secondary container, the one
+                                            // lavender surface in a warm palette: a wash of the app's own orange.
+                                            indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                        ),
                                     modifier = Modifier.primaryControl(destination.tag, frequent = true),
                                     selected = currentRoute == HOME_ROUTE && pagerState.currentPage == index,
                                     onClick = {
@@ -267,6 +261,19 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
 
                             Spacer(Modifier.width(Reach.EDGE_INSET_DP.dp))
                         }
+                        // The dial: logos only, looping, and it is also the sheet's handle. It sits below the tabs so
+                        // the thumb finds it without reaching, and the bar keeps its own shape while the menu opens.
+                        LeagueCarousel(
+                            order = drawerUi.leagueOrder,
+                            selectedId = drawerUi.selectedLeagueId,
+                            onSelect = { id ->
+                                scores.selectLeague(id)
+                                if (currentRoute != HOME_ROUTE) {
+                                    navController.popBackStack(HOME_ROUTE, inclusive = false)
+                                }
+                            },
+                            onOpenMenu = openLeagues,
+                        )
                     }
                 },
             ) { innerPadding ->

@@ -114,11 +114,17 @@ fun BottomLeaguesSheet(
                             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                             var claimed = false
                             var lastY = down.position.y
+                            // The flick is part of the gesture: without the release speed a quick downward swipe that
+                            // did not travel half the sheet snapped straight back, which reads as a gesture that
+                            // does not work.
+                            val tracker = VelocityTracker()
+                            tracker.addPosition(down.uptimeMillis, down.position)
                             while (true) {
                                 val event = awaitPointerEvent(PointerEventPass.Initial)
                                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
                                 val dy = change.position.y - lastY
                                 lastY = change.position.y
+                                tracker.addPosition(change.uptimeMillis, change.position)
                                 if (!claimed) {
                                     val travelled = change.position.y - down.position.y
                                     if (travelled > viewConfiguration.touchSlop && scroll.value == 0) {
@@ -133,7 +139,8 @@ fun BottomLeaguesSheet(
                                 }
                                 if (!change.pressed) break
                             }
-                            if (claimed) settle(0f)
+                            // Downward travel is positive on screen, and the settler reads downward as negative.
+                            if (claimed) settle(-tracker.calculateVelocity().y)
                         }
                     }.testTag("leagues.sheet"),
             ) {

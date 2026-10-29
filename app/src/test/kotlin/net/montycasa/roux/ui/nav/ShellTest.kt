@@ -42,6 +42,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import kotlin.math.abs
 
 /**
  * S3.4: the shell has three destinations, it starts on Scores, and the bar survives the reach audit at
@@ -294,6 +295,35 @@ class ShellTest {
         assertEquals(barBounds().top, sheet.bottom, 1f)
         assertTrue("a tap should open the whole menu", sheet.height > window.height * 0.4f)
         assertTrue("but never the whole screen", sheet.height < window.height * 0.7f)
+    }
+
+    @Test
+    fun theCarouselSitsBelowTheTabs() {
+        launchShell(leagueMode = true)
+        val carousel = rule.onNodeWithTag("leagues.carousel").getUnclippedBoundsInRoot()
+        val window = rule.onRoot().fetchSemanticsNode().boundsInRoot
+        // Under the destinations, above nothing: the very bottom of the window.
+        val tabs = rule.onNodeWithText("Scores").getUnclippedBoundsInRoot()
+        assertTrue("the dial must sit below the tabs, not above them", carousel.top >= tabs.bottom)
+        val carouselBottomPx = with(rule.density) { carousel.bottom.toPx() }
+        assertTrue("the dial must reach the bottom of the window", abs(window.bottom - carouselBottomPx) < 1f)
+    }
+
+    @Test
+    fun aQuickFlickDownClosesTheSheetEvenThoughItBarelyTravels() {
+        launchShell(leagueMode = true)
+        pullSheetOpen()
+        val before = rule.onNodeWithTag("leagues.sheet").getUnclippedBoundsInRoot()
+        assertTrue("the menu should be open first", (before.bottom - before.top).value > 100f)
+
+        // A short, fast push downward: it travels well under half the sheet's height, so only the release speed can
+        // carry it closed. Without that the menu snapped back and read as a gesture that does not work.
+        rule.onNodeWithTag("leagues.sheet").performTouchInput {
+            swipeDown(startY = centerY, endY = centerY + 120f, durationMillis = 60)
+        }
+        rule.waitForIdle()
+
+        rule.onNodeWithTag("leagues.sheet").assertDoesNotExist()
     }
 
     @Test
