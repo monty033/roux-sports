@@ -1,5 +1,6 @@
 package net.montycasa.roux
 
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasText
@@ -26,7 +27,9 @@ class MainActivitySmokeTest {
     @Test
     fun launchesTheShellOnScores() {
         composeRule.onNode(hasText("Scores") and isSelectable()).assertIsDisplayed().assertIsSelected()
-        composeRule.onNode(hasText("Standings") and isSelectable()).assertIsDisplayed()
         composeRule.onNode(hasText("Teams") and isSelectable()).assertIsDisplayed()
+        // The stored default is My Teams, a slate that spans leagues. There is no table to read there, so
+        // Standings is not on the bar until a league is chosen - that is the shipped first screen.
+        composeRule.onAllNodes(hasText("Standings") and isSelectable()).assertCountEquals(0)
     }
 }

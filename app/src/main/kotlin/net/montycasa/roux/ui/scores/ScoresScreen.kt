@@ -60,6 +60,7 @@ fun ScoresScreen(
     modifier: Modifier = Modifier,
     onOpenLeagues: () -> Unit = {},
     onOpenCalendar: (() -> Unit)? = null,
+    showHeader: Boolean = true,
 ) {
     val locale = LocalConfiguration.current.locales[0]
     val formatter =
@@ -81,7 +82,7 @@ fun ScoresScreen(
     var calendarOpen by rememberSaveable { mutableStateOf(false) }
     Box(modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().then(if (calendarOpen) Modifier.clearAndSetSemantics { } else Modifier)) {
-            ScoresHeader(state.liveCount, onOpenLeagues, Modifier.fillMaxWidth())
+            if (showHeader) ScoresHeader(state.liveCount, onOpenLeagues, Modifier.fillMaxWidth())
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Reach.MIN_TARGET_GAP_DP.dp)) {
                 PullToRefreshBox(
                     isRefreshing = state.isRefreshing,

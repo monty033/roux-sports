@@ -198,8 +198,9 @@ class FavoritesPersistenceTest {
         println("Teams in RouxNavHost at 411x923: $visible fully visible rows (list viewport: $viewport)")
         // A bound, not an exact count: the contract is capacity ("a picker you can scan"), and pinning the
         // exact number would fail on a harmless change in font metrics or row spacing as readily as on a
-        // regression. Nine is the measured floor inside the real shell at this size.
-        assertTrue("only $visible fully visible teams in RouxNavHost at 411x923, expected at least 9", visible >= 9)
+        // regression. Seven is the measured floor inside the real shell at this size: the grabber strip above the
+        // bar costs the eighth row, and that strip is the only thing on a parked screen that says the menu exists.
+        assertTrue("only $visible fully visible teams in RouxNavHost at 411x923, expected at least 7", visible >= 7)
     }
 
     private fun launchShell() {
