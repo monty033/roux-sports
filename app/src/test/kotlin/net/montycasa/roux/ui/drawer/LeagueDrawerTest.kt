@@ -122,7 +122,7 @@ class LeagueDrawerTest {
                         scope.launch { animate(sheet.reveal, 0f, animationSpec = tween(0)) { value, _ -> sheet.set(value) } }
                     }
                     openSheet = {
-                        scope.launch { animate(sheet.reveal, sheet.peekPx, animationSpec = tween(0)) { value, _ -> sheet.set(value) } }
+                        scope.launch { animate(sheet.reveal, sheet.capPx, animationSpec = tween(0)) { value, _ -> sheet.set(value) } }
                     }
                     openToCap = {
                         scope.launch { animate(sheet.reveal, sheet.capPx, animationSpec = tween(0)) { value, _ -> sheet.set(value) } }
@@ -192,11 +192,23 @@ class LeagueDrawerTest {
     }
 
     @Test
-    fun theSheetStopsAtThePeekAndIsNeverFullScreen() {
-        launch(atCap = false)
-        // A tap or a short pull lands on the peek; the cap is a deliberate fraction of the room above the bar, so the
-        // menu never becomes a second screen the reader has to escape from.
-        assertEquals(sheet.peekPx, sheet.reveal, 1f)
+    fun theSheetIsOutOrParkedAndNothingInBetween() {
+        launch()
+        // It rests at the cap, not at a fraction of it: there is no half-open menu to get stuck in.
+        assertEquals(sheet.capPx, sheet.reveal, 1f)
+        assertEquals(listOf(0f, sheet.capPx), sheet.anchors())
+        // A little travel and a release fall back to parked; past halfway it opens.
+        sheet.set(sheet.capPx * 0.3f)
+        assertEquals(0f, sheet.target(0f), 0.5f)
+        sheet.set(sheet.capPx * 0.7f)
+        assertEquals(sheet.capPx, sheet.target(0f), 0.5f)
+        sheet.set(sheet.capPx * 0.5f)
+        assertTrue(sheet.target(0f) == 0f || sheet.target(0f) == sheet.capPx)
+    }
+
+    @Test
+    fun theSheetStopsBelowTheTopOfTheWindow() {
+        launch()
         val rootHeightPx =
             rule
                 .onRoot()
@@ -204,7 +216,6 @@ class LeagueDrawerTest {
                 .size.height
                 .toFloat()
         assertTrue(sheet.capPx < (rootHeightPx - barHeightPx) * 0.6f)
-        // The sheet's top edge is below the top of the window by a wide margin.
         val sheetTop = rule.onNodeWithTag("leagues.sheet").getUnclippedBoundsInRoot().top
         assertTrue("sheet top was ${sheetTop.value}", sheetTop.value > 300f)
     }
@@ -481,11 +492,6 @@ class LeagueDrawerTest {
         launch(dark = true)
         rule.onNodeWithContentDescription("Edit leagues").performClick()
         rule.onRoot().captureRoboImage("src/test/screenshots/drawer/sheet-edit-dark.png")
-    }
-
-    @Test fun sheetPeekLight() {
-        launch(atCap = false)
-        rule.onRoot().captureRoboImage("src/test/screenshots/drawer/sheet-peek-light.png")
     }
 }
 

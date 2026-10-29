@@ -172,7 +172,7 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
     LaunchedEffect(sheetState.isOpen) { if (!sheetState.isOpen) editing = false }
     val openLeagues: () -> Unit = {
         scope.launch {
-            val target = if (sheetState.peekPx > 0f) sheetState.peekPx else sheetState.capPx
+            val target = sheetState.capPx
             animate(sheetState.reveal, target, animationSpec = tween(durationMillis = 220)) { value, _ ->
                 sheetState.set(value)
             }

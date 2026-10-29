@@ -20,6 +20,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.unit.Density
@@ -281,22 +282,44 @@ class ShellTest {
     }
 
     @Test
-    fun tappingTheGrabberOpensTheSheetAtThePeek() {
+    fun tappingTheGrabberOpensTheSheetFully() {
         launchShell(leagueMode = true)
         rule.onNodeWithTag("leagues.grabber").performClick()
         rule.waitForIdle()
 
         val sheet = sheetBounds()
-        // A tap is a short pull: the sheet opens above the bar and leaves most of the page in view.
+        val window = rule.onRoot().fetchSemanticsNode().boundsInRoot
+        // A tap and a pull land in the same place: open is open.
         assertTrue("sheet should be open", sheet.height > 0f)
         assertEquals(barBounds().top, sheet.bottom, 1f)
-        assertTrue(
-            "a tap is not a full pull",
-            sheet.height < rule
-                .onRoot()
-                .fetchSemanticsNode()
-                .size.height * 0.4f,
-        )
+        assertTrue("a tap should open the whole menu", sheet.height > window.height * 0.4f)
+        assertTrue("but never the whole screen", sheet.height < window.height * 0.7f)
+    }
+
+    @Test
+    fun swipingDownOnTheSheetClosesIt() {
+        launchShell(leagueMode = true)
+        pullSheetOpen()
+        rule.onNodeWithTag("leagues.sheet").assertExists()
+
+        // From the body, not the strip at its top edge: a downward drag takes the menu away.
+        rule.onNodeWithTag("leagues.sheet").performTouchInput { swipeDown() }
+        rule.waitForIdle()
+
+        rule.onNodeWithTag("leagues.sheet").assertDoesNotExist()
+    }
+
+    @Test
+    fun aShortPullFallsBackToParkedRatherThanRestingHalfway() {
+        launchShell(leagueMode = true)
+        rule.onNodeWithTag("nav.bar").performTouchInput {
+            down(center)
+            moveBy(Offset(0f, -160f))
+            up()
+        }
+        rule.waitForIdle()
+
+        rule.onNodeWithTag("leagues.sheet").assertDoesNotExist()
     }
 
     @Test

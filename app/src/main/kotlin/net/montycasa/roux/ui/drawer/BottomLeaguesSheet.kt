@@ -3,6 +3,8 @@
 package net.montycasa.roux.ui.drawer
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
@@ -22,8 +24,11 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -64,6 +69,7 @@ fun BottomLeaguesSheet(
 ) {
     val density = LocalDensity.current
     val settle = rememberLeaguesSheetSettler(state)
+    val scroll = rememberScrollState()
 
     BoxWithConstraints(modifier.fillMaxSize()) {
         val containerPx = constraints.maxHeight.toFloat()
@@ -71,8 +77,7 @@ fun BottomLeaguesSheet(
         // Measured against the room above the bar, so a shorter window shortens the sheet instead of pushing the bar
         // off the screen or asking the reader to reach over it.
         val capPx = ((containerPx - barPx) * SHEET_MAX_FRACTION).coerceAtLeast(0f)
-        val peekPx = with(density) { SHEET_PEEK.toPx() }
-        SideEffect { state.measure(capPx, peekPx) }
+        SideEffect { state.measure(capPx) }
 
         val reveal = state.reveal
         val progress = state.progress
@@ -101,7 +106,36 @@ fun BottomLeaguesSheet(
                     .fillMaxWidth()
                     .height(with(density) { reveal.toDp() })
                     .background(SHEET_PANEL, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                    .testTag("leagues.sheet"),
+                    .pointerInput(state, scroll) {
+                        // Pulling the sheet itself down closes it - the gesture does not need the 24 dp strip at its
+                        // edge to start on. Handled in the Initial pass so the list cannot swallow the drag before the
+                        // sheet sees it; the list keeps first claim whenever it has somewhere to scroll.
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                            var claimed = false
+                            var lastY = down.position.y
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                val dy = change.position.y - lastY
+                                lastY = change.position.y
+                                if (!claimed) {
+                                    val travelled = change.position.y - down.position.y
+                                    if (travelled > viewConfiguration.touchSlop && scroll.value == 0) {
+                                        claimed = true
+                                    } else if (travelled < -viewConfiguration.touchSlop) {
+                                        break
+                                    }
+                                }
+                                if (claimed && dy != 0f) {
+                                    state.drag(-dy)
+                                    change.consume()
+                                }
+                                if (!change.pressed) break
+                            }
+                            if (claimed) settle(0f)
+                        }
+                    }.testTag("leagues.sheet"),
             ) {
                 SheetHandle(
                     height = SHEET_HANDLE_HEIGHT,
@@ -112,7 +146,7 @@ fun BottomLeaguesSheet(
                     Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .verticalScroll(rememberScrollState()),
+                        .verticalScroll(scroll),
                 ) {
                     content()
                 }

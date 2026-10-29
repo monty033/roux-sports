@@ -8,13 +8,9 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import kotlin.math.abs
-
-/** How far the sheet rises on a short pull: every league plus the top of the management block. */
-val SHEET_PEEK = 240.dp
 
 /**
  * The tallest the sheet may be, as a fraction of the space above the bar.
@@ -33,20 +29,14 @@ private const val FLING_PX_PER_SECOND = 700f
  *
  * The sheet used to be a boolean: the panel animated itself and the drawer only had to say open or shut. A sheet that
  * follows a finger needs the position itself, so the position is the state and the anchors are the only places it may
- * come to rest: parked, the peek, and the cap.
+ * come to rest: parked or out.
  */
-class LeaguesSheetState(
-    /** The short-pull anchor, in pixels, supplied once the density is known. */
-    peekPx: Float = 0f,
-) {
+class LeaguesSheetState {
     var reveal by mutableFloatStateOf(0f)
         private set
 
     /** The cap in pixels, measured from the window above the bar. Zero until the host has been laid out. */
     var capPx by mutableFloatStateOf(0f)
-        private set
-
-    var peekPx by mutableFloatStateOf(peekPx)
         private set
 
     val isOpen: Boolean get() = reveal > 0.5f
@@ -55,12 +45,8 @@ class LeaguesSheetState(
     val progress: Float get() = if (capPx <= 0f) 0f else (reveal / capPx).coerceIn(0f, 1f)
 
     /** Records the window's real size. The sheet is clamped rather than allowed to outgrow a shorter window. */
-    fun measure(
-        cap: Float,
-        peek: Float,
-    ) {
+    fun measure(cap: Float) {
         capPx = cap.coerceAtLeast(0f)
-        peekPx = peek.coerceIn(0f, capPx)
         if (reveal > capPx) reveal = capPx
     }
 
@@ -73,21 +59,22 @@ class LeaguesSheetState(
         reveal = value.coerceIn(0f, capPx)
     }
 
-    /** Parked, the peek, and the cap. Duplicates collapse on a window too short to separate them. */
-    fun anchors(): List<Float> = listOf(0f, peekPx, capPx).distinct().sorted()
+    /**
+     * There is no half-open sheet. It is out or it is parked - a third resting place meant a reader could leave the
+     * menu showing two of its four leagues and have to work out whether that was a state they chose.
+     */
+    fun anchors(): List<Float> = listOf(0f, capPx).distinct().sorted()
 
     /**
-     * Where a release should land. A flick goes the way it was thrown; anything slower settles to the nearest anchor,
-     * so a half-hearted pull does not jump the sheet past what the finger asked for.
+     * Where a release should land. A flick goes the way it was thrown; anything slower settles by which half of the
+     * travel the edge is in.
      */
     fun target(velocity: Float): Float {
-        val anchors = anchors()
         val current = reveal
-        if (abs(velocity) > FLING_PX_PER_SECOND) {
-            val ahead = if (velocity > 0f) anchors.filter { it > current + 1f } else anchors.filter { it < current - 1f }
-            if (ahead.isNotEmpty()) return if (velocity > 0f) ahead.min() else ahead.max()
+        return when {
+            abs(velocity) > FLING_PX_PER_SECOND -> if (velocity > 0f) capPx else 0f
+            else -> if (current > capPx / 2f) capPx else 0f
         }
-        return anchors.minBy { abs(it - current) }
     }
 }
 
@@ -115,14 +102,11 @@ fun rememberLeaguesSheetSettler(state: LeaguesSheetState): (Float) -> Unit {
     }
 }
 
-/** Opens to the peek: the short pull a tap stands in for. */
-fun LeaguesSheetState.openToPeek() {
-    set(if (peekPx > 0f) peekPx else capPx)
+/** Fully open: a tap and a pull both land here. */
+fun LeaguesSheetState.open() {
+    set(capPx)
 }
 
 fun LeaguesSheetState.close() {
     set(0f)
 }
-
-/** Kept for call sites that think in dp. */
-internal fun Dp.toPxOrZero(): Float = if (value.isFinite()) value else 0f
