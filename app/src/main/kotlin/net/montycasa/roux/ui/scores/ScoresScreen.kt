@@ -2,6 +2,8 @@
 
 package net.montycasa.roux.ui.scores
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -49,6 +52,8 @@ import net.montycasa.roux.ui.reach.reachTarget
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+
+private const val DAY_SETTLE_MILLIS = 360
 
 /**
  * Renders the selected day's state without owning loading or filtering. Callbacks map to refresh,
@@ -125,15 +130,26 @@ fun ScoresScreen(
                     state = dayPager,
                     // Off, horizontal drags belong to the shell's pager, exactly as before.
                     userScrollEnabled = !NavSwipe.TURNS_PAGES,
+                    // The settle is the part you could not drag: the default spring covers it in a handful of frames,
+                    // which reads as the page being yanked away at the end of the gesture. A tween eases that last
+                    // stretch at the same pace the eye is already following.
+                    flingBehavior =
+                        PagerDefaults.flingBehavior(
+                            state = dayPager,
+                            snapAnimationSpec = tween(durationMillis = DAY_SETTLE_MILLIS, easing = FastOutSlowInEasing),
+                        ),
                     modifier =
                         Modifier
                             .weight(1f)
                             .fillMaxWidth(),
                 ) { page ->
                     val pageDate = pages.getOrNull(page)
+                    // The selected day prefers its own rows but keeps the cached copy until those land: swapping the list
+                    // for a loading state at the instant the page settles is the other half of the end-of-swipe jolt.
                     val pageRows =
                         if (pageDate == state.selectedDate) {
-                            state.rows
+                            // Only while a load is in flight: an empty day is genuinely empty and must say so.
+                            if (state.isRefreshing) state.rows.ifEmpty { state.neighboursByDate[pageDate].orEmpty() } else state.rows
                         } else {
                             state.neighboursByDate[pageDate].orEmpty()
                         }
