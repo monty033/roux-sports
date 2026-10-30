@@ -12,11 +12,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -30,6 +34,7 @@ import kotlinx.datetime.toLocalDateTime
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
+import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.ScoreDay
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.policy.DateStrip
@@ -103,7 +108,7 @@ class ScoresViewModel(
     // dates should cost one prefetch for the day they stopped on, not one per day they passed through.
     private var prefetchJob: Job? = null
 
-    val uiState: StateFlow<ScoresUiState> =
+    private val dayState: StateFlow<ScoresUiState> =
         combine(
             combine(selectedDate, leagueDays(), refreshTrigger) { date, today, trigger ->
                 Request(date, today, trigger)
@@ -140,7 +145,46 @@ class ScoresViewModel(
                         ?.dateIndex
                         .orEmpty(),
             )
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ScoresUiState(selectedDate.value, leagueDay()))
+        }.stateIn(
+            viewModelScope,
+            // No grace of its own: uiState already waits five seconds before it stops, and a second grace here would
+            // stack - the poll would keep running for ten seconds after the last subscriber left.
+            SharingStarted.WhileSubscribed(0),
+            ScoresUiState(selectedDate.value, leagueDay()),
+        )
+
+    /**
+     * The days either side of the selected one, so the screen can show real games for the day being moved towards.
+     *
+     * A transformLatest rather than a collector in init: it runs only while the UI is subscribed, restarts when the
+     * date changes and leaves nothing running in a test that never collects. It warms the neighbours with the same
+     * prefetch the schedule already uses - a fresh copy costs nothing - and then reads only what is on disk, so this
+     * path can never turn into a request of its own.
+     */
+    private val neighbourRows: Flow<Map<String, List<Game>>> =
+        dayState
+            .map { day -> day.dateIndex.map { it.date }.distinct() to day.selectedDate }
+            .distinctUntilChanged()
+            .transformLatest { (dates, selected) ->
+                val at = dates.indexOf(selected)
+                val wanted = listOf(dates.getOrNull(at - 1), dates.getOrNull(at + 1)).filterNotNull()
+                if (wanted.isEmpty()) return@transformLatest
+                val today = leagueDay()
+                val settings = settings().first()
+                emit(
+                    wanted.associateWith { date ->
+                        val games = scores.cachedDay(date, today)?.games.orEmpty()
+                        val filtered = FavoritesOrdering.filter(games, settings.favourites, settings.only)
+                        if (settings.only) filtered.rows else FavoritesOrdering.pin(filtered.rows, settings.favourites)
+                    },
+                )
+            }
+            // Empty first: the selected day must draw immediately, before its neighbours are known.
+            .onStart { emit(emptyMap()) }
+
+    val uiState: StateFlow<ScoresUiState> =
+        combine(dayState, neighbourRows) { day, beside -> day.copy(neighboursByDate = beside) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ScoresUiState(selectedDate.value, leagueDay()))
 
     /** Loads immediately, even when the cadence has stopped. A pull also reaches past a fresh cache. */
     fun refresh() {

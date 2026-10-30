@@ -52,4 +52,17 @@ interface ScoresRepository {
         date: String,
         today: String,
     ): Loadable<ScoreDay> = loadDay(date, today)
+
+    /**
+     * The slate for [date] if a copy is already on disk, and null otherwise. Never makes a request.
+     *
+     * A screen showing the day either side needs content it has not been asked for yet. Reading the cache says
+     * nothing about what the viewer wants, cannot disturb polling and cannot fail loudly, which is exactly the
+     * contract for speculative work. The default answers null so an implementation that does not cache stays
+     * honest rather than pretending to have a copy.
+     */
+    suspend fun cachedDay(
+        date: String,
+        today: String,
+    ): ScoreDay? = null
 }

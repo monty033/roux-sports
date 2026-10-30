@@ -135,6 +135,11 @@ internal class ScoresRepositoryImpl(
             }
         }
 
+    override suspend fun cachedDay(
+        date: String,
+        today: String,
+    ): ScoreDay? = withContext(ioDispatcher) { readCached(date, today)?.day }
+
     override suspend fun prefetchAdjacent(
         date: String,
         today: String,
