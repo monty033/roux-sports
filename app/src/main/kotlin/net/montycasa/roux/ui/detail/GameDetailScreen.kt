@@ -20,7 +20,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -32,6 +35,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -41,6 +45,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -50,6 +55,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import kotlinx.coroutines.launch
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.Game
@@ -85,8 +91,10 @@ fun GameDetailScreen(
     modifier: Modifier = Modifier,
     zone: ZoneId = ZoneId.systemDefault(),
 ) {
-    // 0 is Summary; 1 and 2 are the away and home clubs, in that order.
-    var destination by rememberSaveable { mutableIntStateOf(0) }
+    // 0 is Summary; 1 and 2 are the away and home clubs, in that order. The three are pages, so a swipe moves
+    // between them the same way the pills do.
+    val detailPager = rememberPagerState(initialPage = 0) { 3 }
+    val scope = rememberCoroutineScope()
     val detail = state.detail
     val staleSince = detail.staleSince()
 
@@ -97,40 +105,47 @@ fun GameDetailScreen(
     ) {
         DetailHeader(game = game, onBack = onBack)
 
-        Column(
-            Modifier
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp),
-        ) {
-            GameHero(game = game, zone = zone)
+        HorizontalPager(
+            state = detailPager,
+            modifier = Modifier.weight(1f).testTag("detail.pager"),
+        ) { page ->
+            // Each page keeps its own scroll offset, and carries its own copy of the hero so the top of the page
+            // reads the same whichever club you land on.
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp),
+            ) {
+                GameHero(game = game, zone = zone)
 
-            when (destination) {
-                0 -> {
-                    SummaryDestination(
-                        game = game,
-                        detail = detail,
-                        staleSince = staleSince,
-                        onRetry = onRetry,
-                    )
+                when (page) {
+                    0 -> {
+                        SummaryDestination(
+                            game = game,
+                            detail = detail,
+                            staleSince = staleSince,
+                            onRetry = onRetry,
+                        )
+                    }
+
+                    else -> {
+                        TeamDestination(
+                            detail = detail,
+                            team = if (page == 1) game.away else game.home,
+                        )
+                    }
                 }
 
-                else -> {
-                    TeamDestination(
-                        detail = detail,
-                        team = if (destination == 1) game.away else game.home,
-                    )
-                }
+                Spacer(Modifier.height(16.dp))
             }
-
-            Spacer(Modifier.height(16.dp))
         }
 
         DetailTabStrip(
             away = game.away,
             home = game.home,
-            selected = destination,
-            onSelect = { destination = it },
+            selected = detailPager.currentPage,
+            onSelect = { index -> scope.launch { detailPager.animateScrollToPage(index) } },
         )
     }
 }
@@ -1096,7 +1111,7 @@ private fun DetailTabStrip(
                         } else {
                             Modifier
                         },
-                    ).clickable { onSelect(index) }
+                    ).selectable(selected = isSelected, role = Role.Tab, onClick = { onSelect(index) })
                     .testTag("detail.tab.$tag")
                     .reachTarget("detail.tab.$tag"),
                 contentAlignment = Alignment.Center,

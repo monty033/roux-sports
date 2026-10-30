@@ -1,15 +1,14 @@
 package net.montycasa.roux.ui.drawer
 
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.DrawerState
-import androidx.compose.material3.DrawerValue
-import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -17,9 +16,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertHasNoClickAction
-import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertHeightIsEqualTo
-import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertWidthIsEqualTo
@@ -74,9 +71,10 @@ class LeagueDrawerTest {
             ScoresUiState("2026-10-27", today = "2026-10-27", favouritesOnly = false, favouriteCount = 6, loadedDate = "2026-10-27"),
         )
 
-    private lateinit var drawer: DrawerState
-    private var closeDrawer: () -> Unit = {}
-    private var openDrawer: () -> Unit = {}
+    private lateinit var sheet: LeaguesSheetState
+    private var closeSheet: () -> Unit = {}
+    private var openSheet: () -> Unit = {}
+    private var openToCap: () -> Unit = {}
     private val stores = mutableListOf<ViewModelStore>()
     private val navigations = mutableListOf<String>()
 
@@ -84,12 +82,14 @@ class LeagueDrawerTest {
         stores.forEach { it.clear() }
     }
 
+    /** The bar's height in the harness: the sheet is laid out above it and never over it. */
+
     private fun launch(
         dark: Boolean = false,
         fontScale: Float = 1f,
         catalog: List<DrawerLeague> = drawerCatalog,
         preferences: DrawerPreferences? = null,
-        insets: WindowInsets = WindowInsets(0, 0, 0, 0),
+        atCap: Boolean = true,
     ) {
         val vm =
             preferences?.let {
@@ -115,78 +115,122 @@ class LeagueDrawerTest {
             RouxTheme(dark) {
                 val base = LocalDensity.current
                 CompositionLocalProvider(LocalDensity provides Density(base.density, fontScale)) {
-                    drawer = rememberDrawerState(DrawerValue.Open)
+                    sheet = remember { LeaguesSheetState() }
                     val scope = rememberCoroutineScope()
-                    closeDrawer = { scope.launch { drawer.close() } }
-                    openDrawer = { scope.launch { drawer.open() } }
+                    closeSheet = {
+                        scope.launch { animate(sheet.reveal, 0f, animationSpec = tween(0)) { value, _ -> sheet.set(value) } }
+                    }
+                    openSheet = {
+                        scope.launch { animate(sheet.reveal, sheet.capPx, animationSpec = tween(0)) { value, _ -> sheet.set(value) } }
+                    }
+                    openToCap = {
+                        scope.launch { animate(sheet.reveal, sheet.capPx, animationSpec = tween(0)) { value, _ -> sheet.set(value) } }
+                    }
+                    androidx.compose.runtime.LaunchedEffect(sheet.isOpen) {
+                        if (!sheet.isOpen) editing.value = false
+                    }
                     val shown = vm?.uiState?.collectAsState()?.value ?: state.value
-                    LeagueNavigationDrawer(
-                        drawerState = drawer,
-                        drawer =
-                            DrawerUi(
-                                favouriteCount = shown.favouriteCount,
-                                favouritesOnly = shown.favouritesOnly,
-                                leagueOrder = shown.leagueOrder,
-                                selectedLeagueId = shown.selectedLeagueId,
-                            ),
-                        seasonDate = shown.loadedDate,
-                        onFavouritesOnly = { only -> state.value = state.value.copy(favouritesOnly = only) },
-                        onLeagueOrder = { order ->
-                            if (vm != null) vm.setLeagueOrder(order) else state.value = state.value.copy(leagueOrder = order)
-                        },
-                        catalog = catalog,
-                        onLeagueSelected = { id ->
-                            navigations += id
-                            state.value = state.value.copy(favouritesOnly = false, selectedLeagueId = id)
-                        },
-                        contentInsets = insets,
-                    ) {
-                        Box(Modifier.fillMaxSize().background(if (dark) Color(0xFF08090B) else Color(0xFFF2F2EF)))
+                    Box(Modifier.fillMaxSize().background(if (dark) Color(0xFF08090B) else Color(0xFFF2F2EF))) {
+                        BottomLeaguesSheet(
+                            state = sheet,
+                            onDismissRequest = { closeSheet() },
+                        ) {
+                            LeaguesPanel(
+                                drawer =
+                                    DrawerUi(
+                                        favouriteCount = shown.favouriteCount,
+                                        favouritesOnly = shown.favouritesOnly,
+                                        leagueOrder = shown.leagueOrder,
+                                        selectedLeagueId = shown.selectedLeagueId,
+                                    ),
+                                seasonDate = shown.loadedDate,
+                                editing = editing.value,
+                                onEditing = { editing.value = it },
+                                onLeagueOrder = { order ->
+                                    if (vm != null) vm.setLeagueOrder(order) else state.value = state.value.copy(leagueOrder = order)
+                                },
+                                catalog = catalog,
+                                onLeagueSelected = { id ->
+                                    navigations += id
+                                    state.value = state.value.copy(favouritesOnly = false, selectedLeagueId = id)
+                                    closeSheet()
+                                },
+                                onFavouritesOnly = { only ->
+                                    state.value = state.value.copy(favouritesOnly = only)
+                                    closeSheet()
+                                },
+                            )
+                        }
                     }
                 }
             }
         }
+        rule.waitForIdle()
+        // The anchors are measured during layout, so the sheet is opened once they exist.
+        rule.runOnIdle { if (atCap) openToCap() else openSheet() }
+        rule.waitForIdle()
+    }
+
+    private val editing = mutableStateOf(false)
+
+    @After fun resetEditing() {
+        editing.value = false
     }
 
     @Test
-    fun theWordmarkClearsTheStatusBarItNowDrawsBehind() {
-        // The app is edge to edge, so the panel paints under the status bar and its content has to step down past it.
-        // Before this, the wordmark sat 20 dp from the very top of the window, which on a device put it inside the
-        // status bar. 47 dp stands in for a typical status bar height.
-        launch(insets = WindowInsets(0.dp, 47.dp, 0.dp, 0.dp))
-
-        val top = rule.onNodeWithTag("leagues.wordmark").getUnclippedBoundsInRoot().top
-        assertEquals(67f, top.value, 0.5f) // 47 dp of status bar plus the panel's own 20 dp
-    }
-
-    @Test
-    fun lightThemeKeepsTheDarkBrandPanelAndMeasuredTargets() {
+    fun thePanelPaintsTheBrandSurfaceAndKeepsMeasuredTargets() {
         launch()
-        rule.onNodeWithTag("leagues.drawer").assertWidthIsEqualTo(240.dp)
-        val pixels = rule.onNodeWithTag("leagues.drawer").captureToImage().toPixelMap()
-        assertEquals(Color(0xFF08090B), pixels[2, 2])
+        rule.onNodeWithTag("leagues.sheet").assertWidthIsEqualTo(411.dp)
+        val pixels = rule.onNodeWithTag("leagues.sheet").captureToImage().toPixelMap()
+        assertEquals(Color(0xFF08090B), pixels[20, 20])
         rule.onNodeWithTag("leagues.myTeams").assertHeightIsEqualTo(56.dp)
         rule.onNodeWithTag("leagues.nhl").assertHeightIsEqualTo(56.dp).assertIsSelected()
-        rule.onNodeWithTag("leagues.wordmark").assertWidthIsEqualTo(108.dp)
-        rule.onNodeWithText("HOCKEY").assertExists()
         rule.onNodeWithText("2026–27").assertExists()
         assertPanelReach()
     }
 
     @Test
+    fun theSheetIsOutOrParkedAndNothingInBetween() {
+        launch()
+        // It rests at the cap, not at a fraction of it: there is no half-open menu to get stuck in.
+        assertEquals(sheet.capPx, sheet.reveal, 1f)
+        assertEquals(listOf(0f, sheet.capPx), sheet.anchors())
+        // A little travel and a release fall back to parked; past halfway it opens.
+        sheet.set(sheet.capPx * 0.3f)
+        assertEquals(0f, sheet.target(0f), 0.5f)
+        sheet.set(sheet.capPx * 0.7f)
+        assertEquals(sheet.capPx, sheet.target(0f), 0.5f)
+        sheet.set(sheet.capPx * 0.5f)
+        assertTrue(sheet.target(0f) == 0f || sheet.target(0f) == sheet.capPx)
+    }
+
+    @Test
+    fun theSheetStopsBelowTheTopOfTheWindow() {
+        launch()
+        val rootHeightPx =
+            rule
+                .onRoot()
+                .fetchSemanticsNode()
+                .size.height
+                .toFloat()
+        assertTrue(sheet.capPx < rootHeightPx * 0.6f)
+        val sheetTop = rule.onNodeWithTag("leagues.sheet").getUnclippedBoundsInRoot().top
+        assertTrue("sheet top was ${sheetTop.value}", sheetTop.value > 300f)
+    }
+
+    @Test
     @Config(qualifiers = "en-rUS-w360dp-h780dp-mdpi")
-    fun drawerTargetsSurviveTheSmallPhoneAtDoubleType() {
+    fun thePanelSurvivesTheSmallPhoneAtDoubleType() {
         launch(fontScale = 2f)
-        rule.onNodeWithTag("leagues.drawer").assertWidthIsEqualTo(240.dp)
         rule.onNodeWithTag("leagues.myTeams").assertHeightIsEqualTo(56.dp)
-        rule.onNodeWithTag("leagues.nhl").assertHeightIsEqualTo(56.dp)
+        rule.onNodeWithTag("leagues.heading").assertHeightIsEqualTo(48.dp)
         assertPanelReach()
     }
 
     private fun assertPanelReach() {
-        // Audit the panel's targets. M3's full-window dismiss scrim extends behind the sheet;
-        // its semantics bounds overlap the panel even though the sheet owns those hit tests.
-        val targets = rule.reachTargets().filter { it.tag.startsWith("leagues.") }
+        // Audit the panel's targets. The sheet itself carries no click action, and the scrim is the dismiss area
+        // rather than a panel target.
+        val targets = rule.reachTargets().filter { it.tag.startsWith("leagues.") && it.tag != "leagues.scrim" }
         assertEquals(listOf("leagues.myTeams", "leagues.edit", "leagues.nhl"), targets.map { it.tag })
         assertTrue(targets.none { it.primary })
         val root = rule.onRoot().fetchSemanticsNode().size
@@ -201,7 +245,7 @@ class LeagueDrawerTest {
     }
 
     @Test
-    fun myTeamsCarriesTheCurrentCountSelectsFavouritesAndCloses() {
+    fun myTeamsCarriesTheCurrentCountSelectsFavouritesAndClosesTheSheet() {
         launch()
         rule.onNodeWithText("6", useUnmergedTree = true).assertExists()
         rule.runOnIdle { state.value = state.value.copy(favouriteCount = 7) }
@@ -209,17 +253,18 @@ class LeagueDrawerTest {
         rule.onNodeWithTag("leagues.myTeams").performClick()
         rule.waitForIdle()
         assertEquals(true, state.value.favouritesOnly)
-        rule.onNodeWithText("My Teams").assertIsNotDisplayed()
+        // Closed means gone, not merely off screen: a parked sheet composes nothing.
+        rule.onNodeWithTag("leagues.sheet").assertDoesNotExist()
     }
 
     @Test
-    fun nhlSelectsAllGamesAndCloses() {
+    fun nhlSelectsAllGamesAndClosesTheSheet() {
         state.value = state.value.copy(favouritesOnly = true)
         launch()
         rule.onNodeWithTag("leagues.nhl").performClick()
         rule.waitForIdle()
         assertEquals(false, state.value.favouritesOnly)
-        rule.onNodeWithText("NHL").assertIsNotDisplayed()
+        rule.onNodeWithTag("leagues.sheet").assertDoesNotExist()
     }
 
     @Test
@@ -252,7 +297,7 @@ class LeagueDrawerTest {
         rule.onNodeWithTag("leagues.nhl").performClick()
         assertEquals(listOf("nhl"), navigations)
         rule.waitForIdle()
-        assertEquals(DrawerValue.Closed, drawer.currentValue)
+        assertEquals(0f, sheet.reveal, 0.5f)
     }
 
     @Test
@@ -269,7 +314,7 @@ class LeagueDrawerTest {
         }
         assertEquals(emptyList<String>(), navigations)
         assertEquals("nhl", state.value.selectedLeagueId)
-        assertEquals(DrawerValue.Open, drawer.currentValue)
+        assertTrue(sheet.isOpen)
         rule.onNodeWithText("DONE").performClick()
         assertHandles(emptyList())
         rule.onNodeWithTag("leagues.mlb").assertIsNotEnabled().assertHasNoClickAction()
@@ -296,9 +341,9 @@ class LeagueDrawerTest {
         handle.performTouchInput { up() }
         assertOrder("nfl", "nhl", "mlb")
         assertEquals(emptyList<String>(), navigations)
-        rule.runOnIdle { closeDrawer() }
+        rule.runOnIdle { closeSheet() }
         rule.waitForIdle()
-        rule.runOnIdle { openDrawer() }
+        rule.runOnIdle { openToCap() }
         rule.waitForIdle()
         assertOrder("nfl", "nhl", "mlb")
         rule.onNodeWithContentDescription("Edit leagues").assertExists()
@@ -347,7 +392,7 @@ class LeagueDrawerTest {
 
     @Test
     fun storedOrderLoadsInTheSavedOrderForEveryLeague() {
-        // Rows follow the saved order rather than being regrouped by data availability: the drawer shows one list,
+        // Rows follow the saved order rather than being regrouped by data availability: the panel shows one list,
         // and a league the user moved to the top stays there whether or not its feed is live yet.
         launch(catalog = twoAvailable, preferences = DrawerPreferences(listOf("mlb", "nfl", "nhl")))
         assertOrder("mlb", "nfl", "nhl")
@@ -357,14 +402,15 @@ class LeagueDrawerTest {
     }
 
     @Test
-    fun closingByScrimResetsEditMode() {
+    fun tappingTheScrimClosesTheSheetAndDiscardsEditMode() {
         launch()
         rule.onNodeWithContentDescription("Edit leagues").performClick()
         rule.onNodeWithText("DONE").assertExists()
-        rule.onRoot().performTouchInput { click(Offset(350f, 300f)) }
+        rule.onNodeWithTag("leagues.scrim").performTouchInput { click(Offset(20f, 20f)) }
         rule.waitForIdle()
-        assertEquals(DrawerValue.Closed, drawer.currentValue)
-        rule.runOnIdle { openDrawer() }
+        assertEquals(0f, sheet.reveal, 0.5f)
+        rule.onNodeWithTag("leagues.sheet").assertDoesNotExist()
+        rule.runOnIdle { openToCap() }
         rule.waitForIdle()
         rule.onNodeWithContentDescription("Edit leagues").assertExists()
         rule.onNodeWithText("DONE").assertDoesNotExist()
@@ -424,26 +470,26 @@ class LeagueDrawerTest {
         rule.onNodeWithText("2026–27").assertExists()
     }
 
-    @Test fun drawerLight() {
+    @Test fun sheetLight() {
         launch()
-        rule.onRoot().captureRoboImage("src/test/screenshots/drawer/drawer-light.png")
+        rule.onRoot().captureRoboImage("src/test/screenshots/drawer/sheet-light.png")
     }
 
-    @Test fun drawerDark() {
+    @Test fun sheetDark() {
         launch(dark = true)
-        rule.onRoot().captureRoboImage("src/test/screenshots/drawer/drawer-dark.png")
+        rule.onRoot().captureRoboImage("src/test/screenshots/drawer/sheet-dark.png")
     }
 
-    @Test fun drawerEditLight() {
+    @Test fun sheetEditLight() {
         launch()
         rule.onNodeWithContentDescription("Edit leagues").performClick()
-        rule.onRoot().captureRoboImage("src/test/screenshots/drawer/drawer-edit-light.png")
+        rule.onRoot().captureRoboImage("src/test/screenshots/drawer/sheet-edit-light.png")
     }
 
-    @Test fun drawerEditDark() {
+    @Test fun sheetEditDark() {
         launch(dark = true)
         rule.onNodeWithContentDescription("Edit leagues").performClick()
-        rule.onRoot().captureRoboImage("src/test/screenshots/drawer/drawer-edit-dark.png")
+        rule.onRoot().captureRoboImage("src/test/screenshots/drawer/sheet-edit-dark.png")
     }
 }
 

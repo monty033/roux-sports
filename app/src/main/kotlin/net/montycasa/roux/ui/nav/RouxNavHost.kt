@@ -6,24 +6,39 @@ package net.montycasa.roux.ui.nav
 
 import android.net.Uri
 import androidx.annotation.StringRes
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.DrawerValue
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -34,7 +49,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
@@ -62,10 +82,15 @@ import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.ui.detail.GameDetailScreen
 import net.montycasa.roux.ui.detail.GameDetailViewModel
-import net.montycasa.roux.ui.drawer.LeagueNavigationDrawer
+import net.montycasa.roux.ui.drawer.BottomLeaguesSheet
+import net.montycasa.roux.ui.drawer.LeaguesPanel
+import net.montycasa.roux.ui.drawer.LeaguesSheetState
+import net.montycasa.roux.ui.drawer.rememberLeaguesSheetSettler
 import net.montycasa.roux.ui.reach.Reach
 import net.montycasa.roux.ui.reach.primaryControl
 import net.montycasa.roux.ui.scores.CalendarMonthSheet
+import net.montycasa.roux.ui.scores.MY_TEAMS_LEAGUE
+import net.montycasa.roux.ui.scores.ScoresHeader
 import net.montycasa.roux.ui.scores.ScoresScreen
 import net.montycasa.roux.ui.scores.ScoresViewModel
 import net.montycasa.roux.ui.standings.StandingsScreen
@@ -108,55 +133,150 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
                     initializer { ScoresViewModel(container.scores, container.preferences, container.clock) }
                 },
         )
-    // Only Scores subscribes: leaving its tab still stops polling after WhileSubscribed's grace.
+    // My Teams is a destination that spans leagues, not a league: there is no table to read there, so Standings
+    // leaves both the bar and the pager while it is selected.
+    val drawerUi = scores.drawerState.collectAsState().value
+    val starMode = drawerUi.selectedLeagueId == MY_TEAMS_LEAGUE
+    // Remembered, not rebuilt per composition: a fresh list on every frame hands the pager a new page count
+    // mid-gesture, and a drag in progress is then cancelled before it can move a page.
+    val pages =
+        remember(starMode) {
+            if (starMode) {
+                listOf(TopLevelDestination.Scores, TopLevelDestination.Teams)
+            } else {
+                TopLevelDestination.entries.toList()
+            }
+        }
+    // The destinations are pages of one surface, so a horizontal swipe moves between them the way the bar does.
+    val pagerState = key(starMode) { rememberPagerState(initialPage = 0) { pages.size } }
+    // A page that no longer exists cannot stay selected: entering My Teams from Standings lands on Scores.
+    LaunchedEffect(pages.size) {
+        if (pagerState.currentPage > pages.lastIndex) pagerState.animateScrollToPage(0)
+    }
+    // Only Scores subscribes: leaving its page still stops polling after WhileSubscribed's grace.
+    val onScoresPage = currentRoute == HOME_ROUTE && pages.getOrNull(pagerState.currentPage) == TopLevelDestination.Scores
     val scoresState =
-        if (currentRoute == null || currentRoute == TopLevelDestination.Scores.route) {
+        if (onScoresPage) {
             scores.uiState.collectAsStateWithLifecycle().value
         } else {
             // Freeze the last Scores state while another tab owns the active collection.
             remember(scores, currentRoute) { scores.uiState.value }
         }
-    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    // The sheet's position is the state: a surface that follows a finger cannot be a boolean.
+    val sheetState = remember { LeaguesSheetState() }
+    val settle = rememberLeaguesSheetSettler(sheetState)
+    // The bar's own height, measured: the sheet stops above it instead of covering it, and the strip of bar that
+    // would otherwise be left showing is the reason the height is measured rather than assumed.
     val scope = rememberCoroutineScope()
     var calendarOpen by rememberSaveable { mutableStateOf(false) }
+    // Editing is a mode of the panel, not of the app: however the sheet closes, it reopens read-only.
+    var editing by remember { mutableStateOf(false) }
+    LaunchedEffect(sheetState.isOpen) { if (!sheetState.isOpen) editing = false }
+    val openLeagues: () -> Unit = {
+        scope.launch {
+            val target = sheetState.capPx
+            animate(sheetState.reveal, target, animationSpec = tween(durationMillis = 220)) { value, _ ->
+                sheetState.set(value)
+            }
+        }
+        Unit
+    }
+    val closeLeagues: () -> Unit = {
+        scope.launch {
+            animate(sheetState.reveal, 0f, animationSpec = tween(durationMillis = 220)) { value, _ ->
+                sheetState.set(value)
+            }
+        }
+        Unit
+    }
     Box(modifier.fillMaxSize()) {
-        Box(Modifier.then(if (calendarOpen) Modifier.clearAndSetSemantics { } else Modifier)) {
-            LeagueNavigationDrawer(
-                drawerState = drawerState,
-                drawer = scores.drawerState.collectAsState().value,
-                seasonDate = scoresState.loadedDate,
-                onFavouritesOnly = scores::setFavouritesOnly,
-                onLeagueOrder = scores::setLeagueOrder,
-                onLeagueSelected = scores::selectLeague,
-            ) {
-                Scaffold(
-                    modifier = Modifier.fillMaxSize(),
-                    bottomBar = {
-                        NavigationBar {
+        // While the menu is out the page is dimmed and untouchable, so nothing behind it is read out either.
+        Box(Modifier.then(if (calendarOpen || sheetState.isOpen) Modifier.clearAndSetSemantics { } else Modifier)) {
+            Scaffold(
+                modifier = Modifier.fillMaxSize(),
+                topBar = {
+                    if (currentRoute == HOME_ROUTE) {
+                        ScoresHeader(scoresState.liveCount, openLeagues, Modifier.fillMaxWidth())
+                    }
+                },
+                bottomBar = {
+                    val tracker = remember { VelocityTracker() }
+                    // The bar never moves. It is the sheet's handle, not part of the sheet, so the seats the thumb
+                    // already knows do not slide away when the menu opens.
+                    Column(
+                        Modifier
+                            // The bar owns the window's bottom now that the dial is gone. The colour runs to the edge
+                            // behind the gesture pill, and the air below the labels is inside that colour so the strip
+                            // under the seats is never a slice of page showing through.
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            // The tag covers the whole strip, air included: the bar is the thing that reaches the
+                            // edge of the window, so measuring it from the labels inward would understate its height.
+                            .testTag("nav.bar")
+                            .windowInsetsPadding(WindowInsets.navigationBars)
+                            .padding(bottom = Reach.BAR_BOTTOM_AIR_DP.dp)
+                            .pointerInput(sheetState) {
+                                detectVerticalDragGestures(
+                                    onDragStart = { tracker.resetTracking() },
+                                    // Up is negative: a flick upward has to carry the sheet the same way.
+                                    onDragEnd = { settle(-tracker.calculateVelocity().y) },
+                                    onDragCancel = { settle(0f) },
+                                ) { change, dragAmount ->
+                                    change.consume()
+                                    tracker.addPosition(change.uptimeMillis, change.position)
+                                    sheetState.drag(-dragAmount)
+                                }
+                            },
+                    ) {
+                        NavigationBar(
+                            // A stock NavigationBar sits on Material's tonal grey, which is the one cool surface the
+                            // warm palette does not have. The bar and the dial below it are one piece.
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            // The bar's own colour and padding carry the window's bottom inset; the tabs would
+                            // otherwise add it a second time.
+                            windowInsets = WindowInsets(0, 0, 0, 0),
+                        ) {
                             // R5 keeps primary controls 16 dp clear of the screen edges, where the back gesture
                             // lives. A stock NavigationBar puts its outer items flush to the edges, so the bar's
                             // own background stays full-bleed and the items are pushed inside it by spacers -
                             // padding the bar itself would inset its background and leave a strip of page showing.
                             Spacer(Modifier.width(Reach.EDGE_INSET_DP.dp))
-                            TopLevelDestination.entries.forEach { destination ->
+                            // The menu seat comes first, on the side the thumb rests when the phone is held one-handed,
+                            // and it is the whole of the affordance: no strip to interpret, no gesture to discover.
+                            NavigationBarItem(
+                                modifier =
+                                    Modifier
+                                        .primaryControl("nav.menu", frequent = true)
+                                        .testTag("nav.menu"),
+                                selected = sheetState.isOpen,
+                                onClick = { if (sheetState.isOpen) closeLeagues() else openLeagues() },
+                                colors =
+                                    NavigationBarItemDefaults.colors(
+                                        indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                    ),
+                                icon = { Icon(imageVector = menuGlyph(), contentDescription = null) },
+                                label = { Text(stringResource(R.string.nav_menu)) },
+                            )
+                            pages.forEachIndexed { index, destination ->
                                 val label = stringResource(destination.label)
                                 NavigationBarItem(
                                     // Primary navigation is the most-used control on every screen, so it is
                                     // tagged frequent: R2 holds it to the thumb-zone ceiling, not the looser one.
+                                    colors =
+                                        NavigationBarItemDefaults.colors(
+                                            // The default selected pill is Material's secondary container, the one
+                                            // lavender surface in a warm palette: a wash of the app's own orange.
+                                            indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                        ),
                                     modifier = Modifier.primaryControl(destination.tag, frequent = true),
-                                    selected = currentRoute == destination.route,
+                                    selected = currentRoute == HOME_ROUTE && pagerState.currentPage == index,
                                     onClick = {
-                                        if (currentRoute != destination.route) {
-                                            navController.navigate(destination.route) {
-                                                // One entry per destination, and back from any tab returns to the
-                                                // start destination rather than replaying a tab history.
-                                                popUpTo(navController.graph.findStartDestination().id) {
-                                                    saveState = true
-                                                }
-                                                launchSingleTop = true
-                                                restoreState = true
-                                            }
+                                        // A tab press from inside a game returns to the pages, then lands on the tab.
+                                        if (currentRoute != HOME_ROUTE) {
+                                            navController.popBackStack(HOME_ROUTE, inclusive = false)
                                         }
+                                        // The menu is not a place you stay: a tab press leaves it.
+                                        if (sheetState.isOpen) closeLeagues()
+                                        scope.launch { pagerState.animateScrollToPage(index) }
                                     },
                                     icon = {
                                         Icon(imageVector = destination.icon(), contentDescription = null)
@@ -167,59 +287,85 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
 
                             Spacer(Modifier.width(Reach.EDGE_INSET_DP.dp))
                         }
-                    },
-                ) { innerPadding ->
-                    NavHost(
-                        navController = navController,
-                        startDestination = TopLevelDestination.Scores.route,
-                        modifier = Modifier.padding(innerPadding),
-                    ) {
-                        TopLevelDestination.entries.forEach { destination ->
-                            composable(destination.route) {
-                                when (destination) {
-                                    TopLevelDestination.Scores -> {
-                                        ScoresScreen(
-                                            state = scoresState,
-                                            onRefresh = scores::onPullToRefresh,
-                                            onGameClick = { game ->
-                                                navController.navigate(detailRoute(game))
-                                            },
-                                            onSelectDate = scores::selectDate,
-                                            onOpenLeagues = { scope.launch { drawerState.open() } },
-                                            onOpenCalendar = { calendarOpen = true },
-                                        )
-                                    }
-
-                                    TopLevelDestination.Teams -> {
-                                        TeamsDestination()
-                                    }
-
-                                    TopLevelDestination.Standings -> {
-                                        StandingsDestination()
-                                    }
-                                }
-                            }
-
-                            composable(
-                                route = DETAIL_ROUTE,
-                                arguments = detailArguments(),
-                            ) { entry ->
-                                val game = gameFromRoute(entry)
-                                if (game == null) {
-                                    // A link we cannot read is not a crash; it is a dead end, so leave.
-                                    LaunchedEffect(Unit) { navController.popBackStack() }
-                                } else {
-                                    DetailDestination(
-                                        container = container,
-                                        game = game,
-                                        onBack = { navController.popBackStack() },
+                    }
+                },
+            ) { innerPadding ->
+                NavHost(
+                    navController = navController,
+                    startDestination = HOME_ROUTE,
+                    modifier = Modifier.padding(innerPadding),
+                ) {
+                    composable(HOME_ROUTE) {
+                        HorizontalPager(
+                            state = pagerState,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .testTag(PAGER_TAG),
+                        ) { page ->
+                            when (pages[page]) {
+                                TopLevelDestination.Scores -> {
+                                    ScoresScreen(
+                                        state = scoresState,
+                                        onRefresh = scores::onPullToRefresh,
+                                        onGameClick = { game -> navController.navigate(detailRoute(game)) },
+                                        onSelectDate = scores::selectDate,
+                                        onOpenLeagues = openLeagues,
+                                        onOpenCalendar = { calendarOpen = true },
+                                        // The shell draws the bar once, above the sheet.
+                                        showHeader = false,
                                     )
+                                }
+
+                                TopLevelDestination.Teams -> {
+                                    TeamsDestination()
+                                }
+
+                                TopLevelDestination.Standings -> {
+                                    StandingsDestination()
                                 }
                             }
                         }
                     }
+
+                    composable(
+                        route = DETAIL_ROUTE,
+                        arguments = detailArguments(),
+                    ) { entry ->
+                        val game = gameFromRoute(entry)
+                        if (game == null) {
+                            // A link we cannot read is not a crash; it is a dead end, so leave.
+                            LaunchedEffect(Unit) { navController.popBackStack() }
+                        } else {
+                            DetailDestination(
+                                container = container,
+                                game = game,
+                                onBack = { navController.popBackStack() },
+                            )
+                        }
+                    }
                 }
             }
+        }
+        BottomLeaguesSheet(
+            state = sheetState,
+            onDismissRequest = closeLeagues,
+        ) {
+            LeaguesPanel(
+                drawer = drawerUi,
+                seasonDate = scoresState.loadedDate,
+                editing = editing,
+                onEditing = { editing = it },
+                onLeagueOrder = scores::setLeagueOrder,
+                onLeagueSelected = { id ->
+                    scores.selectLeague(id)
+                    closeLeagues()
+                },
+                onFavouritesOnly = { only ->
+                    scores.setFavouritesOnly(only)
+                    closeLeagues()
+                },
+            )
         }
         if (calendarOpen) {
             // Cover the entire shell, including tabs, while keeping the system gesture inset only once.
@@ -277,6 +423,8 @@ private fun StandingsDestination() {
     )
 }
 
+private fun menuGlyph(): ImageVector = glyph("Menu", "M4,6 h16 v2 h-16 z M4,11 h16 v2 h-16 z M4,16 h16 v2 h-16 z")
+
 /**
  * Hand-drawn 24 dp glyphs rather than a material-icons dependency: three shapes are cheaper than a
  * library, and the design's icon set is not settled yet.
@@ -311,6 +459,12 @@ private fun glyph(
  * The game page's route
  * ------------------------------------------------------------------------------------------------------------ */
 
+/** The three destinations share one route: they are pages of a single surface, not separate destinations. */
+internal const val HOME_ROUTE = "home"
+
+/** The swipe surface: the pager itself, not the window, so a drag has somewhere to start. */
+internal const val PAGER_TAG = "pages.pager"
+
 /**
  * A game's page as a URL.
  *
@@ -318,6 +472,7 @@ private fun glyph(
  * and the reader would come back to an empty page. Every field is one the tapped row already had, so the page can
  * draw its hero before any endpoint answers.
  */
+
 internal const val DETAIL_ROUTE =
     "detail/{gameId}?away={away}&home={home}&awayLogo={awayLogo}&homeLogo={homeLogo}" +
         "&awayScore={awayScore}&homeScore={homeScore}&state={state}&start={start}"

@@ -1,5 +1,6 @@
 package net.montycasa.roux.ui.scores
 
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
@@ -27,6 +28,7 @@ import net.montycasa.roux.ui.reach.reachTargets
 import net.montycasa.roux.ui.theme.RouxTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -47,7 +49,7 @@ class ScoresHeaderTest {
     ) {
         rule.setContent {
             RouxTheme(dark) {
-                ScoresHeader(liveCount.value, onOpen, Modifier.fillMaxWidth())
+                ScoresHeader(liveCount.value, onOpen, Modifier.fillMaxWidth(), statusInset = WindowInsets(0, 0, 0, 0))
             }
         }
     }
@@ -127,5 +129,27 @@ class ScoresHeaderTest {
     @Test fun headerDark() {
         launch(dark = true)
         rule.onNodeWithTag("scores.header").captureRoboImage("src/test/screenshots/header/header-dark.png")
+    }
+
+    @Test
+    fun theHeaderStepsDownOverTheStatusBar() {
+        val barPx = with(rule.density) { 44.dp.roundToPx() }
+        val fakeStatusBar = WindowInsets(0, barPx, 0, 0)
+        rule.setContent {
+            RouxTheme {
+                ScoresHeader(
+                    liveCount = 0,
+                    onOpenLeagues = {},
+                    modifier = Modifier.fillMaxWidth(),
+                    statusInset = fakeStatusBar,
+                )
+            }
+        }
+        val header = rule.onNodeWithTag("scores.header").getUnclippedBoundsInRoot()
+        val wordmark = rule.onNodeWithTag("scores.wordmark").getUnclippedBoundsInRoot()
+        assertTrue("wordmark must clear the clock", wordmark.top >= 44.dp)
+        // The tag sits inside the inset, so this measures the header's own box: it keeps its 64 dp floor and gains the
+        // status bar on top of it rather than squeezing into it.
+        assertTrue("the header keeps its own height under the inset", (header.bottom - header.top) >= 64.dp - 1.dp)
     }
 }

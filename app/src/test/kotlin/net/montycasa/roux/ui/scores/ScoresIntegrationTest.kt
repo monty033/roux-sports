@@ -19,6 +19,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import net.montycasa.roux.data.cache.CacheKey
 import net.montycasa.roux.data.cache.CacheKind
+import net.montycasa.roux.enterLeagueMode
 import net.montycasa.roux.ui.nav.RouxNavHost
 import net.montycasa.roux.ui.theme.RouxTheme
 import org.junit.After
@@ -172,6 +173,7 @@ class ScoresIntegrationTest {
 
     private fun launchScores() {
         rule.setContent { RouxTheme { RouxNavHost() } }
+        rule.enterLeagueMode()
         rule.waitForFixtureScores()
     }
 }

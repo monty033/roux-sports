@@ -3,7 +3,6 @@
 package net.montycasa.roux.ui.drawer
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -11,25 +10,15 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DrawerState
-import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ModalDrawerSheet
-import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -37,16 +26,13 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -56,11 +42,9 @@ import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.disabled
@@ -71,7 +55,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import kotlinx.coroutines.launch
 import net.montycasa.roux.R
 import net.montycasa.roux.domain.policy.LeagueOrder
 import net.montycasa.roux.ui.reach.reachTarget
@@ -80,125 +63,46 @@ import java.time.LocalDate
 import java.time.format.DateTimeParseException
 
 // Brand-panel colours are deliberately independent of MaterialTheme, even on a light page.
-private val panel = Color(0xFF08090B)
+private val panel = SHEET_PANEL
 private val ink = Color(0xFFEDEEF1)
 private val muted = Color(0xFF565B64)
 private val orange = Color(0xFFFF4B12)
 private val rule = Color(0xFF1B1D22)
 
+/**
+ * The menu itself: the same rows the drawer had, without the container.
+ *
+ * It fills whatever the sheet gives it and scrolls if the cap cannot hold it, so adding Settings later lengthens a
+ * scroll rather than resizing a surface that is anchored to the bottom bar.
+ */
 @Composable
-fun LeagueNavigationDrawer(
-    drawerState: DrawerState,
-    drawer: DrawerUi,
-    onFavouritesOnly: (Boolean) -> Unit,
-    modifier: Modifier = Modifier,
-    seasonDate: String? = null,
-    onLeagueOrder: (List<String>) -> Unit,
-    catalog: List<DrawerLeague> = drawerCatalog,
-    onLeagueSelected: (String) -> Unit = { onFavouritesOnly(false) },
-    contentInsets: WindowInsets = WindowInsets.systemBars,
-    content: @Composable () -> Unit,
-) {
-    val scope = rememberCoroutineScope()
-    val open = drawerState.currentValue == DrawerValue.Open || drawerState.targetValue == DrawerValue.Open
-    // A close (including a scrim tap or swipe) always discards this drawer-local mode.
-    var editing by remember(open) { mutableStateOf(false) }
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        modifier = modifier.background(panel),
-        scrimColor = panel.copy(alpha = 0.55f),
-        drawerContent = {
-            ModalDrawerSheet(
-                modifier =
-                    Modifier.width(240.dp).fillMaxHeight().testTag("leagues.drawer").then(
-                        // Keep the sheet measured for gestures without exposing closed navigation to
-                        // TalkBack or letting it masquerade as content on another tab.
-                        if (drawerState.currentValue == DrawerValue.Closed && drawerState.targetValue == DrawerValue.Closed) {
-                            Modifier.clearAndSetSemantics { }
-                        } else {
-                            Modifier
-                        },
-                    ),
-                drawerShape = RectangleShape,
-                drawerContainerColor = panel,
-                drawerContentColor = ink,
-                drawerTonalElevation = 0.dp,
-                windowInsets = WindowInsets(0, 0, 0, 0),
-            ) {
-                LeagueDrawer(
-                    drawer = drawer,
-                    seasonDate = seasonDate,
-                    editing = editing,
-                    onEditing = { editing = it },
-                    catalog = catalog,
-                    onLeagueOrder = onLeagueOrder,
-                    onLeagueSelected = { id ->
-                        onLeagueSelected(id)
-                        scope.launch { drawerState.close() }
-                    },
-                    onFavouritesOnly = { only ->
-                        onFavouritesOnly(only)
-                        scope.launch { drawerState.close() }
-                    },
-                    contentInsets = contentInsets,
-                )
-            }
-        },
-    ) {
-        // The reference reveals the panel by pushing the page, including its bottom navigation.
-        Box(
-            Modifier.graphicsLayer {
-                translationX = drawerState.currentOffset.takeIf { it.isFinite() }?.plus(240.dp.toPx())
-                    ?: if (drawerState.currentValue == DrawerValue.Open) 240.dp.toPx() else 0f
-                shape = RoundedCornerShape(20.dp)
-                clip = translationX > 0f
-            },
-        ) { content() }
-    }
-}
-
-@Composable
-fun LeagueDrawer(
+fun LeaguesPanel(
     drawer: DrawerUi,
     editing: Boolean,
     onEditing: (Boolean) -> Unit,
     onLeagueOrder: (List<String>) -> Unit,
     onLeagueSelected: (String) -> Unit,
+    onFavouritesOnly: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     seasonDate: String? = null,
     catalog: List<DrawerLeague> = drawerCatalog,
-    onFavouritesOnly: (Boolean) -> Unit,
-    /**
-     * Window insets the drawer must clear. The app draws edge to edge, so the status bar sits on top of this panel
-     * and the wordmark was landing underneath it. Injected rather than read from the composition so a test can pin
-     * the clearance without a window.
-     */
-    contentInsets: WindowInsets = WindowInsets.systemBars,
 ) {
-    // Background first, insets after: the panel still paints behind the status bar, only its content moves down.
     Column(
         modifier
-            .fillMaxHeight()
+            .fillMaxWidth()
             .background(panel)
-            .windowInsetsPadding(contentInsets)
-            .padding(start = 16.dp, top = 20.dp, end = 16.dp, bottom = 24.dp),
+            .padding(start = 16.dp, top = 4.dp, end = 16.dp, bottom = 20.dp),
     ) {
-        Image(
-            painterResource(R.drawable.wordmark_orange),
-            stringResource(R.string.app_name),
-            Modifier.width(108.dp).alpha(0.95f).testTag("leagues.wordmark"),
-        )
         leagueSeason(seasonDate)?.let { season ->
             Text(
                 season,
-                Modifier.padding(top = 8.dp).testTag("leagues.season"),
+                Modifier.padding(start = 10.dp, top = 4.dp, bottom = 2.dp).testTag("leagues.season"),
                 color = Color(0xFF6C727B),
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 0.24.em,
             )
         }
-        Spacer(Modifier.weight(1f).height(8.dp))
         DrawerLabel(stringResource(R.string.drawer_favourites))
         DrawerRow(
             label = stringResource(R.string.drawer_my_teams),
@@ -248,8 +152,8 @@ fun LeagueDrawer(
             }
         }
         val order = LeagueOrder.reconcile(drawer.leagueOrder, catalog.map { it.id })
-        // The drawer renders the persisted order directly. Every league in the catalog is arrangeable, including
-        // ones with no data yet: greying says "nothing to show", not "not yours to arrange".
+        // The panel renders the persisted order directly. Every league in the catalog is arrangeable, including ones
+        // with no data yet: greying says "nothing to show", not "not yours to arrange".
         order.forEach { id ->
             key(id) {
                 val league = catalog.first { it.id == id }
@@ -269,7 +173,12 @@ fun LeagueDrawer(
         // put two lines 17 dp apart whenever Settings/hint are absent.
         Box(Modifier.padding(top = 8.dp)) {
             Column {
-                Box(Modifier.fillMaxWidth().height(1.dp).background(rule))
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(rule),
+                )
                 Text(
                     stringResource(R.string.drawer_footer),
                     Modifier.padding(start = 10.dp, end = 10.dp, top = 12.dp),

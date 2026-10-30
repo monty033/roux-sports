@@ -27,6 +27,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import net.montycasa.roux.domain.policy.LeagueCalendar
+import net.montycasa.roux.enterLeagueMode
 import net.montycasa.roux.ui.nav.RouxNavHost
 import net.montycasa.roux.ui.reach.PrimaryControlTag
 import net.montycasa.roux.ui.scores.ScoreFixture
@@ -125,6 +126,7 @@ class StandingsIntegrationTest {
     private fun openStandingsFromColdStart() {
         assertTrue("No destination has run before mounting the shell", app.requests.isEmpty())
         rule.setContent { RouxTheme { RouxNavHost() } }
+        rule.enterLeagueMode()
         // Scores is the start destination. Go directly to Standings without interacting with Scores
         // or Teams, so neither can initialise the standings repository on this destination's behalf.
         rule.onNode(hasText("Standings") and isSelectable()).performClick().assertIsSelected()
@@ -137,7 +139,7 @@ class StandingsIntegrationTest {
                 SemanticsMatcher("bottom navigation destination") {
                     it.config.getOrNull(PrimaryControlTag)?.startsWith("nav.") == true
                 },
-            ).assertCountEquals(3)
+            ).assertCountEquals(4) // the menu seat plus the three destinations
         rule.onNode(hasText("Teams") and isSelectable()).assertIsNotSelected()
     }
 }

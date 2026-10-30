@@ -7,6 +7,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTouchHeightIsEqualTo
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -15,6 +16,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -265,6 +267,30 @@ class GameDetailScreenTest {
         // The frozen column is the point: reaching a column must never cost you sight of whose row it is.
         assertEquals(before.left.value, after.left.value, 0.5f)
         compose.onNodeWithText("C. Talbot").assertIsDisplayed()
+    }
+
+    @Test
+    fun `swiping the page moves between the summary and the two clubs`() {
+        show(fullDetail)
+
+        compose.onNodeWithTag("detail.pager").performTouchInput { swipeLeft() }
+        compose.waitForIdle()
+        // Page 1 is the away club, so its roster heading is on screen.
+        compose.onNodeWithText("BLUE JACKETS PLAYER STATS").assertIsDisplayed()
+
+        compose.onNodeWithTag("detail.pager").performTouchInput { swipeRight() }
+        compose.waitForIdle()
+        compose.onNodeWithText("SCORING BY PERIOD").assertIsDisplayed()
+    }
+
+    @Test
+    fun `the pills follow a swipe`() {
+        show(fullDetail)
+
+        compose.onNodeWithTag("detail.pager").performTouchInput { swipeLeft() }
+        compose.waitForIdle()
+        // The selected pill is the picture of where you are, so it has to move with the page.
+        compose.onNodeWithTag("detail.tab.CBJ").assertIsSelected()
     }
 
     @Test

@@ -42,6 +42,9 @@ import net.montycasa.roux.domain.repo.ScoresRepository
 import kotlin.random.Random
 import kotlin.time.Clock
 
+/** The drawer's My Teams row: a destination that spans leagues, not a league of its own. */
+const val MY_TEAMS_LEAGUE: String = "myTeams"
+
 /** Collection owns all polling, including the five-second WhileSubscribed grace period. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ScoresViewModel(
@@ -326,8 +329,6 @@ class ScoresViewModel(
         /** Matches the list's grace period: a rotation must not restart the drawer's collection. */
         const val GRACE_MILLIS = 5_000L
 
-        /** The drawer's My Teams row, which is the favourites filter rather than a league. */
-        const val MY_TEAMS_LEAGUE = "myTeams"
         const val DEFAULT_LEAGUE = "nhl"
     }
 

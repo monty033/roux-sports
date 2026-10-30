@@ -35,6 +35,12 @@ object Reach {
 
     /** R5: no primary control this close to the left or right edge (thumb arc, back gesture). */
     const val EDGE_INSET_DP = 16f
+
+    /**
+     * Air between the lowest label and the top of the system gesture area. The inset alone leaves the seats sitting
+     * on the pill, which reads as a bar that was never finished; this is the smallest gap that looks deliberate.
+     */
+    const val BAR_BOTTOM_AIR_DP = 8f
 }
 
 /** Which rule a violation belongs to, so a failure can be read without decoding prose. */
