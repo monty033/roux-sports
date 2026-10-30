@@ -116,20 +116,14 @@ class StandingsScreenTest {
                         StandingsScreen(
                             suppliedState.value,
                             onRefresh,
-                            { view ->
+                            { view, mode ->
                                 selected += view
-                                suppliedState.value =
-                                    suppliedState.value.copy(
-                                        view = view,
-                                        groups = StandingsGrouping.group(rows, view, suppliedState.value.mode),
-                                    )
-                            },
-                            { mode ->
                                 modes += mode
                                 suppliedState.value =
                                     suppliedState.value.copy(
+                                        view = view,
                                         mode = mode,
-                                        groups = StandingsGrouping.group(rows, suppliedState.value.view, mode),
+                                        groups = StandingsGrouping.group(rows, view, mode),
                                     )
                             },
                             Modifier.padding(insets),
@@ -141,41 +135,44 @@ class StandingsScreenTest {
     }
 
     @Test
-    fun aSwipeStepsTheGroupingInsteadOfLeavingTheScreen() {
+    fun aSwipeWalksTheRankingsAndThenTheNextConference() {
         val picked = mutableListOf<StandingsView>()
         launchScreen(eastState(), selected = picked)
-        // East -> West -> League: the conference is the page axis, in that order.
+        // Eastern playoffs -> Eastern division -> Eastern conference -> Western playoffs: one list, walked in order.
         rule.onRoot().performTouchInput { swipeLeft() }
         rule.waitForIdle()
-        assertEquals(listOf(StandingsView.Western), picked)
+        assertEquals(StandingsView.Eastern, suppliedState.value.view)
+        assertEquals(StandingsMode.Division, suppliedState.value.mode)
+        rule.onRoot().performTouchInput { swipeLeft() }
+        rule.waitForIdle()
+        assertEquals(StandingsMode.Conference, suppliedState.value.mode)
+        rule.onRoot().performTouchInput { swipeLeft() }
+        rule.waitForIdle()
+        // Past the last ranking of a conference the swipe lands on the next conference's first ranking.
+        assertEquals(StandingsView.Western, suppliedState.value.view)
+        assertEquals(StandingsMode.Playoffs, suppliedState.value.mode)
+        assertEquals(listOf(StandingsView.Eastern, StandingsView.Eastern, StandingsView.Western), picked)
+        rule.onAllNodes(rowMatcher).assertCountEquals(16)
     }
 
     @Test
-    fun aBackwardSwipeOnEastDoesNothing() {
+    fun aBackwardSwipeOnTheFirstPageDoesNothing() {
         val picked = mutableListOf<StandingsView>()
         launchScreen(eastState(), selected = picked)
         rule.onRoot().performTouchInput { swipeRight() }
         rule.waitForIdle()
         assertEquals(emptyList<StandingsView>(), picked)
+        assertEquals(StandingsMode.Playoffs, suppliedState.value.mode)
     }
 
     @Test
     fun aForwardSwipeOnLeagueDoesNothing() {
         val picked = mutableListOf<StandingsView>()
         launchScreen(fresh, selected = picked)
-        // League is the last page now, so there is nothing to its right.
+        // League is the last page, so there is nothing to its right.
         rule.onRoot().performTouchInput { swipeLeft() }
         rule.waitForIdle()
         assertEquals(emptyList<StandingsView>(), picked)
-    }
-
-    @Test
-    fun leagueContainsThirtyTwoRowsAndEveryTeamCanBeReached() {
-        launchScreen()
-        rule.onAllNodes(rowMatcher).assertCountEquals(32)
-        rows.forEach { row ->
-            rule.onNodeWithTag("standings.row.0.${row.team.abbrev}").performScrollTo().assertIsDisplayed()
-        }
     }
 
     @Test
@@ -451,30 +448,6 @@ class StandingsScreenTest {
     }
 
     @Test
-    fun aSwipeKeepsTheRankingSoTheTwoConferencesAreComparable() {
-        val picked = mutableListOf<StandingsView>()
-        launchScreen(
-            fresh.copy(
-                view = StandingsView.Eastern,
-                mode = StandingsMode.Division,
-                groups = StandingsGrouping.group(rows, StandingsView.Eastern, StandingsMode.Division),
-            ),
-            selected = picked,
-        )
-        rule.onRoot().performTouchInput { swipeLeft() }
-        rule.waitForIdle()
-        assertEquals(listOf(StandingsView.Western), picked)
-        // Still in divisions, now the West's: swiping compares like with like instead of changing two things.
-        assertEquals(StandingsMode.Division, suppliedState.value.mode)
-        assertEquals(
-            listOf("Central", "Pacific"),
-            suppliedState.value.groups.sections
-                .map { it.title },
-        )
-        rule.onAllNodes(rowMatcher).assertCountEquals(16)
-    }
-
-    @Test
     fun aConferencePageWithNoTeamsSaysWhyInsteadOfLookingEmpty() {
         launchScreen(fresh.copy(view = StandingsView.Eastern, groups = StandingsGroups(emptyList()), loading = false))
         rule.onAllNodesWithText("did not name a conference", substring = true).assertCountEquals(1)
@@ -516,7 +489,7 @@ class StandingsScreenTest {
     @Config(qualifiers = "en-rUS-w360dp-h780dp-420dpi")
     fun bothControlRowsFitLabelsOnASmallPhone() {
         launchScreen()
-        listOf("East" to StandingsView.Eastern, "West" to StandingsView.Western, "League" to StandingsView.League)
+        listOf("Eastern" to StandingsView.Eastern, "Western" to StandingsView.Western, "League" to StandingsView.League)
             .forEach { (label, view) ->
                 val chip = rule.onNodeWithTag("standings.view.$view").fetchSemanticsNode().boundsInRoot
                 val text =

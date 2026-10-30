@@ -59,6 +59,17 @@ class StandingsViewModel(
         mutableState.update { grouped(it.copy(mode = mode)) }
     }
 
+    /**
+     * One entry point for both axes. A swipe settles on a whole page - conference and ranking together - so the two
+     * are set in one update and no frame can show the new conference against the old ranking.
+     */
+    fun select(
+        view: StandingsView,
+        mode: StandingsMode,
+    ) {
+        mutableState.update { grouped(it.copy(view = view, mode = mode)) }
+    }
+
     /** Also rereads the shared preferences, whose repository currently has no observable API. */
     fun refresh() {
         if (mutableState.value.isRefreshing) return

@@ -57,6 +57,25 @@ import net.montycasa.roux.ui.theme.Roux
 
 private const val VIEW_SETTLE_MILLIS = 360
 
+/**
+ * The pager's page list, in strip order: each conference's three rankings, then the league. It is a value, not a
+ * function of the data, so the order can never change underneath a drag.
+ */
+private fun standingsPages(): List<Pair<StandingsView, StandingsMode>> =
+    buildList {
+        StandingsView.entries
+            .filter { it != StandingsView.League }
+            .forEach { view -> StandingsMode.entries.forEach { mode -> add(view to mode) } }
+        add(StandingsView.League to StandingsMode.Playoffs)
+    }
+
+/** Where a (conference, ranking) pair sits in that list. The league has one page whatever the ranking says. */
+private fun pageIndex(
+    pages: List<Pair<StandingsView, StandingsMode>>,
+    view: StandingsView,
+    mode: StandingsMode,
+): Int = pages.indexOf(view to mode).takeIf { it >= 0 } ?: pages.indexOfFirst { it.first == view }.coerceAtLeast(0)
+
 /** Rank sits in a fixed gutter so the numbers form a column instead of drifting with the club name. */
 private val RANK_WIDTH = 18.dp
 
@@ -74,29 +93,26 @@ private const val STAT_WEIGHT = 1f
 fun StandingsScreen(
     state: StandingsUiState,
     onRefresh: () -> Unit,
-    onSetView: (StandingsView) -> Unit,
-    onSetMode: (StandingsMode) -> Unit,
+    onSelect: (StandingsView, StandingsMode) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // One page per conference, so a drag tracks the finger and the neighbouring conference is already on screen as
-    // you move towards it. The view list is fixed - three entries, known at compile time - so no arriving data can
+    // Seven pages, one per question: the East's three rankings, the West's three, then the league. A swipe walks
+    // that list in order, so it moves through the rankings and then on to the next conference - the strip is a
+    // shortcut across the same list, not a second axis. The list is fixed at compile time, so no arriving data can
     // re-point a page underneath the finger, which is the trap the scores pager had to be fixed for.
-    //
-    // Horizontal is spent on the conference, not on the ranking: a second horizontal axis would make the same drag
-    // mean two things. The ranking is the page's own second level (StandingsModeRow), and it is shared by both
-    // conferences so a swipe compares like with like.
-    val views = StandingsView.entries
-    val pager = rememberPagerState(initialPage = state.view.ordinal) { views.size }
+    val pages = remember { standingsPages() }
+    val selectedPage = pageIndex(pages, state.view, state.mode)
+    val pager = rememberPagerState(initialPage = selectedPage) { pages.size }
     // Only a settle at a page we did not scroll to ourselves is a gesture; without it the pager reports its opening
     // page as if the viewer had chosen it.
     val syncedPage = remember { intArrayOf(-1) }
-    LaunchedEffect(state.view) {
-        if (pager.currentPage != state.view.ordinal) pager.scrollToPage(state.view.ordinal)
+    LaunchedEffect(selectedPage) {
+        if (pager.currentPage != selectedPage) pager.scrollToPage(selectedPage)
         syncedPage[0] = pager.currentPage
     }
     LaunchedEffect(pager.settledPage) {
         if (pager.settledPage != syncedPage[0]) {
-            views.getOrNull(pager.settledPage)?.let(onSetView)
+            pages.getOrNull(pager.settledPage)?.let { (view, mode) -> onSelect(view, mode) }
             syncedPage[0] = pager.settledPage
         }
     }
@@ -125,12 +141,12 @@ fun StandingsScreen(
                     .weight(1f)
                     .fillMaxWidth(),
         ) { page ->
-            val view = views[page]
-            // Only the page being viewed owns the tags: three tables in the tree would otherwise answer every query.
-            val primary = view == state.view
-            // The league table ignores the mode, so its page holds one grouping and the lookup falls back to it.
+            val (view, mode) = pages[page]
+            // Only the page being viewed owns the tags: seven tables in the tree would otherwise answer every query.
+            val primary = page == selectedPage
+            // The league table ignores the ranking, so its page holds one grouping and the lookup falls back to it.
             val groups =
-                state.groupsByView[view]?.get(state.mode)
+                state.groupsByView[view]?.let { byMode -> byMode[mode] ?: byMode.values.first() }
                     ?: if (primary) state.groups else StandingsGroups(emptyList())
             // The ranking control belongs to the page, not to the screen: it slides in with the conference, so the
             // 48 dp a conference page spends on it travels with the swipe instead of appearing at the end of it.
@@ -243,8 +259,8 @@ fun StandingsScreen(
                 }
                 if (view != StandingsView.League) {
                     StandingsModeRow(
-                        mode = state.mode,
-                        onSetMode = onSetMode,
+                        mode = mode,
+                        onSetMode = { entry -> onSelect(view, entry) },
                         tagged = primary,
                         modifier = Modifier.padding(horizontal = 16.dp).heightIn(min = 48.dp),
                     )
@@ -303,7 +319,9 @@ fun StandingsScreen(
                         Modifier
                             .weight(1f)
                             .heightIn(min = 56.dp)
-                            .selectable(selected, role = Role.Tab, onClick = { onSetView(view) })
+                            // Tapping a conference keeps the ranking you were reading, so the strip and the swipe
+                            // stay one list rather than two independent axes.
+                            .selectable(selected, role = Role.Tab, onClick = { onSelect(view, state.mode) })
                             .testTag("standings.view.$view"),
                 ) {
                     Column(
@@ -314,8 +332,8 @@ fun StandingsScreen(
                         Text(
                             stringResource(
                                 when (view) {
-                                    StandingsView.Eastern -> R.string.standings_east
-                                    StandingsView.Western -> R.string.standings_west
+                                    StandingsView.Eastern -> R.string.standings_eastern
+                                    StandingsView.Western -> R.string.standings_western
                                     StandingsView.League -> R.string.standings_league
                                 },
                             ),

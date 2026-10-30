@@ -1,7 +1,7 @@
 <resources>
     <string name="standings_league">League</string>
-    <string name="standings_east">East</string>
-    <string name="standings_west">West</string>
+    <string name="standings_eastern">Eastern</string>
+    <string name="standings_western">Western</string>
     <string name="standings_conference">Conference</string>
     <string name="standings_division">Division</string>
     <string name="standings_playoffs">Playoffs</string>
