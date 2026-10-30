@@ -26,6 +26,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -99,7 +100,33 @@ fun ScoresScreen(
             // One page per day, so a drag tracks the finger and the day being moved towards is already on screen.
             // A state with no index yet still needs a page: with none, the pager shows nothing and the list - including
             // its error and empty states - disappears with it.
-            val pages = dateOrder.ifEmpty { listOf(state.selectedDate) }
+            //
+            // The list of pages is rebuilt only when the day changes, never when a load delivers a new day index. A pager
+            // addresses its pages by position, so a rebuilt list re-points every page after the first difference: the
+            // page under the finger then holds a different date, and the list shows one day's games beneath another
+            // day's date until the pager is re-scrolled. Days the index adds at the far end are appended, which leaves
+            // every existing page where it is.
+            val pages = remember { mutableStateListOf<String>() }
+            LaunchedEffect(state.selectedDate, dateOrder) {
+                val selected = state.selectedDate
+                when {
+                    pages.isEmpty() -> {
+                        pages.addAll(dateOrder.ifEmpty { listOf(selected) })
+                    }
+
+                    // Moved by a chip, the calendar or a swipe past the end of the list: re-anchor around the selection.
+                    selected !in pages || pages.size == 1 -> {
+                        pages.clear()
+                        pages.addAll(dateOrder.ifEmpty { listOf(selected) })
+                    }
+
+                    // New days only ever arrive at the far end of the window.
+                    else -> {
+                        dateOrder.filter { it > pages.last() }.forEach { pages.add(it) }
+                    }
+                }
+                if (selected !in pages) pages.add(selected)
+            }
             val dayPager = rememberPagerState(initialPage = pages.indexOf(state.selectedDate).coerceAtLeast(0)) { pages.size }
             // Chips move the pager; a drag moves the selection. The remembered page is what keeps those two apart: only a
             // settle at a page we did not scroll to ourselves is a user gesture, and only that may change the day. Without

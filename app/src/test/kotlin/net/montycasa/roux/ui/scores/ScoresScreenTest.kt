@@ -124,6 +124,26 @@ class ScoresScreenTest {
     }
 
     @Test
+    fun anArrivingDayIndexDoesNotChangeThePageOnScreen() {
+        val picked = mutableListOf<String>()
+        launchScreen(fresh.copy(rows = listOf(game), loadedDate = date), onSelectDate = { picked += it })
+        rule.onNodeWithText("No games on Sat, Oct 25").assertDoesNotExist()
+
+        // A load lands and reports a wider window than the one the pages were built from - the day index gains a date
+        // in front. The page on screen is addressed by position, so rebuilding the list for it would slide every page
+        // one along: the day named by the strip would then belong to a different page's games.
+        suppliedState.value =
+            suppliedState.value.copy(
+                dateIndex = listOf(DateIndexEntry("2025-10-24", 3)) + fresh.dateIndex,
+                rowsByDate = mapOf(date to listOf(game)),
+            )
+        rule.waitForIdle()
+
+        assertEquals(emptyList<String>(), picked)
+        rule.onNodeWithTag("scores.game.${game.id.value}").assertExists()
+    }
+
+    @Test
     fun aBackwardSwipeOnTheFirstLoadedDateDoesNothing() {
         val picked = mutableListOf<String>()
         // 10-25 is the first loaded date; there is nothing behind it to step to.
