@@ -116,6 +116,12 @@ fun StandingsScreen(
             syncedPage[0] = pager.settledPage
         }
     }
+    // The highlight follows the page the pager is heading for, not the one it has finished settling on. Waiting for
+    // the settle put the tab a third of a second behind the table - the table had already arrived while the old tab
+    // was still lit. During a drag or a settle `targetPage` is the page being committed to, so the tab and the strip
+    // change as the gesture commits rather than after the animation lands.
+    val shownPage = (if (pager.isScrollInProgress) pager.targetPage else pager.currentPage).coerceIn(0, pages.lastIndex)
+    val shown = pages[shownPage]
     Column(
         modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -261,8 +267,10 @@ fun StandingsScreen(
         // for whichever conference is selected, and it is absent on the league page, where no ranking applies.
         if (state.view != StandingsView.League) {
             StandingsModeRow(
-                mode = state.mode,
-                onSetMode = { entry -> onSelect(state.view, entry) },
+                // Selection and destination come from the page being shown, so a tap during a transition acts on
+                // what is on screen rather than on the page the last settle left behind.
+                mode = shown.second,
+                onSetMode = { entry -> onSelect(shown.first, entry) },
                 modifier = Modifier.padding(horizontal = 16.dp).heightIn(min = 48.dp),
             )
         }
@@ -303,7 +311,7 @@ fun StandingsScreen(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             StandingsView.entries.forEach { view ->
-                val selected = view == state.view
+                val selected = view == shown.first
                 Surface(
                     // The date strip's selected treatment, so a chosen view looks chosen on both screens.
                     color = if (selected) Roux.accents.fill else MaterialTheme.colorScheme.surfaceVariant,

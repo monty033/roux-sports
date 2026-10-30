@@ -20,6 +20,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasAnyAncestor
@@ -101,6 +102,7 @@ class StandingsScreenTest {
         },
         selected: MutableList<StandingsView> = mutableListOf(),
         modes: MutableList<StandingsMode> = mutableListOf(),
+        applySelection: Boolean = true,
         fontScale: Float = 1f,
     ) {
         suppliedState.value = state
@@ -130,6 +132,7 @@ class StandingsScreenTest {
                             { view, mode ->
                                 selected += view
                                 modes += mode
+                                if (!applySelection) return@StandingsScreen
                                 suppliedState.value =
                                     suppliedState.value.copy(
                                         view = view,
@@ -565,5 +568,19 @@ class StandingsScreenTest {
         rule.onNodeWithTag("standings.view.Eastern").assertIsSelected()
         rule.onNodeWithTag("standings.mode.Playoffs").assertIsSelected()
         rule.onNodeWithText("Atlantic").assertIsDisplayed()
+    }
+
+    @Test
+    fun theIndicatorIsDrivenByThePagerNotByTheSettleCallback() {
+        // The reported delay: the table arrived, the highlight waited for the settle round trip. Prove the highlight
+        // no longer depends on that callback at all - here the callback deliberately never updates the state, and the
+        // strip still lands on the ranking whose table is on screen.
+        launchScreen(fresh, applySelection = false)
+        rule.onRoot().performTouchInput { swipeLeft() }
+        rule.waitForIdle()
+        rule.onNodeWithTag("standings.mode.Division").assertIsSelected()
+        rule.onNodeWithTag("standings.mode.Playoffs").assertIsNotSelected()
+        // The state never heard about it, which is exactly the point: the indicator moved on its own.
+        assertEquals(StandingsMode.Playoffs, suppliedState.value.mode)
     }
 }
