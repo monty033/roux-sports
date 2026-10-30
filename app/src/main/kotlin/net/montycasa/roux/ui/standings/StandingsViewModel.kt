@@ -21,6 +21,9 @@ import net.montycasa.roux.domain.repo.StandingsRepository
 
 data class StandingsUiState(
     val groups: StandingsGroups = StandingsGroups(emptyList()),
+    // Every view, grouped: the swipe shows the neighbouring view's table while the finger is still moving, so those
+    // rows have to exist before that view is selected.
+    val groupsByView: Map<StandingsView, StandingsGroups> = emptyMap(),
     val view: StandingsView = StandingsView.League,
     val isRefreshing: Boolean = false,
     val error: LoadError? = null,
@@ -91,7 +94,12 @@ class StandingsViewModel(
 
     private fun grouped(state: StandingsUiState): StandingsUiState {
         val pinned = if (state.favouritesKnown && state.favouritesOnly) rows.filter { it.team.key in favourites } else emptyList()
-        return state.copy(groups = StandingsGrouping.group(rows, state.view, pinned), pinnedShown = pinned.isNotEmpty())
+        val byView = StandingsView.entries.associateWith { StandingsGrouping.group(rows, it, pinned) }
+        return state.copy(
+            groups = byView.getValue(state.view),
+            groupsByView = byView,
+            pinnedShown = pinned.isNotEmpty(),
+        )
     }
 
     /**
