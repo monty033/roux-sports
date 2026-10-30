@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.sp
 import net.montycasa.roux.R
 import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.policy.StandingsGroups
+import net.montycasa.roux.domain.policy.StandingsMode
 import net.montycasa.roux.domain.policy.StandingsView
 import net.montycasa.roux.ui.common.RetryButton
 import net.montycasa.roux.ui.common.StaleBanner
@@ -74,11 +75,16 @@ fun StandingsScreen(
     state: StandingsUiState,
     onRefresh: () -> Unit,
     onSetView: (StandingsView) -> Unit,
+    onSetMode: (StandingsMode) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // One page per view, so a drag tracks the finger and the neighbouring table is already on screen as you move
-    // towards it. The view list is fixed - four entries, known at compile time - so no arriving data can re-point a
-    // page underneath the finger, which is the trap the scores pager had to be fixed for.
+    // One page per conference, so a drag tracks the finger and the neighbouring conference is already on screen as
+    // you move towards it. The view list is fixed - three entries, known at compile time - so no arriving data can
+    // re-point a page underneath the finger, which is the trap the scores pager had to be fixed for.
+    //
+    // Horizontal is spent on the conference, not on the ranking: a second horizontal axis would make the same drag
+    // mean two things. The ranking is the page's own second level (StandingsModeRow), and it is shared by both
+    // conferences so a swipe compares like with like.
     val views = StandingsView.entries
     val pager = rememberPagerState(initialPage = state.view.ordinal) { views.size }
     // Only a settle at a page we did not scroll to ourselves is a gesture; without it the pager reports its opening
@@ -120,78 +126,113 @@ fun StandingsScreen(
                     .fillMaxWidth(),
         ) { page ->
             val view = views[page]
-            // Only the page being viewed owns the tags: four tables in the tree would otherwise answer every query.
+            // Only the page being viewed owns the tags: three tables in the tree would otherwise answer every query.
             val primary = view == state.view
-            val groups = state.groupsByView[view] ?: if (primary) state.groups else StandingsGroups(emptyList())
-            PullToRefreshBox(
-                state.isRefreshing && primary,
-                onRefresh,
-                Modifier
-                    .fillMaxSize()
-                    .then(if (primary) Modifier.testTag("standings.refresh").reachTarget("standings.refresh") else Modifier),
-            ) {
-                // Only 32 teams: composing the whole collection also keeps every row available to accessibility.
-                Column(
+            // The league table ignores the mode, so its page holds one grouping and the lookup falls back to it.
+            val groups =
+                state.groupsByView[view]?.get(state.mode)
+                    ?: if (primary) state.groups else StandingsGroups(emptyList())
+            // The ranking control belongs to the page, not to the screen: it slides in with the conference, so the
+            // 48 dp a conference page spends on it travels with the swipe instead of appearing at the end of it.
+            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                PullToRefreshBox(
+                    state.isRefreshing && primary,
+                    onRefresh,
                     Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .then(if (primary) Modifier.testTag("standings.list") else Modifier)
-                        .padding(horizontal = 16.dp),
-                    // Rows sit close together on purpose: they are text, not controls, so the table can take a
-                    // rhythm set by legibility rather than by a touch target.
-                    verticalArrangement = Arrangement.spacedBy(3.dp),
-                ) {
-                    when {
-                        state.loading -> {
-                            if (primary) Text(stringResource(R.string.standings_loading))
-                        }
-
-                        groups.sections.isEmpty() -> {
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .then(
                             if (primary) {
-                                Text(
-                                    stringResource(if (state.error != null) R.string.standings_error else R.string.standings_empty),
-                                )
+                                Modifier.testTag("standings.refresh").reachTarget("standings.refresh")
+                            } else {
+                                Modifier
+                            },
+                        ),
+                ) {
+                    // Only 32 teams: composing the whole collection also keeps every row available to accessibility.
+                    Column(
+                        Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .then(if (primary) Modifier.testTag("standings.list") else Modifier)
+                            .padding(horizontal = 16.dp),
+                        // Rows sit close together on purpose: they are text, not controls, so the table can take a
+                        // rhythm set by legibility rather than by a touch target.
+                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
+                        when {
+                            state.loading -> {
+                                if (primary) Text(stringResource(R.string.standings_loading))
                             }
-                        }
 
-                        else -> {
-                            groups.sections.forEachIndexed { sectionIndex, section ->
-                                // More space above a section than below it is what makes the title read as a heading
-                                // rather than as another row in a run of evenly spaced text.
-                                StandingsSectionTitle(
-                                    section.title,
-                                    Modifier.padding(top = if (sectionIndex == 0) 2.dp else 10.dp, bottom = 0.dp),
-                                )
-                                section.rows.forEachIndexed { index, row ->
-                                    val tag = "standings.row.$sectionIndex.${row.team.abbrev}"
-                                    // The row and its rule are one item, so the list's spacing is spent between
-                                    // teams rather than between a team and its divider.
-                                    Column(Modifier.fillMaxWidth()) {
-                                        StandingsRow(
-                                            row = row,
-                                            rank = index + 1,
-                                            modifier =
-                                                Modifier
-                                                    .fillMaxWidth()
-                                                    .heightIn(min = 30.dp)
-                                                    // A row has no action, so it is not a control: the tag is for the
-                                                    // tests that read the table, and the row is not a touch target.
-                                                    // That is what lets the table run at 40 dp, not a control's 48.
-                                                    .then(if (primary) Modifier.testTag(tag) else Modifier),
-                                            tagged = primary,
+                            groups.sections.isEmpty() -> {
+                                if (primary) {
+                                    Text(
+                                        stringResource(
+                                            when {
+                                                state.error != null -> R.string.standings_error
+
+                                                // A conference page with no rows means the feed did not place any
+                                                // team in that conference, not that the table is empty: say so, and
+                                                // point at the page that still shows everyone.
+                                                view != StandingsView.League -> R.string.standings_conference_unknown
+
+                                                else -> R.string.standings_empty
+                                            },
+                                        ),
+                                    )
+                                }
+                            }
+
+                            else -> {
+                                groups.sections.forEachIndexed { sectionIndex, section ->
+                                    // A section with no title is a plain ranking whose page already names it, so it
+                                    // gets neither heading nor rule: the rows are the page.
+                                    if (section.title.isNotBlank()) {
+                                        // More space above a section than below it is what makes the title read as
+                                        // a heading rather than as another row in a run of evenly spaced text.
+                                        StandingsSectionTitle(
+                                            section.title,
+                                            // 8 dp above a section, not 10: the Wild Card page is within two
+                                            // pixels of the fold with sixteen rows and three headings, and this is
+                                            // the space that buys it without touching the rows themselves.
+                                            Modifier.padding(top = if (sectionIndex == 0) 2.dp else 8.dp, bottom = 0.dp),
                                         )
-                                        when {
-                                            section.playoffCutAfter == index -> {
-                                                PlayoffLine(Modifier.padding(vertical = 6.dp))
-                                            }
+                                    }
+                                    section.rows.forEachIndexed { index, row ->
+                                        val tag = "standings.row.$sectionIndex.${row.team.abbrev}"
+                                        // The row and its rule are one item, so the list's spacing is spent between
+                                        // teams rather than between a team and its divider.
+                                        Column(Modifier.fillMaxWidth()) {
+                                            StandingsRow(
+                                                row = row,
+                                                rank = index + 1,
+                                                modifier =
+                                                    Modifier
+                                                        .fillMaxWidth()
+                                                        .heightIn(min = 30.dp)
+                                                        // A row has no action, so it is not a control: the tag is for
+                                                        // the tests that read the table, and the row is not a touch
+                                                        // target. That is what lets the table run at 40 dp, not 48.
+                                                        .then(if (primary) Modifier.testTag(tag) else Modifier),
+                                                tagged = primary,
+                                            )
+                                            when {
+                                                section.playoffCutAfter == index -> {
+                                                    // The line is the boundary between "in" and "out". Its padding
+                                                    // is trimmed rather than its type: on the Wild Card page the
+                                                    // whole conference has to fit above the fold.
+                                                    PlayoffLine(Modifier.padding(vertical = 4.dp))
+                                                }
 
-                                            // A hairline separates rows without adding height, so the table reads
-                                            // as a block rather than a list of unrelated lines.
-                                            index < section.rows.lastIndex -> {
-                                                HorizontalDivider(
-                                                    thickness = 1.dp,
-                                                    color = MaterialTheme.colorScheme.outlineVariant,
-                                                )
+                                                // A hairline separates rows without adding height, so the table reads
+                                                // as a block rather than a list of unrelated lines.
+                                                index < section.rows.lastIndex -> {
+                                                    HorizontalDivider(
+                                                        thickness = 1.dp,
+                                                        color = MaterialTheme.colorScheme.outlineVariant,
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -199,6 +240,14 @@ fun StandingsScreen(
                             }
                         }
                     }
+                }
+                if (view != StandingsView.League) {
+                    StandingsModeRow(
+                        mode = state.mode,
+                        onSetMode = onSetMode,
+                        tagged = primary,
+                        modifier = Modifier.padding(horizontal = 16.dp).heightIn(min = 48.dp),
+                    )
                 }
             }
         }
@@ -266,9 +315,8 @@ fun StandingsScreen(
                             stringResource(
                                 when (view) {
                                     StandingsView.League -> R.string.standings_league
-                                    StandingsView.Conference -> R.string.standings_conference
-                                    StandingsView.Division -> R.string.standings_division
-                                    StandingsView.Wildcard -> R.string.standings_wild_card
+                                    StandingsView.Eastern -> R.string.standings_eastern
+                                    StandingsView.Western -> R.string.standings_western
                                 },
                             ),
                             textAlign = TextAlign.Center,
@@ -276,6 +324,68 @@ fun StandingsScreen(
                             maxLines = 1,
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The second level: which ranking inside the conference you are already on.
+ *
+ * Deliberately not a second tab row. The tabs are filled, 56 dp and carry the page; these are outlined, 48 dp and
+ * read as a choice *within* the page, so the hierarchy is legible without a label explaining it. A selected segment
+ * takes the accent - the same signal the date strip uses for the chosen day.
+ */
+@Composable
+private fun StandingsModeRow(
+    mode: StandingsMode,
+    onSetMode: (StandingsMode) -> Unit,
+    tagged: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .selectableGroup()
+            .then(if (tagged) Modifier.reachTarget("standings.mode") else Modifier),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        StandingsMode.entries.forEach { entry ->
+            val selected = entry == mode
+            Surface(
+                color = MaterialTheme.colorScheme.surface,
+                contentColor = if (selected) Roux.accents.signature else MaterialTheme.colorScheme.onSurfaceVariant,
+                shape = CHIP_SHAPE,
+                border =
+                    BorderStroke(
+                        1.dp,
+                        if (selected) Roux.accents.signature else MaterialTheme.colorScheme.outline,
+                    ),
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp)
+                        .selectable(selected, role = Role.RadioButton, onClick = { onSetMode(entry) })
+                        .then(if (tagged) Modifier.testTag("standings.mode.$entry") else Modifier),
+            ) {
+                Column(
+                    Modifier.padding(vertical = 6.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        stringResource(
+                            when (entry) {
+                                StandingsMode.Conference -> R.string.standings_conference
+                                StandingsMode.Division -> R.string.standings_division
+                                StandingsMode.Wildcard -> R.string.standings_wild_card
+                            },
+                        ),
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.labelMedium,
+                        maxLines = 1,
+                    )
                 }
             }
         }

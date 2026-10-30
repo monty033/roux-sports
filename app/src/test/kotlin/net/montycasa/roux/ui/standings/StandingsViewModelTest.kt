@@ -17,6 +17,7 @@ import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.Season
 import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.model.TeamKey
+import net.montycasa.roux.domain.policy.StandingsMode
 import net.montycasa.roux.domain.policy.StandingsView
 import net.montycasa.roux.domain.repo.NotificationLedgerEntry
 import net.montycasa.roux.domain.repo.PreferencesRepository
@@ -235,7 +236,7 @@ class StandingsViewModelTest {
             val repo = FakeStandings()
             val vm = model(repo)
             runCurrent()
-            vm.setView(StandingsView.Division)
+            vm.setMode(StandingsMode.Division)
             val old = vm.uiState.value.groups
             val pending = CompletableDeferred<Loadable<List<StandingRow>>>()
             repo.pending = pending
@@ -248,7 +249,7 @@ class StandingsViewModelTest {
             pending.complete(Loadable(rows.take(1), Freshness.Fresh, null))
             runCurrent()
             assertEquals(listOf(false, false), repo.calls)
-            assertEquals(StandingsView.Division, vm.uiState.value.view)
+            assertEquals(StandingsMode.Division, vm.uiState.value.mode)
             assertEquals(
                 1,
                 vm.uiState.value.groups.sections

@@ -23,6 +23,7 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -42,6 +43,8 @@ import androidx.compose.ui.unit.dp
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.policy.StandingsGrouping
+import net.montycasa.roux.domain.policy.StandingsGroups
+import net.montycasa.roux.domain.policy.StandingsMode
 import net.montycasa.roux.domain.policy.StandingsView
 import net.montycasa.roux.ui.reach.assertPrimaryControlsReachable
 import net.montycasa.roux.ui.reach.primaryControl
@@ -80,6 +83,7 @@ class StandingsScreenTest {
         onRefresh: () -> Unit = {
         },
         selected: MutableList<StandingsView> = mutableListOf(),
+        modes: MutableList<StandingsMode> = mutableListOf(),
         fontScale: Float = 1f,
     ) {
         suppliedState.value = state
@@ -103,10 +107,27 @@ class StandingsScreenTest {
                             Spacer(Modifier.width(16.dp))
                         }
                     }) { insets ->
-                        StandingsScreen(suppliedState.value, onRefresh, { view ->
-                            selected += view
-                            suppliedState.value = suppliedState.value.copy(view = view, groups = StandingsGrouping.group(rows, view))
-                        }, Modifier.padding(insets))
+                        StandingsScreen(
+                            suppliedState.value,
+                            onRefresh,
+                            { view ->
+                                selected += view
+                                suppliedState.value =
+                                    suppliedState.value.copy(
+                                        view = view,
+                                        groups = StandingsGrouping.group(rows, view, suppliedState.value.mode),
+                                    )
+                            },
+                            { mode ->
+                                modes += mode
+                                suppliedState.value =
+                                    suppliedState.value.copy(
+                                        mode = mode,
+                                        groups = StandingsGrouping.group(rows, suppliedState.value.view, mode),
+                                    )
+                            },
+                            Modifier.padding(insets),
+                        )
                     }
                 }
             }
@@ -117,10 +138,10 @@ class StandingsScreenTest {
     fun aSwipeStepsTheGroupingInsteadOfLeavingTheScreen() {
         val picked = mutableListOf<StandingsView>()
         launchScreen(fresh, selected = picked)
-        // League -> Conference -> Division -> Wildcard, the axis this screen already has.
+        // League -> Eastern -> Western: the conference is the page axis.
         rule.onRoot().performTouchInput { swipeLeft() }
         rule.waitForIdle()
-        assertEquals(listOf(StandingsView.Conference), picked)
+        assertEquals(listOf(StandingsView.Eastern), picked)
     }
 
     @Test
@@ -178,12 +199,20 @@ class StandingsScreenTest {
     }
 
     @Test
-    fun wildcardCutIsLabelledPlayoffLineBelowWcTwo() {
-        launchScreen(fresh.copy(view = StandingsView.Wildcard, groups = StandingsGrouping.group(rows, StandingsView.Wildcard)))
-        // The fixture is the league's actual 3/3/10 layout in each conference.
+    fun wildcardModeDrawsTheCutBelowWcTwo() {
+        launchScreen(
+            fresh.copy(
+                view = StandingsView.Eastern,
+                mode = StandingsMode.Wildcard,
+                groups = StandingsGrouping.group(rows, StandingsView.Eastern, StandingsMode.Wildcard),
+            ),
+        )
+        // The fixture is the league's actual 3/3/10 layout for one conference, with no conference prefix: the page
+        // already says which conference this is.
         val groups = suppliedState.value.groups
-        assertEquals(listOf(3, 3, 10, 3, 3, 10), groups.sections.map { it.rows.size })
-        rule.onAllNodesWithText("Playoff line").assertCountEquals(2)
+        assertEquals(listOf("Atlantic", "Metropolitan", "Wild Card"), groups.sections.map { it.title })
+        assertEquals(listOf(3, 3, 10), groups.sections.map { it.rows.size })
+        rule.onAllNodesWithText("Playoff line").assertCountEquals(1)
         rule.onAllNodesWithText("Playoff line")[0].performScrollTo().assertIsDisplayed()
         val wild = groups.sections[2]
         val second = rule.onNodeWithTag("standings.row.2.${wild.rows[1].team.abbrev}").fetchSemanticsNode()
@@ -198,7 +227,7 @@ class StandingsScreenTest {
     fun theTableIsOneRankingWithNoFavouritesSection() {
         // The view model never builds a pinned block; given a plain league table the screen must render one
         // continuous ranking, with the numbering running straight through the group.
-        launchScreen(fresh.copy(groups = StandingsGrouping.group(rows, StandingsView.League, emptyList())))
+        launchScreen(fresh.copy(groups = StandingsGrouping.group(rows, StandingsView.League)))
         rule.onAllNodesWithText("Your teams").assertCountEquals(0)
         rule.onAllNodes(rowMatcher).assertCountEquals(32)
         // Numbering runs straight through the table rather than restarting for a pinned block.
@@ -355,5 +384,150 @@ class StandingsScreenTest {
         assertTrue("At 2x the rows must grow past the compact 40 dp floor, tallest was $tallest", tallest > 44f)
         rule.onAllNodesWithText(leader.team.shortName!!, useUnmergedTree = true).onFirst().assertIsDisplayed()
         rule.onAllNodesWithText(leader.pts.toString(), useUnmergedTree = true).onFirst().assertIsDisplayed()
+    }
+
+    @Test
+    fun theLeaguePageHasNoRankingRow() {
+        // The ranking is a conference question. On the league page there is nothing to rank differently, so a
+        // control there would be three ways to do nothing.
+        launchScreen()
+        StandingsMode.entries.forEach { mode ->
+            rule.onAllNodesWithTag("standings.mode.$mode").assertCountEquals(0)
+        }
+        rule.onAllNodes(rowMatcher).assertCountEquals(32)
+    }
+
+    @Test
+    fun aConferencePageOffersTheThreeRankingsAndSwitchingOneRedrawsTheTable() {
+        launchScreen(
+            fresh.copy(
+                view = StandingsView.Eastern,
+                groups = StandingsGrouping.group(rows, StandingsView.Eastern, StandingsMode.Conference),
+            ),
+        )
+        StandingsMode.entries.forEach { mode ->
+            rule.onNodeWithTag("standings.mode.$mode").assertIsDisplayed()
+        }
+        rule.onNodeWithTag("standings.mode.Conference").assertIsSelected()
+        rule.onAllNodes(rowMatcher).assertCountEquals(16)
+
+        rule.onNodeWithTag("standings.mode.Division").performClick().assertIsSelected()
+        rule.waitForIdle()
+        assertEquals(StandingsMode.Division, suppliedState.value.mode)
+        assertEquals(
+            listOf("Atlantic", "Metropolitan"),
+            suppliedState.value.groups.sections
+                .map { it.title },
+        )
+        // The number restarts in each division block: 1-8 twice, not 1-16 across the conference.
+        val ranks = rule.onAllNodesWithTag("standings.rank", useUnmergedTree = true)
+        ranks.assertCountEquals(16)
+        ranks[0].assertTextEquals("1")
+        ranks[7].assertTextEquals("8")
+        ranks[8].assertTextEquals("1")
+        assertReach()
+
+        rule.onNodeWithTag("standings.mode.Wildcard").performClick().assertIsSelected()
+        rule.waitForIdle()
+        rule.onAllNodes(rowMatcher).assertCountEquals(16)
+        rule.onAllNodesWithText("Playoff line").assertCountEquals(1)
+    }
+
+    @Test
+    fun aSwipeKeepsTheRankingSoTheTwoConferencesAreComparable() {
+        val picked = mutableListOf<StandingsView>()
+        launchScreen(
+            fresh.copy(
+                view = StandingsView.Eastern,
+                mode = StandingsMode.Division,
+                groups = StandingsGrouping.group(rows, StandingsView.Eastern, StandingsMode.Division),
+            ),
+            selected = picked,
+        )
+        rule.onRoot().performTouchInput { swipeLeft() }
+        rule.waitForIdle()
+        assertEquals(listOf(StandingsView.Western), picked)
+        // Still in divisions, now the West's: swiping compares like with like instead of changing two things.
+        assertEquals(StandingsMode.Division, suppliedState.value.mode)
+        assertEquals(
+            listOf("Central", "Pacific"),
+            suppliedState.value.groups.sections
+                .map { it.title },
+        )
+        rule.onAllNodes(rowMatcher).assertCountEquals(16)
+    }
+
+    @Test
+    fun aConferencePageWithNoTeamsSaysWhyInsteadOfLookingEmpty() {
+        launchScreen(fresh.copy(view = StandingsView.Eastern, groups = StandingsGroups(emptyList()), loading = false))
+        rule.onAllNodesWithText("did not name a conference", substring = true).assertCountEquals(1)
+    }
+
+    @Test
+    fun everyConferenceAndRankingShowsItsWholeConferenceAboveTheFold() {
+        // The acceptance question for this design: the ranking row costs height, so does a conference still fit
+        // without scrolling in all six combinations?
+        launchScreen()
+        listOf(StandingsView.Eastern, StandingsView.Western).forEach { view ->
+            rule.onNodeWithTag("standings.view.$view").performClick()
+            rule.waitForIdle()
+            StandingsMode.entries.forEach { mode ->
+                rule.onNodeWithTag("standings.mode.$mode").performClick()
+                rule.waitForIdle()
+                val viewport = rule.onNodeWithTag("standings.list").fetchSemanticsNode().boundsInRoot
+                val window = rule.onRoot().fetchSemanticsNode().boundsInRoot
+                val fullyVisible =
+                    rule.onAllNodes(rowMatcher).fetchSemanticsNodes().count { row ->
+                        row.positionInRoot.y >= viewport.top - 0.5f &&
+                            row.positionInRoot.y + row.size.height <= viewport.bottom + 0.5f
+                    }
+                val rowsNow = rule.onAllNodes(rowMatcher).fetchSemanticsNodes()
+                val overflow =
+                    (rowsNow.maxOfOrNull { it.positionInRoot.y + it.size.height } ?: 0f) - viewport.bottom
+                println(
+                    "CONFERENCE_MEASUREMENT: ${view.name}/${mode.name} fullyVisible=$fullyVisible " +
+                        "window=${window.width / rule.density.density}x${window.height / rule.density.density} " +
+                        "listHeight=${viewport.height / rule.density.density} " +
+                        "overflowDp=${overflow / rule.density.density}",
+                )
+                assertEquals("${view.name}/${mode.name} must fit whole", 16, fullyVisible)
+            }
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "en-rUS-w360dp-h780dp-420dpi")
+    fun bothControlRowsFitLabelsOnASmallPhone() {
+        launchScreen()
+        listOf("League" to StandingsView.League, "Eastern" to StandingsView.Eastern, "Western" to StandingsView.Western)
+            .forEach { (label, view) ->
+                val chip = rule.onNodeWithTag("standings.view.$view").fetchSemanticsNode().boundsInRoot
+                val text =
+                    rule
+                        .onNode(
+                            hasText(label) and hasAnyAncestor(hasTestTag("standings.view.$view")),
+                            useUnmergedTree = true,
+                        ).fetchSemanticsNode()
+                assertTrue(
+                    "$label: ${text.size.width / rule.density.density} dp inside a ${chip.width / rule.density.density} dp tab",
+                    text.size.width <= chip.width,
+                )
+            }
+        rule.onNodeWithTag("standings.view.Eastern").performClick()
+        rule.waitForIdle()
+        listOf("Conference" to StandingsMode.Conference, "Division" to StandingsMode.Division, "Wild Card" to StandingsMode.Wildcard)
+            .forEach { (label, mode) ->
+                val chip = rule.onNodeWithTag("standings.mode.$mode").fetchSemanticsNode().boundsInRoot
+                val text =
+                    rule
+                        .onNode(
+                            hasText(label) and hasAnyAncestor(hasTestTag("standings.mode.$mode")),
+                            useUnmergedTree = true,
+                        ).fetchSemanticsNode()
+                assertTrue(
+                    "$label: ${text.size.width / rule.density.density} dp inside a ${chip.width / rule.density.density} dp segment",
+                    text.size.width <= chip.width,
+                )
+            }
     }
 }

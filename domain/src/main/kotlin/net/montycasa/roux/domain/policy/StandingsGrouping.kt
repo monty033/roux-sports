@@ -4,7 +4,16 @@ import net.montycasa.roux.domain.model.Conference
 import net.montycasa.roux.domain.model.Division
 import net.montycasa.roux.domain.model.StandingRow
 
-enum class StandingsView { League, Conference, Division, Wildcard }
+/**
+ * The first level: which part of the league. League is the whole thing; East and West are the conferences.
+ */
+enum class StandingsView { League, Eastern, Western }
+
+/**
+ * The second level: which ranking inside a conference. One mode shared by both conferences, so swiping from East to
+ * West compares the same table instead of changing two things at once.
+ */
+enum class StandingsMode { Conference, Division, Wildcard }
 
 data class StandingsSection(
     val title: String,
@@ -19,7 +28,6 @@ data class StandingsGroups(
 
 /** The feed owns ranking and tie-breaking; every sort here is stable and uses its sequence. */
 object StandingsGrouping {
-    private val conferences = listOf(Conference.Eastern to "Eastern", Conference.Western to "Western")
     private val divisions =
         listOf(
             Division.Atlantic to "Atlantic",
@@ -27,78 +35,96 @@ object StandingsGrouping {
             Division.Central to "Central",
             Division.Pacific to "Pacific",
         )
-    private val wildcardDivisions = listOf(divisions[0], divisions[1], divisions[3], divisions[2])
+
+    /** Eastern divisions first, then Western; Pacific before Central follows the league's own wildcard table. */
+    private val divisionOrder = listOf(divisions[0], divisions[1], divisions[3], divisions[2])
+
+    private val conferenceDivisions =
+        mapOf(
+            Conference.Eastern to listOf(divisions[0], divisions[1]),
+            Conference.Western to listOf(divisions[2], divisions[3]),
+        )
 
     fun group(
         rows: List<StandingRow>,
         view: StandingsView,
-        pinned: List<StandingRow> = emptyList(),
+        mode: StandingsMode = StandingsMode.Conference,
     ): StandingsGroups {
         if (rows.isEmpty()) return StandingsGroups(emptyList())
         val sections =
-            buildList {
-                fun section(
-                    title: String,
-                    members: List<StandingRow>,
-                    cut: Int? = null,
-                ) {
-                    if (members.isNotEmpty()) add(StandingsSection(title, members, cut))
-                }
-                section("Your teams", pinned.sortedBy { it.leagueSequence })
-                when (view) {
-                    StandingsView.League -> {
-                        section("NHL", rows.sortedBy { it.leagueSequence })
-                    }
-
-                    StandingsView.Conference -> {
-                        conferences.forEach { (conference, title) ->
-                            section(title, rows.filter { it.conference == conference }.sortedBy { it.conferenceSequence })
-                        }
-                        section("Other", rows.filter { it.conference is Conference.Unknown }.sortedBy { it.leagueSequence })
-                    }
-
-                    StandingsView.Division -> {
-                        divisions.forEach { (division, title) ->
-                            section(title, rows.filter { it.division == division }.sortedBy { it.divisionSequence })
-                        }
-                        section("Other", rows.filter { it.division is Division.Unknown }.sortedBy { it.leagueSequence })
-                    }
-
-                    StandingsView.Wildcard -> {
-                        // An unknown division cannot be placed in a division block. If the feed still ranks it, it
-                        // is ranked with the wildcard teams - that is where its sequence says it belongs - and an
-                        // unranked one falls through to "Other" below.
-                        conferences.forEach { (conference, title) ->
-                            val members = rows.filter { it.conference == conference }
-                            // Track input positions rather than equality so even duplicate rows are retained.
-                            val placed = mutableSetOf<Int>()
-                            wildcardDivisions.forEach { (division, name) ->
-                                val top =
-                                    members.indices
-                                        .filter { members[it].division == division }
-                                        .sortedBy { members[it].divisionSequence }
-                                        .take(3)
-                                placed += top
-                                section("$title — $name", top.map { members[it] })
-                            }
-                            val wild =
-                                members.indices
-                                    .filter { it !in placed && members[it].wildcardRank != null }
-                                    .sortedBy { members[it].wildcardSequence }
-                            placed += wild
-                            section("$title — Wild Card", wild.map { members[it] }, 1.takeIf { wild.size >= 2 })
-                            section(
-                                "$title — Other",
-                                members.indices
-                                    .filter { it !in placed }
-                                    .map { members[it] }
-                                    .sortedBy { it.leagueSequence },
-                            )
-                        }
-                        section("Other", rows.filter { it.conference is Conference.Unknown }.sortedBy { it.leagueSequence })
-                    }
-                }
+            when (view) {
+                StandingsView.League -> listOf(StandingsSection("NHL", rows.sortedBy { it.leagueSequence }))
+                StandingsView.Eastern -> conferencePage(rows, Conference.Eastern, mode)
+                StandingsView.Western -> conferencePage(rows, Conference.Western, mode)
             }
         return StandingsGroups(sections)
+    }
+
+    private fun conferencePage(
+        rows: List<StandingRow>,
+        conference: Conference,
+        mode: StandingsMode,
+    ): List<StandingsSection> {
+        val members = rows.filter { it.conference == conference }
+        if (members.isEmpty()) return emptyList()
+        return when (mode) {
+            // The page already says which conference it is, so the ranking needs no heading of its own.
+            StandingsMode.Conference -> listOf(StandingsSection("", members.sortedBy { it.conferenceSequence }))
+
+            StandingsMode.Division -> divisionTables(members, conference)
+
+            StandingsMode.Wildcard -> wildcardRace(members)
+        }
+    }
+
+    private fun divisionTables(
+        members: List<StandingRow>,
+        conference: Conference,
+    ): List<StandingsSection> {
+        val sections = mutableListOf<StandingsSection>()
+        conferenceDivisions[conference].orEmpty().forEach { (division, title) ->
+            val block = members.filter { it.division == division }.sortedBy { it.divisionSequence }
+            if (block.isNotEmpty()) sections += StandingsSection(title, block)
+        }
+        val other = members.filter { it.division is Division.Unknown }.sortedBy { it.leagueSequence }
+        if (other.isNotEmpty()) sections += StandingsSection("Other", other)
+        return sections
+    }
+
+    /**
+     * The three division places that are in, the wild card race with the cut after the second team, then anything the
+     * feed ranked that fits neither block.
+     *
+     * An unknown division cannot be placed in a division block. If the feed still ranks it, it is ranked with the
+     * wildcard teams - that is where its sequence says it belongs - and an unranked one falls through to "Other".
+     */
+    private fun wildcardRace(members: List<StandingRow>): List<StandingsSection> {
+        val sections = mutableListOf<StandingsSection>()
+        // Track input positions rather than equality so even duplicate rows are retained.
+        val placed = mutableSetOf<Int>()
+        divisionOrder.forEach { (division, title) ->
+            val top =
+                members.indices
+                    .filter { members[it].division == division }
+                    .sortedBy { members[it].divisionSequence }
+                    .take(3)
+            placed += top
+            if (top.isNotEmpty()) sections += StandingsSection(title, top.map { members[it] })
+        }
+        val wild =
+            members.indices
+                .filter { it !in placed && members[it].wildcardRank != null }
+                .sortedBy { members[it].wildcardSequence }
+        placed += wild
+        if (wild.isNotEmpty()) {
+            sections += StandingsSection("Wild Card", wild.map { members[it] }, 1.takeIf { wild.size >= 2 })
+        }
+        val rest =
+            members.indices
+                .filter { it !in placed }
+                .map { members[it] }
+                .sortedBy { it.leagueSequence }
+        if (rest.isNotEmpty()) sections += StandingsSection("Other", rest)
+        return sections
     }
 }

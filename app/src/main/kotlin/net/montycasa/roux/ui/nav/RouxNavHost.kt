@@ -451,6 +451,7 @@ private fun StandingsDestination() {
         state = state,
         onRefresh = standings::refresh,
         onSetView = standings::setView,
+        onSetMode = standings::setMode,
     )
 }
 

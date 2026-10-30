@@ -15,16 +15,21 @@ import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.policy.StandingsGrouping
 import net.montycasa.roux.domain.policy.StandingsGroups
+import net.montycasa.roux.domain.policy.StandingsMode
 import net.montycasa.roux.domain.policy.StandingsView
 import net.montycasa.roux.domain.repo.PreferencesRepository
 import net.montycasa.roux.domain.repo.StandingsRepository
 
 data class StandingsUiState(
     val groups: StandingsGroups = StandingsGroups(emptyList()),
-    // Every view, grouped: the swipe shows the neighbouring view's table while the finger is still moving, so those
-    // rows have to exist before that view is selected.
-    val groupsByView: Map<StandingsView, StandingsGroups> = emptyMap(),
+    // Every view and every ranking, grouped: the swipe shows the neighbouring conference while the finger is still
+    // moving, and the ranking control has to be able to change the table without a round trip, so both axes are
+    // grouped ahead of time. The league page ignores the ranking and holds one entry.
+    val groupsByView: Map<StandingsView, Map<StandingsMode, StandingsGroups>> = emptyMap(),
     val view: StandingsView = StandingsView.League,
+    // The ranking is one mode shared by both conferences, so a swipe compares the same table rather than changing
+    // two things at once. It is not persisted: there is nothing saved today, so there is nothing to migrate.
+    val mode: StandingsMode = StandingsMode.Conference,
     val isRefreshing: Boolean = false,
     val error: LoadError? = null,
     val stale: Freshness.Stale? = null,
@@ -48,6 +53,10 @@ class StandingsViewModel(
 
     fun setView(view: StandingsView) {
         mutableState.update { grouped(it.copy(view = view)) }
+    }
+
+    fun setMode(mode: StandingsMode) {
+        mutableState.update { grouped(it.copy(mode = mode)) }
     }
 
     /** Also rereads the shared preferences, whose repository currently has no observable API. */
@@ -94,9 +103,19 @@ class StandingsViewModel(
     private fun grouped(state: StandingsUiState): StandingsUiState {
         // No favourites section: the table is the table. A pinned block splits one ranking into two, and the
         // favourite teams are still marked where they are in the table itself.
-        val byView = StandingsView.entries.associateWith { StandingsGrouping.group(rows, it, emptyList()) }
+        val byView =
+            StandingsView.entries.associateWith { view ->
+                if (view == StandingsView.League) {
+                    mapOf(StandingsMode.Conference to StandingsGrouping.group(rows, view))
+                } else {
+                    StandingsMode.entries.associateWith { mode -> StandingsGrouping.group(rows, view, mode) }
+                }
+            }
+        val perView = byView.getValue(state.view)
         return state.copy(
-            groups = byView.getValue(state.view),
+            // The league page holds one grouping (the ranking does not apply to it), so the lookup falls back to it
+            // rather than to an empty table.
+            groups = perView[state.mode] ?: perView.values.first(),
             groupsByView = byView,
         )
     }
