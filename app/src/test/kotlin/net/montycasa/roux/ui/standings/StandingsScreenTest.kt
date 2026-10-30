@@ -78,6 +78,12 @@ class StandingsScreenTest {
             it.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("standings.row.") == true
         }
 
+    private fun eastState() =
+        fresh.copy(
+            view = StandingsView.Eastern,
+            groups = StandingsGrouping.group(rows, StandingsView.Eastern, StandingsMode.Playoffs),
+        )
+
     private fun launchScreen(
         state: StandingsUiState = fresh,
         onRefresh: () -> Unit = {
@@ -137,18 +143,28 @@ class StandingsScreenTest {
     @Test
     fun aSwipeStepsTheGroupingInsteadOfLeavingTheScreen() {
         val picked = mutableListOf<StandingsView>()
-        launchScreen(fresh, selected = picked)
-        // League -> Eastern -> Western: the conference is the page axis.
+        launchScreen(eastState(), selected = picked)
+        // East -> West -> League: the conference is the page axis, in that order.
         rule.onRoot().performTouchInput { swipeLeft() }
         rule.waitForIdle()
-        assertEquals(listOf(StandingsView.Eastern), picked)
+        assertEquals(listOf(StandingsView.Western), picked)
     }
 
     @Test
-    fun aBackwardSwipeOnTheFirstGroupingDoesNothing() {
+    fun aBackwardSwipeOnEastDoesNothing() {
+        val picked = mutableListOf<StandingsView>()
+        launchScreen(eastState(), selected = picked)
+        rule.onRoot().performTouchInput { swipeRight() }
+        rule.waitForIdle()
+        assertEquals(emptyList<StandingsView>(), picked)
+    }
+
+    @Test
+    fun aForwardSwipeOnLeagueDoesNothing() {
         val picked = mutableListOf<StandingsView>()
         launchScreen(fresh, selected = picked)
-        rule.onRoot().performTouchInput { swipeRight() }
+        // League is the last page now, so there is nothing to its right.
+        rule.onRoot().performTouchInput { swipeLeft() }
         rule.waitForIdle()
         assertEquals(emptyList<StandingsView>(), picked)
     }
@@ -203,8 +219,8 @@ class StandingsScreenTest {
         launchScreen(
             fresh.copy(
                 view = StandingsView.Eastern,
-                mode = StandingsMode.Wildcard,
-                groups = StandingsGrouping.group(rows, StandingsView.Eastern, StandingsMode.Wildcard),
+                mode = StandingsMode.Playoffs,
+                groups = StandingsGrouping.group(rows, StandingsView.Eastern, StandingsMode.Playoffs),
             ),
         )
         // The fixture is the league's actual 3/3/10 layout for one conference, with no conference prefix: the page
@@ -402,6 +418,7 @@ class StandingsScreenTest {
         launchScreen(
             fresh.copy(
                 view = StandingsView.Eastern,
+                mode = StandingsMode.Conference,
                 groups = StandingsGrouping.group(rows, StandingsView.Eastern, StandingsMode.Conference),
             ),
         )
@@ -427,7 +444,7 @@ class StandingsScreenTest {
         ranks[8].assertTextEquals("1")
         assertReach()
 
-        rule.onNodeWithTag("standings.mode.Wildcard").performClick().assertIsSelected()
+        rule.onNodeWithTag("standings.mode.Playoffs").performClick().assertIsSelected()
         rule.waitForIdle()
         rule.onAllNodes(rowMatcher).assertCountEquals(16)
         rule.onAllNodesWithText("Playoff line").assertCountEquals(1)
@@ -499,7 +516,7 @@ class StandingsScreenTest {
     @Config(qualifiers = "en-rUS-w360dp-h780dp-420dpi")
     fun bothControlRowsFitLabelsOnASmallPhone() {
         launchScreen()
-        listOf("League" to StandingsView.League, "Eastern" to StandingsView.Eastern, "Western" to StandingsView.Western)
+        listOf("East" to StandingsView.Eastern, "West" to StandingsView.Western, "League" to StandingsView.League)
             .forEach { (label, view) ->
                 val chip = rule.onNodeWithTag("standings.view.$view").fetchSemanticsNode().boundsInRoot
                 val text =
@@ -515,7 +532,7 @@ class StandingsScreenTest {
             }
         rule.onNodeWithTag("standings.view.Eastern").performClick()
         rule.waitForIdle()
-        listOf("Conference" to StandingsMode.Conference, "Division" to StandingsMode.Division, "Wild Card" to StandingsMode.Wildcard)
+        listOf("Playoffs" to StandingsMode.Playoffs, "Division" to StandingsMode.Division, "Conference" to StandingsMode.Conference)
             .forEach { (label, mode) ->
                 val chip = rule.onNodeWithTag("standings.mode.$mode").fetchSemanticsNode().boundsInRoot
                 val text =

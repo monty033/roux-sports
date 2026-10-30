@@ -5,15 +5,17 @@ import net.montycasa.roux.domain.model.Division
 import net.montycasa.roux.domain.model.StandingRow
 
 /**
- * The first level: which part of the league. League is the whole thing; East and West are the conferences.
+ * The first level: which part of the league, in the order the strip shows them. The conferences come first because
+ * that is what a reader following a team wants; the whole league is the recap you check last.
  */
-enum class StandingsView { League, Eastern, Western }
+enum class StandingsView { Eastern, Western, League }
 
 /**
- * The second level: which ranking inside a conference. One mode shared by both conferences, so swiping from East to
- * West compares the same table instead of changing two things at once.
+ * The second level: which ranking inside a conference, in strip order - the playoff picture first, then the division
+ * tables, then the plain conference ranking. One mode shared by both conferences, so swiping from East to West
+ * compares the same table instead of changing two things at once.
  */
-enum class StandingsMode { Conference, Division, Wildcard }
+enum class StandingsMode { Playoffs, Division, Conference }
 
 data class StandingsSection(
     val title: String,
@@ -48,7 +50,7 @@ object StandingsGrouping {
     fun group(
         rows: List<StandingRow>,
         view: StandingsView,
-        mode: StandingsMode = StandingsMode.Conference,
+        mode: StandingsMode = StandingsMode.Playoffs,
     ): StandingsGroups {
         if (rows.isEmpty()) return StandingsGroups(emptyList())
         val sections =
@@ -68,12 +70,12 @@ object StandingsGrouping {
         val members = rows.filter { it.conference == conference }
         if (members.isEmpty()) return emptyList()
         return when (mode) {
-            // The page already says which conference it is, so the ranking needs no heading of its own.
-            StandingsMode.Conference -> listOf(StandingsSection("", members.sortedBy { it.conferenceSequence }))
+            StandingsMode.Playoffs -> wildcardRace(members)
 
             StandingsMode.Division -> divisionTables(members, conference)
 
-            StandingsMode.Wildcard -> wildcardRace(members)
+            // The page already says which conference it is, so the ranking needs no heading of its own.
+            StandingsMode.Conference -> listOf(StandingsSection("", members.sortedBy { it.conferenceSequence }))
         }
     }
 

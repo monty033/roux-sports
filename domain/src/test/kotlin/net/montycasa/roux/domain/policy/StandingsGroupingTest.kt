@@ -31,6 +31,14 @@ class StandingsGroupingTest {
         }
 
     @Test
+    fun theControlsAreOrderedConferencesFirstThenThePlayoffPictureFirst() {
+        // The order is part of the design, not an accident of declaration: Patrick asked for East, West, League and
+        // for Playoffs, Division, Conference.
+        assertEquals(listOf("Eastern", "Western", "League"), StandingsView.entries.map { it.name })
+        assertEquals(listOf("Playoffs", "Division", "Conference"), StandingsMode.entries.map { it.name })
+    }
+
+    @Test
     fun leagueHasThirtyTwoRowsByLeagueSequenceNeverPoints() {
         val groups = StandingsGrouping.group(rows, StandingsView.League)
         assertEquals(listOf("NHL"), groups.sections.map { it.title })
@@ -90,8 +98,8 @@ class StandingsGroupingTest {
     }
 
     @Test
-    fun wildcardModeIsThePlayoffPictureWithTheCutBelowWcTwo() {
-        val sections = StandingsGrouping.group(rows, StandingsView.Eastern, StandingsMode.Wildcard).sections
+    fun playoffsModeIsThePlayoffPictureWithTheCutBelowWcTwo() {
+        val sections = StandingsGrouping.group(rows, StandingsView.Eastern, StandingsMode.Playoffs).sections
         assertEquals(listOf("Atlantic", "Metropolitan", "Wild Card"), sections.map { it.title })
         assertEquals(listOf(3, 3, 10), sections.map { it.rows.size })
         assertEquals(listOf(null, null, 1), sections.map { it.playoffCutAfter })
@@ -120,15 +128,15 @@ class StandingsGroupingTest {
     }
 
     @Test
-    fun wildcardDivisionPlacementWinsEvenWhenTopThreeHaveWildcardRanks() {
+    fun playoffsDivisionPlacementWinsEvenWhenTopThreeHavePlayoffRanks() {
         val altered = rows.map { it.copy(wildcardSequence = 1) }
-        val sections = StandingsGrouping.group(altered, StandingsView.Eastern, StandingsMode.Wildcard).sections
+        val sections = StandingsGrouping.group(altered, StandingsView.Eastern, StandingsMode.Playoffs).sections
         assertEquals(16, sections.sumOf { it.rows.size })
         assertEquals(listOf(3, 3, 10), sections.map { it.rows.size })
     }
 
     @Test
-    fun anUnknownDivisionGetsItsOwnBlockInDivisionModeAndWildcardRanksInWildcardMode() {
+    fun anUnknownDivisionGetsItsOwnBlockInDivisionModeAndRanksInPlayoffsMode() {
         val unknown = rows[0].copy(division = Division.Unknown("new"), divisionSequence = 1)
         val ranked = rows[1].copy(division = Division.Unknown("new"), wildcardSequence = 1)
 
@@ -138,7 +146,7 @@ class StandingsGroupingTest {
 
         // A ranked unknown division sorts into the race; an unranked one falls through to "Other".
         val unranked = rows[2].copy(division = Division.Unknown("new"), wildcardSequence = 0)
-        val wild = StandingsGrouping.group(listOf(ranked, unranked), StandingsView.Eastern, StandingsMode.Wildcard).sections
+        val wild = StandingsGrouping.group(listOf(ranked, unranked), StandingsView.Eastern, StandingsMode.Playoffs).sections
         assertEquals(listOf("Wild Card", "Other"), wild.map { it.title })
         assertEquals(listOf(ranked), wild[0].rows)
         assertEquals(listOf(unranked), wild[1].rows)
@@ -165,18 +173,18 @@ class StandingsGroupingTest {
     }
 
     @Test
-    fun wildcardOmitsMissingDivisionsAndEmptyBlocks() {
-        val sections = StandingsGrouping.group(rows.takeLast(8), StandingsView.Western, StandingsMode.Wildcard).sections
+    fun playoffsOmitsMissingDivisionsAndEmptyBlocks() {
+        val sections = StandingsGrouping.group(rows.takeLast(8), StandingsView.Western, StandingsMode.Playoffs).sections
         assertEquals(listOf("Pacific", "Wild Card"), sections.map { it.title })
     }
 
     @Test
-    fun wildcardCutRequiresAtLeastTwoRows() {
+    fun playoffsCutRequiresAtLeastTwoRows() {
         val top = rows.takeLast(3).mapIndexed { index, row -> row.copy(divisionSequence = index + 1) }
         val wild = rows[24].copy(divisionSequence = 4, wildcardSequence = 1)
         assertNull(
             StandingsGrouping
-                .group(top + wild, StandingsView.Western, StandingsMode.Wildcard)
+                .group(top + wild, StandingsView.Western, StandingsMode.Playoffs)
                 .sections
                 .last()
                 .playoffCutAfter,
@@ -185,7 +193,7 @@ class StandingsGroupingTest {
         assertEquals(
             1,
             StandingsGrouping
-                .group(two, StandingsView.Western, StandingsMode.Wildcard)
+                .group(two, StandingsView.Western, StandingsMode.Playoffs)
                 .sections
                 .last()
                 .playoffCutAfter,

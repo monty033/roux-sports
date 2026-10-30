@@ -314,9 +314,9 @@ fun StandingsScreen(
                         Text(
                             stringResource(
                                 when (view) {
+                                    StandingsView.Eastern -> R.string.standings_east
+                                    StandingsView.Western -> R.string.standings_west
                                     StandingsView.League -> R.string.standings_league
-                                    StandingsView.Eastern -> R.string.standings_eastern
-                                    StandingsView.Western -> R.string.standings_western
                                 },
                             ),
                             textAlign = TextAlign.Center,
@@ -377,9 +377,9 @@ private fun StandingsModeRow(
                     Text(
                         stringResource(
                             when (entry) {
-                                StandingsMode.Conference -> R.string.standings_conference
+                                StandingsMode.Playoffs -> R.string.standings_playoffs
                                 StandingsMode.Division -> R.string.standings_division
-                                StandingsMode.Wildcard -> R.string.standings_wild_card
+                                StandingsMode.Conference -> R.string.standings_conference
                             },
                         ),
                         textAlign = TextAlign.Center,

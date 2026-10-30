@@ -29,7 +29,7 @@ data class StandingsUiState(
     val view: StandingsView = StandingsView.League,
     // The ranking is one mode shared by both conferences, so a swipe compares the same table rather than changing
     // two things at once. It is not persisted: there is nothing saved today, so there is nothing to migrate.
-    val mode: StandingsMode = StandingsMode.Conference,
+    val mode: StandingsMode = StandingsMode.Playoffs,
     val isRefreshing: Boolean = false,
     val error: LoadError? = null,
     val stale: Freshness.Stale? = null,
@@ -106,7 +106,7 @@ class StandingsViewModel(
         val byView =
             StandingsView.entries.associateWith { view ->
                 if (view == StandingsView.League) {
-                    mapOf(StandingsMode.Conference to StandingsGrouping.group(rows, view))
+                    mapOf(StandingsMode.Playoffs to StandingsGrouping.group(rows, view))
                 } else {
                     StandingsMode.entries.associateWith { mode -> StandingsGrouping.group(rows, view, mode) }
                 }

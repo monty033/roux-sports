@@ -118,7 +118,8 @@ class StandingsIntegrationTest {
         // The conference is the page axis: the Eastern tab shows the East's own table, and the ranking row it
         // carries is the second level.
         rule.onNodeWithTag("standings.view.Eastern").performClick().assertIsSelected()
-        rule.onNodeWithTag("standings.mode.Conference").assertIsSelected()
+        // The strip opens on the playoff picture, which is the first ranking.
+        rule.onNodeWithTag("standings.mode.Playoffs").assertIsSelected()
         rule.onNodeWithText("NHL").assertDoesNotExist()
         rule.onNodeWithTag("standings.mode.Division").performClick().assertIsSelected()
         rule.onNodeWithText("Atlantic").performScrollTo().assertIsDisplayed()
