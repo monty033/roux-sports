@@ -79,6 +79,46 @@ class RightRailAdapterTest {
 
     /** A game that has not started has no linescore, no shots and no comparison table at all. */
     @Test
+    fun capturedFinalKeepsEveryPublishedStatRow() {
+        val rail = successOf(Fixtures.text(FIXTURE))
+
+        // Ten rows in the payload, and eight of them had no typed field - which is how they went missing from the page.
+        assertEquals(10, rail.teamStats.size)
+        assertEquals(
+            listOf(
+                "sog",
+                "faceoffWinningPctg",
+                "faceoffWins",
+                "powerPlay",
+                "powerPlayPctg",
+                "pim",
+                "hits",
+                "blockedShots",
+                "giveaways",
+                "takeaways",
+            ),
+            rail.teamStats.map { it.label },
+        )
+    }
+
+    @Test
+    fun aFaceoffPercentageKeepsTheFeedsOwnNotation() {
+        val row = successOf(Fixtures.text(FIXTURE)).teamStats.first { it.label == "faceoffWinningPctg" }
+
+        // The feed writes 0.5600000; an integer coercion would read that as 56 before the page rounded anything.
+        assertEquals(0.56, row.away.toDouble(), 0.0001)
+        assertEquals(0.44, row.home.toDouble(), 0.0001)
+    }
+
+    @Test
+    fun aFractionRowKeepsBothNumbers() {
+        val row = successOf(Fixtures.text(FIXTURE)).teamStats.first { it.label == "faceoffWins" }
+
+        assertEquals("28/50", row.away)
+        assertEquals("22/50", row.home)
+    }
+
+    @Test
     fun realNotStartedRailHasNeitherSection() {
         val rail = successOf(Fixtures.text("gc-fut-right-rail.json"))
         assertNull(rail.shots)

@@ -33,7 +33,7 @@ import androidx.compose.ui.unit.dp
 import net.montycasa.roux.R
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
-import net.montycasa.roux.domain.model.GameId
+import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.policy.DateStrip
 import net.montycasa.roux.domain.policy.FavoritesHint
 import net.montycasa.roux.ui.common.RetryButton
@@ -55,7 +55,7 @@ import java.time.format.DateTimeFormatter
 fun ScoresScreen(
     state: ScoresUiState,
     onRefresh: () -> Unit,
-    onGameClick: (GameId) -> Unit,
+    onGameClick: (Game) -> Unit,
     onSelectDate: (String) -> Unit,
     modifier: Modifier = Modifier,
     onOpenLeagues: () -> Unit = {},
@@ -143,7 +143,7 @@ fun ScoresScreen(
                                             Modifier
                                                 .padding(horizontal = 12.dp)
                                                 .testTag("scores.game.${game.id.value}")
-                                                .clickable { onGameClick(game.id) },
+                                                .clickable { onGameClick(game) },
                                     )
                                 }
                             }

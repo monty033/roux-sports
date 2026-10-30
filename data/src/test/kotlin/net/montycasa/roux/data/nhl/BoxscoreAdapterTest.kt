@@ -10,7 +10,9 @@ import kotlinx.serialization.json.jsonPrimitive
 import net.montycasa.roux.data.Fixtures
 import net.montycasa.roux.domain.model.GameBoxscore
 import net.montycasa.roux.domain.model.GoalieLine
+import net.montycasa.roux.domain.model.SkaterLine
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -71,6 +73,77 @@ class BoxscoreAdapterTest {
         assertEquals(emptyList<GoalieLine>(), goalies)
     }
 
+    /**
+     * Skaters live in two lists per side - `forwards` and `defense`. Reading only `forwards` would drop six defencemen
+     * per team and nothing in the payload would complain, so the count is asserted, not just "greater than zero".
+     */
+    @Test
+    fun capturedFinalHasEverySkaterFromBothSides() {
+        val skaters = successOf(Fixtures.text(FIXTURE)).skaters
+        assertEquals(36, skaters.size)
+        assertEquals(18, skaters.count { it.skater.teamAbbrev == "CBJ" })
+        assertEquals(18, skaters.count { it.skater.teamAbbrev == "PHI" })
+        assertTrue(
+            "no defenceman was parsed: ${skaters.map { it.position }.toSet()}",
+            skaters.any { it.position == "D" },
+        )
+    }
+
+    @Test
+    fun skaterLineCarriesTheColumnsThePageDraws() {
+        val coyle = successOf(Fixtures.text(FIXTURE)).skaters.first { it.skater.name == "C. Coyle" }
+        assertEquals("CBJ", coyle.skater.teamAbbrev)
+        assertEquals("C", coyle.position)
+        assertEquals(0, coyle.goals)
+        assertEquals(0, coyle.points)
+        assertEquals(19 * 60 + 36, coyle.toiSeconds)
+        assertEquals(53, coyle.faceoffPercent())
+    }
+
+    /** Ice time is "19:36" text and becomes seconds, because the page formats it and maths needs a number. */
+    @Test
+    fun iceTimeIsParsedFromMinutesAndSeconds() {
+        val johnson = successOf(Fixtures.text(FIXTURE)).skaters.first { it.skater.name == "K. Johnson" }
+        assertEquals(2, johnson.goals)
+        assertEquals(3, johnson.points)
+        assertTrue("K. Johnson has no ice time", johnson.toiSeconds > 0)
+    }
+
+    /**
+     * The captured payload always sends a faceoff figure, using 0.0 for skaters who never took a draw - so 0% and "no
+     * draws" are not distinguishable from this field alone, and the page must not invent a distinction.
+     */
+    @Test
+    fun capturedPayloadSendsAFaceoffFigureForEverySkater() {
+        val skaters = successOf(Fixtures.text(FIXTURE)).skaters
+        assertTrue("a skater arrived with no faceoff figure", skaters.all { it.faceoffPercent() != null })
+        assertTrue("nobody took a draw at all", skaters.any { it.faceoffPercent() == 0 })
+    }
+
+    /** Older or partial payloads omit the key; that absence is preserved as null rather than turned into 0%. */
+    @Test
+    fun anAbsentFaceoffKeyStaysNull() {
+        val skaters = successOf(withoutOneFaceoffFigure()).skaters
+        val stripped = skaters.first { it.skater.name == "C. Coyle" }
+        assertNull(stripped.faceoffPercent())
+    }
+
+    /** The goalie line now carries the two numbers the goals-against average is derived from. */
+    @Test
+    fun goalieLineCarriesGoalsAgainstAndIceTime() {
+        val goalies = successOf(Fixtures.text(FIXTURE)).goalies
+        val talbot = goalies.first { it.goalie.name == "C. Talbot" }
+        assertEquals(3, talbot.goalsAgainst)
+        assertEquals(62 * 60 + 22, talbot.toiSeconds)
+        assertEquals(2.89, talbot.goalsAgainstAverage()!!, 0.005)
+        assertEquals(29.0 / 32.0, talbot.savePercentage()!!, 0.0001)
+    }
+
+    @Test
+    fun startedGameReportsNoSkatersEither() {
+        assertEquals(emptyList<SkaterLine>(), successOf(Fixtures.text("gc-fut-boxscore.json")).skaters)
+    }
+
     @Test
     fun emptyObjectFailsWithoutThrowing() {
         val result = BoxscoreAdapter.parse("{}")
@@ -107,6 +180,30 @@ class BoxscoreAdapterTest {
     }
 
     private fun withoutStarterFlags(): String = rewriteGoalies { goalie -> JsonObject(goalie.filterKeys { it != "starter" }) }
+
+    /** Strips the faceoff figure from each side's first forward - C. Coyle and the Flyers' first forward. */
+    private fun withoutOneFaceoffFigure(): String {
+        val root = fixture()
+        val players = root["playerByGameStats"]!!.jsonObject
+        val rewritten =
+            JsonObject(
+                players.mapValues { (_, side) ->
+                    val sideObject = side.jsonObject
+                    val forwards =
+                        JsonArray(
+                            sideObject["forwards"]!!.jsonArray.mapIndexed { index, element ->
+                                if (index == 0) {
+                                    JsonObject(element.jsonObject.filterKeys { it != "faceoffWinningPctg" })
+                                } else {
+                                    element
+                                }
+                            },
+                        )
+                    JsonObject(sideObject + ("forwards" to forwards))
+                },
+            )
+        return JsonObject(root + ("playerByGameStats" to rewritten)).toString()
+    }
 
     private fun zeroingIceTime(): String =
         rewriteGoalies { goalie ->

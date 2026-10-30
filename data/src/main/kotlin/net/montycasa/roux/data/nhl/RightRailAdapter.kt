@@ -11,6 +11,7 @@ import net.montycasa.roux.data.nhl.dto.TeamStatRowDto
 import net.montycasa.roux.domain.model.GameRightRail
 import net.montycasa.roux.domain.model.PowerPlaySummary
 import net.montycasa.roux.domain.model.ShotTotals
+import net.montycasa.roux.domain.model.TeamStat
 
 /**
  * Turns the right rail into the two sections it owns: shots and power play.
@@ -46,6 +47,15 @@ internal object RightRailAdapter {
             GameRightRail(
                 shots = rows.shots(rail.shotsByPeriod.orEmpty().mapNotNull { it }),
                 powerPlay = rows.powerPlay(),
+                // Every remaining row is passed through in the notation the league used, so the page can decide how to
+                // draw it. Dropping the rows the page has no typed field for is how eight of ten stats went missing.
+                teamStats =
+                    rows.mapNotNull { row ->
+                        val category = row.category?.trim()?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+                        val away = row.awayValue.asText() ?: return@mapNotNull null
+                        val home = row.homeValue.asText() ?: return@mapNotNull null
+                        TeamStat(category, away, home)
+                    },
             ),
         )
     }
@@ -80,6 +90,13 @@ internal object RightRailAdapter {
             homeChances = home.second,
         )
     }
+
+    /** The value exactly as the feed wrote it: a percentage stays `0.56`, a fraction stays `2/5`. */
+    private fun JsonElement?.asText(): String? =
+        when (val element = this) {
+            is JsonPrimitive -> element.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+            else -> null
+        }
 
     /** Accepts a JSON number or a numeric string; anything else is absent. */
     private fun JsonElement?.asInt(): Int? =

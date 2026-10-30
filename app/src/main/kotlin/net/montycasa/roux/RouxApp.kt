@@ -20,8 +20,10 @@ import net.montycasa.roux.data.cache.ResponseCache
 import net.montycasa.roux.data.net.NhlApi
 import net.montycasa.roux.data.net.NhlHttpClientFactory
 import net.montycasa.roux.data.prefs.DataStorePreferencesRepository
+import net.montycasa.roux.data.repo.gameDetailRepository
 import net.montycasa.roux.data.repo.scoresRepository
 import net.montycasa.roux.data.repo.standingsRepository
+import net.montycasa.roux.domain.repo.GameDetailRepository
 import net.montycasa.roux.domain.repo.PreferencesRepository
 import net.montycasa.roux.domain.repo.ScoresRepository
 import net.montycasa.roux.domain.repo.StandingsRepository
@@ -116,6 +118,10 @@ class AppContainer(
     val scores: ScoresRepository = scoresRepository(api = api, cache = cache, clock = clock)
 
     val standings: StandingsRepository = standingsRepository(api = api, cache = cache, clock = clock)
+
+    /** The game page's three endpoints, each cached on its own so a landing-page burst cannot evict them. */
+    val gameDetail: GameDetailRepository =
+        gameDetailRepository(api = api, cache = cache, clock = clock)
 
     /**
      * Closes the HTTP client and cancels this container's scope, waiting for the preference store's
