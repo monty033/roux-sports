@@ -108,6 +108,8 @@ fun ScoresScreen(
                     daySlide.animateTo(0f, tween(DAY_SLIDE_MILLIS))
                 }
             }
+            val rowsForDay =
+                state.rows.ifEmpty { state.neighboursByDate[state.selectedDate].orEmpty() }
             val stepDate: (Int) -> Unit = { by ->
                 val dates = state.dateIndex.map { it.date }.distinct()
                 val at = dates.indexOf(state.selectedDate)
@@ -183,7 +185,7 @@ fun ScoresScreen(
                                         )
                                     }
                                 }
-                                items(state.rows, key = { it.id.value }) { game ->
+                                items(rowsForDay, key = { it.id.value }) { game ->
                                     GameRow(
                                         game,
                                         narrow = narrow,
