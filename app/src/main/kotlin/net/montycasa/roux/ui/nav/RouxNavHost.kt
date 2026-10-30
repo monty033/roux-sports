@@ -271,23 +271,19 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
                                         .testTag("nav.menu"),
                                 contentAlignment = Alignment.TopCenter,
                             ) {
-                                Box(
-                                    Modifier
-                                        .padding(top = Reach.BAR_ICON_TOP_DP.dp)
-                                        .size(Reach.BAR_MENU_SIZE_DP.dp)
-                                        // Inside the padding, so the tagged node is the circle itself rather than
-                                        // the circle plus the gap above it.
-                                        .testTag("nav.menu.circle")
-                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f), CircleShape),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Icon(
-                                        imageVector = menuGlyph(),
-                                        contentDescription = stringResource(R.string.nav_menu),
-                                        modifier = Modifier.size(20.dp),
-                                        tint = MaterialTheme.colorScheme.primary,
-                                    )
-                                }
+                                Icon(
+                                    imageVector = menuGlyph(),
+                                    contentDescription = stringResource(R.string.nav_menu),
+                                    // Same 24 dp as the destination glyphs, sat on the same row: the accent colour is
+                                    // what sets it apart, not its size. A follower that is bigger than the things it
+                                    // sits beside reads as a control that is trying too hard.
+                                    modifier =
+                                        Modifier
+                                            .padding(top = Reach.BAR_ICON_TOP_DP.dp)
+                                            .size(24.dp)
+                                            .testTag("nav.menu.icon"),
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
                             }
                             pages.forEachIndexed { index, destination ->
                                 val label = stringResource(destination.label)
@@ -456,7 +452,7 @@ private fun StandingsDestination() {
     )
 }
 
-private fun menuGlyph(): ImageVector = glyph("Menu", "M3,6.5 h18 v2.5 h-18 z M3,10.75 h18 v2.5 h-18 z M3,15 h18 v2.5 h-18 z")
+private fun menuGlyph(): ImageVector = glyph("Menu", "M2,6.5 h20 v2.5 h-20 z M2,10.75 h20 v2.5 h-20 z M2,15 h20 v2.5 h-20 z")
 
 /**
  * Hand-drawn 24 dp glyphs rather than a material-icons dependency: three shapes are cheaper than a

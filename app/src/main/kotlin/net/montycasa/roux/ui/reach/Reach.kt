@@ -46,13 +46,7 @@ object Reach {
      * Top of the menu button's circle, measured from the top of the bar. It puts the circle's centre on the same line
      * as the destination icons, which sit above their labels.
      */
-    const val BAR_ICON_TOP_DP = 8f
-
-    /**
-     * The menu button's circle. 32 dp is Material's own indicator size, so the button and a selected destination
-     * carry the same optical weight; at 36 dp the circle was clipped inside the item's slot.
-     */
-    const val BAR_MENU_SIZE_DP = 32f
+    const val BAR_ICON_TOP_DP = 14f
 
     /** Material's navigation bar height; named here because the menu button has to size itself against it. */
     const val BAR_HEIGHT_DP = 80f

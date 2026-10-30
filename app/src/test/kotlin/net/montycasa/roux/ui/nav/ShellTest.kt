@@ -486,19 +486,17 @@ class ShellTest {
     }
 
     @Test
-    fun theMenuButtonIsASquareOnTheIconRow() {
+    fun theMenuGlyphMatchesTheDestinationIcons() {
         launchShell(leagueMode = true)
-        val circle = rule.onNodeWithTag("nav.menu.circle", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val glyph = rule.onNodeWithTag("nav.menu.icon", useUnmergedTree = true).getUnclippedBoundsInRoot()
         val bar = barBounds()
-        // Square first: at 36 dp inside the item slot the circle was clipped top and bottom, which is what made it
-        // look wrong long before the offset was suspected.
-        val circleW = (circle.right - circle.left).value
-        val circleH = (circle.bottom - circle.top).value
-        assertEquals(circleW, circleH, 0.5f)
-        // And on the icon row, not floating in the middle of the bar: the first attempt sat 29 dp low.
-        val circleCentre = (circle.top.value + circle.bottom.value) / 2f
+        // Same box as the destination glyphs, so the button is not a different weight in the same row.
+        assertEquals(24f, (glyph.right - glyph.left).value, 0.5f)
+        assertEquals(24f, (glyph.bottom - glyph.top).value, 0.5f)
+        // On the icon row, not floating in the middle of the bar: an earlier attempt sat 29 dp low.
+        val glyphCentre = (glyph.top.value + glyph.bottom.value) / 2f
         val barCentre = (bar.top + bar.bottom) / 2f
-        assertTrue("the button belongs above the bar's middle, on the icon row", circleCentre < barCentre)
+        assertTrue("the glyph belongs above the bar's middle, on the icon row", glyphCentre < barCentre)
     }
 
     @Test
