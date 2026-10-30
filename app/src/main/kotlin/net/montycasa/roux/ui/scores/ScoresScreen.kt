@@ -38,6 +38,7 @@ import net.montycasa.roux.domain.policy.DateStrip
 import net.montycasa.roux.domain.policy.FavoritesHint
 import net.montycasa.roux.ui.common.RetryButton
 import net.montycasa.roux.ui.common.StaleBanner
+import net.montycasa.roux.ui.common.slideOnChange
 import net.montycasa.roux.ui.nav.NavSwipe
 import net.montycasa.roux.ui.nav.stepOnHorizontalSwipe
 import net.montycasa.roux.ui.reach.Reach
@@ -87,14 +88,26 @@ fun ScoresScreen(
             if (showHeader) ScoresHeader(state.liveCount, Modifier.fillMaxWidth())
             // Left and right step through the loaded dates, which is the axis this screen already has. The chip row
             // and the list keep their own gestures: children claim their drags before this sees them.
+            val dateOrder = state.dateIndex.map { it.date }.distinct()
             val stepDate: (Int) -> Unit = { by ->
-                val dates = state.dateIndex.map { it.date }.distinct()
-                val at = dates.indexOf(state.selectedDate)
-                if (at >= 0) dates.getOrNull(at + by)?.let(onSelectDate)
+                val at = dateOrder.indexOf(state.selectedDate)
+                if (at >= 0) dateOrder.getOrNull(at + by)?.let(onSelectDate)
             }
+            // The list slides to the next day instead of swapping, so the direction of travel is visible while the
+            // change happens.
+            slideOnChange(
+                key = state.selectedDate,
+                forward = { old, new -> dateOrder.indexOf(new) >= dateOrder.indexOf(old) },
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+            ) {
+            }
+
             Column(
                 Modifier
-                    .weight(1f)
+                    .fillMaxSize()
                     .then(
                         if (NavSwipe.TURNS_PAGES) {
                             Modifier
