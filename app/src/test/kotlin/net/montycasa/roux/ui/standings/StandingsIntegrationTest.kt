@@ -139,7 +139,7 @@ class StandingsIntegrationTest {
                 SemanticsMatcher("bottom navigation destination") {
                     it.config.getOrNull(PrimaryControlTag)?.startsWith("nav.") == true
                 },
-            ).assertCountEquals(3)
+            ).assertCountEquals(4) // the menu seat plus the three destinations
         rule.onNode(hasText("Teams") and isSelectable()).assertIsNotSelected()
     }
 }

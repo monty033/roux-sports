@@ -81,7 +81,6 @@ import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.ui.detail.GameDetailScreen
 import net.montycasa.roux.ui.detail.GameDetailViewModel
 import net.montycasa.roux.ui.drawer.BottomLeaguesSheet
-import net.montycasa.roux.ui.drawer.LeagueCarousel
 import net.montycasa.roux.ui.drawer.LeaguesPanel
 import net.montycasa.roux.ui.drawer.LeaguesSheetState
 import net.montycasa.roux.ui.drawer.rememberLeaguesSheetSettler
@@ -230,6 +229,22 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
                             // own background stays full-bleed and the items are pushed inside it by spacers -
                             // padding the bar itself would inset its background and leave a strip of page showing.
                             Spacer(Modifier.width(Reach.EDGE_INSET_DP.dp))
+                            // The menu seat comes first, on the side the thumb rests when the phone is held one-handed,
+                            // and it is the whole of the affordance: no strip to interpret, no gesture to discover.
+                            NavigationBarItem(
+                                modifier =
+                                    Modifier
+                                        .primaryControl("nav.menu", frequent = true)
+                                        .testTag("nav.menu"),
+                                selected = sheetState.isOpen,
+                                onClick = { if (sheetState.isOpen) closeLeagues() else openLeagues() },
+                                colors =
+                                    NavigationBarItemDefaults.colors(
+                                        indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                    ),
+                                icon = { Icon(imageVector = menuGlyph(), contentDescription = null) },
+                                label = { Text(stringResource(R.string.nav_menu)) },
+                            )
                             pages.forEachIndexed { index, destination ->
                                 val label = stringResource(destination.label)
                                 NavigationBarItem(
@@ -261,19 +276,6 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
 
                             Spacer(Modifier.width(Reach.EDGE_INSET_DP.dp))
                         }
-                        // The dial: logos only, looping, and it is also the sheet's handle. It sits below the tabs so
-                        // the thumb finds it without reaching, and the bar keeps its own shape while the menu opens.
-                        LeagueCarousel(
-                            order = drawerUi.leagueOrder,
-                            selectedId = drawerUi.selectedLeagueId,
-                            onSelect = { id ->
-                                scores.selectLeague(id)
-                                if (currentRoute != HOME_ROUTE) {
-                                    navController.popBackStack(HOME_ROUTE, inclusive = false)
-                                }
-                            },
-                            onOpenMenu = openLeagues,
-                        )
                     }
                 },
             ) { innerPadding ->
@@ -409,6 +411,8 @@ private fun StandingsDestination() {
         onSetView = standings::setView,
     )
 }
+
+private fun menuGlyph(): ImageVector = glyph("Menu", "M4,6 h16 v2 h-16 z M4,11 h16 v2 h-16 z M4,16 h16 v2 h-16 z")
 
 /**
  * Hand-drawn 24 dp glyphs rather than a material-icons dependency: three shapes are cheaper than a

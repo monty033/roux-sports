@@ -153,8 +153,8 @@ class ShellTest {
     private fun barItem(label: String) = rule.onNode(hasText(label) and isSelectable())
 
     // The bar depends on the mode: My Teams spans leagues, so Standings has no table to show there.
-    private val leagueModeBar = listOf("nav.scores", "nav.standings", "nav.teams")
-    private val myTeamsBar = listOf("nav.scores", "nav.teams")
+    private val leagueModeBar = listOf("nav.menu", "nav.scores", "nav.standings", "nav.teams")
+    private val myTeamsBar = listOf("nav.menu", "nav.scores", "nav.teams")
 
     private fun launchShell(
         dark: Boolean = false,
@@ -265,11 +265,11 @@ class ShellTest {
         // The affordance is the only thing on a parked screen that says the menu is there, so it has to survive
         // every destination, not just the one the app happens to open on.
         launchShell(leagueMode = true)
-        rule.onNodeWithTag("leagues.grabber").assertExists()
+        rule.onNodeWithTag("nav.menu").assertExists()
 
         barItem("Standings").performClick()
         rule.waitForIdle()
-        rule.onNodeWithTag("leagues.grabber").assertExists()
+        rule.onNodeWithTag("nav.menu").assertExists()
     }
 
     @Test
@@ -285,7 +285,7 @@ class ShellTest {
     @Test
     fun tappingTheGrabberOpensTheSheetFully() {
         launchShell(leagueMode = true)
-        rule.onNodeWithTag("leagues.grabber").performClick()
+        rule.onNodeWithTag("nav.menu").performClick()
         rule.waitForIdle()
 
         val sheet = sheetBounds()
@@ -295,18 +295,6 @@ class ShellTest {
         assertEquals(window.bottom, sheet.bottom, 1f)
         assertTrue("a tap should open the whole menu", sheet.height > window.height * 0.4f)
         assertTrue("but never the whole screen", sheet.height < window.height * 0.7f)
-    }
-
-    @Test
-    fun theCarouselSitsBelowTheTabs() {
-        launchShell(leagueMode = true)
-        val carousel = rule.onNodeWithTag("leagues.carousel").getUnclippedBoundsInRoot()
-        val window = rule.onRoot().fetchSemanticsNode().boundsInRoot
-        // Under the destinations, above nothing: the very bottom of the window.
-        val tabs = rule.onNodeWithText("Scores").getUnclippedBoundsInRoot()
-        assertTrue("the dial must sit below the tabs, not above them", carousel.top >= tabs.bottom)
-        val carouselBottomPx = with(rule.density) { carousel.bottom.toPx() }
-        assertTrue("the dial must reach the bottom of the window", abs(window.bottom - carouselBottomPx) < 1f)
     }
 
     @Test
@@ -495,6 +483,12 @@ class ShellTest {
     fun shellLight() {
         launchShell(dark = false)
         rule.onRoot().captureRoboImage("src/test/screenshots/shell-light.png")
+    }
+
+    @Test
+    fun shellLeagueModeLight() {
+        launchShell(leagueMode = true)
+        rule.onRoot().captureRoboImage("src/test/screenshots/shell-league-mode-light.png")
     }
 
     @Test
