@@ -105,16 +105,18 @@ fun ScoresScreen(
             // settle at a page we did not scroll to ourselves is a user gesture, and only that may change the day. Without
             // it the pager reports its opening page as if the viewer had chosen it, and overrides a selection it was
             // never told about.
-            var syncedPage by remember { mutableStateOf(-1) }
+            // A plain holder, not snapshot state: these effects only read it, and making it observable would recompose
+            // the whole screen every time the pager settles.
+            val syncedPage = remember { intArrayOf(-1) }
             LaunchedEffect(state.selectedDate, pages.size) {
                 val target = pages.indexOf(state.selectedDate)
                 if (target >= 0 && dayPager.currentPage != target) dayPager.scrollToPage(target)
-                syncedPage = dayPager.currentPage
+                syncedPage[0] = dayPager.currentPage
             }
             LaunchedEffect(dayPager.settledPage) {
-                if (dayPager.settledPage != syncedPage) {
+                if (dayPager.settledPage != syncedPage[0]) {
                     pages.getOrNull(dayPager.settledPage)?.let(onSelectDate)
-                    syncedPage = dayPager.settledPage
+                    syncedPage[0] = dayPager.settledPage
                 }
             }
             val stepDate: (Int) -> Unit = { by ->
@@ -146,13 +148,15 @@ fun ScoresScreen(
                     val pageDate = pages.getOrNull(page)
                     // The selected day prefers its own rows but keeps the cached copy until those land: swapping the list
                     // for a loading state at the instant the page settles is the other half of the end-of-swipe jolt.
-                    val pageRows =
-                        if (pageDate == state.selectedDate) {
-                            // Only while a load is in flight: an empty day is genuinely empty and must say so.
-                            if (state.isRefreshing) state.rows.ifEmpty { state.neighboursByDate[pageDate].orEmpty() } else state.rows
-                        } else {
-                            state.neighboursByDate[pageDate].orEmpty()
-                        }
+                    // Rows belong to a day, not to "the selected one": state.rows is whatever day was last loaded, so
+                    // during the frames after a settle it can still be the day you just left. Reading it for a page that
+                    // is not that day is a flash of the wrong slate; the page shows its own cached copy until the load
+                    // lands, and only then swaps to state.rows - the same games, same keys, no rebuild.
+                    // A row list with no day recorded on it can only belong to the day being shown; once a day is
+                    // named, only that day may use it.
+                    val rowsAreThisPage =
+                        state.loadedDate == pageDate || (state.loadedDate == null && pageDate == state.selectedDate)
+                    val pageRows = if (rowsAreThisPage) state.rows else state.neighboursByDate[pageDate].orEmpty()
                     // The indicator belongs to the page you are looking at, and only while that same day is being
                     // refreshed. A neighbour page loading in the background used to paint a spinner on whatever page
                     // happened to be on screen - that flash just after the settle is precisely this, not a layout jump.
