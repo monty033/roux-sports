@@ -2,6 +2,8 @@
 
 package net.montycasa.roux.ui.standings
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,8 +22,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -34,8 +42,15 @@ import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.policy.StandingsView
 import net.montycasa.roux.ui.common.RetryButton
 import net.montycasa.roux.ui.common.StaleBanner
+import net.montycasa.roux.ui.nav.NavSwipe
+import net.montycasa.roux.ui.nav.stepOnHorizontalSwipe
 import net.montycasa.roux.ui.reach.primaryControl
 import net.montycasa.roux.ui.reach.reachTarget
+import kotlin.math.abs
+
+private const val SLIDE_MILLIS = 220
+private const val SLIDE_TRAVEL = 0.35f
+private const val SLIDE_FADE = 0.2f
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,7 +60,42 @@ fun StandingsScreen(
     onSetView: (StandingsView) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    // Slides in from the side it came from, so a view change is a movement rather than a swap. A translation on the
+    // existing column keeps the gesture, the scroll position and the reach targets exactly where they were.
+    val slide = remember { Animatable(0f) }
+    var wasView by remember { mutableStateOf(state.view) }
+    LaunchedEffect(state.view) {
+        if (state.view != wasView) {
+            val onwards = state.view.ordinal >= wasView.ordinal
+            wasView = state.view
+            slide.snapTo(if (onwards) 1f else -1f)
+            slide.animateTo(0f, tween(SLIDE_MILLIS))
+        }
+    }
+    // Left and right step League -> Conference -> Division -> Wildcard, the axis this screen already has.
+    val stepView: (Int) -> Unit = { by ->
+        val views = StandingsView.entries
+        val at = views.indexOf(state.view)
+        if (at >= 0) views.getOrNull(at + by)?.let(onSetView)
+    }
+    Column(
+        modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                translationX = slide.value * size.width * SLIDE_TRAVEL
+                alpha = 1f - SLIDE_FADE * abs(slide.value)
+            }.then(
+                if (NavSwipe.TURNS_PAGES) {
+                    Modifier
+                } else {
+                    Modifier.stepOnHorizontalSwipe(
+                        onBack = { stepView(-1) },
+                        onForward = { stepView(1) },
+                    )
+                },
+            ),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         StandingsColumns(
             null,
             Modifier.padding(horizontal = 16.dp).heightIn(min = 56.dp).testTag("standings.header"),

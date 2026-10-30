@@ -5,6 +5,7 @@
 package net.montycasa.roux.ui.nav
 
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
@@ -20,12 +21,16 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -44,6 +49,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -56,6 +62,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -189,6 +196,8 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
         }
         Unit
     }
+    // Back dismisses the menu before it dismisses the screen: an open surface owns the button.
+    BackHandler(enabled = sheetState.isOpen) { closeLeagues() }
     Box(modifier.fillMaxSize()) {
         // While the menu is out the page is dimmed and untouchable, so nothing behind it is read out either.
         Box(Modifier.then(if (calendarOpen || sheetState.isOpen) Modifier.clearAndSetSemantics { } else Modifier)) {
@@ -196,7 +205,7 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
                 modifier = Modifier.fillMaxSize(),
                 topBar = {
                     if (currentRoute == HOME_ROUTE) {
-                        ScoresHeader(scoresState.liveCount, openLeagues, Modifier.fillMaxWidth())
+                        ScoresHeader(scoresState.liveCount, Modifier.fillMaxWidth())
                     }
                 },
                 bottomBar = {
@@ -240,22 +249,42 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
                             // own background stays full-bleed and the items are pushed inside it by spacers -
                             // padding the bar itself would inset its background and leave a strip of page showing.
                             Spacer(Modifier.width(Reach.EDGE_INSET_DP.dp))
-                            // The menu seat comes first, on the side the thumb rests when the phone is held one-handed,
-                            // and it is the whole of the affordance: no strip to interpret, no gesture to discover.
-                            NavigationBarItem(
+                            // The menu is a button, not a seat. It is drawn as one for a concrete reason: inside a
+                            // NavigationBarItem, an unlabelled icon gets the space left over once the label is
+                            // reserved, and a 36 dp circle was being clipped to about 23 dp tall. Here it owns its
+                            // slot, sits its circle on the same row as the tab icons, and carries no selected state -
+                            // it opens a surface, it does not become one.
+                            Box(
                                 modifier =
                                     Modifier
-                                        .primaryControl("nav.menu", frequent = true)
+                                        // An explicit height, not fillMaxHeight: inside NavigationBar's Row an
+                                        // unconstrained fill measured against the bar's own content and squeezed the
+                                        // circle's padding away.
+                                        .width(72.dp)
+                                        .height(Reach.BAR_HEIGHT_DP.dp)
+                                        .clickable(
+                                            role = Role.Button,
+                                            interactionSource = remember { MutableInteractionSource() },
+                                            indication = null,
+                                            onClick = { if (sheetState.isOpen) closeLeagues() else openLeagues() },
+                                        ).primaryControl("nav.menu", frequent = true)
                                         .testTag("nav.menu"),
-                                selected = sheetState.isOpen,
-                                onClick = { if (sheetState.isOpen) closeLeagues() else openLeagues() },
-                                colors =
-                                    NavigationBarItemDefaults.colors(
-                                        indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                                    ),
-                                icon = { Icon(imageVector = menuGlyph(), contentDescription = null) },
-                                label = { Text(stringResource(R.string.nav_menu)) },
-                            )
+                                contentAlignment = Alignment.TopCenter,
+                            ) {
+                                Icon(
+                                    imageVector = menuGlyph(),
+                                    contentDescription = stringResource(R.string.nav_menu),
+                                    // Same 24 dp as the destination glyphs, sat on the same row: the accent colour is
+                                    // what sets it apart, not its size. A follower that is bigger than the things it
+                                    // sits beside reads as a control that is trying too hard.
+                                    modifier =
+                                        Modifier
+                                            .padding(top = Reach.BAR_ICON_TOP_DP.dp)
+                                            .size(24.dp)
+                                            .testTag("nav.menu.icon"),
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            }
                             pages.forEachIndexed { index, destination ->
                                 val label = stringResource(destination.label)
                                 NavigationBarItem(
@@ -298,6 +327,8 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
                     composable(HOME_ROUTE) {
                         HorizontalPager(
                             state = pagerState,
+                            // Off, the pager ignores horizontal drags and each screen keeps them for itself.
+                            userScrollEnabled = NavSwipe.TURNS_PAGES,
                             modifier =
                                 Modifier
                                     .fillMaxSize()
@@ -423,7 +454,7 @@ private fun StandingsDestination() {
     )
 }
 
-private fun menuGlyph(): ImageVector = glyph("Menu", "M4,6 h16 v2 h-16 z M4,11 h16 v2 h-16 z M4,16 h16 v2 h-16 z")
+private fun menuGlyph(): ImageVector = glyph("Menu", "M2,6.5 h20 v2.5 h-20 z M2,10.75 h20 v2.5 h-20 z M2,15 h20 v2.5 h-20 z")
 
 /**
  * Hand-drawn 24 dp glyphs rather than a material-icons dependency: three shapes are cheaper than a

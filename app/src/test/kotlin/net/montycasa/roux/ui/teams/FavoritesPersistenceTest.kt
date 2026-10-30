@@ -110,7 +110,7 @@ class FavoritesPersistenceTest {
         openTeams()
         torToggle().assertIsOn()
         barItem("Scores").performClick()
-        rule.onNodeWithContentDescription("Open leagues").performClick()
+        rule.onNodeWithTag("nav.menu").performClick()
         rule.onNodeWithTag("leagues.nhl").performClick()
         rule.waitUntil(timeoutMillis = 10_000) {
             rule.onNodeWithTag("scores.header").fetchSemanticsNode()

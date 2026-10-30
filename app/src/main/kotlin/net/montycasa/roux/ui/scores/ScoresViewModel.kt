@@ -12,11 +12,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -30,6 +34,7 @@ import kotlinx.datetime.toLocalDateTime
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
+import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.ScoreDay
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.policy.DateStrip
@@ -41,6 +46,9 @@ import net.montycasa.roux.domain.repo.PreferencesRepository
 import net.montycasa.roux.domain.repo.ScoresRepository
 import kotlin.random.Random
 import kotlin.time.Clock
+
+/** Days of rows worth remembering; a session that browses further back starts forgetting the far end. */
+private const val KEPT_DAYS = 40
 
 /** The drawer's My Teams row: a destination that spans leagues, not a league of its own. */
 const val MY_TEAMS_LEAGUE: String = "myTeams"
@@ -103,7 +111,7 @@ class ScoresViewModel(
     // dates should cost one prefetch for the day they stopped on, not one per day they passed through.
     private var prefetchJob: Job? = null
 
-    val uiState: StateFlow<ScoresUiState> =
+    private val dayState: StateFlow<ScoresUiState> =
         combine(
             combine(selectedDate, leagueDays(), refreshTrigger) { date, today, trigger ->
                 Request(date, today, trigger)
@@ -140,7 +148,68 @@ class ScoresViewModel(
                         ?.dateIndex
                         .orEmpty(),
             )
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ScoresUiState(selectedDate.value, leagueDay()))
+        }.stateIn(
+            viewModelScope,
+            // No grace of its own: uiState already waits five seconds before it stops, and a second grace here would
+            // stack - the poll would keep running for ten seconds after the last subscriber left.
+            SharingStarted.WhileSubscribed(0),
+            ScoresUiState(selectedDate.value, leagueDay()),
+        )
+
+    /** Rows for every day this screen has seen, keyed by date; it accumulates, see where it is written. */
+    private val rowsByDate = MutableStateFlow<Map<String, List<Game>>>(emptyMap())
+
+    /**
+     * The days either side of the selected one, so the screen can show real games for the day being moved towards.
+     *
+     * A transformLatest rather than a collector in init: it runs only while the UI is subscribed, restarts when the
+     * date changes and leaves nothing running in a test that never collects. It warms the neighbours with the same
+     * prefetch the schedule already uses - a fresh copy costs nothing - and then reads only what is on disk, so this
+     * path can never turn into a request of its own.
+     */
+    private val neighbourRows: Flow<Map<String, List<Game>>> =
+        dayState
+            .map { day -> day.dateIndex.map { it.date }.distinct() to day.selectedDate }
+            .distinctUntilChanged()
+            .transformLatest { (dates, selected) ->
+                val at = dates.indexOf(selected)
+                // The selection is included: a page draws from this map the moment it settles, and the day you settle on
+                // has to have an entry of its own before its load lands.
+                val wanted =
+                    (listOf(selected) + listOf(dates.getOrNull(at - 1), dates.getOrNull(at + 1)))
+                        .filterNotNull()
+                        .distinct()
+                if (wanted.isEmpty()) return@transformLatest
+                val today = leagueDay()
+                val settings = settings().first()
+                val fresh =
+                    wanted.associateWith { date ->
+                        val games = scores.cachedDay(date, today)?.games.orEmpty()
+                        val filtered = FavoritesOrdering.filter(games, settings.favourites, settings.only)
+                        if (settings.only) filtered.rows else FavoritesOrdering.pin(filtered.rows, settings.favourites)
+                    }
+                // Accumulated, not replaced: the day you settle on is no longer beside the selection, so replacing the
+                // map took its rows away at the exact moment the page needed them and the list drew one blank frame.
+                // Bounded so a long session cannot grow it without limit.
+                val merged =
+                    (rowsByDate.value + fresh).let {
+                        if (it.size <=
+                            KEPT_DAYS
+                        ) {
+                            it
+                        } else {
+                            it.entries.drop(it.size - KEPT_DAYS).associate { e -> e.key to e.value }
+                        }
+                    }
+                rowsByDate.value = merged
+                emit(merged)
+            }
+            // Start from what is already remembered, so a re-subscription does not blank the neighbouring pages.
+            .onStart { emit(rowsByDate.value) }
+
+    val uiState: StateFlow<ScoresUiState> =
+        combine(dayState, neighbourRows) { day, beside -> day.copy(rowsByDate = beside) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ScoresUiState(selectedDate.value, leagueDay()))
 
     /** Loads immediately, even when the cadence has stopped. A pull also reaches past a fresh cache. */
     fun refresh() {

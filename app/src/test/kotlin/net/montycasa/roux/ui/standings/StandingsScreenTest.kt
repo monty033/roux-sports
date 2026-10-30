@@ -29,6 +29,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
+import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.dp
 import net.montycasa.roux.domain.Freshness
@@ -99,6 +101,25 @@ class StandingsScreenTest {
                 }
             }
         }
+    }
+
+    @Test
+    fun aSwipeStepsTheGroupingInsteadOfLeavingTheScreen() {
+        val picked = mutableListOf<StandingsView>()
+        launchScreen(fresh, selected = picked)
+        // League -> Conference -> Division -> Wildcard, the axis this screen already has.
+        rule.onRoot().performTouchInput { swipeLeft() }
+        rule.waitForIdle()
+        assertEquals(listOf(StandingsView.Conference), picked)
+    }
+
+    @Test
+    fun aBackwardSwipeOnTheFirstGroupingDoesNothing() {
+        val picked = mutableListOf<StandingsView>()
+        launchScreen(fresh, selected = picked)
+        rule.onRoot().performTouchInput { swipeRight() }
+        rule.waitForIdle()
+        assertEquals(emptyList<StandingsView>(), picked)
     }
 
     @Test

@@ -29,4 +29,13 @@ data class ScoresUiState(
     val selectedLeagueId: String = "nhl",
     /** Feed day in the league zone; null until a day has actually loaded. */
     val loadedDate: String? = null,
+    /**
+     * Rows for every day the screen knows, already filtered and ordered like [rows].
+     *
+     * Read from the cache, never fetched for their own sake: this is what a page shows for a day the viewer is moving
+     * towards, and what the selected day falls back to while its own copy is still loading. It accumulates rather than
+     * describing only the neighbours, because a day stops being a neighbour the instant it becomes the selection and a
+     * page must not lose its rows at that moment.
+     */
+    val rowsByDate: Map<String, List<Game>> = emptyMap(),
 )

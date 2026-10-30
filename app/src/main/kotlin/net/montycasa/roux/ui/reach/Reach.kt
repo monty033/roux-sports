@@ -41,6 +41,15 @@ object Reach {
      * on the pill, which reads as a bar that was never finished; this is the smallest gap that looks deliberate.
      */
     const val BAR_BOTTOM_AIR_DP = 8f
+
+    /**
+     * Top of the menu button's circle, measured from the top of the bar. It puts the circle's centre on the same line
+     * as the destination icons, which sit above their labels.
+     */
+    const val BAR_ICON_TOP_DP = 29f
+
+    /** Material's navigation bar height; named here because the menu button has to size itself against it. */
+    const val BAR_HEIGHT_DP = 80f
 }
 
 /** Which rule a violation belongs to, so a failure can be read without decoding prose. */

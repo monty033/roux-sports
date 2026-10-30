@@ -21,6 +21,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
+import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import net.montycasa.roux.domain.Freshness
@@ -39,6 +41,7 @@ import net.montycasa.roux.ui.reach.assertPrimaryControlsReachable
 import net.montycasa.roux.ui.reach.reachTargets
 import net.montycasa.roux.ui.theme.RouxTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -91,6 +94,63 @@ class ScoresScreenTest {
                 }
             }
         }
+    }
+
+    @Test
+    fun aSwipeStepsTheDateInsteadOfLeavingTheScreen() {
+        val picked = mutableListOf<String>()
+        // 10-28 sits before 10-25 in the loaded index, so a leftward swipe has a date to step to.
+        launchScreen(fresh.copy(selectedDate = "2025-10-28"), onSelectDate = { picked += it })
+        // The screen keeps the gesture, so this steps the day rather than leaving Scores.
+        rule.onRoot().performTouchInput { swipeLeft() }
+        rule.waitForIdle()
+        assertEquals(listOf(date), picked)
+    }
+
+    @Test
+    fun aDayBeingReloadedKeepsTheRowsItAlreadyHad() {
+        // The state can name the day while its rows are still empty - that is what a reload looks like. A page that
+        // draws nothing in that window is the frame that went blank on the device, so the rows already known for the
+        // day have to carry it.
+        launchScreen(
+            fresh.copy(
+                rows = emptyList(),
+                loadedDate = date,
+                isRefreshing = true,
+                rowsByDate = mapOf(date to listOf(game)),
+            ),
+        )
+        rule.onNodeWithTag("scores.game.${game.id.value}").assertExists()
+    }
+
+    @Test
+    fun anArrivingDayIndexDoesNotChangeThePageOnScreen() {
+        val picked = mutableListOf<String>()
+        launchScreen(fresh.copy(rows = listOf(game), loadedDate = date), onSelectDate = { picked += it })
+        rule.onNodeWithText("No games on Sat, Oct 25").assertDoesNotExist()
+
+        // A load lands and reports a wider window than the one the pages were built from - the day index gains a date
+        // in front. The page on screen is addressed by position, so rebuilding the list for it would slide every page
+        // one along: the day named by the strip would then belong to a different page's games.
+        suppliedState.value =
+            suppliedState.value.copy(
+                dateIndex = listOf(DateIndexEntry("2025-10-24", 3)) + fresh.dateIndex,
+                rowsByDate = mapOf(date to listOf(game)),
+            )
+        rule.waitForIdle()
+
+        assertEquals(emptyList<String>(), picked)
+        rule.onNodeWithTag("scores.game.${game.id.value}").assertExists()
+    }
+
+    @Test
+    fun aBackwardSwipeOnTheFirstLoadedDateDoesNothing() {
+        val picked = mutableListOf<String>()
+        // 10-25 is the first loaded date; there is nothing behind it to step to.
+        launchScreen(fresh.copy(dateIndex = fresh.dateIndex.drop(1)), onSelectDate = { picked += it })
+        rule.onRoot().performTouchInput { swipeRight() }
+        rule.waitForIdle()
+        assertEquals(emptyList<String>(), picked)
     }
 
     @Test
