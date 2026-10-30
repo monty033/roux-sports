@@ -267,6 +267,20 @@ class StandingsViewModelTest {
             assertFalse(vm.uiState.value.isRefreshing)
         }
 
+    @Test
+    fun everyViewIsGroupedSoTheNeighbouringTableCanDraw() =
+        runTest {
+            val vm = model()
+            runCurrent()
+
+            // A swipe shows the next view's table while the finger is still moving, so all four have to be grouped
+            // up front - not only the one being viewed.
+            assertEquals(
+                StandingsView.entries.toSet(),
+                vm.uiState.value.groupsByView.keys,
+            )
+        }
+
     private fun model(
         repo: FakeStandings = FakeStandings(),
         prefs: FakePreferences = FakePreferences(),
