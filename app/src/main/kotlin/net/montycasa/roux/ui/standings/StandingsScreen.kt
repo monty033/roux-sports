@@ -98,8 +98,10 @@ fun StandingsScreen(
         modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        // The column labels are not a control either, so they take the height of a text line rather than a
+        // control's minimum.
         StandingsHeader(
-            Modifier.padding(horizontal = 16.dp).heightIn(min = 56.dp).testTag("standings.header"),
+            Modifier.padding(horizontal = 16.dp).heightIn(min = 32.dp).testTag("standings.header"),
         )
         HorizontalPager(
             state = pager,
@@ -135,9 +137,9 @@ fun StandingsScreen(
                         .verticalScroll(rememberScrollState())
                         .then(if (primary) Modifier.testTag("standings.list") else Modifier)
                         .padding(horizontal = 16.dp),
-                    // Rows sit close together on purpose: they are text, not controls, so the table can take the
-                    // tighter rhythm that keeps a whole division on one screen.
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    // Rows sit close together on purpose: they are text, not controls, so the table can take a
+                    // rhythm set by legibility rather than by a touch target.
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
                 ) {
                     when {
                         state.loading -> {
@@ -158,7 +160,7 @@ fun StandingsScreen(
                                 // rather than as another row in a run of evenly spaced text.
                                 StandingsSectionTitle(
                                     section.title,
-                                    Modifier.padding(top = if (sectionIndex == 0) 4.dp else 10.dp, bottom = 2.dp),
+                                    Modifier.padding(top = if (sectionIndex == 0) 2.dp else 10.dp, bottom = 0.dp),
                                 )
                                 section.rows.forEachIndexed { index, row ->
                                     val tag = "standings.row.$sectionIndex.${row.team.abbrev}"
@@ -171,7 +173,7 @@ fun StandingsScreen(
                                             modifier =
                                                 Modifier
                                                     .fillMaxWidth()
-                                                    .heightIn(min = 40.dp)
+                                                    .heightIn(min = 30.dp)
                                                     // A row has no action, so it is not a control: the tag is for the
                                                     // tests that read the table, and the row is not a touch target.
                                                     // That is what lets the table run at 40 dp, not a control's 48.
