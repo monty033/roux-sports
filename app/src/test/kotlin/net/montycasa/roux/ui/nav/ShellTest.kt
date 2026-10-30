@@ -486,6 +486,27 @@ class ShellTest {
     }
 
     @Test
+    fun swipingThePagesMovesTheBar() {
+        launchShell(leagueMode = true)
+        rule.onNodeWithTag(PAGER_TAG, useUnmergedTree = true).performTouchInput { swipeLeft() }
+        rule.waitForIdle()
+        barItem("Standings").assertIsSelected()
+    }
+
+    @Test
+    fun swipingOverTheScoresContentTurnsThePage() {
+        launchShell(leagueMode = true)
+        // The same gesture, but starting where a finger actually lands: on the games, not on the pager's empty edge.
+        rule.onNodeWithTag(PAGER_TAG, useUnmergedTree = true).performTouchInput {
+            swipeLeft(startX = centerX, endX = centerX - 60f, durationMillis = 40)
+            swipeLeft(startX = centerX, endX = centerX - 60f, durationMillis = 40)
+            swipeLeft(startX = centerX, endX = centerX - 60f, durationMillis = 40)
+        }
+        rule.waitForIdle()
+        barItem("Standings").assertIsSelected()
+    }
+
+    @Test
     fun theBarLeavesAirUnderItsLabels() {
         launchShell(leagueMode = true)
         // Robolectric reports no system bars, so this pins the part of the gap the bar owns itself: the seats must not

@@ -5,6 +5,7 @@
 package net.montycasa.roux.ui.nav
 
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
@@ -21,11 +22,14 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -44,6 +48,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -189,6 +194,8 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
         }
         Unit
     }
+    // Back dismisses the menu before it dismisses the screen: an open surface owns the button.
+    BackHandler(enabled = sheetState.isOpen) { closeLeagues() }
     Box(modifier.fillMaxSize()) {
         // While the menu is out the page is dimmed and untouchable, so nothing behind it is read out either.
         Box(Modifier.then(if (calendarOpen || sheetState.isOpen) Modifier.clearAndSetSemantics { } else Modifier)) {
@@ -240,21 +247,41 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
                             // own background stays full-bleed and the items are pushed inside it by spacers -
                             // padding the bar itself would inset its background and leave a strip of page showing.
                             Spacer(Modifier.width(Reach.EDGE_INSET_DP.dp))
-                            // The menu seat comes first, on the side the thumb rests when the phone is held one-handed,
-                            // and it is the whole of the affordance: no strip to interpret, no gesture to discover.
+                            // The menu comes first, on the side the thumb rests, and it is deliberately not a seat the way
+                            // the others are: no label, no selection, and a filled circle instead of an icon on bare bar.
+                            // As a labelled item it read as a fourth destination, which is exactly what it is not.
                             NavigationBarItem(
                                 modifier =
                                     Modifier
                                         .primaryControl("nav.menu", frequent = true)
                                         .testTag("nav.menu"),
-                                selected = sheetState.isOpen,
+                                // Never selected: it opens a surface, it does not become one.
+                                selected = false,
                                 onClick = { if (sheetState.isOpen) closeLeagues() else openLeagues() },
                                 colors =
                                     NavigationBarItemDefaults.colors(
-                                        indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                        indicatorColor = Color.Transparent,
+                                        selectedIconColor = MaterialTheme.colorScheme.onPrimary,
                                     ),
-                                icon = { Icon(imageVector = menuGlyph(), contentDescription = null) },
-                                label = { Text(stringResource(R.string.nav_menu)) },
+                                icon = {
+                                    Box(
+                                        Modifier
+                                            // An unlabelled item centres its icon, so it lands higher than the tab
+                                            // icons that sit above their labels. Half a label line brings the circle
+                                            // back onto the same optical row.
+                                            .offset(y = 10.dp)
+                                            .size(36.dp)
+                                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f), CircleShape),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Icon(
+                                            imageVector = menuGlyph(),
+                                            contentDescription = stringResource(R.string.nav_menu),
+                                            modifier = Modifier.size(20.dp),
+                                            tint = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                },
                             )
                             pages.forEachIndexed { index, destination ->
                                 val label = stringResource(destination.label)
