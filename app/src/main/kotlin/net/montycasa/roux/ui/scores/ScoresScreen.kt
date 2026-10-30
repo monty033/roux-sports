@@ -2,8 +2,6 @@
 
 package net.montycasa.roux.ui.scores
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,6 +13,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -28,7 +28,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -50,11 +49,6 @@ import net.montycasa.roux.ui.reach.reachTarget
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import kotlin.math.abs
-
-private const val DAY_SLIDE_MILLIS = 220
-private const val DAY_SLIDE_TRAVEL = 0.35f
-private const val DAY_SLIDE_FADE = 0.2f
 
 /**
  * Renders the selected day's state without owning loading or filtering. Callbacks map to refresh,
@@ -96,111 +90,121 @@ fun ScoresScreen(
             if (showHeader) ScoresHeader(state.liveCount, Modifier.fillMaxWidth())
             // Left and right step through the loaded dates, which is the axis this screen already has. The chip row
             // and the list keep their own gestures: children claim their drags before this sees them.
-            // Moves the list in from the side it came from, so a change of day reads as travel rather than a swap.
-            val daySlide = remember { Animatable(0f) }
-            var wasDate by remember { mutableStateOf(state.selectedDate) }
-            LaunchedEffect(state.selectedDate) {
-                if (state.selectedDate != wasDate) {
-                    val order = state.dateIndex.map { it.date }.distinct()
-                    val onwards = order.indexOf(state.selectedDate) >= order.indexOf(wasDate)
-                    wasDate = state.selectedDate
-                    daySlide.snapTo(if (onwards) 1f else -1f)
-                    daySlide.animateTo(0f, tween(DAY_SLIDE_MILLIS))
+            val dateOrder = state.dateIndex.map { it.date }.distinct()
+            // One page per day, so a drag tracks the finger and the day being moved towards is already on screen.
+            // A state with no index yet still needs a page: with none, the pager shows nothing and the list - including
+            // its error and empty states - disappears with it.
+            val pages = dateOrder.ifEmpty { listOf(state.selectedDate) }
+            val dayPager = rememberPagerState(initialPage = pages.indexOf(state.selectedDate).coerceAtLeast(0)) { pages.size }
+            // Chips move the pager; a drag moves the selection. The remembered page is what keeps those two apart: only a
+            // settle at a page we did not scroll to ourselves is a user gesture, and only that may change the day. Without
+            // it the pager reports its opening page as if the viewer had chosen it, and overrides a selection it was
+            // never told about.
+            var syncedPage by remember { mutableStateOf(-1) }
+            LaunchedEffect(state.selectedDate, pages.size) {
+                val target = pages.indexOf(state.selectedDate)
+                if (target >= 0 && dayPager.currentPage != target) dayPager.scrollToPage(target)
+                syncedPage = dayPager.currentPage
+            }
+            LaunchedEffect(dayPager.settledPage) {
+                if (dayPager.settledPage != syncedPage) {
+                    pages.getOrNull(dayPager.settledPage)?.let(onSelectDate)
+                    syncedPage = dayPager.settledPage
                 }
             }
-            val rowsForDay =
-                state.rows.ifEmpty { state.neighboursByDate[state.selectedDate].orEmpty() }
             val stepDate: (Int) -> Unit = { by ->
                 val dates = state.dateIndex.map { it.date }.distinct()
                 val at = dates.indexOf(state.selectedDate)
                 if (at >= 0) dates.getOrNull(at + by)?.let(onSelectDate)
             }
             Column(
-                Modifier
-                    .weight(1f)
-                    .graphicsLayer {
-                        translationX = daySlide.value * size.width * DAY_SLIDE_TRAVEL
-                        alpha = 1f - DAY_SLIDE_FADE * abs(daySlide.value)
-                    }.then(
-                        if (NavSwipe.TURNS_PAGES) {
-                            Modifier
-                        } else {
-                            Modifier.stepOnHorizontalSwipe(
-                                onBack = { stepDate(-1) },
-                                onForward = { stepDate(1) },
-                            )
-                        },
-                    ),
+                Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(Reach.MIN_TARGET_GAP_DP.dp),
             ) {
-                PullToRefreshBox(
-                    isRefreshing = state.isRefreshing,
-                    onRefresh = onRefresh,
+                HorizontalPager(
+                    state = dayPager,
+                    // Off, horizontal drags belong to the shell's pager, exactly as before.
+                    userScrollEnabled = !NavSwipe.TURNS_PAGES,
                     modifier =
                         Modifier
                             .weight(1f)
-                            .fillMaxWidth()
-                            .testTag("scores.refresh")
-                            .reachTarget("scores.pullToRefresh"),
-                ) {
-                    BoxWithConstraints(Modifier.fillMaxSize()) {
-                        // The reference queries .listwrap before the list's 12 dp side padding.
-                        val narrow = maxWidth <= 380.dp
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize().testTag("scores.list"),
-                            verticalArrangement = Arrangement.spacedBy(Reach.MIN_TARGET_GAP_DP.dp),
-                        ) {
-                            if (missing) {
-                                item {
-                                    Column(Modifier.padding(Reach.EDGE_INSET_DP.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Text(
-                                            stringResource(if (loading) R.string.scores_loading else R.string.scores_load_error),
-                                            modifier = Modifier.testTag(if (loading) "scores.loading" else "scores.error"),
-                                            style = MaterialTheme.typography.titleMedium,
-                                        )
-                                        state.error?.let { Text(errorMessage(it), style = MaterialTheme.typography.bodyLarge) }
-                                    }
-                                }
-                            } else {
-                                state.favoritesHint?.let { hint ->
+                            .fillMaxWidth(),
+                ) { page ->
+                    val pageDate = pages.getOrNull(page)
+                    val pageRows =
+                        if (pageDate == state.selectedDate) {
+                            state.rows
+                        } else {
+                            state.neighboursByDate[pageDate].orEmpty()
+                        }
+                    PullToRefreshBox(
+                        isRefreshing = state.isRefreshing,
+                        onRefresh = onRefresh,
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .testTag("scores.refresh")
+                                .reachTarget("scores.pullToRefresh"),
+                    ) {
+                        BoxWithConstraints(Modifier.fillMaxSize()) {
+                            // The reference queries .listwrap before the list's 12 dp side padding.
+                            val narrow = maxWidth <= 380.dp
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize().testTag("scores.list"),
+                                verticalArrangement = Arrangement.spacedBy(Reach.MIN_TARGET_GAP_DP.dp),
+                            ) {
+                                if (missing) {
                                     item {
-                                        Text(
-                                            stringResource(
-                                                when (hint) {
-                                                    FavoritesHint.PickTeams -> R.string.scores_pick_teams
-                                                    FavoritesHint.NoFavouriteGames -> R.string.scores_no_favourite_games
-                                                },
-                                            ),
-                                            modifier = Modifier.padding(Reach.EDGE_INSET_DP.dp),
-                                            style = MaterialTheme.typography.bodyLarge,
+                                        Column(Modifier.padding(Reach.EDGE_INSET_DP.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text(
+                                                stringResource(if (loading) R.string.scores_loading else R.string.scores_load_error),
+                                                modifier = Modifier.testTag(if (loading) "scores.loading" else "scores.error"),
+                                                style = MaterialTheme.typography.titleMedium,
+                                            )
+                                            state.error?.let { Text(errorMessage(it), style = MaterialTheme.typography.bodyLarge) }
+                                        }
+                                    }
+                                } else {
+                                    state.favoritesHint?.let { hint ->
+                                        item {
+                                            Text(
+                                                stringResource(
+                                                    when (hint) {
+                                                        FavoritesHint.PickTeams -> R.string.scores_pick_teams
+                                                        FavoritesHint.NoFavouriteGames -> R.string.scores_no_favourite_games
+                                                    },
+                                                ),
+                                                modifier = Modifier.padding(Reach.EDGE_INSET_DP.dp),
+                                                style = MaterialTheme.typography.bodyLarge,
+                                            )
+                                        }
+                                    }
+                                    if (emptyDate) {
+                                        item {
+                                            Text(
+                                                stringResource(R.string.scores_empty_date, dateLabel),
+                                                modifier = Modifier.padding(Reach.EDGE_INSET_DP.dp),
+                                                style = MaterialTheme.typography.titleMedium,
+                                            )
+                                        }
+                                    }
+                                    items(pageRows, key = { it.id.value }) { game ->
+                                        GameRow(
+                                            game,
+                                            narrow = narrow,
+                                            modifier =
+                                                Modifier
+                                                    .padding(horizontal = 12.dp)
+                                                    .testTag("scores.game.${game.id.value}")
+                                                    .clickable { onGameClick(game) },
                                         )
                                     }
-                                }
-                                if (emptyDate) {
-                                    item {
-                                        Text(
-                                            stringResource(R.string.scores_empty_date, dateLabel),
-                                            modifier = Modifier.padding(Reach.EDGE_INSET_DP.dp),
-                                            style = MaterialTheme.typography.titleMedium,
-                                        )
-                                    }
-                                }
-                                items(rowsForDay, key = { it.id.value }) { game ->
-                                    GameRow(
-                                        game,
-                                        narrow = narrow,
-                                        modifier =
-                                            Modifier
-                                                .padding(horizontal = 12.dp)
-                                                .testTag("scores.game.${game.id.value}")
-                                                .clickable { onGameClick(game) },
-                                    )
                                 }
                             }
                         }
                     }
                 }
-
                 Column(
                     Modifier.fillMaxWidth().padding(horizontal = Reach.EDGE_INSET_DP.dp),
                     verticalArrangement = Arrangement.spacedBy(Reach.MIN_TARGET_GAP_DP.dp),
