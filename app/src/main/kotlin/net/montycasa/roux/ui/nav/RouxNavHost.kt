@@ -8,6 +8,7 @@ import android.net.Uri
 import androidx.annotation.StringRes
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Icon
@@ -203,7 +205,15 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
                     // already knows do not slide away when the menu opens.
                     Column(
                         Modifier
+                            // The bar owns the window's bottom now that the dial is gone. The colour runs to the edge
+                            // behind the gesture pill, and the air below the labels is inside that colour so the strip
+                            // under the seats is never a slice of page showing through.
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            // The tag covers the whole strip, air included: the bar is the thing that reaches the
+                            // edge of the window, so measuring it from the labels inward would understate its height.
                             .testTag("nav.bar")
+                            .windowInsetsPadding(WindowInsets.navigationBars)
+                            .padding(bottom = Reach.BAR_BOTTOM_AIR_DP.dp)
                             .pointerInput(sheetState) {
                                 detectVerticalDragGestures(
                                     onDragStart = { tracker.resetTracking() },
@@ -221,7 +231,8 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
                             // A stock NavigationBar sits on Material's tonal grey, which is the one cool surface the
                             // warm palette does not have. The bar and the dial below it are one piece.
                             containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                            // The dial below owns the window's bottom inset; the tabs would otherwise add it twice.
+                            // The bar's own colour and padding carry the window's bottom inset; the tabs would
+                            // otherwise add it a second time.
                             windowInsets = WindowInsets(0, 0, 0, 0),
                         ) {
                             // R5 keeps primary controls 16 dp clear of the screen edges, where the back gesture

@@ -7,11 +7,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -41,10 +44,16 @@ fun ScoresHeader(
     liveCount: Int,
     onOpenLeagues: () -> Unit,
     modifier: Modifier = Modifier,
+    // Injected so a test can hold the status bar's height still: the phone's own inset is not something a JVM test can
+    // see, and this header sitting under the clock is a bug that has now come back twice because nothing asserted it.
+    statusInset: WindowInsets = WindowInsets.statusBars,
 ) {
     Row(
         modifier
             .background(MaterialTheme.colorScheme.background)
+            // The app draws behind the system bars, so the header has to step down over the status bar itself.
+            // Without this the wordmark and the menu button sat underneath the phone's own clock and battery.
+            .windowInsetsPadding(statusInset)
             .heightIn(min = 64.dp)
             .testTag("scores.header")
             .padding(horizontal = 16.dp, vertical = 8.dp),

@@ -486,6 +486,20 @@ class ShellTest {
     }
 
     @Test
+    fun theBarLeavesAirUnderItsLabels() {
+        launchShell(leagueMode = true)
+        // Robolectric reports no system bars, so this pins the part of the gap the bar owns itself: the seats must not
+        // sit on the bottom of the window even before the gesture inset is added on a phone.
+        val bar = barBounds()
+        val window = rule.onRoot().fetchSemanticsNode().boundsInRoot
+        assertEquals(window.bottom, bar.bottom, 1f)
+        assertTrue(
+            "labels need air above the gesture area",
+            bar.height >= with(rule.density) { (80f + Reach.BAR_BOTTOM_AIR_DP).dp.toPx() } - 1f,
+        )
+    }
+
+    @Test
     fun shellLeagueModeLight() {
         launchShell(leagueMode = true)
         rule.onRoot().captureRoboImage("src/test/screenshots/shell-league-mode-light.png")
