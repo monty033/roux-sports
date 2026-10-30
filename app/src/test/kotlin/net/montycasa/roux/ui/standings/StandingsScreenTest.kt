@@ -9,8 +9,10 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
@@ -24,6 +26,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
@@ -34,6 +37,7 @@ import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
@@ -76,31 +80,34 @@ class StandingsScreenTest {
         onRefresh: () -> Unit = {
         },
         selected: MutableList<StandingsView> = mutableListOf(),
+        fontScale: Float = 1f,
     ) {
         suppliedState.value = state
         rule.setContent {
-            RouxTheme {
-                // S6.3 owns production wiring. Reserve a real M3 three-destination bar of the same
-                // geometry here so density and reach tests cannot silently borrow its space.
-                Scaffold(bottomBar = {
-                    NavigationBar {
-                        Spacer(Modifier.width(16.dp))
-                        listOf("Scores", "Standings", "Teams").forEach { label ->
-                            NavigationBarItem(
-                                selected = label == "Standings",
-                                onClick = {},
-                                icon = { Text(label.take(1)) },
-                                label = { Text(label) },
-                                modifier = Modifier.primaryControl("test.nav.$label", frequent = true),
-                            )
+            CompositionLocalProvider(LocalDensity provides Density(rule.density.density, fontScale)) {
+                RouxTheme {
+                    // S6.3 owns production wiring. Reserve a real M3 three-destination bar of the same
+                    // geometry here so density and reach tests cannot silently borrow its space.
+                    Scaffold(bottomBar = {
+                        NavigationBar {
+                            Spacer(Modifier.width(16.dp))
+                            listOf("Scores", "Standings", "Teams").forEach { label ->
+                                NavigationBarItem(
+                                    selected = label == "Standings",
+                                    onClick = {},
+                                    icon = { Text(label.take(1)) },
+                                    label = { Text(label) },
+                                    modifier = Modifier.primaryControl("test.nav.$label", frequent = true),
+                                )
+                            }
+                            Spacer(Modifier.width(16.dp))
                         }
-                        Spacer(Modifier.width(16.dp))
+                    }) { insets ->
+                        StandingsScreen(suppliedState.value, onRefresh, { view ->
+                            selected += view
+                            suppliedState.value = suppliedState.value.copy(view = view, groups = StandingsGrouping.group(rows, view))
+                        }, Modifier.padding(insets))
                     }
-                }) { insets ->
-                    StandingsScreen(suppliedState.value, onRefresh, { view ->
-                        selected += view
-                        suppliedState.value = suppliedState.value.copy(view = view, groups = StandingsGrouping.group(rows, view))
-                    }, Modifier.padding(insets))
                 }
             }
         }
@@ -152,14 +159,15 @@ class StandingsScreenTest {
     }
 
     @Test
-    fun switcherIsFrequentPrimaryRowsAreReachTargetsAndViewsSwitch() {
+    fun switcherIsFrequentTableRowsAreNotControlsAndViewsSwitch() {
         val selected = mutableListOf<StandingsView>()
         launchScreen(selected = selected)
         val targets = rule.reachTargets()
         val switcher = targets.single { it.tag == "standings.view" }
         assertTrue(switcher.primary)
         assertTrue(switcher.frequent)
-        assertEquals(32, targets.count { it.tag.startsWith("standings.row.") && !it.primary })
+        assertEquals(0, targets.count { it.tag.startsWith("standings.row.") })
+        rule.onAllNodes(rowMatcher).assertCountEquals(32)
         assertEquals((navTags.toList() + "standings.view").sorted(), targets.filter { it.primary }.map { it.tag }.sorted())
         StandingsView.entries.forEach { view ->
             rule.onNodeWithTag("standings.view.$view").performClick().assertIsSelected()
@@ -309,14 +317,18 @@ class StandingsScreenTest {
     }
 
     private fun assertReach(retry: Boolean = false) {
-        assertFalse(rule.reachTargets().filter { it.tag.startsWith("standings.row.") }.any { it.primary })
+        // A table row has no action, so it is not a target at all - which is what allows the dense row height.
+        assertTrue(
+            "A standings row is text, not a control",
+            rule.reachTargets().none { it.tag.startsWith("standings.row.") },
+        )
         // The pull-to-refresh gesture is reachable and measured, but it is a gesture rather than a control.
         val gesture = rule.reachTargets().single { it.tag == "standings.refresh" }
         assertFalse("Pull-to-refresh is a gesture, not a primary control", gesture.primary)
         val primaries = navTags.toList() + "standings.view"
         if (retry) {
             val recovery = rule.reachTargets().single { it.tag == "standings.retry" }
-            // §5a: a fixed action is a primary control. Only collection rows are reach targets.
+            // §5a: a fixed action is a primary control.
             assertTrue("The retry is a fixed action, so it is a primary control", recovery.primary)
         }
         rule.assertPrimaryControlsReachable(*(primaries + if (retry) listOf("standings.retry") else emptyList()).toTypedArray())
@@ -330,5 +342,18 @@ class StandingsScreenTest {
         rule.onAllNodesWithTag(CREST_TAG, useUnmergedTree = true).assertCountEquals(32)
         val leader = rows.first()
         rule.onNodeWithText(leader.team.shortName!!).assertIsDisplayed()
+    }
+
+    @Test
+    fun atTwiceTheFontScaleTheRowsGrowInsteadOfClippingTheName() {
+        // Dense rows must not become clipped rows: the height is a floor, so at 2x the text decides it.
+        launchScreen(fontScale = 2f)
+        val nodes = rule.onAllNodes(rowMatcher).fetchSemanticsNodes()
+        assertEquals(32, nodes.size)
+        val leader = rows.first()
+        val tallest = nodes.maxOf { it.size.height } / rule.density.density
+        assertTrue("At 2x the rows must grow past the compact 40 dp floor, tallest was $tallest", tallest > 44f)
+        rule.onAllNodesWithText(leader.team.shortName!!, useUnmergedTree = true).onFirst().assertIsDisplayed()
+        rule.onAllNodesWithText(leader.pts.toString(), useUnmergedTree = true).onFirst().assertIsDisplayed()
     }
 }

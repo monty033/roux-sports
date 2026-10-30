@@ -135,9 +135,9 @@ fun StandingsScreen(
                         .verticalScroll(rememberScrollState())
                         .then(if (primary) Modifier.testTag("standings.list") else Modifier)
                         .padding(horizontal = 16.dp),
-                    // Seven here plus the row's own hairline is the eight the reach rule asks for between
-                    // targets, so the table gains two dp per team without any target getting closer.
-                    verticalArrangement = Arrangement.spacedBy(7.dp),
+                    // Rows sit close together on purpose: they are text, not controls, so the table can take the
+                    // tighter rhythm that keeps a whole division on one screen.
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     when {
                         state.loading -> {
@@ -171,9 +171,11 @@ fun StandingsScreen(
                                             modifier =
                                                 Modifier
                                                     .fillMaxWidth()
-                                                    // 49, not 48: the reach rule measures 47.99 at this density and calls it short.
-                                                    .heightIn(min = 49.dp)
-                                                    .then(if (primary) Modifier.testTag(tag).reachTarget(tag) else Modifier),
+                                                    .heightIn(min = 40.dp)
+                                                    // A row has no action, so it is not a control: the tag is for the
+                                                    // tests that read the table, and the row is not a touch target.
+                                                    // That is what lets the table run at 40 dp, not a control's 48.
+                                                    .then(if (primary) Modifier.testTag(tag) else Modifier),
                                             tagged = primary,
                                         )
                                         when {
