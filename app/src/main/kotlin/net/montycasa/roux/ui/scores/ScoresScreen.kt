@@ -2,6 +2,8 @@
 
 package net.montycasa.roux.ui.scores
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,12 +21,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -38,7 +42,6 @@ import net.montycasa.roux.domain.policy.DateStrip
 import net.montycasa.roux.domain.policy.FavoritesHint
 import net.montycasa.roux.ui.common.RetryButton
 import net.montycasa.roux.ui.common.StaleBanner
-import net.montycasa.roux.ui.common.slideOnChange
 import net.montycasa.roux.ui.nav.NavSwipe
 import net.montycasa.roux.ui.nav.stepOnHorizontalSwipe
 import net.montycasa.roux.ui.reach.Reach
@@ -47,6 +50,11 @@ import net.montycasa.roux.ui.reach.reachTarget
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.math.abs
+
+private const val DAY_SLIDE_MILLIS = 220
+private const val DAY_SLIDE_TRAVEL = 0.35f
+private const val DAY_SLIDE_FADE = 0.2f
 
 /**
  * Renders the selected day's state without owning loading or filtering. Callbacks map to refresh,
@@ -88,27 +96,30 @@ fun ScoresScreen(
             if (showHeader) ScoresHeader(state.liveCount, Modifier.fillMaxWidth())
             // Left and right step through the loaded dates, which is the axis this screen already has. The chip row
             // and the list keep their own gestures: children claim their drags before this sees them.
-            val dateOrder = state.dateIndex.map { it.date }.distinct()
+            // Moves the list in from the side it came from, so a change of day reads as travel rather than a swap.
+            val daySlide = remember { Animatable(0f) }
+            var wasDate by remember { mutableStateOf(state.selectedDate) }
+            LaunchedEffect(state.selectedDate) {
+                if (state.selectedDate != wasDate) {
+                    val order = state.dateIndex.map { it.date }.distinct()
+                    val onwards = order.indexOf(state.selectedDate) >= order.indexOf(wasDate)
+                    wasDate = state.selectedDate
+                    daySlide.snapTo(if (onwards) 1f else -1f)
+                    daySlide.animateTo(0f, tween(DAY_SLIDE_MILLIS))
+                }
+            }
             val stepDate: (Int) -> Unit = { by ->
-                val at = dateOrder.indexOf(state.selectedDate)
-                if (at >= 0) dateOrder.getOrNull(at + by)?.let(onSelectDate)
+                val dates = state.dateIndex.map { it.date }.distinct()
+                val at = dates.indexOf(state.selectedDate)
+                if (at >= 0) dates.getOrNull(at + by)?.let(onSelectDate)
             }
-            // The list slides to the next day instead of swapping, so the direction of travel is visible while the
-            // change happens.
-            slideOnChange(
-                key = state.selectedDate,
-                forward = { old, new -> dateOrder.indexOf(new) >= dateOrder.indexOf(old) },
-                modifier =
-                    Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-            ) {
-            }
-
             Column(
                 Modifier
-                    .fillMaxSize()
-                    .then(
+                    .weight(1f)
+                    .graphicsLayer {
+                        translationX = daySlide.value * size.width * DAY_SLIDE_TRAVEL
+                        alpha = 1f - DAY_SLIDE_FADE * abs(daySlide.value)
+                    }.then(
                         if (NavSwipe.TURNS_PAGES) {
                             Modifier
                         } else {
