@@ -493,10 +493,10 @@ class ShellTest {
         // Same box as the destination glyphs, so the button is not a different weight in the same row.
         assertEquals(24f, (glyph.right - glyph.left).value, 0.5f)
         assertEquals(24f, (glyph.bottom - glyph.top).value, 0.5f)
-        // On the icon row, not floating in the middle of the bar: an earlier attempt sat 29 dp low.
-        val glyphCentre = (glyph.top.value + glyph.bottom.value) / 2f
-        val barCentre = (bar.top + bar.bottom) / 2f
-        assertTrue("the glyph belongs above the bar's middle, on the icon row", glyphCentre < barCentre)
+        // Wholly inside the bar: an earlier version was clipped by its slot, which is what made it look wrong.
+        val glyphTopPx = with(rule.density) { glyph.top.toPx() }
+        val glyphBottomPx = with(rule.density) { glyph.bottom.toPx() }
+        assertTrue("the glyph must not be clipped by the bar", glyphTopPx >= bar.top && glyphBottomPx <= bar.bottom)
     }
 
     @Test
