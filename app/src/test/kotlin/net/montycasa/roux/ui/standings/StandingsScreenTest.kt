@@ -12,6 +12,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -70,7 +71,17 @@ class StandingsScreenTest {
     val rule = createComposeRule()
 
     private val rows = capturedStandings().sortedBy { it.leagueSequence }
-    private val fresh = StandingsUiState(groups = StandingsGrouping.group(rows, StandingsView.League), loading = false)
+
+    // The app opens on the Eastern conference, playoffs ranking.
+    private val fresh =
+        StandingsUiState(
+            view = StandingsView.Eastern,
+            mode = StandingsMode.Playoffs,
+            groups = StandingsGrouping.group(rows, StandingsView.Eastern, StandingsMode.Playoffs),
+            loading = false,
+        )
+    private val leagueState =
+        fresh.copy(view = StandingsView.League, groups = StandingsGrouping.group(rows, StandingsView.League))
     private val suppliedState = mutableStateOf(fresh)
     private val navTags = arrayOf("test.nav.Scores", "test.nav.Standings", "test.nav.Teams")
     private val rowMatcher =
@@ -168,7 +179,7 @@ class StandingsScreenTest {
     @Test
     fun aForwardSwipeOnLeagueDoesNothing() {
         val picked = mutableListOf<StandingsView>()
-        launchScreen(fresh, selected = picked)
+        launchScreen(leagueState, selected = picked)
         // League is the last page, so there is nothing to its right.
         rule.onRoot().performTouchInput { swipeLeft() }
         rule.waitForIdle()
@@ -201,7 +212,8 @@ class StandingsScreenTest {
         assertTrue(switcher.primary)
         assertTrue(switcher.frequent)
         assertEquals(0, targets.count { it.tag.startsWith("standings.row.") })
-        rule.onAllNodes(rowMatcher).assertCountEquals(32)
+        // The screen opens on a conference, so sixteen rows, and the league table is one tap away.
+        rule.onAllNodes(rowMatcher).assertCountEquals(16)
         assertEquals((navTags.toList() + "standings.view").sorted(), targets.filter { it.primary }.map { it.tag }.sorted())
         StandingsView.entries.forEach { view ->
             rule.onNodeWithTag("standings.view.$view").performClick().assertIsSelected()
@@ -253,9 +265,15 @@ class StandingsScreenTest {
     @Test
     fun staleBannerRetainsRowsShowsRefreshErrorAndRetries() {
         var refreshes = 0
-        launchScreen(fresh.copy(stale = Freshness.Stale(Instant.parse("2026-10-26T23:42:00Z")), error = LoadError.Network), onRefresh = {
-            refreshes++
-        })
+        launchScreen(
+            leagueState.copy(
+                stale = Freshness.Stale(Instant.parse("2026-10-26T23:42:00Z")),
+                error = LoadError.Network,
+            ),
+            onRefresh = {
+                refreshes++
+            },
+        )
         rule.onNodeWithText("Updated", substring = true).assertIsDisplayed()
         rule.onNodeWithText("7:42 PM", substring = true).assertIsDisplayed()
         rule.onNodeWithText("Couldn’t refresh. Showing saved standings.").assertIsDisplayed()
@@ -271,7 +289,7 @@ class StandingsScreenTest {
     @Test
     fun rowsWithAnErrorAndNoStaleMarkerExplainTheFailureAndOfferRetry() {
         var refreshes = 0
-        launchScreen(fresh.copy(error = LoadError.Local), onRefresh = { refreshes++ })
+        launchScreen(leagueState.copy(error = LoadError.Local), onRefresh = { refreshes++ })
         // No stale marker means no update time to show; the copy must still say what went wrong.
         rule.onNodeWithText("Couldn’t refresh. Showing saved standings.").assertIsDisplayed()
         rule.onAllNodes(rowMatcher).assertCountEquals(32)
@@ -284,13 +302,15 @@ class StandingsScreenTest {
     @Test
     fun loadingEmptyAndErrorAreDistinctAndErrorOffersRetry() {
         var refreshes = 0
-        launchScreen(StandingsUiState(), onRefresh = { refreshes++ })
+        launchScreen(StandingsUiState(view = StandingsView.League), onRefresh = { refreshes++ })
         rule.onNodeWithText("Loading standings…").assertIsDisplayed()
         rule.onNodeWithText("No table yet.").assertDoesNotExist()
-        rule.runOnIdle { suppliedState.value = StandingsUiState(loading = false) }
+        rule.runOnIdle { suppliedState.value = StandingsUiState(view = StandingsView.League, loading = false) }
         rule.onNodeWithText("No table yet.").assertIsDisplayed()
         rule.onNodeWithText("Retry").assertDoesNotExist()
-        rule.runOnIdle { suppliedState.value = StandingsUiState(loading = false, error = LoadError.Network) }
+        rule.runOnIdle {
+            suppliedState.value = StandingsUiState(view = StandingsView.League, loading = false, error = LoadError.Network)
+        }
         rule.onNodeWithText("Couldn’t load standings. Try again.").assertIsDisplayed()
         rule.onNodeWithText("Retry").performClick()
         assertEquals(1, refreshes)
@@ -308,7 +328,8 @@ class StandingsScreenTest {
 
     @Test
     fun elevenRowsAreFullyVisibleWithSwitcherHeaderAndBottomNavigationAt411By923() {
-        launchScreen()
+        // The shipped density claim is about the league table: twenty teams on one screen.
+        launchScreen(leagueState)
         rule.onNodeWithTag("standings.header").assertIsDisplayed()
         StandingsView.entries.forEach { rule.onNodeWithTag("standings.view.$it").assertIsDisplayed() }
         listOf("Scores", "Standings", "Teams").forEach { rule.onNodeWithText(it).assertIsDisplayed() }
@@ -321,9 +342,9 @@ class StandingsScreenTest {
         println(
             "STANDINGS_MEASUREMENT: fullyVisible=$fullyVisible windowDp=${window.width / rule.density.density}x${window.height / rule.density.density} listHeightDp=${viewport.height / rule.density.density}",
         )
-        // A floor, not an equality: the promise is that a whole division is on screen without scrolling, so
+        // A floor, not an equality: the promise is that the whole league table is on screen without scrolling, so
         // fitting more is a feature rather than a regression.
-        assertTrue("Fully visible team rows measured at 411x923: $fullyVisible", fullyVisible >= 11)
+        assertTrue("Fully visible league rows measured at 411x923: $fullyVisible", fullyVisible >= 20)
     }
 
     @Test
@@ -378,7 +399,7 @@ class StandingsScreenTest {
 
     @Test
     fun everyRowCarriesItsCrestAndItsClubName() {
-        launchScreen()
+        launchScreen(leagueState)
         // Identity comes from the crest and the club's own name; the abbreviation is only a fallback for a payload
         // that carries no name at all.
         rule.onAllNodesWithTag(CREST_TAG, useUnmergedTree = true).assertCountEquals(32)
@@ -389,7 +410,7 @@ class StandingsScreenTest {
     @Test
     fun atTwiceTheFontScaleTheRowsGrowInsteadOfClippingTheName() {
         // Dense rows must not become clipped rows: the height is a floor, so at 2x the text decides it.
-        launchScreen(fontScale = 2f)
+        launchScreen(leagueState, fontScale = 2f)
         val nodes = rule.onAllNodes(rowMatcher).fetchSemanticsNodes()
         assertEquals(32, nodes.size)
         val leader = rows.first()
@@ -403,7 +424,7 @@ class StandingsScreenTest {
     fun theLeaguePageHasNoRankingRow() {
         // The ranking is a conference question. On the league page there is nothing to rank differently, so a
         // control there would be three ways to do nothing.
-        launchScreen()
+        launchScreen(leagueState)
         StandingsMode.entries.forEach { mode ->
             rule.onAllNodesWithTag("standings.mode.$mode").assertCountEquals(0)
         }
@@ -519,5 +540,30 @@ class StandingsScreenTest {
                     text.size.width <= chip.width,
                 )
             }
+    }
+
+    @Test
+    fun theRankingRowStaysPutWhileTheTableIsDragged() {
+        // The strip is chrome, not page content: it must not travel with the drag the way the table does.
+        launchScreen()
+        val before = rule.onNodeWithTag("standings.mode.Playoffs").fetchSemanticsNode().boundsInRoot
+        rule.onNodeWithTag("standings.list").performTouchInput {
+            down(center)
+            moveBy(Offset(-160f, 0f))
+        }
+        rule.waitForIdle()
+        val during = rule.onNodeWithTag("standings.mode.Playoffs").fetchSemanticsNode().boundsInRoot
+        assertEquals("the ranking strip must not move horizontally", before.left, during.left, 0.5f)
+        assertEquals("the ranking strip must not move vertically", before.top, during.top, 0.5f)
+        rule.onNodeWithTag("standings.list").performTouchInput { up() }
+        rule.waitForIdle()
+    }
+
+    @Test
+    fun theScreenOpensOnTheEasternPlayoffPicture() {
+        launchScreen()
+        rule.onNodeWithTag("standings.view.Eastern").assertIsSelected()
+        rule.onNodeWithTag("standings.mode.Playoffs").assertIsSelected()
+        rule.onNodeWithText("Atlantic").assertIsDisplayed()
     }
 }

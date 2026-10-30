@@ -26,7 +26,8 @@ data class StandingsUiState(
     // moving, and the ranking control has to be able to change the table without a round trip, so both axes are
     // grouped ahead of time. The league page ignores the ranking and holds one entry.
     val groupsByView: Map<StandingsView, Map<StandingsMode, StandingsGroups>> = emptyMap(),
-    val view: StandingsView = StandingsView.League,
+    // Opens on a conference rather than the whole league: the standings are read by someone following a team.
+    val view: StandingsView = StandingsView.Eastern,
     // The ranking is one mode shared by both conferences, so a swipe compares the same table rather than changing
     // two things at once. It is not persisted: there is nothing saved today, so there is nothing to migrate.
     val mode: StandingsMode = StandingsMode.Playoffs,

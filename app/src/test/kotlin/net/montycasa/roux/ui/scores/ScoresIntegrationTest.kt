@@ -94,8 +94,9 @@ class ScoresIntegrationTest {
 
         rule.onNode(hasText("Standings") and isSelectable()).performClick()
         // Standings is a real destination now; wait for the table it renders rather than a placeholder sentence.
+        // It opens on the Eastern conference, whose first block is the Atlantic.
         rule.waitUntil(timeoutMillis = 10_000) {
-            rule.onAllNodesWithText("NHL").fetchSemanticsNodes().isNotEmpty()
+            rule.onAllNodesWithText("Atlantic").fetchSemanticsNodes().isNotEmpty()
         }
         rule.onNodeWithTag("standings.header").assertIsDisplayed()
         // Teams is a real destination now, so this asserts the picker rather than a placeholder sentence.

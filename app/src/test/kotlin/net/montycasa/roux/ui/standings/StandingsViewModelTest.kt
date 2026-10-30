@@ -90,6 +90,8 @@ class StandingsViewModelTest {
             val vm = model(repo)
             assertTrue(vm.uiState.value.loading)
             runCurrent()
+            // The screen opens on a conference; the league table is the whole-league page this test counts.
+            vm.setView(StandingsView.League)
             assertEquals(
                 32,
                 vm.uiState.value.groups.sections
@@ -113,6 +115,8 @@ class StandingsViewModelTest {
             val prefs = FakePreferences(teams = setOf(rows.first().team.key))
             val vm = model(prefs = prefs)
             runCurrent()
+            // The screen opens on a conference; the league ranking is the page this test is about.
+            vm.setView(StandingsView.League)
             val shown = vm.uiState.value
             assertTrue(shown.favouritesKnown)
             assertTrue(shown.favouritesOnly)
@@ -139,10 +143,9 @@ class StandingsViewModelTest {
             runCurrent()
             assertFalse(vm.uiState.value.favouritesKnown)
             assertEquals(
-                32,
+                16,
                 vm.uiState.value.groups.sections
-                    .single()
-                    .rows.size,
+                    .sumOf { it.rows.size },
             )
         }
 
@@ -206,11 +209,11 @@ class StandingsViewModelTest {
             // A failed refresh does not retract what the screen already knew about those rows.
             assertEquals(stale, vm.uiState.value.stale)
             assertEquals(LoadError.Local, vm.uiState.value.error)
+            // The Eastern page keeps all sixteen of its teams, whatever the refresh did.
             assertEquals(
-                32,
+                16,
                 vm.uiState.value.groups.sections
-                    .single()
-                    .rows.size,
+                    .sumOf { it.rows.size },
             )
         }
 
@@ -222,6 +225,7 @@ class StandingsViewModelTest {
             runCurrent()
             assertEquals(stale, vm.uiState.value.stale)
             assertEquals(LoadError.Network, vm.uiState.value.error)
+            vm.setView(StandingsView.League)
             assertEquals(
                 32,
                 vm.uiState.value.groups.sections
@@ -339,4 +343,19 @@ class StandingsViewModelTest {
 
         override suspend fun pruneNotificationLedger(olderThan: Instant) = Unit
     }
+
+    @Test
+    fun opensOnTheEasternPlayoffPicture() =
+        runTest {
+            val vm = model(FakeStandings())
+            runCurrent()
+            assertEquals(StandingsView.Eastern, vm.uiState.value.view)
+            assertEquals(StandingsMode.Playoffs, vm.uiState.value.mode)
+            // And the grouping on screen belongs to that page, not to the league.
+            assertEquals(
+                listOf("Atlantic", "Metropolitan", "Wild Card"),
+                vm.uiState.value.groups.sections
+                    .map { it.title },
+            )
+        }
 }

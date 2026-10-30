@@ -148,8 +148,6 @@ fun StandingsScreen(
             val groups =
                 state.groupsByView[view]?.let { byMode -> byMode[mode] ?: byMode.values.first() }
                     ?: if (primary) state.groups else StandingsGroups(emptyList())
-            // The ranking control belongs to the page, not to the screen: it slides in with the conference, so the
-            // 48 dp a conference page spends on it travels with the swipe instead of appearing at the end of it.
             Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 PullToRefreshBox(
                     state.isRefreshing && primary,
@@ -257,15 +255,16 @@ fun StandingsScreen(
                         }
                     }
                 }
-                if (view != StandingsView.League) {
-                    StandingsModeRow(
-                        mode = mode,
-                        onSetMode = { entry -> onSelect(view, entry) },
-                        tagged = primary,
-                        modifier = Modifier.padding(horizontal = 16.dp).heightIn(min = 48.dp),
-                    )
-                }
             }
+        }
+        // The ranking control is chrome, not page content: it stays put while the table slides under it. It speaks
+        // for whichever conference is selected, and it is absent on the league page, where no ranking applies.
+        if (state.view != StandingsView.League) {
+            StandingsModeRow(
+                mode = state.mode,
+                onSetMode = { entry -> onSelect(state.view, entry) },
+                modifier = Modifier.padding(horizontal = 16.dp).heightIn(min = 48.dp),
+            )
         }
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             when {
@@ -359,14 +358,13 @@ fun StandingsScreen(
 private fun StandingsModeRow(
     mode: StandingsMode,
     onSetMode: (StandingsMode) -> Unit,
-    tagged: Boolean,
     modifier: Modifier = Modifier,
 ) {
     Row(
         modifier
             .fillMaxWidth()
             .selectableGroup()
-            .then(if (tagged) Modifier.reachTarget("standings.mode") else Modifier),
+            .reachTarget("standings.mode"),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         StandingsMode.entries.forEach { entry ->
@@ -385,7 +383,7 @@ private fun StandingsModeRow(
                         .weight(1f)
                         .heightIn(min = 48.dp)
                         .selectable(selected, role = Role.RadioButton, onClick = { onSetMode(entry) })
-                        .then(if (tagged) Modifier.testTag("standings.mode.$entry") else Modifier),
+                        .testTag("standings.mode.$entry"),
             ) {
                 Column(
                     Modifier.padding(vertical = 6.dp),
