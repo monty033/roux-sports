@@ -486,6 +486,22 @@ class ShellTest {
     }
 
     @Test
+    fun theMenuButtonIsASquareOnTheIconRow() {
+        launchShell(leagueMode = true)
+        val circle = rule.onNodeWithTag("nav.menu.circle", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val bar = barBounds()
+        // Square first: at 36 dp inside the item slot the circle was clipped top and bottom, which is what made it
+        // look wrong long before the offset was suspected.
+        val circleW = (circle.right - circle.left).value
+        val circleH = (circle.bottom - circle.top).value
+        assertEquals(circleW, circleH, 0.5f)
+        // And on the icon row, not floating in the middle of the bar: the first attempt sat 29 dp low.
+        val circleCentre = (circle.top.value + circle.bottom.value) / 2f
+        val barCentre = (bar.top + bar.bottom) / 2f
+        assertTrue("the button belongs above the bar's middle, on the icon row", circleCentre < barCentre)
+    }
+
+    @Test
     fun swipingThePagesMovesTheBar() {
         launchShell(leagueMode = true)
         rule.onNodeWithTag(PAGER_TAG, useUnmergedTree = true).performTouchInput { swipeLeft() }

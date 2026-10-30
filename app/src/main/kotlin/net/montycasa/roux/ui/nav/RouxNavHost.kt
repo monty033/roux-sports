@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -61,6 +62,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -247,42 +249,46 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
                             // own background stays full-bleed and the items are pushed inside it by spacers -
                             // padding the bar itself would inset its background and leave a strip of page showing.
                             Spacer(Modifier.width(Reach.EDGE_INSET_DP.dp))
-                            // The menu comes first, on the side the thumb rests, and it is deliberately not a seat the way
-                            // the others are: no label, no selection, and a filled circle instead of an icon on bare bar.
-                            // As a labelled item it read as a fourth destination, which is exactly what it is not.
-                            NavigationBarItem(
+                            // The menu is a button, not a seat. It is drawn as one for a concrete reason: inside a
+                            // NavigationBarItem, an unlabelled icon gets the space left over once the label is
+                            // reserved, and a 36 dp circle was being clipped to about 23 dp tall. Here it owns its
+                            // slot, sits its circle on the same row as the tab icons, and carries no selected state -
+                            // it opens a surface, it does not become one.
+                            Box(
                                 modifier =
                                     Modifier
-                                        .primaryControl("nav.menu", frequent = true)
+                                        // An explicit height, not fillMaxHeight: inside NavigationBar's Row an
+                                        // unconstrained fill measured against the bar's own content and squeezed the
+                                        // circle's padding away.
+                                        .width(72.dp)
+                                        .height(Reach.BAR_HEIGHT_DP.dp)
+                                        .clickable(
+                                            role = Role.Button,
+                                            interactionSource = remember { MutableInteractionSource() },
+                                            indication = null,
+                                            onClick = { if (sheetState.isOpen) closeLeagues() else openLeagues() },
+                                        ).primaryControl("nav.menu", frequent = true)
                                         .testTag("nav.menu"),
-                                // Never selected: it opens a surface, it does not become one.
-                                selected = false,
-                                onClick = { if (sheetState.isOpen) closeLeagues() else openLeagues() },
-                                colors =
-                                    NavigationBarItemDefaults.colors(
-                                        indicatorColor = Color.Transparent,
-                                        selectedIconColor = MaterialTheme.colorScheme.onPrimary,
-                                    ),
-                                icon = {
-                                    Box(
-                                        Modifier
-                                            // An unlabelled item centres its icon, so it lands higher than the tab
-                                            // icons that sit above their labels. Half a label line brings the circle
-                                            // back onto the same optical row.
-                                            .offset(y = 10.dp)
-                                            .size(36.dp)
-                                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f), CircleShape),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        Icon(
-                                            imageVector = menuGlyph(),
-                                            contentDescription = stringResource(R.string.nav_menu),
-                                            modifier = Modifier.size(20.dp),
-                                            tint = MaterialTheme.colorScheme.primary,
-                                        )
-                                    }
-                                },
-                            )
+                                contentAlignment = Alignment.TopCenter,
+                            ) {
+                                Box(
+                                    Modifier
+                                        .padding(top = Reach.BAR_ICON_TOP_DP.dp)
+                                        .size(Reach.BAR_MENU_SIZE_DP.dp)
+                                        // Inside the padding, so the tagged node is the circle itself rather than
+                                        // the circle plus the gap above it.
+                                        .testTag("nav.menu.circle")
+                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f), CircleShape),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = menuGlyph(),
+                                        contentDescription = stringResource(R.string.nav_menu),
+                                        modifier = Modifier.size(20.dp),
+                                        tint = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                            }
                             pages.forEachIndexed { index, destination ->
                                 val label = stringResource(destination.label)
                                 NavigationBarItem(
@@ -450,7 +456,7 @@ private fun StandingsDestination() {
     )
 }
 
-private fun menuGlyph(): ImageVector = glyph("Menu", "M4,6 h16 v2 h-16 z M4,11 h16 v2 h-16 z M4,16 h16 v2 h-16 z")
+private fun menuGlyph(): ImageVector = glyph("Menu", "M3,6.5 h18 v2.5 h-18 z M3,10.75 h18 v2.5 h-18 z M3,15 h18 v2.5 h-18 z")
 
 /**
  * Hand-drawn 24 dp glyphs rather than a material-icons dependency: three shapes are cheaper than a
