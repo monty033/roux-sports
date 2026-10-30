@@ -47,6 +47,9 @@ import net.montycasa.roux.domain.repo.ScoresRepository
 import kotlin.random.Random
 import kotlin.time.Clock
 
+/** Days of rows worth remembering; a session that browses further back starts forgetting the far end. */
+private const val KEPT_DAYS = 40
+
 /** The drawer's My Teams row: a destination that spans leagues, not a league of its own. */
 const val MY_TEAMS_LEAGUE: String = "myTeams"
 
@@ -153,6 +156,9 @@ class ScoresViewModel(
             ScoresUiState(selectedDate.value, leagueDay()),
         )
 
+    /** Rows for every day this screen has seen, keyed by date; it accumulates, see where it is written. */
+    private val rowsByDate = MutableStateFlow<Map<String, List<Game>>>(emptyMap())
+
     /**
      * The days either side of the selected one, so the screen can show real games for the day being moved towards.
      *
@@ -171,19 +177,33 @@ class ScoresViewModel(
                 if (wanted.isEmpty()) return@transformLatest
                 val today = leagueDay()
                 val settings = settings().first()
-                emit(
+                val fresh =
                     wanted.associateWith { date ->
                         val games = scores.cachedDay(date, today)?.games.orEmpty()
                         val filtered = FavoritesOrdering.filter(games, settings.favourites, settings.only)
                         if (settings.only) filtered.rows else FavoritesOrdering.pin(filtered.rows, settings.favourites)
-                    },
-                )
+                    }
+                // Accumulated, not replaced: the day you settle on is no longer beside the selection, so replacing the
+                // map took its rows away at the exact moment the page needed them and the list drew one blank frame.
+                // Bounded so a long session cannot grow it without limit.
+                val merged =
+                    (rowsByDate.value + fresh).let {
+                        if (it.size <=
+                            KEPT_DAYS
+                        ) {
+                            it
+                        } else {
+                            it.entries.drop(it.size - KEPT_DAYS).associate { e -> e.key to e.value }
+                        }
+                    }
+                rowsByDate.value = merged
+                emit(merged)
             }
-            // Empty first: the selected day must draw immediately, before its neighbours are known.
-            .onStart { emit(emptyMap()) }
+            // Start from what is already remembered, so a re-subscription does not blank the neighbouring pages.
+            .onStart { emit(rowsByDate.value) }
 
     val uiState: StateFlow<ScoresUiState> =
-        combine(dayState, neighbourRows) { day, beside -> day.copy(neighboursByDate = beside) }
+        combine(dayState, neighbourRows) { day, beside -> day.copy(rowsByDate = beside) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ScoresUiState(selectedDate.value, leagueDay()))
 
     /** Loads immediately, even when the cadence has stopped. A pull also reaches past a fresh cache. */

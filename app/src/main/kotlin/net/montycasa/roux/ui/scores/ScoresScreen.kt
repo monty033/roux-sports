@@ -156,7 +156,7 @@ fun ScoresScreen(
                     // named, only that day may use it.
                     val rowsAreThisPage =
                         state.loadedDate == pageDate || (state.loadedDate == null && pageDate == state.selectedDate)
-                    val pageRows = if (rowsAreThisPage) state.rows else state.neighboursByDate[pageDate].orEmpty()
+                    val pageRows = if (rowsAreThisPage) state.rows else state.rowsByDate[pageDate].orEmpty()
                     // The indicator belongs to the page you are looking at, and only while that same day is being
                     // refreshed. A neighbour page loading in the background used to paint a spinner on whatever page
                     // happened to be on screen - that flash just after the settle is precisely this, not a layout jump.

@@ -20,6 +20,7 @@ import kotlinx.datetime.TimeZone
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
+import net.montycasa.roux.domain.model.DateIndexEntry
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
@@ -431,6 +432,36 @@ class ScoresViewModelTest {
 
                 assertEquals(listOf("2026-10-26", "2026-10-27"), scores.calls.map { it.date })
                 assertEquals("2026-10-27", expectMostRecentItem().selectedDate)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun aDayIsStillKnownAfterItStopsBeingABeside() =
+        runTest {
+            val scores = FakeScoresRepository(testScheduler)
+            // A day index wide enough for neighbours to exist at all: without one nothing sits beside the selection.
+            val index = listOf("2026-10-25", "2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29").map { DateIndexEntry(it, 1) }
+            scores.respond = { date, _ ->
+                Loadable(ScoreDay(date, listOf(game(date = date)), index, 0), Freshness.Fresh, null)
+            }
+            val viewModel = viewModel(scores)
+
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                viewModel.selectDate("2026-10-27")
+                runCurrent()
+                val before = expectMostRecentItem().rowsByDate.keys
+                assertTrue("nothing was known to carry over: $before", before.isNotEmpty())
+
+                // One more day along: what was beside 27 is no longer beside 28, and must survive. Dropping it is what
+                // left the pager drawing one blank frame between the settle and the load landing.
+                viewModel.selectDate("2026-10-28")
+                runCurrent()
+
+                val after = expectMostRecentItem().rowsByDate.keys
+                assertEquals("$before -> $after", before, before.intersect(after))
                 cancelAndIgnoreRemainingEvents()
             }
         }
