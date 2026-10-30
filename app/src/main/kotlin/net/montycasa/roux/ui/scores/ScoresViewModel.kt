@@ -173,7 +173,12 @@ class ScoresViewModel(
             .distinctUntilChanged()
             .transformLatest { (dates, selected) ->
                 val at = dates.indexOf(selected)
-                val wanted = listOf(dates.getOrNull(at - 1), dates.getOrNull(at + 1)).filterNotNull()
+                // The selection is included: a page draws from this map the moment it settles, and the day you settle on
+                // has to have an entry of its own before its load lands.
+                val wanted =
+                    (listOf(selected) + listOf(dates.getOrNull(at - 1), dates.getOrNull(at + 1)))
+                        .filterNotNull()
+                        .distinct()
                 if (wanted.isEmpty()) return@transformLatest
                 val today = leagueDay()
                 val settings = settings().first()

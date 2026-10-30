@@ -108,6 +108,22 @@ class ScoresScreenTest {
     }
 
     @Test
+    fun aDayBeingReloadedKeepsTheRowsItAlreadyHad() {
+        // The state can name the day while its rows are still empty - that is what a reload looks like. A page that
+        // draws nothing in that window is the frame that went blank on the device, so the rows already known for the
+        // day have to carry it.
+        launchScreen(
+            fresh.copy(
+                rows = emptyList(),
+                loadedDate = date,
+                isRefreshing = true,
+                rowsByDate = mapOf(date to listOf(game)),
+            ),
+        )
+        rule.onNodeWithTag("scores.game.${game.id.value}").assertExists()
+    }
+
+    @Test
     fun aBackwardSwipeOnTheFirstLoadedDateDoesNothing() {
         val picked = mutableListOf<String>()
         // 10-25 is the first loaded date; there is nothing behind it to step to.
