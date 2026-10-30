@@ -135,7 +135,9 @@ fun StandingsScreen(
                         .verticalScroll(rememberScrollState())
                         .then(if (primary) Modifier.testTag("standings.list") else Modifier)
                         .padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    // Seven here plus the row's own hairline is the eight the reach rule asks for between
+                    // targets, so the table gains two dp per team without any target getting closer.
+                    verticalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
                     when {
                         state.loading -> {
@@ -156,7 +158,7 @@ fun StandingsScreen(
                                 // rather than as another row in a run of evenly spaced text.
                                 StandingsSectionTitle(
                                     section.title,
-                                    Modifier.padding(top = if (sectionIndex == 0) 6.dp else 18.dp, bottom = 2.dp),
+                                    Modifier.padding(top = if (sectionIndex == 0) 4.dp else 10.dp, bottom = 2.dp),
                                 )
                                 section.rows.forEachIndexed { index, row ->
                                     val tag = "standings.row.$sectionIndex.${row.team.abbrev}"
@@ -169,6 +171,7 @@ fun StandingsScreen(
                                             modifier =
                                                 Modifier
                                                     .fillMaxWidth()
+                                                    // 49, not 48: the reach rule measures 47.99 at this density and calls it short.
                                                     .heightIn(min = 49.dp)
                                                     .then(if (primary) Modifier.testTag(tag).reachTarget(tag) else Modifier),
                                             tagged = primary,
@@ -331,9 +334,12 @@ private fun StandingsRow(
         TeamLogo(row.team, CREST_SIZE)
         Spacer(Modifier.width(8.dp))
         Text(
-            // Full club name. The abbreviation is the fallback only when the payload has no name at all, and an
-            // ellipsis is preferred to switching to it: three letters cost the reader more than a clipped word.
-            row.team.name?.takeIf { it.isNotBlank() } ?: row.team.abbrev,
+            // The club without its place: a standings table is scanned by club, and the city is the part that
+            // repeats. The full name is the fallback when the feed gives no place-free form, and the abbreviation
+            // only when it gives no name at all - three letters cost the reader more than a clipped word.
+            row.team.shortName
+                ?: row.team.name?.takeIf { it.isNotBlank() }
+                ?: row.team.abbrev,
             Modifier.weight(IDENTITY_WEIGHT),
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Medium,

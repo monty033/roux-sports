@@ -415,4 +415,42 @@ class StandingsAdapterTest {
         val seasonsFixture = Fixtures.text("standings-season.json")
         val baseline by lazy { (NhlAdapter.parseStandings(fixture) as ParseResult.Success).value }
     }
+
+    @Test
+    fun theCommonNameIsTheClubWithoutItsPlace() {
+        val result = NhlAdapter.parseStandings(fixture)
+        assertTrue("The untouched fixture must parse: $result", result is ParseResult.Success)
+        val rows = (result as ParseResult.Success).value
+        // "Carolina Hurricanes" is the place plus the club; the table shows the club alone.
+        rows.forEach { row ->
+            val name = row.team.name
+            val short = row.team.shortName
+            assertNotNull("${row.team.abbrev} carries no common name", short)
+            assertTrue("${row.team.abbrev}: '$short' is not the club inside '$name'", name!!.endsWith(short!!))
+            assertTrue("${row.team.abbrev}: the common name still carries the place", short.length < name.length)
+        }
+    }
+
+    @Test
+    fun aBlankCommonNameIsAbsenceRatherThanAName() {
+        // A blank string is a missing field, not a club called " ": the row still parses and falls back to the
+        // full name at the presentation layer.
+        val root = Json.parseToJsonElement(fixture).jsonObject
+        val rows =
+            root.getValue("standings").jsonArray.map { element ->
+                val row = element.jsonObject
+                if (row.getValue("leagueSequence").jsonPrimitive.int != 1) {
+                    row
+                } else {
+                    JsonObject(row + ("teamCommonName" to JsonObject(mapOf("default" to JsonPrimitive("")))))
+                }
+            }
+        val json = JsonObject(root + ("standings" to JsonArray(rows)))
+        val result = NhlAdapter.parseStandings(json.toString())
+
+        assertTrue("A blank common name must not fail the table: $result", result is ParseResult.Success)
+        val first = (result as ParseResult.Success).value.first { it.leagueSequence == 1 }
+        assertNull(first.team.shortName)
+        assertNotNull(first.team.name)
+    }
 }

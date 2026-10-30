@@ -271,8 +271,9 @@ class StandingsScreenTest {
         println(
             "STANDINGS_MEASUREMENT: fullyVisible=$fullyVisible windowDp=${window.width / rule.density.density}x${window.height / rule.density.density} listHeightDp=${viewport.height / rule.density.density}",
         )
-        assertEquals("Fully visible team rows measured at 411x923 with bottom navigation", 11, fullyVisible)
-        assertTrue("Measured only $fullyVisible fully visible team rows", fullyVisible >= 9)
+        // A floor, not an equality: the promise is that a whole division is on screen without scrolling, so
+        // fitting more is a feature rather than a regression.
+        assertTrue("Fully visible team rows measured at 411x923: $fullyVisible", fullyVisible >= 11)
     }
 
     @Test
@@ -328,6 +329,6 @@ class StandingsScreenTest {
         // that carries no name at all.
         rule.onAllNodesWithTag(CREST_TAG, useUnmergedTree = true).assertCountEquals(32)
         val leader = rows.first()
-        rule.onNodeWithText(leader.team.name!!).assertIsDisplayed()
+        rule.onNodeWithText(leader.team.shortName!!).assertIsDisplayed()
     }
 }

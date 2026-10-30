@@ -13,6 +13,7 @@ internal data class StandingsDto(
 internal data class StandingRowDto(
     val teamAbbrev: NameDto? = null,
     val teamName: NameDto? = null,
+    val teamCommonName: NameDto? = null,
     val teamLogo: String? = null,
     val teamLogoDark: String? = null,
     val gamesPlayed: Int? = null,
