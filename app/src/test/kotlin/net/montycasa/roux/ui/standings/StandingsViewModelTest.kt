@@ -105,36 +105,29 @@ class StandingsViewModelTest {
         }
 
     @Test
-    fun pinsOnlyWhenThePersistedScoresFilterIsOnAndKeepsTheWholeTable() =
+    fun theFilterStillFavoursTeamsButTheTableStaysOneRanking() =
         runTest {
+            // No favourites block: a filter may still say which teams are mine, but the table is the table, so a
+            // league ranking is never split into two lists with the same numbering restarting.
             val prefs = FakePreferences(teams = setOf(rows.first().team.key))
             val vm = model(prefs = prefs)
             runCurrent()
-            val pinned = vm.uiState.value
-            assertTrue(pinned.favouritesKnown)
-            assertTrue(pinned.favouritesOnly)
-            assertTrue(pinned.pinnedShown)
-            assertEquals(
-                "Your teams",
-                pinned.groups.sections
-                    .first()
-                    .title,
-            )
+            val shown = vm.uiState.value
+            assertTrue(shown.favouritesKnown)
+            assertTrue(shown.favouritesOnly)
+            assertEquals(listOf("NHL"), shown.groups.sections.map { it.title })
             assertEquals(
                 32,
-                pinned.groups.sections
-                    .last()
+                shown.groups.sections
+                    .single()
                     .rows.size,
             )
-            prefs.only = false
-            vm.refresh()
-            runCurrent()
-            assertFalse(vm.uiState.value.favouritesOnly)
-            assertFalse(vm.uiState.value.pinnedShown)
             assertEquals(
-                listOf("NHL"),
-                vm.uiState.value.groups.sections
-                    .map { it.title },
+                rows.map { it.team.key },
+                shown.groups.sections
+                    .single()
+                    .rows
+                    .map { it.team.key },
             )
         }
 
@@ -144,7 +137,6 @@ class StandingsViewModelTest {
             val vm = model(prefs = FakePreferences(failRead = true))
             runCurrent()
             assertFalse(vm.uiState.value.favouritesKnown)
-            assertFalse(vm.uiState.value.pinnedShown)
             assertEquals(
                 32,
                 vm.uiState.value.groups.sections
@@ -159,7 +151,6 @@ class StandingsViewModelTest {
             val vm = model(prefs = FakePreferences(teams = setOf(rows.first().team.key), writable = false))
             runCurrent()
             assertFalse(vm.uiState.value.favouritesKnown)
-            assertFalse(vm.uiState.value.pinnedShown)
         }
 
     @Test
@@ -168,7 +159,6 @@ class StandingsViewModelTest {
             val vm = model()
             runCurrent()
             assertTrue(vm.uiState.value.favouritesKnown)
-            assertFalse(vm.uiState.value.pinnedShown)
         }
 
     @Test

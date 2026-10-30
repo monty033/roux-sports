@@ -31,7 +31,6 @@ data class StandingsUiState(
     val loading: Boolean = true,
     val favouritesKnown: Boolean = false,
     val favouritesOnly: Boolean = true,
-    val pinnedShown: Boolean = false,
 )
 
 class StandingsViewModel(
@@ -93,12 +92,12 @@ class StandingsViewModel(
     }
 
     private fun grouped(state: StandingsUiState): StandingsUiState {
-        val pinned = if (state.favouritesKnown && state.favouritesOnly) rows.filter { it.team.key in favourites } else emptyList()
-        val byView = StandingsView.entries.associateWith { StandingsGrouping.group(rows, it, pinned) }
+        // No favourites section: the table is the table. A pinned block splits one ranking into two, and the
+        // favourite teams are still marked where they are in the table itself.
+        val byView = StandingsView.entries.associateWith { StandingsGrouping.group(rows, it, emptyList()) }
         return state.copy(
             groups = byView.getValue(state.view),
             groupsByView = byView,
-            pinnedShown = pinned.isNotEmpty(),
         )
     }
 

@@ -18,9 +18,11 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -40,6 +42,7 @@ import net.montycasa.roux.domain.policy.StandingsView
 import net.montycasa.roux.ui.reach.assertPrimaryControlsReachable
 import net.montycasa.roux.ui.reach.primaryControl
 import net.montycasa.roux.ui.reach.reachTargets
+import net.montycasa.roux.ui.scores.CREST_TAG
 import net.montycasa.roux.ui.theme.RouxTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -184,21 +187,17 @@ class StandingsScreenTest {
     }
 
     @Test
-    fun pinnedSectionAppearsBeforeTheUnchangedLeagueTable() {
-        launchScreen(fresh.copy(groups = StandingsGrouping.group(rows, StandingsView.League, rows.take(2)), pinnedShown = true))
-        rule.onNodeWithText("Your teams").assertIsDisplayed()
-        rule.onAllNodes(rowMatcher).assertCountEquals(34)
-        assertTrue(
-            rule
-                .onNodeWithText("Your teams")
-                .fetchSemanticsNode()
-                .positionInRoot.y <
-                rule
-                    .onNodeWithText("NHL")
-                    .fetchSemanticsNode()
-                    .positionInRoot.y,
-        )
-        assertReach()
+    fun theTableIsOneRankingWithNoFavouritesSection() {
+        // The view model never builds a pinned block; given a plain league table the screen must render one
+        // continuous ranking, with the numbering running straight through the group.
+        launchScreen(fresh.copy(groups = StandingsGrouping.group(rows, StandingsView.League, emptyList())))
+        rule.onAllNodesWithText("Your teams").assertCountEquals(0)
+        rule.onAllNodes(rowMatcher).assertCountEquals(32)
+        // Numbering runs straight through the table rather than restarting for a pinned block.
+        val ranks = rule.onAllNodesWithTag("standings.rank", useUnmergedTree = true)
+        ranks.assertCountEquals(32)
+        ranks[0].assertTextEquals("1")
+        ranks[31].assertTextEquals("32")
     }
 
     @Test
@@ -320,5 +319,15 @@ class StandingsScreenTest {
             assertTrue("The retry is a fixed action, so it is a primary control", recovery.primary)
         }
         rule.assertPrimaryControlsReachable(*(primaries + if (retry) listOf("standings.retry") else emptyList()).toTypedArray())
+    }
+
+    @Test
+    fun everyRowCarriesItsCrestAndItsClubName() {
+        launchScreen()
+        // Identity comes from the crest and the club's own name; the abbreviation is only a fallback for a payload
+        // that carries no name at all.
+        rule.onAllNodesWithTag(CREST_TAG, useUnmergedTree = true).assertCountEquals(32)
+        val leader = rows.first()
+        rule.onNodeWithText(leader.team.name!!).assertIsDisplayed()
     }
 }
