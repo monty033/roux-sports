@@ -42,7 +42,6 @@ import net.montycasa.roux.ui.theme.Roux
 @Composable
 fun ScoresHeader(
     liveCount: Int,
-    onOpenLeagues: () -> Unit,
     modifier: Modifier = Modifier,
     // Injected so a test can hold the status bar's height still: the phone's own inset is not something a JVM test can
     // see, and this header sitting under the clock is a bug that has now come back twice because nothing asserted it.
@@ -52,7 +51,7 @@ fun ScoresHeader(
         modifier
             .background(MaterialTheme.colorScheme.background)
             // The app draws behind the system bars, so the header has to step down over the status bar itself.
-            // Without this the wordmark and the menu button sat underneath the phone's own clock and battery.
+            // Without this the wordmark sat underneath the phone's own clock and battery.
             .windowInsetsPadding(statusInset)
             .heightIn(min = 64.dp)
             .testTag("scores.header")
@@ -60,12 +59,6 @@ fun ScoresHeader(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(
-            onClick = onOpenLeagues,
-            modifier = Modifier.size(48.dp).reachTarget("scores.openLeagues"),
-        ) {
-            Icon(menuIcon, stringResource(R.string.open_leagues), Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onBackground)
-        }
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
             Image(
                 painterResource(R.drawable.wordmark_orange),

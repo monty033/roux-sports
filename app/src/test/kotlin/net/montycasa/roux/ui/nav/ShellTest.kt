@@ -58,33 +58,6 @@ class ShellTest {
     // Bar assertions match the selectable item rather than the text alone: a destination's own screen
     // may legitimately render the same word, and matching the item keeps the assertion unambiguous.
     @Test
-    fun swipingLeftMovesToTheNextDestinationAndRightComesBack() {
-        launchShell(leagueMode = true)
-
-        // The pages run in the bar's order, so a swipe lands exactly where the neighbouring tab sits.
-        rule.onNodeWithTag("pages.pager").performTouchInput { swipeLeft() }
-        rule.waitForIdle()
-        barItem("Standings").assertIsSelected()
-
-        rule.onNodeWithTag("pages.pager").performTouchInput { swipeRight() }
-        rule.waitForIdle()
-        barItem("Scores").assertIsSelected()
-    }
-
-    @Test
-    fun swipingInMyTeamsMovesToTeamsBecauseStandingsIsNotThere() {
-        launchShell()
-
-        rule.onNodeWithTag("pages.pager").performTouchInput { swipeLeft() }
-        rule.waitForIdle()
-        barItem("Teams").assertIsSelected()
-
-        rule.onNodeWithTag("pages.pager").performTouchInput { swipeRight() }
-        rule.waitForIdle()
-        barItem("Scores").assertIsSelected()
-    }
-
-    @Test
     fun aTabPressStillLandsOnItsPage() {
         launchShell()
 
@@ -99,7 +72,7 @@ class ShellTest {
 
         // The shell's pager owns horizontal drags, so the drawer no longer opens on a swipe anywhere: it is opened
         // by the header button on Scores. Standings and Teams have no such button yet, which is a known gap.
-        rule.onNodeWithContentDescription("Open leagues").performClick()
+        rule.onNodeWithTag("nav.menu").performClick()
         rule.waitForIdle()
         rule.onNodeWithTag("leagues.sheet").assertIsDisplayed()
 
@@ -141,7 +114,7 @@ class ShellTest {
         pullSheetOpen()
         rule.onNodeWithText("My Teams").performClick()
         rule.waitUntil(10_000) {
-            rule.onNodeWithContentDescription("Open leagues").fetchSemanticsNode()
+            rule.onNodeWithTag("nav.menu", useUnmergedTree = true).fetchSemanticsNode()
             true
         }
 
@@ -423,7 +396,7 @@ class ShellTest {
         val app = RuntimeEnvironment.getApplication() as ScoresIntegrationApp
         runBlocking { app.container.preferences.setFavouritesOnly(false) }
         launchShell()
-        rule.onNodeWithContentDescription("Open leagues").performClick()
+        rule.onNodeWithTag("nav.menu").performClick()
         rule
             .onNodeWithTag(
                 "leagues.sheet",
@@ -442,7 +415,7 @@ class ShellTest {
             runBlocking { app.container.preferences.getFavouritesOnly() }
         }
         rule.onNodeWithContentDescription("Favourites only").assertDoesNotExist()
-        rule.onNodeWithContentDescription("Open leagues").performClick()
+        rule.onNodeWithTag("nav.menu").performClick()
         rule.onNodeWithTag("leagues.nhl").performClick()
         rule.waitUntil(10_000) {
             rule.onNodeWithTag("scores.header").fetchSemanticsNode()
@@ -468,14 +441,14 @@ class ShellTest {
     @Test
     fun shellSheetLight() {
         launchShell(dark = false)
-        rule.onNodeWithContentDescription("Open leagues").performClick()
+        rule.onNodeWithTag("nav.menu").performClick()
         rule.onRoot().captureRoboImage("src/test/screenshots/drawer/shell-sheet-light.png")
     }
 
     @Test
     fun shellSheetDark() {
         launchShell(dark = true)
-        rule.onNodeWithContentDescription("Open leagues").performClick()
+        rule.onNodeWithTag("nav.menu").performClick()
         rule.onRoot().captureRoboImage("src/test/screenshots/drawer/shell-sheet-dark.png")
     }
 
@@ -500,24 +473,15 @@ class ShellTest {
     }
 
     @Test
-    fun swipingThePagesMovesTheBar() {
+    fun aHorizontalSwipeNoLongerTurnsThePage() {
         launchShell(leagueMode = true)
-        rule.onNodeWithTag(PAGER_TAG, useUnmergedTree = true).performTouchInput { swipeLeft() }
+        // Swiping forward used to land on Teams. The swipe belongs to the screen now, so this one - on a screen with no
+        // swipe of its own - must leave the destination exactly where it was.
+        barItem("Teams").performClick()
         rule.waitForIdle()
-        barItem("Standings").assertIsSelected()
-    }
-
-    @Test
-    fun swipingOverTheScoresContentTurnsThePage() {
-        launchShell(leagueMode = true)
-        // The same gesture, but starting where a finger actually lands: on the games, not on the pager's empty edge.
-        rule.onNodeWithTag(PAGER_TAG, useUnmergedTree = true).performTouchInput {
-            swipeLeft(startX = centerX, endX = centerX - 60f, durationMillis = 40)
-            swipeLeft(startX = centerX, endX = centerX - 60f, durationMillis = 40)
-            swipeLeft(startX = centerX, endX = centerX - 60f, durationMillis = 40)
-        }
+        rule.onNodeWithTag(PAGER_TAG, useUnmergedTree = true).performTouchInput { swipeRight() }
         rule.waitForIdle()
-        barItem("Standings").assertIsSelected()
+        barItem("Teams").assertIsSelected()
     }
 
     @Test

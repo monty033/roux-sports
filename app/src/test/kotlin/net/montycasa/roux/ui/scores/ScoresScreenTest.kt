@@ -21,6 +21,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
+import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import net.montycasa.roux.domain.Freshness
@@ -39,6 +41,7 @@ import net.montycasa.roux.ui.reach.assertPrimaryControlsReachable
 import net.montycasa.roux.ui.reach.reachTargets
 import net.montycasa.roux.ui.theme.RouxTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -91,6 +94,27 @@ class ScoresScreenTest {
                 }
             }
         }
+    }
+
+    @Test
+    fun aSwipeStepsTheDateInsteadOfLeavingTheScreen() {
+        val picked = mutableListOf<String>()
+        // 10-28 sits before 10-25 in the loaded index, so a leftward swipe has a date to step to.
+        launchScreen(fresh.copy(selectedDate = "2025-10-28"), onSelectDate = { picked += it })
+        // The screen keeps the gesture, so this steps the day rather than leaving Scores.
+        rule.onRoot().performTouchInput { swipeLeft() }
+        rule.waitForIdle()
+        assertEquals(listOf(date), picked)
+    }
+
+    @Test
+    fun aBackwardSwipeOnTheFirstLoadedDateDoesNothing() {
+        val picked = mutableListOf<String>()
+        // 10-25 is the first loaded date; there is nothing behind it to step to.
+        launchScreen(fresh.copy(dateIndex = fresh.dateIndex.drop(1)), onSelectDate = { picked += it })
+        rule.onRoot().performTouchInput { swipeRight() }
+        rule.waitForIdle()
+        assertEquals(emptyList<String>(), picked)
     }
 
     @Test

@@ -34,6 +34,8 @@ import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.policy.StandingsView
 import net.montycasa.roux.ui.common.RetryButton
 import net.montycasa.roux.ui.common.StaleBanner
+import net.montycasa.roux.ui.nav.NavSwipe
+import net.montycasa.roux.ui.nav.stepOnHorizontalSwipe
 import net.montycasa.roux.ui.reach.primaryControl
 import net.montycasa.roux.ui.reach.reachTarget
 
@@ -45,7 +47,27 @@ fun StandingsScreen(
     onSetView: (StandingsView) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    // Left and right step League -> Conference -> Division -> Wildcard, the axis this screen already has.
+    val stepView: (Int) -> Unit = { by ->
+        val views = StandingsView.entries
+        val at = views.indexOf(state.view)
+        if (at >= 0) views.getOrNull(at + by)?.let(onSetView)
+    }
+    Column(
+        modifier
+            .fillMaxSize()
+            .then(
+                if (NavSwipe.TURNS_PAGES) {
+                    Modifier
+                } else {
+                    Modifier.stepOnHorizontalSwipe(
+                        onBack = { stepView(-1) },
+                        onForward = { stepView(1) },
+                    )
+                },
+            ),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         StandingsColumns(
             null,
             Modifier.padding(horizontal = 16.dp).heightIn(min = 56.dp).testTag("standings.header"),

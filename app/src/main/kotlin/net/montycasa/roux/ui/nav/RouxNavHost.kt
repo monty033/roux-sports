@@ -205,7 +205,7 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
                 modifier = Modifier.fillMaxSize(),
                 topBar = {
                     if (currentRoute == HOME_ROUTE) {
-                        ScoresHeader(scoresState.liveCount, openLeagues, Modifier.fillMaxWidth())
+                        ScoresHeader(scoresState.liveCount, Modifier.fillMaxWidth())
                     }
                 },
                 bottomBar = {
@@ -327,6 +327,8 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
                     composable(HOME_ROUTE) {
                         HorizontalPager(
                             state = pagerState,
+                            // Off, the pager ignores horizontal drags and each screen keeps them for itself.
+                            userScrollEnabled = NavSwipe.TURNS_PAGES,
                             modifier =
                                 Modifier
                                     .fillMaxSize()

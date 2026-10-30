@@ -38,6 +38,8 @@ import net.montycasa.roux.domain.policy.DateStrip
 import net.montycasa.roux.domain.policy.FavoritesHint
 import net.montycasa.roux.ui.common.RetryButton
 import net.montycasa.roux.ui.common.StaleBanner
+import net.montycasa.roux.ui.nav.NavSwipe
+import net.montycasa.roux.ui.nav.stepOnHorizontalSwipe
 import net.montycasa.roux.ui.reach.Reach
 import net.montycasa.roux.ui.reach.primaryControl
 import net.montycasa.roux.ui.reach.reachTarget
@@ -82,8 +84,29 @@ fun ScoresScreen(
     var calendarOpen by rememberSaveable { mutableStateOf(false) }
     Box(modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().then(if (calendarOpen) Modifier.clearAndSetSemantics { } else Modifier)) {
-            if (showHeader) ScoresHeader(state.liveCount, onOpenLeagues, Modifier.fillMaxWidth())
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Reach.MIN_TARGET_GAP_DP.dp)) {
+            if (showHeader) ScoresHeader(state.liveCount, Modifier.fillMaxWidth())
+            // Left and right step through the loaded dates, which is the axis this screen already has. The chip row
+            // and the list keep their own gestures: children claim their drags before this sees them.
+            val stepDate: (Int) -> Unit = { by ->
+                val dates = state.dateIndex.map { it.date }.distinct()
+                val at = dates.indexOf(state.selectedDate)
+                if (at >= 0) dates.getOrNull(at + by)?.let(onSelectDate)
+            }
+            Column(
+                Modifier
+                    .weight(1f)
+                    .then(
+                        if (NavSwipe.TURNS_PAGES) {
+                            Modifier
+                        } else {
+                            Modifier.stepOnHorizontalSwipe(
+                                onBack = { stepDate(-1) },
+                                onForward = { stepDate(1) },
+                            )
+                        },
+                    ),
+                verticalArrangement = Arrangement.spacedBy(Reach.MIN_TARGET_GAP_DP.dp),
+            ) {
                 PullToRefreshBox(
                     isRefreshing = state.isRefreshing,
                     onRefresh = onRefresh,

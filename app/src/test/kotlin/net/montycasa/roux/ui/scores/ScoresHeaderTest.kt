@@ -43,29 +43,21 @@ class ScoresHeaderTest {
     @get:Rule val rule = createComposeRule()
     private val liveCount = mutableStateOf(2)
 
-    private fun launch(
-        dark: Boolean = false,
-        onOpen: () -> Unit = {},
-    ) {
+    private fun launch(dark: Boolean = false) {
         rule.setContent {
             RouxTheme(dark) {
-                ScoresHeader(liveCount.value, onOpen, Modifier.fillMaxWidth(), statusInset = WindowInsets(0, 0, 0, 0))
+                ScoresHeader(liveCount.value, Modifier.fillMaxWidth(), statusInset = WindowInsets(0, 0, 0, 0))
             }
         }
     }
 
     @Test
     fun geometryAndAccessibleNavigationMatchTheReference() {
-        var opens = 0
-        launch(onOpen = { opens++ })
+        launch()
         // The file says 64 dp; a floor would pass an accidental 72.
         rule.onNodeWithTag("scores.header").assertHeightIsEqualTo(64.dp)
-        rule
-            .onNodeWithContentDescription("Open leagues")
-            .assertWidthIsEqualTo(48.dp)
-            .assertHeightIsEqualTo(48.dp)
-            .performClick()
-        assertEquals(1, opens)
+        // The header no longer carries a menu: the bar has one, and two hamburgers for one menu was one too many.
+        rule.onNodeWithContentDescription("Open leagues").assertDoesNotExist()
         // .brandmark is 1.25rem in the authority, overriding the brief's 18 dp Image box.
         rule.onNodeWithContentDescription("Roux Sports").assertHeightIsEqualTo(20.dp)
         val wordmark = rule.onNodeWithTag("scores.wordmark").getUnclippedBoundsInRoot()
@@ -80,10 +72,6 @@ class ScoresHeaderTest {
                 }
             }
         assertEquals(18f, (inkRows.last() - inkRows.first() + 1) / rule.density.density, 0.1f)
-        val menu = rule.reachTargets().single { it.tag == "scores.openLeagues" }
-        assertFalse(menu.primary)
-        assertEquals(48f, menu.width, 0.01f)
-        assertEquals(48f, menu.height, 0.01f)
     }
 
     @Test
@@ -139,7 +127,6 @@ class ScoresHeaderTest {
             RouxTheme {
                 ScoresHeader(
                     liveCount = 0,
-                    onOpenLeagues = {},
                     modifier = Modifier.fillMaxWidth(),
                     statusInset = fakeStatusBar,
                 )
