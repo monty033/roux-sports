@@ -24,8 +24,15 @@ import androidx.compose.ui.test.onRoot
  * primaryControl - sits outside R1, R2 and the edge rules, and nothing here can tell. Reviewing the
  * declaration is part of reviewing the screen.
  */
-fun ComposeTestRule.assertPrimaryControlsReachable(vararg expectedPrimaryTags: String) {
-    val targets = reachTargets()
+fun ComposeTestRule.assertPrimaryControlsReachable(
+    vararg expectedPrimaryTags: String,
+    coveredTags: List<String> = emptyList(),
+) {
+    // A modal covers what is behind it: the scrim takes the touch, so a list row under an open sheet is not
+    // something a thumb can hit. The caller names the tag prefixes its modal covers, and they are dropped
+    // before any rule runs - otherwise the sheet's own controls get measured against buried rows and fail a
+    // gap they do not have. Prefixes, not exact tags, because a list has one tag per row.
+    val targets = reachTargets().filterNot { target -> coveredTags.any { target.tag.startsWith(it) } }
     // The screen states its primary controls, and the audit insists the tree agrees. A count guard only
     // catches losing every tag; a screen with two primary actions would still lose one of them silently,
     // and that action would keep its size check while losing R1, R2 and the edge insets. An empty list is
