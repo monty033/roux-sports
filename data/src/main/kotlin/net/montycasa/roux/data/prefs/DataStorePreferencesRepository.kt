@@ -2,6 +2,7 @@ package net.montycasa.roux.data.prefs
 
 import androidx.datastore.core.DataStore
 import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
+import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -145,6 +146,84 @@ class DataStorePreferencesRepository(
             preferences[startNotifiedKey(gameId)] = entry.startNotified
             preferences[updatedAtKey(gameId)] = entry.updatedAt.toEpochMilliseconds()
         }
+    }
+
+    override suspend fun claimGoal(
+        gameId: String,
+        goalCount: Int,
+        at: Instant,
+    ): Boolean {
+        requireUsableGameId(gameId)
+        var claimed = false
+        store.edit { preferences ->
+            // A newer build's file is never written here. Answering "not claimed" rather than throwing keeps the
+            // decision with the caller: the only sane response to "you may not notify" is to stay silent.
+            if (!isInterpretable(preferences)) return@edit
+            val lastNotified = preferences[goalCountKey(gameId)]
+            // Equal is a duplicate and lower is a correction downward. Neither is an event, and neither may drag
+            // the ledger backwards - which is what would happen if a stale observation overwrote a newer one.
+            if (lastNotified != null && goalCount <= lastNotified) return@edit
+            writeLedger(
+                preferences = preferences,
+                gameId = gameId,
+                goalCount = goalCount,
+                startNotified = preferences[startNotifiedKey(gameId)] ?: false,
+                at = at,
+            )
+            claimed = true
+        }
+        return claimed
+    }
+
+    override suspend fun claimStart(
+        gameId: String,
+        goalBaseline: Int,
+        at: Instant,
+    ): Boolean {
+        requireUsableGameId(gameId)
+        var claimed = false
+        store.edit { preferences ->
+            if (!isInterpretable(preferences)) return@edit
+            if (preferences[startNotifiedKey(gameId)] == true) return@edit
+            writeLedger(
+                preferences = preferences,
+                gameId = gameId,
+                goalCount = goalBaseline,
+                startNotified = true,
+                at = at,
+            )
+            claimed = true
+        }
+        return claimed
+    }
+
+    /**
+     * True when this build may interpret and write the file.
+     *
+     * A file with no marker predates versioning and is read as the current version - not as something to reset.
+     */
+    private fun isInterpretable(preferences: Preferences): Boolean {
+        val stored = preferences[VERSION]
+        return stored == null || stored <= PREFERENCES_VERSION
+    }
+
+    /**
+     * Writes all three ledger fields together.
+     *
+     * A partial entry reads as no entry at all, so the claim must not leave one behind: the fields are written in one
+     * transaction and the stamp is what proves the entry is complete.
+     */
+    private fun writeLedger(
+        preferences: MutablePreferences,
+        gameId: String,
+        goalCount: Int,
+        startNotified: Boolean,
+        at: Instant,
+    ) {
+        preferences[VERSION] = PREFERENCES_VERSION
+        preferences[goalCountKey(gameId)] = goalCount
+        preferences[startNotifiedKey(gameId)] = startNotified
+        preferences[updatedAtKey(gameId)] = at.toEpochMilliseconds()
     }
 
     override suspend fun pruneNotificationLedger(olderThan: Instant) {

@@ -72,6 +72,37 @@ interface PreferencesRepository {
     )
 
     /**
+     * Atomically claim the goal alert for [goalCount]; true only for the caller that won it.
+     *
+     * The comparison and the write share one transaction, so two workers racing over the same goal
+     * cannot both read "not yet notified" and both post. A count is claimable only when it is NEWER
+     * than the stored one: an equal count is a duplicate, and a lower count is the feed correcting
+     * itself downward, so neither is an event and neither may move the ledger backwards.
+     *
+     * False also covers a file written by a newer build, which this build must not write to. A claim
+     * that cannot be taken is answered with silence rather than an exception, because the caller's
+     * only reasonable response is to post nothing.
+     */
+    suspend fun claimGoal(
+        gameId: String,
+        goalCount: Int,
+        at: Instant,
+    ): Boolean
+
+    /**
+     * Atomically claim the game-start alert; true only for the first caller.
+     *
+     * [goalBaseline] is written by the same transaction, so claiming the start also settles which
+     * goals were already on the board. Without it the first goal alert after a start would fire for
+     * goals scored before this app was watching.
+     */
+    suspend fun claimStart(
+        gameId: String,
+        goalBaseline: Int,
+        at: Instant,
+    ): Boolean
+
+    /**
      * False when the stored file was written by a newer build and cannot be interpreted here.
      *
      * Reads still answer with defaults in that case, so a caller that cares about the difference -

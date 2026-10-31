@@ -14,7 +14,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -545,6 +548,130 @@ class DataStorePreferencesRepositoryTest {
                     )
             } finally {
                 closeScope(scope)
+            }
+        }
+
+    @Test
+    fun fiftyConcurrentGoalClaimsForTheSameCountProduceExactlyOneWinner() =
+        runBlocking {
+            val directory = newDirectory()
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(directory, scope)
+                val at = Instant.parse("2025-01-01T00:00:00Z")
+                // A real dispatcher, not virtual time: the race this guards against only exists when the calls
+                // genuinely overlap, and 50 sequential claims would pass with the transaction removed.
+                val winners =
+                    coroutineScope {
+                        (1..50)
+                            .map { async(Dispatchers.IO) { repository.claimGoal("2025020123", 3, at) } }
+                            .awaitAll()
+                            .count { it }
+                    }
+                assertEquals("exactly one caller may post a goal", 1, winners)
+                // The ledger has to agree with the winner, or the next pass would claim the same goal again.
+                assertEquals(3, repository.getNotificationLedgerEntry("2025020123")?.lastNotifiedGoalCount)
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun aGoalClaimForACountThatIsNotNewerIsRefused() =
+        runTest {
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(newDirectory(), scope)
+                val at = Instant.parse("2025-01-01T00:00:00Z")
+                assertEquals(true, repository.claimGoal("2025020123", 3, at))
+                assertEquals("the same count is a duplicate", false, repository.claimGoal("2025020123", 3, at))
+                assertEquals("a lower count is the feed correcting itself, not a goal", false, repository.claimGoal("2025020123", 2, at))
+                assertEquals(
+                    "a refused claim must not drag the ledger backwards",
+                    3,
+                    repository.getNotificationLedgerEntry("2025020123")?.lastNotifiedGoalCount,
+                )
+                assertEquals(true, repository.claimGoal("2025020123", 4, at))
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun aStartClaimIsWonOnceAndRecordsTheGoalBaseline() =
+        runTest {
+            val directory = newDirectory()
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(directory, scope)
+                val at = Instant.parse("2025-01-01T00:00:00Z")
+                // The game is already 2-1 when the start is claimed. Those goals were not seen happen, so the
+                // baseline is what stops them being announced as one burst the moment the start fires.
+                assertEquals(true, repository.claimStart("2025020123", goalBaseline = 2, at = at))
+                assertEquals("a second start claim must lose", false, repository.claimStart("2025020123", goalBaseline = 3, at = at))
+                val entry = repository.getNotificationLedgerEntry("2025020123")
+                assertEquals(true, entry?.startNotified)
+                assertEquals(2, entry?.lastNotifiedGoalCount)
+                assertEquals("goals already on the board at the start are not new", false, repository.claimGoal("2025020123", 2, at))
+                assertEquals("the next goal still is", true, repository.claimGoal("2025020123", 3, at))
+                assertEquals("and the start stays claimed", true, repository.getNotificationLedgerEntry("2025020123")?.startNotified)
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun aStartClaimAfterAGoalDoesNotLoseTheGoalCount() =
+        runTest {
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(newDirectory(), scope)
+                val at = Instant.parse("2025-01-01T00:00:00Z")
+                assertEquals(true, repository.claimGoal("2025020123", 1, at))
+                // The start can arrive after a goal - the app may first see the game mid-period - and it must not
+                // reset the count, or the goal at 1 would be announced a second time.
+                assertEquals(true, repository.claimStart("2025020123", goalBaseline = 1, at = at))
+                val entry = repository.getNotificationLedgerEntry("2025020123")
+                assertEquals(true, entry?.startNotified)
+                assertEquals(1, entry?.lastNotifiedGoalCount)
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun claimsOnANewerFileAreRefusedWithoutWriting() =
+        runTest {
+            val directory = newDirectory()
+            val at = Instant.parse("2025-01-01T00:00:00Z")
+            // A file from a build that understands more than this one: a claim must not touch it.
+            writeRawLedgerEntry(
+                directory,
+                gameId = "game-1",
+                goalCount = 1,
+                startNotified = false,
+                updatedAt = 1L,
+                version = 2,
+            )
+
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(directory, scope)
+                assertEquals(false, repository.claimGoal("game-1", 5, at))
+                assertEquals(false, repository.claimStart("game-1", 5, at))
+            } finally {
+                closeScope(scope)
+            }
+
+            val readerScope = newScope()
+            try {
+                val stored = openRawStore(directory, readerScope).data.first()
+                assertEquals("the newer build's marker must survive", 2, stored[intPreferencesKey("prefs_version")])
+                assertEquals("and its ledger must be untouched", 1, stored[intPreferencesKey("ledger_goals_game-1")])
+                assertEquals(false, stored[booleanPreferencesKey("ledger_start_game-1")])
+                assertEquals(1L, stored[longPreferencesKey("ledger_time_game-1")])
+            } finally {
+                closeScope(readerScope)
             }
         }
 }
