@@ -454,6 +454,28 @@ class ShellTest {
     }
 
     @Test
+    fun teamsTabLight() {
+        launchShell()
+        barItem("Teams").performClick()
+        rule.waitForIdle()
+        rule.onRoot().captureRoboImage("src/test/screenshots/shell/teams-tab-light.png")
+    }
+
+    @Test
+    fun teamsTabDark() {
+        launchShell(dark = true)
+        barItem("Teams").performClick()
+        rule.waitForIdle()
+        rule.onRoot().captureRoboImage("src/test/screenshots/shell/teams-tab-dark.png")
+        // The list runs to the bar, less the page's own 16 dp margin: a one-row band of empty page under the
+        // last row is the strip that reads as a missing shelf on this tab, and it is what this pins.
+        val list = rule.onNodeWithTag("teams.list").fetchSemanticsNode().boundsInRoot
+        val bar = rule.onNodeWithTag("nav.bar", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val margin = with(rule.density) { 20.dp.toPx() }
+        assertTrue("list ends ${list.bottom} but the bar starts ${bar.top}", list.bottom > bar.top - margin)
+    }
+
+    @Test
     fun shellLight() {
         launchShell(dark = false)
         rule.onRoot().captureRoboImage("src/test/screenshots/shell-light.png")

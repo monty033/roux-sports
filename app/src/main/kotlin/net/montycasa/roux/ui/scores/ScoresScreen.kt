@@ -79,8 +79,10 @@ fun ScoresScreen(
             DateTimeFormatter.ofPattern("EEE, MMM d", locale).withZone(ZoneId.of("America/Toronto"))
         }
     val dateLabel = remember(state.selectedDate, formatter) { LocalDate.parse(state.selectedDate).format(formatter) }
+    // A fact about the *selected* day. Every page used to read it, so a neighbour whose games were already cached
+    // swapped them for "Loading scores..." the instant the selection moved - two frames of an empty page in the
+    // recording. The copy is decided per page below, where "does this page have anything to draw" is known.
     val missing = state.freshness == Freshness.Missing && state.rows.isEmpty()
-    val loading = missing && state.isRefreshing && state.error == null
     val emptyDate = !missing && state.rows.isEmpty() && state.favoritesHint != FavoritesHint.NoFavouriteGames
     val nextDate = if (emptyDate) DateStrip.nextGameDate(state.dateIndex, state.selectedDate) else null
     // The plan's window is a week either way; the strip scrolls, so a partially visible chip is the
@@ -208,16 +210,19 @@ fun ScoresScreen(
                         BoxWithConstraints(Modifier.fillMaxSize()) {
                             // The reference queries .listwrap before the list's 12 dp side padding.
                             val narrow = maxWidth <= 380.dp
+                            // Only a page with nothing to draw says so.
+                            val pageMissing = missing && pageRows.isEmpty()
+                            val pageLoading = pageMissing && state.isRefreshing && state.error == null
                             LazyColumn(
                                 modifier = Modifier.fillMaxSize().testTag("scores.list"),
                                 verticalArrangement = Arrangement.spacedBy(Reach.MIN_TARGET_GAP_DP.dp),
                             ) {
-                                if (missing) {
+                                if (pageMissing) {
                                     item {
                                         Column(Modifier.padding(Reach.EDGE_INSET_DP.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                             Text(
-                                                stringResource(if (loading) R.string.scores_loading else R.string.scores_load_error),
-                                                modifier = Modifier.testTag(if (loading) "scores.loading" else "scores.error"),
+                                                stringResource(if (pageLoading) R.string.scores_loading else R.string.scores_load_error),
+                                                modifier = Modifier.testTag(if (pageLoading) "scores.loading" else "scores.error"),
                                                 style = MaterialTheme.typography.titleMedium,
                                             )
                                             state.error?.let { Text(errorMessage(it), style = MaterialTheme.typography.bodyLarge) }
@@ -278,7 +283,9 @@ fun ScoresScreen(
                             )
                         }
 
-                        missing && !loading -> {
+                        // Missing and not already trying: the old `!loading`, spelled out now that the loading
+                        // copy is decided per page and no longer exists as a screen-level flag.
+                        missing && (state.error != null || !state.isRefreshing) -> {
                             RetryButton(onRefresh, state.isRefreshing)
                         }
 

@@ -2,11 +2,14 @@
 
 package net.montycasa.roux.ui.teams
 
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -68,6 +71,77 @@ class TeamsScreenAlertsTest {
     }
 
     @Test
+    fun aMissingPermissionAsksInsteadOfShowingDeadSwitches() {
+        // The bug this fixes: the sheet greyed its switches out whenever the permission was missing, so the one
+        // screen that explains the alerts was also the one place the permission could never be asked for.
+        compose.setContent {
+            TeamsScreen(
+                state = state(TeamAlerts(row)),
+                onToggle = {},
+                onRetry = {},
+                permissionGranted = false,
+                notificationsEnabled = true,
+            )
+        }
+
+        compose.onNodeWithTag("teams.alerts.prompt.title").assertExists()
+        compose.onNodeWithTag("teams.alerts.start").assertDoesNotExist()
+    }
+
+    @Test
+    fun openingAlertsWithNotificationsOffAsksBeforeShowingDeadSwitches() {
+        var enabled = false
+        var dismissed = false
+        compose.setContent {
+            TeamsScreen(
+                state = state(TeamAlerts(row)),
+                onToggle = {},
+                onRetry = {},
+                permissionGranted = false,
+                notificationsEnabled = false,
+                onEnableNotifications = { enabled = true },
+                onDismissPrompt = { dismissed = true },
+            )
+        }
+
+        // Asked inside the sheet it belongs to, not in a dialog stacked on top of it.
+        compose.onNodeWithTag("teams.alerts.prompt.title").assertExists()
+        compose.onNodeWithTag("teams.alerts.prompt.enable").performClick()
+        assertTrue("the prompt's action is wired", enabled)
+
+        compose.onNodeWithTag("teams.alerts.prompt.later").performClick()
+        assertTrue("and it can be declined", dismissed)
+    }
+
+    @Test
+    fun thePromptStaysAwayOnceDismissed() {
+        compose.setContent {
+            TeamsScreen(
+                state = state(TeamAlerts(row)),
+                onToggle = {},
+                onRetry = {},
+                permissionGranted = false,
+                notificationsEnabled = false,
+                promptDismissed = true,
+            )
+        }
+
+        compose.onNodeWithTag("teams.alerts.prompt.enable").assertDoesNotExist()
+        // Dismissing the question does not close the sheet: the settings are still there to look at.
+        compose.onNodeWithTag("teams.alerts.sheet").assertExists()
+    }
+
+    @Test
+    fun aTeamRowShowsItsCrestAndClubName() {
+        compose.setContent {
+            TeamsScreen(state = state(), onToggle = {}, onRetry = {})
+        }
+
+        compose.onNodeWithTag("teams.row.TOR").assertExists()
+        compose.onNodeWithTag("teams.alerts.open.TOR").assertExists()
+    }
+
+    @Test
     fun aSwitchReportsWhichAlertWasTurnedOn() {
         var start: Boolean? = null
         var goals: Boolean? = null
@@ -95,7 +169,9 @@ class TeamsScreenAlertsTest {
                 state = state(TeamAlerts(row)),
                 onToggle = {},
                 onRetry = {},
-                canNotify = false,
+                permissionGranted = true,
+                notificationsEnabled = false,
+                promptDismissed = true,
                 onOpenNotificationSettings = {},
             )
         }

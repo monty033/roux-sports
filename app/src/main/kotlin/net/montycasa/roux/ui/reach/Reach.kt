@@ -101,6 +101,8 @@ data class ControlPlacement(
      */
     val reachableWidth: Float = -1f,
     val reachableHeight: Float = -1f,
+    /** True for a row in a contiguous list, where the 8 dp clearance does not apply. */
+    val contiguousRow: Boolean = false,
 ) {
     /** What a thumb can actually press: the part of the target inside the window. */
     val width: Float get() = visibleRight - visibleLeft
@@ -173,7 +175,12 @@ fun findReachViolations(
                     ),
                 )
             }
-            if (control.targetWidth < Reach.MIN_TARGET_DP || control.targetHeight < Reach.MIN_TARGET_DP) {
+            // A target at exactly the minimum is at the minimum, not under it. Layout is measured in pixels and
+            // converted back to dp, so a 48.0 dp box can come back as 47.99999; comparing strictly turned every
+            // exactly-sized target into a violation that reads "48.0 x 48.0 dp, under the 48.0 dp minimum".
+            if (control.targetWidth < Reach.MIN_TARGET_DP - SIZE_EPSILON_DP ||
+                control.targetHeight < Reach.MIN_TARGET_DP - SIZE_EPSILON_DP
+            ) {
                 val measured =
                     // Sub-pixel noise would otherwise print "reachable at most 30.1 (30.1 visible now)",
                     // which reads as a contradiction.
@@ -227,7 +234,16 @@ fun findReachViolations(
             }
             // A target running past the window is clipped, so part of it cannot be pressed at all -
             // which no amount of R1, size or horizontal-edge checking would reveal.
-            if (control.rawBottom > windowHeightDp) {
+            //
+            // Unless it is inside a scroller: a row half under the bar in a scrolling list is not clipped
+            // forever, it is one flick from being fully on screen, and [reachableHeight] is exactly that
+            // question answered. Judging the raw rectangle instead made the list pay for a 56 dp band of empty
+            // page under its last row - which is a bar the reader sees and cannot name. The rule now fires when
+            // the control can never be fully revealed, which is the case it was written for.
+            val canBeFullySeen =
+                control.reachableHeight < 0f ||
+                    control.reachableHeight >= control.rawBottom - control.rawTop - SIZE_EPSILON_DP
+            if (control.rawBottom > windowHeightDp && !canBeFullySeen) {
                 add(
                     ReachViolation(
                         ReachRule.R5_CONTAINMENT,
@@ -282,6 +298,14 @@ fun findReachViolations(
     }
 
 /**
+ * What "exactly the minimum" is allowed to drift by when a layout is measured in pixels and printed in dp.
+ *
+ * Half a tenth of a dp: far below anything a designer would draw, far above the float error of a 126 px box at
+ * 2.625 density.
+ */
+private const val SIZE_EPSILON_DP = 0.05f
+
+/**
  * R4's clearance rule, for two targets close enough on both axes to be neighbours.
  *
  * Distance is measured per axis and a pair is judged only when **both** axes are under the minimum:
@@ -301,10 +325,14 @@ private fun findGapViolation(
         return null
     }
 
+    // Two rows of the same list are neighbours by design. The flag is per target and must be on both, so one
+    // list row cannot borrow the exemption to crowd an ordinary control.
+    if (a.contiguousRow && b.contiguousRow) return null
+
     val gapX = maxOf(b.visibleLeft - a.visibleRight, a.visibleLeft - b.visibleRight)
     val gapY = maxOf(b.visibleTop - a.visibleBottom, a.visibleTop - b.visibleBottom)
     val worst = maxOf(gapX, gapY)
-    if (worst >= Reach.MIN_TARGET_GAP_DP) return null
+    if (worst >= Reach.MIN_TARGET_GAP_DP - SIZE_EPSILON_DP) return null
 
     // Negative means the rectangles overlap: the lower target cannot be pressed where it is covered.
     val shape =
@@ -375,3 +403,22 @@ fun Modifier.reachTarget(tag: String): Modifier =
 /** The tag of a non-primary target, read back by the audit. */
 val ReachTargetTag: SemanticsPropertyKey<String> = SemanticsPropertyKey("ReachTargetTag")
 var SemanticsPropertyReceiver.reachTargetTag by ReachTargetTag
+
+/**
+ * Marks a target as a row in a contiguous list: one of a run of equally sized rows that are the same kind of
+ * thing, stacked with no visual separation.
+ *
+ * R4's clearance exists so two neighbouring *independent* controls cannot be confused for one, which is why it
+ * asks for 8 dp. A list is the exception Material itself draws: rows of 48 dp sit directly against each other and
+ * are told apart by their content, not by an 8 dp ditch between them - and paying that ditch costs a row every
+ * seven. Declaring it here keeps the rule for everything that is not a list, which is where mis-taps actually
+ * happen, instead of relaxing it everywhere.
+ */
+val ContiguousRowTag: SemanticsPropertyKey<Boolean> = SemanticsPropertyKey("ContiguousRowTag")
+var SemanticsPropertyReceiver.contiguousRow by ContiguousRowTag
+
+/** Declares this target as a row in a contiguous list. See [ContiguousRowTag] for what that excuses. */
+fun Modifier.listRow(): Modifier =
+    semantics {
+        contiguousRow = true
+    }

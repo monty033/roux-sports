@@ -20,6 +20,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,6 +38,14 @@ import net.montycasa.roux.ui.reach.primaryControl
 /** The sheet's own surface, matching the leagues menu so the two read as the same material. */
 private val SHEET_PANEL = Color(0xFF1C1C1E)
 
+/**
+ * The tallest a sheet may be, as a fraction of the window.
+ *
+ * Greater than the leagues menu's 0.56: that sheet is a list the reader scrolls, while this one has to fit its
+ * whole question on screen, and a question whose answer button sits below the fold is not a question.
+ */
+private const val SHEET_MAX_FRACTION = 0.75f
+
 /** How much of the window the scrim dims at full height; the same value the menu uses. */
 private const val SCRIM_ALPHA = 0.55f
 
@@ -44,12 +53,11 @@ private const val SCRIM_ALPHA = 0.55f
  * One team's alerts, in a sheet that covers the bottom of the window.
  *
  * Deliberately not draggable. The leagues menu follows a finger because it is a list of unknown length that the
- * reader scrolls through; this is three rows of fixed height that either are or are not wanted, and a sheet that can
- * be dragged adds a second way to dismiss something that has a Done button and a scrim. It closes the way it opened.
+ * reader scrolls through; this is a fixed run of rows that either are or are not wanted, and a drag would add a
+ * second way to dismiss something that already has a scrim and a Done button.
  *
- * A disabled switch is not shown as "off": a user who has not granted the notification permission, or who silenced
- * the app, is told why the switches do nothing and is sent to the one place that can change it, rather than being
- * left tapping a control that quietly refuses.
+ * When notifications cannot arrive at all, the sheet opens on that question instead of on the switches: the
+ * switches are the reason it matters, and a control that quietly refuses is how an app looks broken.
  */
 @Composable
 fun TeamAlertsSheet(
@@ -61,6 +69,10 @@ fun TeamAlertsSheet(
     onSetStart: (Boolean) -> Unit,
     onSetGoals: (Boolean) -> Unit,
     onOpenSystemSettings: () -> Unit,
+    /** True when notifications cannot arrive and the user has not already declined the question. */
+    showPrompt: Boolean = false,
+    onEnableNotifications: () -> Unit = {},
+    onDismissPrompt: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(modifier.fillMaxSize().testTag("teams.alerts.host")) {
@@ -78,7 +90,7 @@ fun TeamAlertsSheet(
             Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .heightIn(max = maxHeight * 0.56f)
+                .heightIn(max = maxHeight * SHEET_MAX_FRACTION)
                 .background(SHEET_PANEL, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .verticalScroll(rememberScrollState())
                 .padding(Reach.EDGE_INSET_DP.dp)
@@ -90,68 +102,117 @@ fun TeamAlertsSheet(
                 style = MaterialTheme.typography.headlineSmall,
             )
 
-            AlertSwitch(
-                label = stringResource(R.string.teams_alerts_start),
-                checked = alerts.start,
-                enabled = canNotify && !busy,
-                tag = "teams.alerts.start",
-                onChange = onSetStart,
-            )
-            AlertSwitch(
-                label = stringResource(R.string.teams_alerts_goals),
-                checked = alerts.goals,
-                enabled = canNotify && !busy,
-                tag = "teams.alerts.goals",
-                onChange = onSetGoals,
-            )
-
-            // What the app will and will not do, said where the switches are rather than in a policy page nobody
-            // opens. The promise is narrow on purpose: these are computed on the phone from the score feed.
-            Text(
-                stringResource(R.string.teams_alerts_disclosure),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.testTag("teams.alerts.disclosure"),
-            )
-
-            if (!canNotify) {
-                Text(
-                    stringResource(R.string.teams_alerts_blocked),
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.testTag("teams.alerts.blocked"),
+            if (showPrompt) {
+                // The question replaces the switches rather than sitting above them: a sheet that overflows its own
+                // cap has controls the user cannot reach on a surface that does not look scrollable.
+                PromptBlock(onEnable = onEnableNotifications, onDismissPrompt = onDismissPrompt)
+            } else {
+                AlertSwitch(
+                    label = stringResource(R.string.teams_alerts_start),
+                    checked = alerts.start,
+                    enabled = canNotify && !busy,
+                    tag = "teams.alerts.start",
+                    onChange = onSetStart,
                 )
+                AlertSwitch(
+                    label = stringResource(R.string.teams_alerts_goals),
+                    checked = alerts.goals,
+                    enabled = canNotify && !busy,
+                    tag = "teams.alerts.goals",
+                    onChange = onSetGoals,
+                )
+
+                // What the app will and will not do, said where the switches are rather than in a policy page nobody
+                // opens. The promise is narrow on purpose: these are computed on the phone from the score feed.
+                Text(
+                    stringResource(R.string.teams_alerts_disclosure),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.testTag("teams.alerts.disclosure"),
+                )
+
+                if (!canNotify) {
+                    Text(
+                        stringResource(R.string.teams_alerts_blocked),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.testTag("teams.alerts.blocked"),
+                    )
+                    Button(
+                        onClick = onOpenSystemSettings,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = Reach.PRIMARY_MIN_HEIGHT_DP.dp)
+                                .primaryControl("teams.alerts.settings")
+                                .testTag("teams.alerts.settings"),
+                    ) {
+                        Text(stringResource(R.string.teams_alerts_open_settings))
+                    }
+                }
+
+                if (alerts.saveFailed) {
+                    Text(
+                        stringResource(R.string.teams_alerts_save_failed),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.testTag("teams.alerts.save_failed"),
+                    )
+                }
+            }
+
+            // The prompt brings its own two answers, and a third button is what pushed its row past the sheet's
+            // height cap; the scrim still closes the sheet.
+            if (!showPrompt) {
                 Button(
-                    onClick = onOpenSystemSettings,
+                    onClick = onDismiss,
                     modifier =
                         Modifier
                             .fillMaxWidth()
                             .heightIn(min = Reach.PRIMARY_MIN_HEIGHT_DP.dp)
-                            .primaryControl("teams.alerts.settings")
-                            .testTag("teams.alerts.settings"),
+                            .primaryControl("teams.alerts.done"),
                 ) {
-                    Text(stringResource(R.string.teams_alerts_open_settings))
+                    Text(stringResource(R.string.teams_alerts_done))
                 }
             }
-
-            if (alerts.saveFailed) {
-                Text(
-                    stringResource(R.string.teams_alerts_save_failed),
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.testTag("teams.alerts.save_failed"),
-                )
-            }
-
-            Button(
-                onClick = onDismiss,
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = Reach.PRIMARY_MIN_HEIGHT_DP.dp)
-                        .primaryControl("teams.alerts.done"),
-            ) {
-                Text(stringResource(R.string.teams_alerts_done))
-            }
         }
+    }
+}
+
+/**
+ * The question the sheet opens on when nothing could be delivered: what is off, why it matters, and the way out.
+ *
+ * Stacked rather than side by side. A weight-based row inside a sheet measured against a fractional height cap
+ * resolved the button to zero width on a small window, which is a real trap for a control that must be tappable.
+ */
+@Composable
+private fun PromptBlock(
+    onEnable: () -> Unit,
+    onDismissPrompt: () -> Unit,
+) {
+    Text(
+        stringResource(R.string.teams_alerts_prompt_title),
+        Modifier.fillMaxWidth().testTag("teams.alerts.prompt.title"),
+        style = MaterialTheme.typography.titleMedium,
+    )
+    Text(
+        stringResource(R.string.teams_alerts_prompt_body),
+        Modifier.fillMaxWidth().testTag("teams.alerts.prompt.body"),
+        style = MaterialTheme.typography.bodyMedium,
+    )
+    Button(
+        onClick = onEnable,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = Reach.PRIMARY_MIN_HEIGHT_DP.dp)
+                .testTag("teams.alerts.prompt.enable"),
+    ) {
+        Text(stringResource(R.string.teams_alerts_prompt_enable))
+    }
+    TextButton(
+        onClick = onDismissPrompt,
+        modifier = Modifier.fillMaxWidth().heightIn(min = Reach.MIN_TARGET_DP.dp).testTag("teams.alerts.prompt.later"),
+    ) {
+        Text(stringResource(R.string.teams_alerts_prompt_later))
     }
 }
 

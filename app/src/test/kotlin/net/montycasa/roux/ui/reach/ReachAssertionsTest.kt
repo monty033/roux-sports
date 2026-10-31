@@ -1254,4 +1254,42 @@ class ReachAssertionsTest {
         val message = failure().message.orEmpty()
         assertTrue("R4 should be cited for a SetText control, got: $message", message.contains("R4 target size"))
     }
+
+    @Test
+    fun twoListRowsMayTouchButAListRowMayNotCrowdAnOrdinaryTarget() {
+        fun row(
+            tag: String,
+            top: Float,
+            listRow: Boolean,
+        ) = ControlPlacement(
+            tag = tag,
+            rawLeft = 16f,
+            rawTop = top,
+            rawRight = 395f,
+            rawBottom = top + 48f,
+            visibleLeft = 16f,
+            visibleTop = top,
+            visibleRight = 395f,
+            visibleBottom = top + 48f,
+            path = tag,
+            contiguousRow = listRow,
+        )
+
+        // Two rows of one list: 2 dp apart is the design, not a violation.
+        val stack = listOf(row("row.a", 100f, true), row("row.b", 150f, true))
+        assertTrue(
+            "two list rows must be allowed to sit close, got: " +
+                findReachViolations(stack, 411f, 923f).map { it.describe() },
+            findReachViolations(stack, 411f, 923f).isEmpty(),
+        )
+
+        // A list row against a plain control is still judged: the exemption is per pair, so one row cannot
+        // borrow it to crowd something that is not part of the list.
+        val mixed = listOf(row("row.a", 100f, true), row("button", 150f, false))
+        val violations = findReachViolations(mixed, 411f, 923f)
+        assertTrue(
+            "a list row and an ordinary control must still be 8 dp apart, got: ${violations.map { it.describe() }}",
+            violations.any { it.rule == ReachRule.R4_GAP },
+        )
+    }
 }
