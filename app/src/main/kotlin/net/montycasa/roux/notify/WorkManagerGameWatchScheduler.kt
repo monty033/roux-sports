@@ -107,8 +107,14 @@ class WorkManagerGameWatchScheduler(
         when (existing?.state) {
             null, WorkInfo.State.FAILED, WorkInfo.State.CANCELLED -> false
 
-            // A watch that is working, or has worked, is not re-armed.
-            WorkInfo.State.RUNNING, WorkInfo.State.SUCCEEDED -> true
+            // Working right now: replacing it would cancel it mid-flight.
+            WorkInfo.State.RUNNING -> true
+
+            // It has already fired. That is the end of the matter for a game under way - a fresh watch on every
+            // pass would ring again for a start the user has been told about. But a game that is *still* waiting
+            // for a future start is a watch that has not been waited for yet: the first one fired before the feed
+            // postponed the game, and without re-arming nothing would be watching at the new time.
+            WorkInfo.State.SUCCEEDED -> game.firesAt == null
 
             // Queued for exactly this start time (or due now, for a game under way): nothing to change.
             else -> existing.target == target(game)

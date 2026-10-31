@@ -129,6 +129,34 @@ class WorkManagerGameWatchSchedulerTest {
         }
 
     @Test
+    fun aWatchThatFiredBeforeTheGameWasPostponedIsReArmedForTheNewStart() =
+        runBlocking {
+            // Due now, so the watch runs and finishes before the feed moves the game back to a future start.
+            scheduler.reconcile(now, day(game(startInHours = 0)), setOf(TeamKey("TOR")), alerts())
+            assertEquals(WorkInfo.State.SUCCEEDED, watches().single().state)
+
+            scheduler.reconcile(now, day(game(startInHours = 2)), setOf(TeamKey("TOR")), alerts())
+
+            // The spent watch stays in the platform's record; what matters is that something is armed for 8 pm.
+            val armed = watches().filter { !it.state.isFinished }
+            assertEquals("the postponed game is watched again, not left with a spent watch", 1, armed.size)
+            assertEquals(2.hours.inWholeMilliseconds, armed.single().initialDelayMillis)
+            assertEquals(WorkInfo.State.ENQUEUED, armed.single().state)
+        }
+
+    @Test
+    fun aGameUnderWayIsNotReWatchedOnceItsWatchHasFired() =
+        runBlocking {
+            // The plan keeps asking for a live game on every pass; re-arming each time would alert again.
+            scheduler.reconcile(now, day(game(state = GameState.Live())), setOf(TeamKey("TOR")), alerts())
+            val fired = watches().single()
+            scheduler.reconcile(now, day(game(state = GameState.Live())), setOf(TeamKey("TOR")), alerts())
+
+            assertEquals("one watch, already spent, and no second one", 1, watches().size)
+            assertEquals(fired.id, watches().single().id)
+        }
+
+    @Test
     fun turningAlertsOffCancelsTheWatchThatWasScheduled() =
         runBlocking {
             val today = day(game(startInHours = 2))
