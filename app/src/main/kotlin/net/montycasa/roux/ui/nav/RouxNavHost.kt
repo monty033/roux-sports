@@ -127,7 +127,13 @@ enum class TopLevelDestination(
  * two padders would either double the gap or clip the bar's background.
  */
 @Composable
-fun RouxNavHost(modifier: Modifier = Modifier) {
+fun RouxNavHost(
+    modifier: Modifier = Modifier,
+    /** A game a notification was tapped for, opened once the slate it belongs to is loaded. */
+    requestedGame: GameRequest? = null,
+    /** Called once the request has been acted on, so the same tap twice is a second navigation rather than none. */
+    onRequestHandled: () -> Unit = {},
+) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
@@ -319,6 +325,26 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
                     }
                 },
             ) { innerPadding ->
+                // A tapped notification names a game, not a route: the detail route carries the whole card, so
+                // the game is looked up in the slate first and the route is built from what the feed says now.
+                // An id that is not in today's games - a stale notification, or a game from an earlier day -
+                // opens nothing rather than an empty screen.
+                LaunchedEffect(requestedGame) {
+                    val request = requestedGame ?: return@LaunchedEffect
+                    val today = deviceDate(container.clock.now())
+                    val game =
+                        listOf(today, previousDay(today))
+                            .firstNotNullOfOrNull { date ->
+                                container.scores
+                                    .loadDay(date, today)
+                                    .data
+                                    ?.games
+                                    ?.firstOrNull { it.id.value == request.gameId }
+                            }
+                    if (game != null) navController.navigate(detailRoute(game))
+                    onRequestHandled()
+                }
+
                 NavHost(
                     navController = navController,
                     startDestination = HOME_ROUTE,
@@ -507,6 +533,33 @@ internal const val PAGER_TAG = "pages.pager"
 internal const val DETAIL_ROUTE =
     "detail/{gameId}?away={away}&home={home}&awayLogo={awayLogo}&homeLogo={homeLogo}" +
         "&awayScore={awayScore}&homeScore={homeScore}&state={state}&start={start}"
+
+/**
+ * A game a notification asked for.
+ *
+ * [nonce] exists because the same game can be tapped twice: an id alone would be an unchanged value the second
+ * time, the effect would not run, and the tap would do nothing. The nonce is the difference between "the same
+ * request still standing" and "a new request for the same game".
+ */
+data class GameRequest(
+    val gameId: String,
+    val nonce: Long,
+)
+
+/** The previous civil day, for a game that is still being played after midnight. */
+internal fun previousDay(date: String): String =
+    java.time.LocalDate
+        .parse(date)
+        .minusDays(1)
+        .toString()
+
+/** The device's civil date, the same day the scores screen would show. */
+private fun deviceDate(instant: kotlin.time.Instant): String =
+    java.time.Instant
+        .ofEpochMilli(instant.toEpochMilliseconds())
+        .atZone(java.time.ZoneId.systemDefault())
+        .toLocalDate()
+        .toString()
 
 internal fun detailRoute(game: Game): String =
     "detail/${Uri.encode(game.id.value)}" +

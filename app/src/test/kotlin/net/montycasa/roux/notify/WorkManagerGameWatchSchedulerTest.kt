@@ -48,6 +48,10 @@ class WorkManagerGameWatchSchedulerTest {
             Configuration
                 .Builder()
                 .setExecutor(SynchronousExecutor())
+                // A factory is needed because a zero-delay watch is due at once and this executor runs due work
+                // inline. It builds the real worker with an inert pass: this test is about what the platform was
+                // asked to schedule, and a pass that fetched would put the network inside a scheduling assertion.
+                .setWorkerFactory(InertWorkerFactory(context))
                 .build(),
         )
         workManager = WorkManager.getInstance(context)
@@ -226,7 +230,14 @@ class WorkManagerGameWatchSchedulerTest {
             val periodicity = periodic.single().periodicityInfo
             assertNotNull("and it is the periodic kind", periodicity)
             assertEquals(12 * 60 * 60 * 1000L, periodicity!!.repeatIntervalMillis)
-            assertTrue(periodic.single().state == WorkInfo.State.ENQUEUED)
+            // Not pinned to ENQUEUED: this harness runs due work inline, so a periodic request can already have
+            // run by the time it is read back. What matters here is that the request is live and not refused;
+            // what the body does when it runs is DailyReconcileWorkerTest's subject.
+            val state = periodic.single().state
+            assertTrue(
+                "the periodic request must still be live, was $state",
+                state == WorkInfo.State.ENQUEUED || state == WorkInfo.State.RUNNING,
+            )
         }
 
     @Test
@@ -252,5 +263,76 @@ class WorkManagerGameWatchSchedulerTest {
                 "a completed or cancelled watch must not linger as an error",
                 watches().single().state.takeIf { it == WorkInfo.State.FAILED },
             )
+        }
+}
+
+/**
+ * Builds the real workers with a [GameWatchRun] that reads nothing, so scheduling tests never touch the network.
+ * The worker's own behaviour is [GameWatchRunTest]'s subject.
+ */
+private class InertWorkerFactory(
+    private val context: Context,
+) : androidx.work.WorkerFactory() {
+    private val run =
+        GameWatchRun(
+            preferences = (context.applicationContext as net.montycasa.roux.RouxApp).container.preferences,
+            scores =
+                object : net.montycasa.roux.domain.repo.ScoresRepository {
+                    override suspend fun loadDay(
+                        date: String,
+                        today: String,
+                    ): net.montycasa.roux.domain.Loadable<net.montycasa.roux.domain.model.ScoreDay> =
+                        net.montycasa.roux.domain
+                            .Loadable(null, net.montycasa.roux.domain.Freshness.Missing, null)
+
+                    override suspend fun prefetchAdjacent(
+                        date: String,
+                        today: String,
+                    ) = Unit
+                },
+            scheduler =
+                object : net.montycasa.roux.domain.notify.GameWatchScheduler {
+                    override suspend fun reconcile(
+                        now: kotlin.time.Instant,
+                        day: net.montycasa.roux.domain.model.ScoreDay,
+                        favourites: Set<net.montycasa.roux.domain.model.TeamKey>,
+                        alertPreferences: (net.montycasa.roux.domain.model.TeamKey) -> net.montycasa.roux.domain.repo.TeamAlertPreferences,
+                    ) = Unit
+
+                    override suspend fun watchAgain(
+                        gameId: String,
+                        delay: kotlin.time.Duration,
+                    ) = Unit
+
+                    override suspend fun cancelAll() = Unit
+                },
+            poster =
+                object : AlertPoster {
+                    override fun post(
+                        alert: net.montycasa.roux.domain.policy.Alert,
+                        game: net.montycasa.roux.domain.model.Game,
+                    ) = NotificationOutcome.NothingToPost
+                },
+            clock = (context.applicationContext as net.montycasa.roux.RouxApp).container.clock,
+        )
+
+    override fun createWorker(
+        appContext: Context,
+        workerClassName: String,
+        workerParameters: androidx.work.WorkerParameters,
+    ): androidx.work.ListenableWorker? =
+        when (workerClassName) {
+            GameWatchWorker::class.java.name -> {
+                GameWatchWorker(
+                    appContext,
+                    workerParameters,
+                    (appContext.applicationContext as net.montycasa.roux.RouxApp).container,
+                    run,
+                )
+            }
+
+            else -> {
+                null
+            }
         }
 }

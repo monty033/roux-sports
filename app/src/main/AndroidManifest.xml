@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!--
-      INTERNET is the only permission the app asks for: scores and standings come from the NHL's public
-      endpoints and logos from assets.nhle.com. Notifications in v1 are local, so there is no push token to
-      request and no other capability to declare.
+      INTERNET is the only permission the app asks the user for at run time... except notifications: scores and
+      standings come from the NHL's public endpoints and logos from assets.nhle.com. POST_NOTIFICATIONS must be
+      declared even before the app asks for it, because a permission that is never declared cannot be granted -
+      `checkSelfPermission` would answer DENIED for ever and the request would fail without a dialog.
     -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".RouxApp"
@@ -21,5 +24,22 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+          WorkManager's default initializer runs from androidx.startup before Application.onCreate can supply a
+          configuration, so every worker would be built by reflection - without this app's factory, and therefore
+          without the one DataStore the rest of the app uses. Removing just this initializer leaves the rest of
+          androidx.startup alone; RouxApp supplies the configuration on demand instead.
+        -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
     </application>
 </manifest>

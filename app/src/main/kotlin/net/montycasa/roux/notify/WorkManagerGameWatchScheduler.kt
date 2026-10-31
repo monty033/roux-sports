@@ -9,8 +9,11 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import com.google.common.util.concurrent.ListenableFuture
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
+import net.montycasa.roux.AppContainer
 import net.montycasa.roux.domain.model.ScoreDay
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.notify.GameWatchPlan
@@ -21,6 +24,7 @@ import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlin.time.Duration
 import kotlin.time.Instant
 
 /**
@@ -70,6 +74,9 @@ class WorkManagerGameWatchScheduler(
                 // stays put however often this runs.
                 ExistingWorkPolicy.REPLACE,
                 OneTimeWorkRequestBuilder<GameWatchWorker>()
+                    // The worker is run for one game; without this it would have to guess which one from the tags
+                    // it was given, and a tag is a label, not an input.
+                    .setInputData(workDataOf(GameWatchWorker.KEY_GAME_ID to game.gameId))
                     .setInitialDelay(game.delay.inWholeMilliseconds, TimeUnit.MILLISECONDS)
                     // The unique name is not readable back from WorkInfo, so it is also a tag: that is what lets a
                     // later reconcile find the work it scheduled for a game and cancel it by name.
@@ -85,6 +92,27 @@ class WorkManagerGameWatchScheduler(
             RECONCILE_NAME,
             ExistingPeriodicWorkPolicy.KEEP,
             PeriodicWorkRequestBuilder<DailyReconcileWorker>(RECONCILE_INTERVAL_HOURS, TimeUnit.HOURS).build(),
+        )
+    }
+
+    override suspend fun watchAgain(
+        gameId: String,
+        delay: Duration,
+    ) {
+        workManager.enqueueUniqueWork(
+            watchName(gameId),
+            // APPEND_OR_REPLACE, because this is called from inside the work it continues: REPLACE would cancel
+            // the running worker, and KEEP would be ignored - the current work is unfinished, so its successor
+            // has to be appended. The delay counts from when this pass finishes, which is what "check again in
+            // 25 seconds" means.
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
+            OneTimeWorkRequestBuilder<GameWatchWorker>()
+                .setInputData(workDataOf(GameWatchWorker.KEY_GAME_ID to gameId))
+                .setInitialDelay(delay.inWholeMilliseconds, TimeUnit.MILLISECONDS)
+                .addTag(watchName(gameId))
+                .addTag(TARGET_PREFIX + DUE_NOW)
+                .addTag(WATCH_TAG)
+                .build(),
         )
     }
 
@@ -195,18 +223,54 @@ class WorkManagerGameWatchScheduler(
 class GameWatchWorker(
     context: Context,
     parameters: WorkerParameters,
+    /** The same container the UI uses, so the worker and the screens share one store and one client. */
+    val container: AppContainer,
+    private val run: GameWatchRun,
 ) : CoroutineWorker(context, parameters) {
-    override suspend fun doWork(): Result = Result.success()
+    override suspend fun doWork(): Result {
+        val gameId = inputData.getString(KEY_GAME_ID) ?: return Result.success()
+        return try {
+            val outcome = run.run(gameId)
+            if (outcome.failed) Result.retry() else Result.success()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            // A repository that threw is worth another attempt; the ledger has already refused anything the pass
+            // managed to claim, so a retry cannot post the same goal twice.
+            Result.retry()
+        }
+    }
+
+    companion object {
+        /** The game this watch is for. */
+        const val KEY_GAME_ID = "net.montycasa.roux.GAME_ID"
+    }
 }
 
 /**
  * Periodic target that re-runs the reconcile every [WorkManagerGameWatchScheduler.RECONCILE_INTERVAL_HOURS],
- * so a game whose start time the feed published late is still picked up. Its body arrives with the wiring
- * step; like [GameWatchWorker] it currently reports success without doing anything.
+ * so a game whose start time the feed published after the app's last pass is still picked up.
+ *
+ * [GameWatchWorker] still has no body: the fetch, the decision and the notification arrive with the notifier.
+ * This one does have one, because the promise its name makes - "reconcile again later" - is a promise about
+ * reconciliation, not about notifying.
  */
 class DailyReconcileWorker(
     context: Context,
     parameters: WorkerParameters,
+    val reconciler: GameWatchReconciler,
 ) : CoroutineWorker(context, parameters) {
-    override suspend fun doWork(): Result = Result.success()
+    override suspend fun doWork(): Result =
+        try {
+            reconciler.reconcile()
+            Result.success()
+        } catch (cancelled: CancellationException) {
+            // WorkManager cancels by cancelling this coroutine; reporting a retry here would resurrect work the
+            // platform just asked to stop.
+            throw cancelled
+        } catch (failure: Exception) {
+            // A reconcile that could not read its inputs is worth another attempt; an input that is simply
+            // absent is not a failure at all, and the reconciler returns instead of throwing for it.
+            Result.retry()
+        }
 }
