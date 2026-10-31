@@ -3,6 +3,7 @@ package net.montycasa.roux.notify
 import android.Manifest
 import android.app.Application
 import android.app.Notification
+import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
@@ -153,8 +154,40 @@ class NotifierTest {
     }
 
     @Test
-    fun aBaselineIsNotPosted() {
+    fun aBaselineIsNotPostedEvenWithoutPermission() {
+        // The answer to "is there news?" does not depend on whether the user allowed notifications.
+        shadowOf(application).denyPermissions(Manifest.permission.POST_NOTIFICATIONS)
+
         assertEquals(NotificationOutcome.NothingToPost, notifier.post(Alert.Baseline(GameId(gameId), 3), game))
         assertEquals(emptyList<Notification>(), posted())
+    }
+
+    @Test
+    fun aChannelTheUserSilencedIsReportedRatherThanClaimedAsPosted() {
+        // A silenced channel is importance NONE, which the app cannot set on a live channel - so it is modelled
+        // the way the user does it: the channel exists at NONE before the post.
+        manager.deleteNotificationChannel(Notifier.GOALS_CHANNEL)
+        manager.createNotificationChannel(
+            NotificationChannel(Notifier.GOALS_CHANNEL, "Goals", NotificationManager.IMPORTANCE_NONE),
+        )
+
+        val outcome = notifier.post(goal(), game)
+
+        assertEquals(NotificationOutcome.NotPosted(NotificationOutcome.Reason.NotificationsOff), outcome)
+        assertEquals("nothing reaches the tray through a silenced channel", emptyList<Notification>(), posted())
+        // And the other channel is untouched by it.
+        assertTrue(notifier.post(Alert.GameStart(GameId(gameId), 0), game) is NotificationOutcome.Posted)
+    }
+
+    @Test
+    fun postingCreatesItsOwnChannels() {
+        // Nothing else in the process has run: the notifier must not depend on a caller having set up first.
+        manager.deleteNotificationChannel(Notifier.GOALS_CHANNEL)
+        manager.deleteNotificationChannel(Notifier.GAME_START_CHANNEL)
+
+        val outcome = notifier.post(goal(), game)
+
+        assertTrue("posted, not dropped for a channel that did not exist", outcome is NotificationOutcome.Posted)
+        assertNotNull("the channel exists afterwards", manager.getNotificationChannel(Notifier.GOALS_CHANNEL))
     }
 }

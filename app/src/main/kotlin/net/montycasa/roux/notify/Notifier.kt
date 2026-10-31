@@ -84,7 +84,15 @@ class Notifier(
         alert: Alert,
         game: Game,
     ): NotificationOutcome {
-        val blocked = blockage()
+        // A baseline is bookkeeping, and its answer is the same whatever the notification settings say.
+        if (alert is Alert.Baseline) return NotificationOutcome.NothingToPost
+
+        // Created here rather than trusted to a caller: on API 26+ a post to a channel that does not exist is
+        // dropped by the platform, so a notifier that relied on an earlier call would quietly do nothing in any
+        // process that posted first.
+        ensureChannels()
+        val channel = channelOf(alert)
+        val blocked = blockage(channel)
         if (blocked != null) return NotificationOutcome.NotPosted(blocked)
 
         val id = idOf(alert)
@@ -93,14 +101,14 @@ class Notifier(
         val notification =
             when (alert) {
                 is Alert.GameStart -> {
-                    base(id, GAME_START_CHANNEL, alert.gameId.value)
+                    base(id, channel, alert.gameId.value)
                         .setContentTitle(context.getString(R.string.notify_start_title, away, home))
                         .setContentText(context.getString(R.string.notify_start_text))
                         .build()
                 }
 
                 is Alert.Goal -> {
-                    base(id, GOALS_CHANNEL, alert.gameId.value)
+                    base(id, channel, alert.gameId.value)
                         .setContentTitle(
                             context.getString(
                                 R.string.notify_goal_title,
@@ -113,8 +121,9 @@ class Notifier(
                         .build()
                 }
 
+                // Unreachable - a baseline returned above - but the when has to name every alert to stay total.
                 is Alert.Baseline -> {
-                    return NotificationOutcome.NothingToPost
+                    error("a baseline is not news")
                 }
             }
 
@@ -157,12 +166,25 @@ class Notifier(
         )
     }
 
-    private fun blockage(): NotificationOutcome.Reason? =
+    private fun channelOf(alert: Alert): String = if (alert is Alert.GameStart) GAME_START_CHANNEL else GOALS_CHANNEL
+
+    /**
+     * Why nothing can be posted, or null when it can.
+     *
+     * The channel is checked as well as the app, because the two are separate answers: a user who silences
+     * goals but not starts has said something specific, and reporting that goal as posted would be reporting a
+     * notification the platform dropped.
+     */
+    private fun blockage(channel: String): NotificationOutcome.Reason? =
         when {
             !hasPermission() -> NotificationOutcome.Reason.PermissionMissing
             !NotificationManagerCompat.from(context).areNotificationsEnabled() -> NotificationOutcome.Reason.NotificationsOff
+            channelBlocked(channel) -> NotificationOutcome.Reason.NotificationsOff
             else -> null
         }
+
+    private fun channelBlocked(channel: String): Boolean =
+        notificationManager.getNotificationChannel(channel)?.importance == NotificationManager.IMPORTANCE_NONE
 
     private fun hasPermission(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||

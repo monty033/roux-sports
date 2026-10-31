@@ -126,8 +126,13 @@ class AppContainerTest {
      * [theMergedManifestAsksForNothingUnexpected] bounds that side with an allowlist.
      */
     @Test
-    fun theAppsOwnManifestAsksForInternetOnly() {
-        assertEquals(setOf(Manifest.permission.INTERNET), declaredPermissions())
+    fun theAppsOwnManifestAsksForInternetAndNotifications() {
+        // POST_NOTIFICATIONS is here on purpose: the app's only outward capability is still the network, and the
+        // notification permission is a local one the user grants to this app alone.
+        assertEquals(
+            setOf(Manifest.permission.INTERNET, Manifest.permission.POST_NOTIFICATIONS),
+            declaredPermissions(),
+        )
     }
 
     /**
@@ -161,6 +166,10 @@ class AppContainerTest {
             unexpected,
         )
         assertTrue("INTERNET must survive the merge", Manifest.permission.INTERNET in merged)
+        assertTrue(
+            "POST_NOTIFICATIONS must survive the merge, or the runtime grant can never be requested",
+            Manifest.permission.POST_NOTIFICATIONS in merged,
+        )
     }
 
     /**
@@ -196,6 +205,8 @@ class AppContainerTest {
             Manifest.permission.WAKE_LOCK,
             Manifest.permission.RECEIVE_BOOT_COMPLETED,
             Manifest.permission.FOREGROUND_SERVICE,
+            // Declared by this app: local notifications, granted by the user to this app only.
+            Manifest.permission.POST_NOTIFICATIONS,
             "$APP_PACKAGE.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
         )
 
@@ -248,5 +259,7 @@ private fun allowedMergedPermissions(packageName: String): Set<String> =
         Manifest.permission.WAKE_LOCK,
         Manifest.permission.RECEIVE_BOOT_COMPLETED,
         Manifest.permission.FOREGROUND_SERVICE,
+        // Declared by this app for local notifications; granted by the user to this app only.
+        Manifest.permission.POST_NOTIFICATIONS,
         "$packageName.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
     )

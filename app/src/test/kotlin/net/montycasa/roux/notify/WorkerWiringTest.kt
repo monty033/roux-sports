@@ -83,6 +83,20 @@ class WorkerWiringTest {
         )
     }
 
+    /**
+     * A permission that is never declared cannot be granted: `checkSelfPermission` answers DENIED for ever and the
+     * request produces no dialog, so the notifier's permission branch would be the only path that ever runs.
+     */
+    @Test
+    fun theNotificationPermissionIsDeclared() {
+        val manifest = File("src/main/AndroidManifest.xml").readText()
+
+        assertTrue(
+            "POST_NOTIFICATIONS must be declared in the manifest, not only requested at run time",
+            "android.permission.POST_NOTIFICATIONS" in manifest,
+        )
+    }
+
     private companion object {
         const val WORK_MANAGER_INITIALIZER = "androidx.work.WorkManagerInitializer"
         const val STARTUP_PROVIDER = "androidx.startup.InitializationProvider"

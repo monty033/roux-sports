@@ -48,7 +48,10 @@ class DailyReconcileWorkerTest {
     val temporaryFolder = TemporaryFolder()
 
     private val app: Application = ApplicationProvider.getApplicationContext()
-    private val now = Instant.parse("2025-01-01T18:00:00Z")
+
+    // 02:00Z on the 2nd is 21:00 on the 1st in New York: the UTC date and the device's civil date differ, which
+    // is the only way a test can tell a local-date conversion from a UTC one.
+    private val now = Instant.parse("2025-01-02T02:00:00Z")
     private val zone = ZoneId.of("America/New_York")
 
     private val slate =
@@ -167,10 +170,9 @@ class DailyReconcileWorkerTest {
             val scores = FakeScores { Loadable(slate, Freshness.Fresh, null) }
             val scheduler = RecordingScheduler()
 
-            // 18:00 UTC is 13:00 in New York, so both are the same civil day; the assertion below pins that the
-            // reconcile asks for a local date rather than a UTC one by using a time that straddles midnight.
             worker(reconciler(scores, scheduler, preferences)).doWork()
 
+            // A UTC date would be 2025-01-02 here; the device's civil day is still the 1st.
             assertEquals(listOf("2025-01-01"), scores.requestedDates)
         }
 

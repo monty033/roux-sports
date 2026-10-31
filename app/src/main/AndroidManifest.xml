@@ -2,11 +2,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <!--
-      INTERNET is the only permission the app asks for here: scores and standings come from the NHL's public
-      endpoints and logos from assets.nhle.com. Notifications are local, so there is no push token to
-      request; the runtime notification permission arrives with the settings screen that asks for it.
+      INTERNET is the only permission the app asks the user for at run time... except notifications: scores and
+      standings come from the NHL's public endpoints and logos from assets.nhle.com. POST_NOTIFICATIONS must be
+      declared even before the app asks for it, because a permission that is never declared cannot be granted -
+      `checkSelfPermission` would answer DENIED for ever and the request would fail without a dialog.
     -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".RouxApp"
