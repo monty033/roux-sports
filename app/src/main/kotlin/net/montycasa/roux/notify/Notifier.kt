@@ -108,16 +108,17 @@ class Notifier(
                 }
 
                 is Alert.Goal -> {
+                    // A score the feed has not given is not zero: printing "0" would state a fact this app does
+                    // not have, and the user would read it as the score.
+                    val title =
+                        if (alert.awayScore != null && alert.homeScore != null) {
+                            context.getString(R.string.notify_goal_title, away, alert.awayScore, alert.homeScore, home)
+                        } else {
+                            context.getString(R.string.notify_goal_unscored_title, away, home)
+                        }
                     base(id, channel, alert.gameId.value)
-                        .setContentTitle(
-                            context.getString(
-                                R.string.notify_goal_title,
-                                away,
-                                alert.awayScore ?: 0,
-                                alert.homeScore ?: 0,
-                                home,
-                            ),
-                        ).setContentText(context.getString(R.string.notify_goal_text))
+                        .setContentTitle(title)
+                        .setContentText(context.getString(R.string.notify_goal_text))
                         .build()
                 }
 

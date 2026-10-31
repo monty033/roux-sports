@@ -163,6 +163,20 @@ class NotifierTest {
     }
 
     @Test
+    fun aGoalWithNoScoreDoesNotInventOne() {
+        notifier.post(Alert.Goal(GameId(gameId), goalCount = 1, awayScore = null, homeScore = null), game)
+
+        val title =
+            posted()
+                .single()
+                .extras
+                .getCharSequence(Notification.EXTRA_TITLE)
+                ?.toString()
+        assertEquals("TOR at MTL", title)
+        assertTrue("no digits, so no score the feed did not give: $title", title!!.none { it.isDigit() })
+    }
+
+    @Test
     fun aChannelTheUserSilencedIsReportedRatherThanClaimedAsPosted() {
         // A silenced channel is importance NONE, which the app cannot set on a live channel - so it is modelled
         // the way the user does it: the channel exists at NONE before the post.
