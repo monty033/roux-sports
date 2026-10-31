@@ -127,7 +127,11 @@ enum class TopLevelDestination(
  * two padders would either double the gap or clip the bar's background.
  */
 @Composable
-fun RouxNavHost(modifier: Modifier = Modifier) {
+fun RouxNavHost(
+    modifier: Modifier = Modifier,
+    /** A game a notification was tapped for, opened once the slate it belongs to is loaded. */
+    requestedGameId: String? = null,
+) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
@@ -319,6 +323,22 @@ fun RouxNavHost(modifier: Modifier = Modifier) {
                     }
                 },
             ) { innerPadding ->
+                // A tapped notification names a game, not a route: the detail route carries the whole card, so
+                // the game is looked up in the slate first and the route is built from what the feed says now.
+                // An id that is not in today's games - a stale notification, or a game from an earlier day -
+                // opens nothing rather than an empty screen.
+                LaunchedEffect(requestedGameId) {
+                    val gameId = requestedGameId ?: return@LaunchedEffect
+                    val today = deviceDate(container.clock.now())
+                    val game =
+                        container.scores
+                            .loadDay(today, today)
+                            .data
+                            ?.games
+                            ?.firstOrNull { it.id.value == gameId }
+                    if (game != null) navController.navigate(detailRoute(game))
+                }
+
                 NavHost(
                     navController = navController,
                     startDestination = HOME_ROUTE,
@@ -507,6 +527,14 @@ internal const val PAGER_TAG = "pages.pager"
 internal const val DETAIL_ROUTE =
     "detail/{gameId}?away={away}&home={home}&awayLogo={awayLogo}&homeLogo={homeLogo}" +
         "&awayScore={awayScore}&homeScore={homeScore}&state={state}&start={start}"
+
+/** The device's civil date, the same day the scores screen would show. */
+private fun deviceDate(instant: kotlin.time.Instant): String =
+    java.time.Instant
+        .ofEpochMilli(instant.toEpochMilliseconds())
+        .atZone(java.time.ZoneId.systemDefault())
+        .toLocalDate()
+        .toString()
 
 internal fun detailRoute(game: Game): String =
     "detail/${Uri.encode(game.id.value)}" +

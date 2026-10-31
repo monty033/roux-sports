@@ -28,10 +28,32 @@ class RouxWorkerFactory(
         workerParameters: WorkerParameters,
     ): ListenableWorker? =
         when (workerClassName) {
-            GameWatchWorker::class.java.name -> GameWatchWorker(appContext, workerParameters, container)
-            DailyReconcileWorker::class.java.name -> DailyReconcileWorker(appContext, workerParameters, reconciler(appContext))
-            else -> null
+            GameWatchWorker::class.java.name -> {
+                GameWatchWorker(
+                    appContext,
+                    workerParameters,
+                    container,
+                    watchRun(appContext),
+                )
+            }
+
+            DailyReconcileWorker::class.java.name -> {
+                DailyReconcileWorker(appContext, workerParameters, reconciler(appContext))
+            }
+
+            else -> {
+                null
+            }
         }
+
+    private fun watchRun(appContext: Context): GameWatchRun =
+        GameWatchRun(
+            preferences = container.preferences,
+            scores = container.scores,
+            scheduler = WorkManagerGameWatchScheduler(WorkManager.getInstance(appContext)),
+            poster = Notifier(appContext),
+            clock = container.clock,
+        )
 
     private fun reconciler(appContext: Context): GameWatchReconciler =
         GameWatchReconciler(

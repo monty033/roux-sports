@@ -90,6 +90,11 @@ class DailyReconcileWorkerTest {
             calls += Call(now, day, favourites)
         }
 
+        override suspend fun watchAgain(
+            gameId: String,
+            delay: kotlin.time.Duration,
+        ) = Unit
+
         override suspend fun cancelAll() = Unit
     }
 

@@ -50,6 +50,19 @@ interface GameWatchScheduler {
         alertPreferences: (TeamKey) -> TeamAlertPreferences,
     )
 
+    /**
+     * Watch [gameId] again after [delay], for a game that is still being played.
+     *
+     * Separate from [reconcile] because the two ask different questions: reconcile asks "is this watch still
+     * wanted?", which for a live game is always yes and would re-enqueue it immediately. A fired watch asking
+     * to be run again in 25 seconds is a different statement, and it is the one that keeps a live game followed
+     * to its end.
+     */
+    suspend fun watchAgain(
+        gameId: String,
+        delay: Duration,
+    )
+
     /** Cancel every scheduled watch, for when alerts are turned off entirely. */
     suspend fun cancelAll()
 }

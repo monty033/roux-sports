@@ -54,7 +54,7 @@ sealed interface NotificationOutcome {
  */
 class Notifier(
     private val context: Context,
-) {
+) : AlertPoster {
     private val notificationManager: NotificationManager =
         context.getSystemService(NotificationManager::class.java)
 
@@ -80,7 +80,7 @@ class Notifier(
         )
     }
 
-    fun post(
+    override fun post(
         alert: Alert,
         game: Game,
     ): NotificationOutcome {
