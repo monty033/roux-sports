@@ -86,6 +86,17 @@ class TeamsViewModel(
     private val refreshTrigger = MutableStateFlow(0L)
     private var retained = Loadable<List<StandingRow>>(null, Freshness.Missing, null)
 
+    /**
+     * The row order as last decided by a load, which is *not* recomputed when the selection changes.
+     *
+     * Favourites sort first, so deriving the order on every emission meant a tap moved the row under the
+     * user's finger - the one being tapped jumped to the top of the list, taking its switch with it, and on a
+     * scrolling screen the row that had been next landed where the tap was already heading. The order is
+     * therefore a decision this view model makes when it has a reason to: a load, or an explicit retry. A
+     * checkbox can change without rearranging the list around the finger that changed it.
+     */
+    private val order = MutableStateFlow<List<TeamRef>>(emptyList())
+
     // Preferences has no Flow API. Read once on init; after each successful write the local copy
     // remains authoritative, including when the screen stops collecting and later returns.
     //
@@ -138,6 +149,11 @@ class TeamsViewModel(
                     emit(TeamsLoad(retained, isRefreshing = true))
                     // The picker needs identities, not live rankings; it does not own a game poller.
                     retained = standings.standings(anyGameLive = false)
+                    retained.data?.let { rows ->
+                        // Decided here, once per load, for the reason in [order]'s comment.
+                        favouritesReady.await()
+                        order.value = ordered(rows.map { it.team }, favourites.value)
+                    }
                     emit(TeamsLoad(retained, isRefreshing = false))
                 }
             },
@@ -145,14 +161,11 @@ class TeamsViewModel(
                 favouritesReady.await()
                 emitAll(favourites)
             },
+            order,
             extras,
-        ) { load, selected, extra ->
+        ) { load, selected, rowOrder, extra ->
             TeamsUiState(
-                rows =
-                    load.value.data
-                        .orEmpty()
-                        .map { it.team }
-                        .sortedWith(compareBy<TeamRef> { it.key !in selected }.thenBy { it.name ?: it.abbrev }),
+                rows = rowOrder,
                 favourites = selected,
                 isRefreshing = load.isRefreshing,
                 freshness = load.value.freshness,
@@ -250,6 +263,12 @@ class TeamsViewModel(
     fun retry() {
         refreshTrigger.update { it + 1 }
     }
+
+    /** Favourites first, then by club name: the order the list uses whenever it is allowed to re-sort. */
+    private fun ordered(
+        teams: List<TeamRef>,
+        favourites: Set<TeamKey>,
+    ): List<TeamRef> = teams.sortedWith(compareBy<TeamRef> { it.key !in favourites }.thenBy { it.name ?: it.abbrev })
 
     private data class TeamsLoad(
         val value: Loadable<List<StandingRow>>,

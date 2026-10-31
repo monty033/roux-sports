@@ -288,6 +288,21 @@ class TeamsScreenTest {
     }
 
     @Test
+    fun togglingAFavouriteLeavesTheRowWhereItWas() {
+        launchScreen()
+        val tor = teams.first { it.key == TeamKey("TOR") }
+        val before = rule.onNodeWithTag("teams.row.${tor.abbrev}").fetchSemanticsNode().boundsInRoot
+
+        rule.runOnIdle {
+            suppliedState.value = fresh.copy(favourites = fresh.favourites + tor.key)
+        }
+
+        val after = rule.onNodeWithTag("teams.row.${tor.abbrev}").fetchSemanticsNode().boundsInRoot
+        // The switch changed, not the list: the row a thumb is on must not move out from under it.
+        assertEquals(before, after)
+    }
+
+    @Test
     fun listLight() {
         launchScreen()
         rule.onRoot().captureRoboImage("src/test/screenshots/teams/list-light.png")
