@@ -96,6 +96,7 @@ fun GameRow(
     val homeWins = game.state == GameState.Final && homeScore != null && awayScore != null && homeScore > awayScore
     val awayWins = game.state == GameState.Final && homeScore != null && awayScore != null && awayScore > homeScore
     val metrics = if (narrow) narrowCard else wideCard
+    val description = gameRowDescription(game)
     Row(
         modifier =
             modifier
@@ -105,6 +106,12 @@ fun GameRow(
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .border(1.dp, Color.Transparent, RoundedCornerShape(16.dp))
+                // One sentence for the whole card. The rows and the rail are the same information drawn
+                // twice - a score per team, and a state the sentence already states - so a screen reader
+                // gets the card as one statement instead of seven unconnected fragments. It is set without
+                // merging descendants, because the rail's own nodes are what the layout and reach audits
+                // measure; TalkBack reads the sentence as the card's description.
+                .semantics { contentDescription = description }
                 // Compose's border only draws. Reserve its space to match CSS border-box:
                 // 28 + 2 + 28 of rows + 16 of main padding + 2 of border = 76 dp.
                 .padding(1.dp),
@@ -398,6 +405,68 @@ private fun RailText(text: String) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Start,
     )
+}
+
+/**
+ * What a screen reader says for one card, as a single sentence.
+ *
+ * The card is drawn as two team rows and a rail, and read in that order a live game arrives as seven
+ * fragments - "Boston Bruins", "3", "New York Rangers", "2", "Live", "LIVE", "2nd 7:42" - which is the same
+ * score twice with the state split across two labels. The sentence is the fixed order a person would say it
+ * in: who played, the score, then the state. The state appears once, which is why the live word is not
+ * repeated from the rail's capsule.
+ */
+@Composable
+internal fun gameRowDescription(game: Game): String {
+    val away = game.away.name?.takeIf { it.isNotBlank() } ?: game.away.abbrev
+    val home = game.home.name?.takeIf { it.isNotBlank() } ?: game.home.abbrev
+    val awayScore = game.awayScore
+    val homeScore = game.homeScore
+    val scoreLine =
+        if (awayScore != null && homeScore != null) {
+            stringResource(R.string.game_row_description_score, away, awayScore, home, homeScore)
+        } else {
+            stringResource(R.string.game_row_description_upcoming, away, home)
+        }
+    val state =
+        when (game.state) {
+            is GameState.Live -> {
+                gameRowLiveState(game)
+            }
+
+            GameState.Final -> {
+                stringResource(
+                    when (game.finalKind) {
+                        FinalKind.OT -> R.string.game_row_description_final_ot
+                        FinalKind.SO -> R.string.game_row_description_final_so
+                        FinalKind.REG, null -> R.string.game_row_description_final
+                    },
+                )
+            }
+
+            GameState.Scheduled, GameState.Pre -> {
+                startTimeLabel(game)
+            }
+
+            is GameState.Unknown -> {
+                stringResource(R.string.game_row_description_unknown)
+            }
+        }
+    return stringResource(R.string.game_row_description, scoreLine, state)
+}
+
+/** The live part of the sentence: the word, then the period and the clock, each spoken once. */
+@Composable
+private fun gameRowLiveState(game: Game): String {
+    val period = game.period
+    val pieces = mutableListOf(stringResource(R.string.game_row_live_description).lowercase())
+    if (period != null) {
+        // "2nd period" - the rail's bare "2nd" is a label beside a clock, which a sentence cannot lean on.
+        pieces += stringResource(R.string.game_row_description_period, periodLabel(period))
+        if (period.inIntermission) pieces += stringResource(R.string.game_row_intermission).lowercase()
+    }
+    period?.clock?.takeIf { it.isNotBlank() }?.let { pieces += it }
+    return pieces.joinToString(", ")
 }
 
 @Composable
