@@ -8,8 +8,8 @@
     <string name="calendar_dismiss">Close calendar</string>
     <string name="scores_empty_date">No games on %1$s</string>
     <string name="scores_next_games">Next games: %1$s</string>
-    <string name="scores_pick_teams">You haven’t picked favourite teams yet. Choose teams in the Teams tab.</string>
-    <string name="scores_no_favourite_games">Your favourite teams have no games this day. Choose NHL in the leagues drawer to see all games.</string>
+    <string name="scores_pick_teams">You haven’t picked favorite teams yet. Choose teams in the Teams tab.</string>
+    <string name="scores_no_favourite_games">Your favorite teams have no games this day. Choose NHL in the leagues drawer to see all games.</string>
     <string name="scores_load_error">Couldn’t load scores.</string>
     <string name="scores_refresh_error">Couldn’t refresh. Showing saved scores.</string>
     <string name="scores_network_error">Check your connection and try again.</string>

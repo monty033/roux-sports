@@ -182,6 +182,7 @@ fun ComposeTestRule.reachTargets(): List<ControlPlacement> {
                     // 200 dp scroller inside a 30 dp one still only ever shows 30.
                     reachableWidth = reachable(left, right, staticLeft, staticRight, horizontalWindows),
                     reachableHeight = reachable(top, bottom, staticTop, staticBottom, verticalWindows),
+                    contiguousRow = node.config.getOrNull(ContiguousRowTag) ?: false,
                 )
         }
         // Two facts per axis, and they are different facts. A parent that does not scroll bounds its child

@@ -1,16 +1,16 @@
 <resources>
     <string name="teams_title">Teams</string>
-    <string name="teams_instructions">Choose your favourite teams. Favourites appear first.</string>
+    <string name="teams_instructions">Choose your favorite teams. Favorites appear first.</string>
     <string name="teams_loading">Loading teams…</string>
     <string name="teams_load_error">Couldn’t load teams. Try again.</string>
     <string name="teams_stale">Showing saved teams. They may be out of date.</string>
     <string name="teams_empty">No teams to choose from.</string>
     <string name="teams_unknown_state">Not known</string>
     <string name="teams_retry">Retry</string>
-    <string name="teams_read_only">Your saved settings come from a newer version of Roux Sports, so favourites can\'t be changed here.</string>
+    <string name="teams_read_only">Your saved settings come from a newer version of Roux Sports, so favorites can\'t be changed here.</string>
     <string name="teams_save_failed">Couldn\'t save that change. Try again.</string>
-    <string name="teams_favourite">Favourite</string>
-    <string name="teams_not_favourite">Not favourite</string>
+    <string name="teams_favourite">Favorite</string>
+    <string name="teams_not_favourite">Not favorite</string>
     <string name="teams_toggle_label">%1$s</string>
 
     <string name="teams_alerts_title">%1$s alerts</string>
@@ -23,4 +23,8 @@
     <string name="teams_alerts_open_settings">Open notification settings</string>
     <string name="teams_alerts_save_failed">Couldn\'t save that change. Try again.</string>
     <string name="teams_alerts_done">Done</string>
+    <string name="teams_alerts_prompt_title">Notifications are off</string>
+    <string name="teams_alerts_prompt_body">Turn them on to be told when a followed team starts a game and when it scores.</string>
+    <string name="teams_alerts_prompt_enable">Turn on</string>
+    <string name="teams_alerts_prompt_later">Not now</string>
 </resources>

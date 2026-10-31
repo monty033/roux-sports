@@ -17,6 +17,8 @@ import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
@@ -26,6 +28,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import com.github.takahirom.roborazzi.captureRoboImage
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.model.TeamKey
@@ -62,12 +65,13 @@ class TeamsScreenTest {
         state: TeamsUiState = fresh,
         onToggle: (TeamKey) -> Unit = {},
         onRetry: () -> Unit = {},
+        dark: Boolean = false,
     ) {
         suppliedState.value = state
         rule.setContent {
             val base = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(base.density, fontScale.value)) {
-                RouxTheme { TeamsScreen(suppliedState.value, onToggle, onRetry) }
+                RouxTheme(dark) { TeamsScreen(suppliedState.value, onToggle, onRetry) }
             }
         }
     }
@@ -85,7 +89,7 @@ class TeamsScreenTest {
                 .assertIsDisplayed()
                 .assertWidthIsAtLeast(48.dp)
                 .assertHeightIsAtLeast(48.dp)
-                .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Not favourite"))
+                .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Not favorite"))
             assertReach()
             seen += team.key
         }
@@ -106,7 +110,7 @@ class TeamsScreenTest {
         rule.runOnIdle { suppliedState.value = fresh.copy(favourites = setOf(last.key)) }
         toggle(last)
             .assertIsOn()
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Favourite"))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Favorite"))
             .performClick()
         assertEquals(teams.map { it.key } + last.key, calls)
     }
@@ -115,7 +119,9 @@ class TeamsScreenTest {
     fun aNullNameShowsTheAbbreviationAndLabelsItsToggle() {
         val team = TeamRef(TeamKey("TOR"))
         launchScreen(fresh.copy(rows = listOf(team)))
-        rule.onNodeWithText("TOR").assertIsDisplayed()
+        // Twice on purpose: without a name the abbreviation is the row's label, and the crest falls back to the same
+        // abbreviation when the feed has no artwork. Both are correct; the toggle still names itself with it.
+        rule.onAllNodesWithText("TOR").onFirst().assertIsDisplayed()
         toggle(team).assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("TOR")))
         assertReach()
     }
@@ -142,7 +148,7 @@ class TeamsScreenTest {
         launchScreen(fresh.copy(canEdit = false), onToggle = { toggles++ })
         rule
             .onNodeWithText(
-                "Your saved settings come from a newer version of Roux Sports, so favourites can't be changed here.",
+                "Your saved settings come from a newer version of Roux Sports, so favorites can't be changed here.",
             ).assertIsDisplayed()
         // A null onCheckedChange removes the click action instead of setting a Disabled flag, so that is
         // what to assert: the control is not merely dimmed, it cannot be pressed.
@@ -152,7 +158,7 @@ class TeamsScreenTest {
     }
 
     /**
-     * When the saved selection could not be read, every checkbox would otherwise say "Not favourite" - a
+     * When the saved selection could not be read, every checkbox would otherwise say "Not favorite" - a
      * claim about teams we never looked up. Indeterminate says the only true thing: it is not known.
      */
     @Test
@@ -165,7 +171,7 @@ class TeamsScreenTest {
             "no toggle may claim a state it does not know",
             0,
             rule
-                .onAllNodes(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Not favourite"))
+                .onAllNodes(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Not favorite"))
                 .fetchSemanticsNodes()
                 .size,
         )
@@ -279,5 +285,17 @@ class TeamsScreenTest {
         // R4 size, gap and R5 containment still apply to those targets inside the audit.
         val primary = if (retry) listOf("teams.retry") else emptyList()
         rule.assertPrimaryControlsReachable(*primary.toTypedArray())
+    }
+
+    @Test
+    fun listLight() {
+        launchScreen()
+        rule.onRoot().captureRoboImage("src/test/screenshots/teams/list-light.png")
+    }
+
+    @Test
+    fun listDark() {
+        launchScreen(dark = true)
+        rule.onRoot().captureRoboImage("src/test/screenshots/teams/list-dark.png")
     }
 }

@@ -104,7 +104,7 @@ class ScoresIntegrationTest {
         rule.waitUntil(timeoutMillis = 10_000) {
             rule.onAllNodesWithTag("teams.row.TOR").fetchSemanticsNodes().isNotEmpty()
         }
-        rule.onNodeWithText("Choose your favourite teams. Favourites appear first.").assertIsDisplayed()
+        rule.onNodeWithText("Choose your favorite teams. Favorites appear first.").assertIsDisplayed()
     }
 
     @Test

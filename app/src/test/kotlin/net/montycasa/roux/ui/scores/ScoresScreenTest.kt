@@ -124,6 +124,27 @@ class ScoresScreenTest {
     }
 
     @Test
+    fun aDayWithCachedRowsNeverShowsTheLoadingCopy() {
+        // The device recording: mid-swipe the screen went to "Loading scores..." for two frames while the page it
+        // was on had rows all along. A selection that has not loaded yet reports Freshness.Missing with no rows -
+        // that is a fact about the *selected* day - and the page was reading it as a fact about every page, so a
+        // neighbour with cached games traded real content for a loading line. The copy belongs to a page that has
+        // nothing to draw, not to the screen.
+        launchScreen(
+            fresh.copy(
+                rows = emptyList(),
+                loadedDate = null,
+                freshness = Freshness.Missing,
+                isRefreshing = true,
+                rowsByDate = mapOf(date to listOf(game)),
+            ),
+        )
+
+        rule.onNodeWithTag("scores.game.${game.id.value}").assertExists()
+        rule.onNodeWithTag("scores.loading").assertDoesNotExist()
+    }
+
+    @Test
     fun anArrivingDayIndexDoesNotChangeThePageOnScreen() {
         val picked = mutableListOf<String>()
         launchScreen(fresh.copy(rows = listOf(game), loadedDate = date), onSelectDate = { picked += it })
@@ -320,14 +341,14 @@ class ScoresScreenTest {
     @Test
     fun favouriteHintsDistinguishUnpickedTeamsFromTeamsWithoutGames() {
         launchScreen(fresh.copy(rows = listOf(game), favoritesHint = FavoritesHint.PickTeams))
-        rule.onNodeWithText("You haven’t picked favourite teams yet. Choose teams in the Teams tab.").assertIsDisplayed()
+        rule.onNodeWithText("You haven’t picked favorite teams yet. Choose teams in the Teams tab.").assertIsDisplayed()
         rule.onNodeWithTag("scores.game.${game.id.value}").assertIsDisplayed()
         rule.runOnIdle { suppliedState.value = fresh.copy(favoritesHint = FavoritesHint.NoFavouriteGames) }
         rule
             .onNodeWithText(
-                "Your favourite teams have no games this day. Choose NHL in the leagues drawer to see all games.",
+                "Your favorite teams have no games this day. Choose NHL in the leagues drawer to see all games.",
             ).assertIsDisplayed()
-        rule.onNodeWithText("You haven’t picked favourite teams yet. Choose teams in the Teams tab.").assertDoesNotExist()
+        rule.onNodeWithText("You haven’t picked favorite teams yet. Choose teams in the Teams tab.").assertDoesNotExist()
         rule.onNodeWithText("No games on Sat, Oct 25").assertDoesNotExist()
         rule.onNodeWithText("Next games: Tue, Oct 28").assertDoesNotExist()
     }

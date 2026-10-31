@@ -97,6 +97,7 @@ import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.notify.GameWatchReconciler
 import net.montycasa.roux.notify.WorkManagerGameWatchScheduler
+import net.montycasa.roux.notify.hasNotificationPermission
 import net.montycasa.roux.notify.notificationsAllowed
 import net.montycasa.roux.notify.openNotificationSettings
 import net.montycasa.roux.ui.detail.GameDetailScreen
@@ -478,13 +479,15 @@ private fun TeamsDestination() {
 
     // Whether a notification could land at all. Re-read on resume, because the user can change it in system
     // settings and come back, and a cached "off" would leave the switches dead with no explanation.
-    var canNotify by remember { mutableStateOf(notificationsAllowed(appContext)) }
+    var permissionGranted by remember { mutableStateOf(hasNotificationPermission(appContext)) }
+    var notificationsEnabled by remember { mutableStateOf(notificationsAllowed(appContext)) }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer =
             object : DefaultLifecycleObserver {
                 override fun onResume(owner: LifecycleOwner) {
-                    canNotify = notificationsAllowed(appContext)
+                    permissionGranted = hasNotificationPermission(appContext)
+                    notificationsEnabled = notificationsAllowed(appContext)
                 }
             }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -495,14 +498,17 @@ private fun TeamsDestination() {
     // setting they asked for is applied only after it is granted, so a refusal does not silently store an alert
     // that can never be delivered.
     var pendingEnable by remember { mutableStateOf<(() -> Unit)?>(null) }
+    // A dialog that comes back on the next recomposition is a dialog the user has to escape twice.
+    var promptDismissed by remember { mutableStateOf(false) }
     val permission =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            canNotify = granted && notificationsAllowed(appContext)
+            permissionGranted = granted
+            notificationsEnabled = notificationsAllowed(appContext)
             if (granted) pendingEnable?.invoke()
             pendingEnable = null
         }
     val withPermission: (() -> Unit) -> Unit = { action ->
-        if (canNotify) {
+        if (permissionGranted) {
             action()
         } else {
             pendingEnable = action
@@ -518,8 +524,21 @@ private fun TeamsDestination() {
         onCloseAlerts = teams::closeAlerts,
         onSetStartAlert = { enabled -> withPermission { teams.setAlert(start = enabled) } },
         onSetGoalAlert = { enabled -> withPermission { teams.setAlert(goals = enabled) } },
-        canNotify = canNotify,
+        permissionGranted = permissionGranted,
+        notificationsEnabled = notificationsEnabled,
         onOpenNotificationSettings = { openNotificationSettings(appContext) },
+        onEnableNotifications = {
+            // A missing permission can be asked for here; notifications switched off for the whole app cannot,
+            // and the system screen is the only place that can fix it.
+            if (!permissionGranted) {
+                pendingEnable = null
+                permission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                openNotificationSettings(appContext)
+            }
+        },
+        onDismissPrompt = { promptDismissed = true },
+        promptDismissed = promptDismissed,
     )
 }
 
