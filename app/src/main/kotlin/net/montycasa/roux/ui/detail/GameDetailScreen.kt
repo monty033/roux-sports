@@ -1102,7 +1102,8 @@ private fun DetailTabStrip(
             Box(
                 Modifier
                     .weight(1f)
-                    .heightIn(min = 44.dp)
+                    // 48 dp: this is a reach target, and the audit's R4 floor applies to targets, not paint.
+                    .heightIn(min = 48.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant)
                     .then(
