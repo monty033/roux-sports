@@ -287,13 +287,20 @@ class GameRowTest {
     @Test
     fun liveOvertimeUsesPeriodTypeInsteadOfOrdinal() {
         launch(live.copy(period = live.period!!.copy(ordinal = 5, periodType = "OT")))
-        rule.onNodeWithText("OT 12:34").assertIsDisplayed()
+        // P4: the extra period rides in the capsule and the clock stands alone. "OT" and "12:34" together do not
+        // fit the rail on one line at 2.0 type on a 360 dp phone, and a wrapped clock is worse than the period
+        // being stated once, above it.
+        rule.onNodeWithText("OT").assertIsDisplayed()
+        rule.onNodeWithText("12:34").assertIsDisplayed()
+        rule.onNodeWithText("OT 12:34").assertDoesNotExist()
     }
 
     @Test
     fun liveShootoutUsesPeriodTypeInsteadOfOrdinal() {
         launch(live.copy(period = live.period!!.copy(ordinal = 5, periodType = "SO")))
-        rule.onNodeWithText("SO 12:34").assertIsDisplayed()
+        rule.onNodeWithText("SO").assertIsDisplayed()
+        rule.onNodeWithText("12:34").assertIsDisplayed()
+        rule.onNodeWithText("SO 12:34").assertDoesNotExist()
     }
 
     @Test
