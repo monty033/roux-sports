@@ -188,8 +188,34 @@ class DataStorePreferencesRepository(
             writeLedger(
                 preferences = preferences,
                 gameId = gameId,
-                goalCount = goalBaseline,
+                // The recorded total only ever moves up. A start claim that arrives after a goal was announced must
+                // not lower it, or the goal becomes claimable again.
+                goalCount = maxOf(preferences[goalCountKey(gameId)] ?: 0, goalBaseline),
                 startNotified = true,
+                at = at,
+            )
+            claimed = true
+        }
+        return claimed
+    }
+
+    override suspend fun claimBaseline(
+        gameId: String,
+        goalCount: Int,
+        at: Instant,
+    ): Boolean {
+        requireUsableGameId(gameId)
+        var claimed = false
+        store.edit { preferences ->
+            if (!isInterpretable(preferences)) return@edit
+            val stored = preferences[goalCountKey(gameId)]
+            if (stored != null && stored >= goalCount) return@edit
+            writeLedger(
+                preferences = preferences,
+                gameId = gameId,
+                goalCount = maxOf(stored ?: 0, goalCount),
+                // Nothing was announced, so this must not claim the start either.
+                startNotified = preferences[startNotifiedKey(gameId)] ?: false,
                 at = at,
             )
             claimed = true
@@ -226,7 +252,10 @@ class DataStorePreferencesRepository(
         preferences[updatedAtKey(gameId)] = at.toEpochMilliseconds()
     }
 
-    override suspend fun pruneNotificationLedger(olderThan: Instant) {
+    override suspend fun pruneNotificationLedger(
+        olderThan: Instant,
+        keep: Set<String>,
+    ) {
         requireWritable()
         val cutoff = olderThan.toEpochMilliseconds()
         store.edit { preferences ->
@@ -240,7 +269,9 @@ class DataStorePreferencesRepository(
                     .mapNotNull { key ->
                         val stamp = preferences[longPreferencesKey(key.name)]
                         val gameId = key.name.removePrefix(UPDATED_AT_PREFIX)
-                        if (stamp != null && stamp < cutoff) gameId else null
+                        // A game still in progress is kept whatever its age: its entry is the only record of what
+                        // has already been announced, and dropping it mid-game would repeat those alerts.
+                        if (stamp != null && stamp < cutoff && gameId !in keep) gameId else null
                     }
             if (expired.isEmpty()) return@edit
             preferences[VERSION] = PREFERENCES_VERSION

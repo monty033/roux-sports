@@ -94,11 +94,25 @@ interface PreferencesRepository {
      *
      * [goalBaseline] is written by the same transaction, so claiming the start also settles which
      * goals were already on the board. Without it the first goal alert after a start would fire for
-     * goals scored before this app was watching.
+     * goals scored before this app was watching. A baseline lower than what is already recorded never
+     * rewrites it downwards: a late start claim must not un-announce a goal.
      */
     suspend fun claimStart(
         gameId: String,
         goalBaseline: Int,
+        at: Instant,
+    ): Boolean
+
+    /**
+     * Record a score baseline without claiming an alert; true when this call wrote it.
+     *
+     * A game first seen while its start alerts are switched off still needs a recorded total, or every
+     * later goal would compare against nothing and be announced as the first one. This leaves
+     * `startNotified` alone: nothing was announced, so nothing may say otherwise.
+     */
+    suspend fun claimBaseline(
+        gameId: String,
+        goalCount: Int,
         at: Instant,
     ): Boolean
 
@@ -111,6 +125,15 @@ interface PreferencesRepository {
      */
     suspend fun isWritable(): Boolean
 
-    /** Remove ledger entries timestamped strictly before [olderThan]. */
-    suspend fun pruneNotificationLedger(olderThan: Instant)
+    /**
+     * Remove ledger entries timestamped strictly before [olderThan].
+     *
+     * [keep] names games whose entries must survive the sweep regardless of age. A game in progress can
+     * outlive the retention window - a long overtime, a suspended game resumed the next day - and losing
+     * its entry mid-game would let the next pass announce goals that were already announced.
+     */
+    suspend fun pruneNotificationLedger(
+        olderThan: Instant,
+        keep: Set<String> = emptySet(),
+    )
 }

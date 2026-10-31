@@ -75,7 +75,7 @@ class NotificationDeciderTest {
         )
 
         val first = decider.decide(game(GameState.Live()), ledger(), TeamAlertPreferences(), isFavourite = true)
-        assertEquals(listOf<Alert>(Alert.GameStart(gameId)), first)
+        assertEquals(listOf<Alert>(Alert.GameStart(gameId, goalBaseline = 0)), first)
 
         // Second pass, reading what the first pass's claim wrote: silence.
         assertEquals(
@@ -124,7 +124,8 @@ class NotificationDeciderTest {
         // Cold start mid-game: the score was never seen to change, so calling it a goal would be a claim
         // this app cannot make - and it would fire once per game a sweep picked up.
         assertEquals(
-            listOf<Alert>(Alert.GameStart(gameId)),
+            "the 2-1 on the board becomes the baseline, so it is not announced as a goal",
+            listOf<Alert>(Alert.GameStart(gameId, goalBaseline = 3)),
             decider.decide(game(awayScore = 2, homeScore = 1), ledger = null, TeamAlertPreferences(), isFavourite = true),
         )
     }
@@ -150,8 +151,8 @@ class NotificationDeciderTest {
             ),
         )
         assertEquals(
-            "goals off still announces the start",
-            listOf<Alert>(Alert.GameStart(gameId)),
+            "goals off still announces the start, baselined at what was already announced",
+            listOf<Alert>(Alert.GameStart(gameId, goalBaseline = 0)),
             decider.decide(
                 game(awayScore = 1, homeScore = 0),
                 ledger(startNotified = false),
@@ -198,5 +199,52 @@ class NotificationDeciderTest {
         assertTrue(decider.isLedgerStale(final, entry, now + 25.hours))
         // Retention follows the record, not the game: a live game's entry is never swept away from under it.
         assertFalse(decider.isLedgerStale(game(GameState.Live()), entry, now + 48.hours))
+    }
+
+    @Test
+    fun aStartAndAGoalInTheSamePassDoNotSwallowEachOther() {
+        // The start is pending and a goal has happened since the last pass. The start's baseline must be what was
+        // already announced (0), not the current total (1) - otherwise the start claim records 1 and the goal claim
+        // for 1 is then refused as a duplicate, and the goal is never announced.
+        val pendingStart = ledger(goalCount = 0, startNotified = false)
+        val alerts = decider.decide(game(awayScore = 1, homeScore = 0), pendingStart, TeamAlertPreferences(), isFavourite = true)
+        assertEquals(
+            listOf<Alert>(
+                Alert.GameStart(gameId, goalBaseline = 0),
+                Alert.Goal(gameId, goalCount = 1, awayScore = 1, homeScore = 0),
+            ),
+            alerts,
+        )
+    }
+
+    @Test
+    fun aStartClaimedAfterGoalsKeepsTheBaselineOfWhatWasAnnounced() {
+        // The start is late: three goals are on the board and one of them was already announced.
+        val lateStart = ledger(goalCount = 1, startNotified = false)
+        assertEquals(
+            listOf<Alert>(
+                Alert.GameStart(gameId, goalBaseline = 1),
+                Alert.Goal(gameId, goalCount = 3, awayScore = 2, homeScore = 1),
+            ),
+            decider.decide(game(awayScore = 2, homeScore = 1), lateStart, TeamAlertPreferences(), isFavourite = true),
+        )
+    }
+
+    @Test
+    fun withStartAlertsOffTheFirstSightIsASilentBaselineSoLaterGoalsStillWork() {
+        val startOff = TeamAlertPreferences(start = false, goals = true)
+        val first = decider.decide(game(awayScore = 2, homeScore = 1), ledger = null, startOff, isFavourite = true)
+        assertEquals("nothing is announced, but the total is recorded", listOf<Alert>(Alert.Baseline(gameId, 3)), first)
+
+        // With the baseline written, the next goal is a goal rather than another first sight.
+        val baselined = ledger(goalCount = 3, startNotified = false)
+        assertEquals(
+            emptyList<Alert>(),
+            decider.decide(game(awayScore = 2, homeScore = 1), baselined, startOff, isFavourite = true),
+        )
+        assertEquals(
+            listOf<Alert>(Alert.Goal(gameId, goalCount = 5, awayScore = 3, homeScore = 2)),
+            decider.decide(game(awayScore = 3, homeScore = 2), baselined, startOff, isFavourite = true),
+        )
     }
 }

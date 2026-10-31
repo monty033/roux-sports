@@ -495,7 +495,16 @@ private class FakePreferences(
         at: Instant,
     ) = false
 
-    override suspend fun pruneNotificationLedger(olderThan: Instant) = Unit
+    override suspend fun claimBaseline(
+        gameId: String,
+        goalCount: Int,
+        at: Instant,
+    ) = false
+
+    override suspend fun pruneNotificationLedger(
+        olderThan: Instant,
+        keep: Set<String>,
+    ) = Unit
 }
 
 internal fun teamStandings(): List<StandingRow> =

@@ -674,4 +674,75 @@ class DataStorePreferencesRepositoryTest {
                 closeScope(readerScope)
             }
         }
+
+    @Test
+    fun aLateStartClaimDoesNotRewindAnAlreadyAnnouncedTotal() =
+        runTest {
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(newDirectory(), scope)
+                val at = Instant.parse("2025-01-01T00:00:00Z")
+                assertEquals(true, repository.claimGoal("2025020123", 3, at))
+                // A start claim carrying an older baseline arrives after the goal. Lowering the total would make
+                // that goal claimable again on the next pass, which is a repeat.
+                assertEquals(true, repository.claimStart("2025020123", goalBaseline = 1, at = at))
+                assertEquals(3, repository.getNotificationLedgerEntry("2025020123")?.lastNotifiedGoalCount)
+                assertEquals(false, repository.claimGoal("2025020123", 3, at))
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun aBaselineRecordsTheTotalWithoutClaimingTheStart() =
+        runTest {
+            val directory = newDirectory()
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(directory, scope)
+                val at = Instant.parse("2025-01-01T00:00:00Z")
+                assertEquals(
+                    "a first sight with start alerts off still records the score",
+                    true,
+                    repository.claimBaseline("2025020123", 2, at),
+                )
+                val entry = repository.getNotificationLedgerEntry("2025020123")
+                assertEquals(2, entry?.lastNotifiedGoalCount)
+                assertEquals("nothing was announced, so the start is not claimed", false, entry?.startNotified)
+                assertEquals("an equal baseline is not news", false, repository.claimBaseline("2025020123", 2, at))
+                assertEquals("and a lower one never rewinds", false, repository.claimBaseline("2025020123", 1, at))
+                assertEquals(2, repository.getNotificationLedgerEntry("2025020123")?.lastNotifiedGoalCount)
+                // The start can still be claimed later, and it keeps the higher total.
+                assertEquals(true, repository.claimStart("2025020123", goalBaseline = 0, at = at))
+                assertEquals(2, repository.getNotificationLedgerEntry("2025020123")?.lastNotifiedGoalCount)
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun pruningKeepsTheGamesThatAreStillBeingWatched() =
+        runTest {
+            val directory = newDirectory()
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(directory, scope)
+                val old = Instant.parse("2025-01-01T00:00:00Z")
+                val entry = NotificationLedgerEntry(4, startNotified = true, updatedAt = old)
+                repository.setNotificationLedgerEntry("finished-game", entry)
+                repository.setNotificationLedgerEntry("long-overtime", entry)
+
+                // Both are older than the cutoff. Only the one that is no longer in progress may go: a live game's
+                // entry is the only record of what has been announced, whatever its age.
+                repository.pruneNotificationLedger(
+                    olderThan = Instant.parse("2025-01-02T00:00:00Z"),
+                    keep = setOf("long-overtime"),
+                )
+
+                assertNull(repository.getNotificationLedgerEntry("finished-game"))
+                assertEquals(entry, repository.getNotificationLedgerEntry("long-overtime"))
+            } finally {
+                closeScope(scope)
+            }
+        }
 }
