@@ -78,6 +78,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.work.WorkManager
 import kotlinx.coroutines.launch
 import net.montycasa.roux.AppContainer
 import net.montycasa.roux.R
@@ -87,6 +88,8 @@ import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
+import net.montycasa.roux.notify.GameWatchReconciler
+import net.montycasa.roux.notify.WorkManagerGameWatchScheduler
 import net.montycasa.roux.ui.detail.GameDetailScreen
 import net.montycasa.roux.ui.detail.GameDetailViewModel
 import net.montycasa.roux.ui.drawer.BottomLeaguesSheet
@@ -138,7 +141,8 @@ fun RouxNavHost(
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
 
-    val container = (LocalContext.current.applicationContext as RouxApp).container
+    val appContext = LocalContext.current.applicationContext
+    val container = (appContext as RouxApp).container
     val scores: ScoresViewModel =
         viewModel(
             factory =
@@ -441,13 +445,23 @@ fun RouxNavHost(
 /** The back stack entry owns the picker; its repositories are shared with Scores through the app. */
 @Composable
 private fun TeamsDestination() {
-    val container = (LocalContext.current.applicationContext as RouxApp).container
+    val appContext = LocalContext.current.applicationContext
+    val container = (appContext as RouxApp).container
     val teams: TeamsViewModel =
         viewModel(
             factory =
                 viewModelFactory {
                     initializer {
-                        TeamsViewModel(container.standings, container.preferences)
+                        TeamsViewModel(container.standings, container.preferences) {
+                            // Saving an alert changes what should be watched, so the watches are rebuilt from
+                            // the setting that was just stored - not left until the next periodic reconcile.
+                            GameWatchReconciler(
+                                preferences = container.preferences,
+                                scores = container.scores,
+                                scheduler = WorkManagerGameWatchScheduler(WorkManager.getInstance(appContext)),
+                                clock = container.clock,
+                            ).reconcile()
+                        }
                     }
                 },
         )
@@ -462,7 +476,8 @@ private fun TeamsDestination() {
 /** The back stack entry owns the table; the app supplies the shared repository and preferences. */
 @Composable
 private fun StandingsDestination() {
-    val container = (LocalContext.current.applicationContext as RouxApp).container
+    val appContext = LocalContext.current.applicationContext
+    val container = (appContext as RouxApp).container
     val standings: StandingsViewModel =
         viewModel(
             factory =
