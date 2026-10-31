@@ -202,9 +202,7 @@ class Notifier(
     private fun channelBlocked(channel: String): Boolean =
         notificationManager.getNotificationChannel(channel)?.importance == NotificationManager.IMPORTANCE_NONE
 
-    private fun hasPermission(): Boolean =
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+    private fun hasPermission(): Boolean = hasNotificationPermission(context)
 
     companion object {
         const val GAME_START_CHANNEL = "game_start"

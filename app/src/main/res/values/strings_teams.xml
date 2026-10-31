@@ -12,4 +12,15 @@
     <string name="teams_favourite">Favourite</string>
     <string name="teams_not_favourite">Not favourite</string>
     <string name="teams_toggle_label">%1$s</string>
+
+    <string name="teams_alerts_title">%1$s alerts</string>
+    <string name="teams_alerts_button">Alerts</string>
+    <string name="teams_alerts_open">Alerts for %1$s</string>
+    <string name="teams_alerts_start">Game start</string>
+    <string name="teams_alerts_goals">Goals</string>
+    <string name="teams_alerts_disclosure">Starting a game and every goal, built on your phone from the score feed. No account, no tracking, and nothing sent anywhere.</string>
+    <string name="teams_alerts_blocked">Notifications are off for Roux Sports, so these switches can\'t take effect yet.</string>
+    <string name="teams_alerts_open_settings">Open notification settings</string>
+    <string name="teams_alerts_save_failed">Couldn\'t save that change. Try again.</string>
+    <string name="teams_alerts_done">Done</string>
 </resources>

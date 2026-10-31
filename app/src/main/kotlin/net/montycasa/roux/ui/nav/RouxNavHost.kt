@@ -4,8 +4,11 @@
 
 package net.montycasa.roux.ui.nav
 
+import android.Manifest
 import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
@@ -39,6 +42,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -65,6 +69,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -78,6 +85,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.work.WorkManager
 import kotlinx.coroutines.launch
 import net.montycasa.roux.AppContainer
 import net.montycasa.roux.R
@@ -87,6 +95,10 @@ import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
+import net.montycasa.roux.notify.GameWatchReconciler
+import net.montycasa.roux.notify.WorkManagerGameWatchScheduler
+import net.montycasa.roux.notify.notificationsAllowed
+import net.montycasa.roux.notify.openNotificationSettings
 import net.montycasa.roux.ui.detail.GameDetailScreen
 import net.montycasa.roux.ui.detail.GameDetailViewModel
 import net.montycasa.roux.ui.drawer.BottomLeaguesSheet
@@ -138,7 +150,8 @@ fun RouxNavHost(
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
 
-    val container = (LocalContext.current.applicationContext as RouxApp).container
+    val appContext = LocalContext.current.applicationContext
+    val container = (appContext as RouxApp).container
     val scores: ScoresViewModel =
         viewModel(
             factory =
@@ -441,28 +454,80 @@ fun RouxNavHost(
 /** The back stack entry owns the picker; its repositories are shared with Scores through the app. */
 @Composable
 private fun TeamsDestination() {
-    val container = (LocalContext.current.applicationContext as RouxApp).container
+    val appContext = LocalContext.current.applicationContext
+    val container = (appContext as RouxApp).container
     val teams: TeamsViewModel =
         viewModel(
             factory =
                 viewModelFactory {
                     initializer {
-                        TeamsViewModel(container.standings, container.preferences)
+                        TeamsViewModel(container.standings, container.preferences) {
+                            // Saving an alert changes what should be watched, so the watches are rebuilt from
+                            // the setting that was just stored - not left until the next periodic reconcile.
+                            GameWatchReconciler(
+                                preferences = container.preferences,
+                                scores = container.scores,
+                                scheduler = WorkManagerGameWatchScheduler(WorkManager.getInstance(appContext)),
+                                clock = container.clock,
+                            ).reconcile()
+                        }
                     }
                 },
         )
     val state by teams.uiState.collectAsStateWithLifecycle()
+
+    // Whether a notification could land at all. Re-read on resume, because the user can change it in system
+    // settings and come back, and a cached "off" would leave the switches dead with no explanation.
+    var canNotify by remember { mutableStateOf(notificationsAllowed(appContext)) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer =
+            object : DefaultLifecycleObserver {
+                override fun onResume(owner: LifecycleOwner) {
+                    canNotify = notificationsAllowed(appContext)
+                }
+            }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // The permission is asked for when the user turns an alert on - the moment their intent exists - and the
+    // setting they asked for is applied only after it is granted, so a refusal does not silently store an alert
+    // that can never be delivered.
+    var pendingEnable by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val permission =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            canNotify = granted && notificationsAllowed(appContext)
+            if (granted) pendingEnable?.invoke()
+            pendingEnable = null
+        }
+    val withPermission: (() -> Unit) -> Unit = { action ->
+        if (canNotify) {
+            action()
+        } else {
+            pendingEnable = action
+            permission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     TeamsScreen(
         state = state,
         onToggle = teams::toggle,
         onRetry = teams::retry,
+        onOpenAlerts = teams::openAlerts,
+        onCloseAlerts = teams::closeAlerts,
+        onSetStartAlert = { enabled -> withPermission { teams.setAlert(start = enabled) } },
+        onSetGoalAlert = { enabled -> withPermission { teams.setAlert(goals = enabled) } },
+        canNotify = canNotify,
+        onOpenNotificationSettings = { openNotificationSettings(appContext) },
     )
 }
 
 /** The back stack entry owns the table; the app supplies the shared repository and preferences. */
 @Composable
 private fun StandingsDestination() {
-    val container = (LocalContext.current.applicationContext as RouxApp).container
+    val appContext = LocalContext.current.applicationContext
+    val container = (appContext as RouxApp).container
     val standings: StandingsViewModel =
         viewModel(
             factory =
