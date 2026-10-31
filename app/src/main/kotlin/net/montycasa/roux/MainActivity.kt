@@ -53,8 +53,12 @@ class MainActivity : ComponentActivity() {
     /**
      * A tap becomes a request with a fresh nonce. Tapping the same game twice is two requests: an id compared by
      * value would be unchanged the second time and the navigation would not happen.
+     *
+     * `internal` rather than private because this is where both platform entry points - [onCreate] and
+     * [onNewIntent] - end up, and it is the part worth exercising: whether the intent carried the extra is
+     * `getStringExtra`, which is not this app's code.
      */
-    private fun request(gameId: String?) {
+    internal fun request(gameId: String?) {
         if (gameId != null) requestedGame.value = GameRequest(gameId, ++requestCount)
     }
 }
