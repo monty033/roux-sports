@@ -2,6 +2,7 @@
 
 package net.montycasa.roux.ui.scores
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -291,9 +292,29 @@ private fun StateRail(
                 }
 
                 is GameState.Live -> {
-                    LiveCapsule()
+                    // An overtime game's state is "OT", not "LIVE": the period is the fact worth the capsule, and
+                    // moving it there leaves the line below as a bare clock. That is what keeps the rail to one
+                    // line at 2.0 type on a 360 dp phone - "OT" and "12:34" together do not fit in 82 dp, and a
+                    // wrapped clock is worse than a clock with its period stated once, above it.
+                    val periodType = game.period?.periodType
+                    // Only an extra period moves up into the capsule: a regulation game keeps "2nd 12:34" on
+                    // one line because it fits, and "OT"/"SO" are the labels that do not.
+                    val extra = periodType == "OT" || periodType == "SO"
+                    LiveCapsule(
+                        label =
+                            when {
+                                periodType == "OT" -> R.string.game_row_period_overtime
+                                periodType == "SO" -> R.string.game_row_period_shootout
+                                else -> R.string.game_row_live_label
+                            },
+                    )
                     StateClock(
-                        listOfNotNull(periodLabel(game.period), game.period?.clock?.takeIf { it.isNotBlank() }).joinToString(" "),
+                        if (extra) {
+                            game.period?.clock.orEmpty()
+                        } else {
+                            listOfNotNull(periodLabel(game.period), game.period?.clock?.takeIf { it.isNotBlank() })
+                                .joinToString(" ")
+                        },
                         live = true,
                         intermission = game.period?.inIntermission == true,
                     )
@@ -348,7 +369,9 @@ private fun StateClock(
 }
 
 @Composable
-private fun LiveCapsule() {
+private fun LiveCapsule(
+    @StringRes label: Int,
+) {
     val liveDescription = stringResource(R.string.game_row_live_description)
     Row(
         Modifier
@@ -368,7 +391,7 @@ private fun LiveCapsule() {
                 .semantics { contentDescription = liveDescription },
         )
         Text(
-            stringResource(R.string.game_row_live_label),
+            stringResource(label),
             style = Roux.cardTypography.finalState,
             color = Roux.accents.onFill,
             textAlign = TextAlign.Center,
