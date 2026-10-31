@@ -341,7 +341,29 @@ class StandingsViewModelTest {
             entry: NotificationLedgerEntry,
         ) = Unit
 
-        override suspend fun pruneNotificationLedger(olderThan: Instant) = Unit
+        // This fake models settings, not the notification ledger: nothing here ever claims an alert.
+        override suspend fun claimGoal(
+            gameId: String,
+            goalCount: Int,
+            at: Instant,
+        ) = false
+
+        override suspend fun claimStart(
+            gameId: String,
+            goalBaseline: Int,
+            at: Instant,
+        ) = false
+
+        override suspend fun claimBaseline(
+            gameId: String,
+            goalCount: Int,
+            at: Instant,
+        ) = false
+
+        override suspend fun pruneNotificationLedger(
+            olderThan: Instant,
+            keep: Set<String>,
+        ) = Unit
     }
 
     @Test

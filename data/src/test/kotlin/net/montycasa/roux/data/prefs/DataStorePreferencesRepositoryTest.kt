@@ -14,7 +14,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -358,7 +361,7 @@ class DataStorePreferencesRepositoryTest {
             repository.setNotificationLedgerEntry("2024010001", old)
             repository.setNotificationLedgerEntry("2024010002", recent)
 
-            repository.pruneNotificationLedger(Instant.parse("2025-01-03T00:00:00Z"))
+            repository.pruneNotificationLedger(Instant.parse("2025-01-03T00:00:00Z"), keep = emptySet())
 
             assertNull(repository.getNotificationLedgerEntry("2024010001"))
             // Pruning by age must not sweep the ledger: a live game's dedup state has to survive,
@@ -464,7 +467,7 @@ class DataStorePreferencesRepositoryTest {
                             NotificationLedgerEntry(1, startNotified = true, updatedAt = Instant.fromEpochMilliseconds(2_000L)),
                         )
                     },
-                    { repository.pruneNotificationLedger(Instant.fromEpochMilliseconds(Long.MAX_VALUE)) },
+                    { repository.pruneNotificationLedger(Instant.fromEpochMilliseconds(Long.MAX_VALUE), keep = emptySet()) },
                 )
             for (refusal in refusals) {
                 assertThrows(UnsupportedPreferencesVersionException::class.java) {
@@ -543,6 +546,249 @@ class DataStorePreferencesRepositoryTest {
                         "bad id!",
                         NotificationLedgerEntry(1, startNotified = false, updatedAt = Instant.parse("2025-01-01T00:00:00Z")),
                     )
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun fiftyConcurrentGoalClaimsForTheSameCountProduceExactlyOneWinner() =
+        runBlocking {
+            val directory = newDirectory()
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(directory, scope)
+                val at = Instant.parse("2025-01-01T00:00:00Z")
+                // A real dispatcher, not virtual time: the race this guards against only exists when the calls
+                // genuinely overlap, and 50 sequential claims would pass with the transaction removed.
+                val winners =
+                    coroutineScope {
+                        (1..50)
+                            .map { async(Dispatchers.IO) { repository.claimGoal("2025020123", 3, at) } }
+                            .awaitAll()
+                            .count { it }
+                    }
+                assertEquals("exactly one caller may post a goal", 1, winners)
+                // The ledger has to agree with the winner, or the next pass would claim the same goal again.
+                assertEquals(3, repository.getNotificationLedgerEntry("2025020123")?.lastNotifiedGoalCount)
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun aGoalClaimForACountThatIsNotNewerIsRefused() =
+        runTest {
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(newDirectory(), scope)
+                val at = Instant.parse("2025-01-01T00:00:00Z")
+                assertEquals(true, repository.claimGoal("2025020123", 3, at))
+                assertEquals("the same count is a duplicate", false, repository.claimGoal("2025020123", 3, at))
+                assertEquals("a lower count is the feed correcting itself, not a goal", false, repository.claimGoal("2025020123", 2, at))
+                assertEquals(
+                    "a refused claim must not drag the ledger backwards",
+                    3,
+                    repository.getNotificationLedgerEntry("2025020123")?.lastNotifiedGoalCount,
+                )
+                assertEquals(true, repository.claimGoal("2025020123", 4, at))
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun aStartClaimIsWonOnceAndRecordsTheGoalBaseline() =
+        runTest {
+            val directory = newDirectory()
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(directory, scope)
+                val at = Instant.parse("2025-01-01T00:00:00Z")
+                // The game is already 2-1 when the start is claimed. Those goals were not seen happen, so the
+                // baseline is what stops them being announced as one burst the moment the start fires.
+                assertEquals(true, repository.claimStart("2025020123", goalBaseline = 2, at = at))
+                assertEquals("a second start claim must lose", false, repository.claimStart("2025020123", goalBaseline = 3, at = at))
+                val entry = repository.getNotificationLedgerEntry("2025020123")
+                assertEquals(true, entry?.startNotified)
+                assertEquals(2, entry?.lastNotifiedGoalCount)
+                assertEquals("goals already on the board at the start are not new", false, repository.claimGoal("2025020123", 2, at))
+                assertEquals("the next goal still is", true, repository.claimGoal("2025020123", 3, at))
+                assertEquals("and the start stays claimed", true, repository.getNotificationLedgerEntry("2025020123")?.startNotified)
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun aStartClaimAfterAGoalDoesNotLoseTheGoalCount() =
+        runTest {
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(newDirectory(), scope)
+                val at = Instant.parse("2025-01-01T00:00:00Z")
+                assertEquals(true, repository.claimGoal("2025020123", 1, at))
+                // The start can arrive after a goal - the app may first see the game mid-period - and it must not
+                // reset the count, or the goal at 1 would be announced a second time.
+                assertEquals(true, repository.claimStart("2025020123", goalBaseline = 1, at = at))
+                val entry = repository.getNotificationLedgerEntry("2025020123")
+                assertEquals(true, entry?.startNotified)
+                assertEquals(1, entry?.lastNotifiedGoalCount)
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun claimsOnANewerFileAreRefusedWithoutWriting() =
+        runTest {
+            val directory = newDirectory()
+            val at = Instant.parse("2025-01-01T00:00:00Z")
+            // A file from a build that understands more than this one: a claim must not touch it.
+            writeRawLedgerEntry(
+                directory,
+                gameId = "game-1",
+                goalCount = 1,
+                startNotified = false,
+                updatedAt = 1L,
+                version = 2,
+            )
+
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(directory, scope)
+                assertEquals(false, repository.claimGoal("game-1", 5, at))
+                assertEquals(false, repository.claimStart("game-1", 5, at))
+            } finally {
+                closeScope(scope)
+            }
+
+            val readerScope = newScope()
+            try {
+                val stored = openRawStore(directory, readerScope).data.first()
+                assertEquals("the newer build's marker must survive", 2, stored[intPreferencesKey("prefs_version")])
+                assertEquals("and its ledger must be untouched", 1, stored[intPreferencesKey("ledger_goals_game-1")])
+                assertEquals(false, stored[booleanPreferencesKey("ledger_start_game-1")])
+                assertEquals(1L, stored[longPreferencesKey("ledger_time_game-1")])
+            } finally {
+                closeScope(readerScope)
+            }
+        }
+
+    @Test
+    fun aLateStartClaimDoesNotRewindAnAlreadyAnnouncedTotal() =
+        runTest {
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(newDirectory(), scope)
+                val at = Instant.parse("2025-01-01T00:00:00Z")
+                assertEquals(true, repository.claimGoal("2025020123", 3, at))
+                // A start claim carrying an older baseline arrives after the goal. Lowering the total would make
+                // that goal claimable again on the next pass, which is a repeat.
+                assertEquals(true, repository.claimStart("2025020123", goalBaseline = 1, at = at))
+                assertEquals(3, repository.getNotificationLedgerEntry("2025020123")?.lastNotifiedGoalCount)
+                assertEquals(false, repository.claimGoal("2025020123", 3, at))
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun aBaselineRecordsTheTotalWithoutClaimingTheStart() =
+        runTest {
+            val directory = newDirectory()
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(directory, scope)
+                val at = Instant.parse("2025-01-01T00:00:00Z")
+                assertEquals(
+                    "a first sight with start alerts off still records the score",
+                    true,
+                    repository.claimBaseline("2025020123", 2, at),
+                )
+                val entry = repository.getNotificationLedgerEntry("2025020123")
+                assertEquals(2, entry?.lastNotifiedGoalCount)
+                assertEquals("nothing was announced, so the start is not claimed", false, entry?.startNotified)
+                assertEquals("an equal baseline is not news", false, repository.claimBaseline("2025020123", 2, at))
+                assertEquals("and a lower one never rewinds", false, repository.claimBaseline("2025020123", 1, at))
+                assertEquals(2, repository.getNotificationLedgerEntry("2025020123")?.lastNotifiedGoalCount)
+                // The start can still be claimed later, and it keeps the higher total.
+                assertEquals(true, repository.claimStart("2025020123", goalBaseline = 0, at = at))
+                assertEquals(2, repository.getNotificationLedgerEntry("2025020123")?.lastNotifiedGoalCount)
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun pruningKeepsTheGamesThatAreStillBeingWatched() =
+        runTest {
+            val directory = newDirectory()
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(directory, scope)
+                val old = Instant.parse("2025-01-01T00:00:00Z")
+                val entry = NotificationLedgerEntry(4, startNotified = true, updatedAt = old)
+                repository.setNotificationLedgerEntry("finished-game", entry)
+                repository.setNotificationLedgerEntry("long-overtime", entry)
+
+                // Both are older than the cutoff. Only the one that is no longer in progress may go: a live game's
+                // entry is the only record of what has been announced, whatever its age.
+                repository.pruneNotificationLedger(
+                    olderThan = Instant.parse("2025-01-02T00:00:00Z"),
+                    keep = setOf("long-overtime"),
+                )
+
+                assertNull(repository.getNotificationLedgerEntry("finished-game"))
+                assertEquals(entry, repository.getNotificationLedgerEntry("long-overtime"))
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun aBaselineDoesNotAdvanceAnEntryThatAlreadyExists() =
+        runTest {
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(newDirectory(), scope)
+                val at = Instant.parse("2025-01-01T00:00:00Z")
+                assertEquals(true, repository.claimGoal("2025020123", 1, at))
+                // A baseline taken from a stale snapshot must not raise the total over a goal that is being claimed
+                // at the same moment: doing so would make that goal claim lose and never be announced.
+                assertEquals(false, repository.claimBaseline("2025020123", 5, at))
+                assertEquals(1, repository.getNotificationLedgerEntry("2025020123")?.lastNotifiedGoalCount)
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun anUnknownTotalBlocksGoalsUntilAScoreIsObserved() =
+        runTest {
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(newDirectory(), scope)
+                val at = Instant.parse("2025-01-01T00:00:00Z")
+                // The game started while the feed had no score: the start is claimed with an unknown total.
+                assertEquals(
+                    true,
+                    repository.claimStart("2025020123", NotificationLedgerEntry.UNKNOWN_GOAL_COUNT, at),
+                )
+                assertEquals(
+                    "nothing can be above an unknown total",
+                    false,
+                    repository.claimGoal("2025020123", 0, at),
+                )
+                val entry = repository.getNotificationLedgerEntry("2025020123")
+                assertEquals(NotificationLedgerEntry.UNKNOWN_GOAL_COUNT, entry?.lastNotifiedGoalCount)
+                assertEquals(true, entry?.goalCountIsUnknown)
+
+                // The first real score fills the gap rather than announcing anything.
+                assertEquals(true, repository.claimBaseline("2025020123", 3, at))
+                assertEquals(3, repository.getNotificationLedgerEntry("2025020123")?.lastNotifiedGoalCount)
+                assertEquals("and the start stays claimed", true, repository.getNotificationLedgerEntry("2025020123")?.startNotified)
+                assertEquals(true, repository.claimGoal("2025020123", 4, at))
             } finally {
                 closeScope(scope)
             }

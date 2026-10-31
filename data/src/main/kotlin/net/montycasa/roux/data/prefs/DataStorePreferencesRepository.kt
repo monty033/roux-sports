@@ -2,6 +2,7 @@ package net.montycasa.roux.data.prefs
 
 import androidx.datastore.core.DataStore
 import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
+import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -147,7 +148,143 @@ class DataStorePreferencesRepository(
         }
     }
 
-    override suspend fun pruneNotificationLedger(olderThan: Instant) {
+    override suspend fun claimGoal(
+        gameId: String,
+        goalCount: Int,
+        at: Instant,
+    ): Boolean {
+        requireUsableGameId(gameId)
+        var claimed = false
+        store.edit { preferences ->
+            // A newer build's file is never written here. Answering "not claimed" rather than throwing keeps the
+            // decision with the caller: the only sane response to "you may not notify" is to stay silent.
+            if (!isInterpretable(preferences)) return@edit
+            val lastNotified = preferences[goalCountKey(gameId)]
+            // An unknown total means no score has ever been observed for this game, so there is nothing for a goal to
+            // be above. Recording a baseline comes first; announcing before that would announce a score nobody saw.
+            if (lastNotified == NotificationLedgerEntry.UNKNOWN_GOAL_COUNT) return@edit
+            // Equal is a duplicate and lower is a correction downward. Neither is an event, and neither may drag
+            // the ledger backwards - which is what would happen if a stale observation overwrote a newer one.
+            if (lastNotified != null && goalCount <= lastNotified) return@edit
+            writeLedger(
+                preferences = preferences,
+                gameId = gameId,
+                goalCount = goalCount,
+                startNotified = preferences[startNotifiedKey(gameId)] ?: false,
+                at = at,
+            )
+            claimed = true
+        }
+        return claimed
+    }
+
+    override suspend fun claimStart(
+        gameId: String,
+        goalBaseline: Int,
+        at: Instant,
+    ): Boolean {
+        requireUsableGameId(gameId)
+        var claimed = false
+        store.edit { preferences ->
+            if (!isInterpretable(preferences)) return@edit
+            if (preferences[startNotifiedKey(gameId)] == true) return@edit
+            writeLedger(
+                preferences = preferences,
+                gameId = gameId,
+                // The recorded total only ever moves up. A start claim that arrives after a goal was announced must
+                // not lower it, or the goal becomes claimable again; and an unknown total is replaced by whatever
+                // this claim knows, not silently treated as zero.
+                goalCount = mergeGoalCount(preferences[goalCountKey(gameId)], goalBaseline),
+                startNotified = true,
+                at = at,
+            )
+            claimed = true
+        }
+        return claimed
+    }
+
+    override suspend fun claimBaseline(
+        gameId: String,
+        goalCount: Int,
+        at: Instant,
+    ): Boolean {
+        requireUsableGameId(gameId)
+        var claimed = false
+        store.edit { preferences ->
+            if (!isInterpretable(preferences)) return@edit
+            // A baseline only fills a gap. If another worker already wrote a complete entry, raising the total here
+            // could outrun a goal that is being claimed at the same moment and silence it. An entry whose total is
+            // unknown is the gap itself, so it is still fillable.
+            val recordedTotal = preferences[goalCountKey(gameId)]
+            val alreadyRecorded =
+                recordedTotal != null &&
+                    recordedTotal != NotificationLedgerEntry.UNKNOWN_GOAL_COUNT &&
+                    preferences[startNotifiedKey(gameId)] != null &&
+                    preferences[updatedAtKey(gameId)] != null
+            if (alreadyRecorded) return@edit
+            writeLedger(
+                preferences = preferences,
+                gameId = gameId,
+                goalCount = mergeGoalCount(preferences[goalCountKey(gameId)], goalCount),
+                // Nothing was announced, so this must not claim the start either.
+                startNotified = preferences[startNotifiedKey(gameId)] ?: false,
+                at = at,
+            )
+            claimed = true
+        }
+        return claimed
+    }
+
+    /**
+     * True when this build may interpret and write the file.
+     *
+     * A file with no marker predates versioning and is read as the current version - not as something to reset.
+     */
+    private fun isInterpretable(preferences: Preferences): Boolean {
+        val stored = preferences[VERSION]
+        return stored == null || stored <= PREFERENCES_VERSION
+    }
+
+    /**
+     * Writes all three ledger fields together.
+     *
+     * A partial entry reads as no entry at all, so the claim must not leave one behind: the fields are written in one
+     * transaction and the stamp is what proves the entry is complete.
+     */
+    private fun writeLedger(
+        preferences: MutablePreferences,
+        gameId: String,
+        goalCount: Int,
+        startNotified: Boolean,
+        at: Instant,
+    ) {
+        preferences[VERSION] = PREFERENCES_VERSION
+        preferences[goalCountKey(gameId)] = goalCount
+        preferences[startNotifiedKey(gameId)] = startNotified
+        preferences[updatedAtKey(gameId)] = at.toEpochMilliseconds()
+    }
+
+    /**
+     * The next recorded total, given what is stored and what was just observed.
+     *
+     * [NotificationLedgerEntry.UNKNOWN_GOAL_COUNT] is not a number to compare against - it means nothing has been
+     * observed - so it never wins a maximum and is replaced by the first real observation.
+     */
+    private fun mergeGoalCount(
+        stored: Int?,
+        observed: Int,
+    ): Int =
+        when {
+            stored == null -> observed
+            stored == NotificationLedgerEntry.UNKNOWN_GOAL_COUNT -> observed
+            observed == NotificationLedgerEntry.UNKNOWN_GOAL_COUNT -> stored
+            else -> maxOf(stored, observed)
+        }
+
+    override suspend fun pruneNotificationLedger(
+        olderThan: Instant,
+        keep: Set<String>,
+    ) {
         requireWritable()
         val cutoff = olderThan.toEpochMilliseconds()
         store.edit { preferences ->
@@ -161,7 +298,9 @@ class DataStorePreferencesRepository(
                     .mapNotNull { key ->
                         val stamp = preferences[longPreferencesKey(key.name)]
                         val gameId = key.name.removePrefix(UPDATED_AT_PREFIX)
-                        if (stamp != null && stamp < cutoff) gameId else null
+                        // A game still in progress is kept whatever its age: its entry is the only record of what
+                        // has already been announced, and dropping it mid-game would repeat those alerts.
+                        if (stamp != null && stamp < cutoff && gameId !in keep) gameId else null
                     }
             if (expired.isEmpty()) return@edit
             preferences[VERSION] = PREFERENCES_VERSION
