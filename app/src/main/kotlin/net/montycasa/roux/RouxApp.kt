@@ -2,6 +2,7 @@ package net.montycasa.roux
 
 import android.app.Application
 import android.content.Context
+import androidx.work.Configuration
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
 import coil3.annotation.ExperimentalCoilApi
@@ -27,6 +28,7 @@ import net.montycasa.roux.domain.repo.GameDetailRepository
 import net.montycasa.roux.domain.repo.PreferencesRepository
 import net.montycasa.roux.domain.repo.ScoresRepository
 import net.montycasa.roux.domain.repo.StandingsRepository
+import net.montycasa.roux.notify.RouxWorkerFactory
 import okio.Path
 import okio.Path.Companion.toPath
 import kotlin.time.Clock
@@ -40,7 +42,8 @@ import kotlin.time.Clock
  */
 open class RouxApp :
     Application(),
-    SingletonImageLoader.Factory {
+    SingletonImageLoader.Factory,
+    Configuration.Provider {
     /** Overridable so integration tests replace the engine while exercising the production wiring. */
     open val container: AppContainer by lazy {
         AppContainer(
@@ -49,6 +52,20 @@ open class RouxApp :
             version = versionName(),
         )
     }
+
+    /**
+     * WorkManager's configuration, supplied on demand rather than by its content provider.
+     *
+     * The provider initialises WorkManager before `Application.onCreate` finishes and without this app's
+     * factory, so every worker would be built by reflection - and a worker that opened its own store would
+     * be refused by DataStore. The manifest removes that initializer; this is what replaces it.
+     */
+    override val workManagerConfiguration: Configuration
+        get() =
+            Configuration
+                .Builder()
+                .setWorkerFactory(RouxWorkerFactory(container))
+                .build()
 
     /**
      * Coil shares the data client's engine and NHL host boundary. Supplying the fetcher explicitly

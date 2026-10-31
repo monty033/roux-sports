@@ -8,6 +8,7 @@ import androidx.work.WorkManager
 import androidx.work.testing.SynchronousExecutor
 import androidx.work.testing.WorkManagerTestInitHelper
 import kotlinx.coroutines.runBlocking
+import net.montycasa.roux.RouxApp
 import net.montycasa.roux.domain.model.DateIndexEntry
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
@@ -48,6 +49,9 @@ class WorkManagerGameWatchSchedulerTest {
             Configuration
                 .Builder()
                 .setExecutor(SynchronousExecutor())
+                // The app's factory, because a zero-delay watch is due at once and this executor runs due work
+                // inline: with reflection the worker has no container, so it could not be built at all.
+                .setWorkerFactory(RouxWorkerFactory((context as RouxApp).container))
                 .build(),
         )
         workManager = WorkManager.getInstance(context)
@@ -226,7 +230,14 @@ class WorkManagerGameWatchSchedulerTest {
             val periodicity = periodic.single().periodicityInfo
             assertNotNull("and it is the periodic kind", periodicity)
             assertEquals(12 * 60 * 60 * 1000L, periodicity!!.repeatIntervalMillis)
-            assertTrue(periodic.single().state == WorkInfo.State.ENQUEUED)
+            // Not pinned to ENQUEUED: this harness runs due work inline, so a periodic request can already have
+            // run by the time it is read back. What matters here is that the request is live and not refused;
+            // what the body does when it runs is DailyReconcileWorkerTest's subject.
+            val state = periodic.single().state
+            assertTrue(
+                "the periodic request must still be live, was $state",
+                state == WorkInfo.State.ENQUEUED || state == WorkInfo.State.RUNNING,
+            )
         }
 
     @Test

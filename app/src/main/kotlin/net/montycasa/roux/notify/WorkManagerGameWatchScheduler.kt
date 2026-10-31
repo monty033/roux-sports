@@ -10,7 +10,9 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.google.common.util.concurrent.ListenableFuture
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
+import net.montycasa.roux.AppContainer
 import net.montycasa.roux.domain.model.ScoreDay
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.notify.GameWatchPlan
@@ -195,18 +197,36 @@ class WorkManagerGameWatchScheduler(
 class GameWatchWorker(
     context: Context,
     parameters: WorkerParameters,
+    /** The same container the UI uses, so the worker and the screens share one store and one client. */
+    val container: AppContainer,
 ) : CoroutineWorker(context, parameters) {
     override suspend fun doWork(): Result = Result.success()
 }
 
 /**
  * Periodic target that re-runs the reconcile every [WorkManagerGameWatchScheduler.RECONCILE_INTERVAL_HOURS],
- * so a game whose start time the feed published late is still picked up. Its body arrives with the wiring
- * step; like [GameWatchWorker] it currently reports success without doing anything.
+ * so a game whose start time the feed published after the app's last pass is still picked up.
+ *
+ * [GameWatchWorker] still has no body: the fetch, the decision and the notification arrive with the notifier.
+ * This one does have one, because the promise its name makes - "reconcile again later" - is a promise about
+ * reconciliation, not about notifying.
  */
 class DailyReconcileWorker(
     context: Context,
     parameters: WorkerParameters,
+    val reconciler: GameWatchReconciler,
 ) : CoroutineWorker(context, parameters) {
-    override suspend fun doWork(): Result = Result.success()
+    override suspend fun doWork(): Result =
+        try {
+            reconciler.reconcile()
+            Result.success()
+        } catch (cancelled: CancellationException) {
+            // WorkManager cancels by cancelling this coroutine; reporting a retry here would resurrect work the
+            // platform just asked to stop.
+            throw cancelled
+        } catch (failure: Exception) {
+            // A reconcile that could not read its inputs is worth another attempt; an input that is simply
+            // absent is not a failure at all, and the reconciler returns instead of throwing for it.
+            Result.retry()
+        }
 }
