@@ -95,7 +95,7 @@ class TeamsViewModelTest {
         }
 
     @Test
-    fun togglingTorontoPersistsTheFullSetThenRemovesItAndReordersRows() =
+    fun togglingTorontoPersistsTheFullSetThenRemovesItAndLeavesTheOrderAlone() =
         runTest {
             val preferences = FakePreferences()
             val viewModel = viewModel(preferences = preferences)
@@ -108,7 +108,9 @@ class TeamsViewModelTest {
                 assertEquals(setOf(tor), preferences.teams)
                 val selected = expectMostRecentItem()
                 assertEquals(setOf(tor), selected.favourites)
-                assertEquals(tor, selected.rows.first().key)
+                // Where it was. A favourite sorts first at the next load - not under the finger that just
+                // tapped it - so the row a thumb is on does not jump away mid-tap.
+                assertEquals("Anaheim Ducks", selected.rows.first().name)
                 viewModel.toggle(tor)
                 runCurrent()
                 assertEquals(emptySet<TeamKey>(), preferences.teams)
@@ -407,6 +409,51 @@ class TeamsViewModelTest {
                 gate.complete(Unit)
                 runCurrent()
                 assertEquals(saved, expectMostRecentItem())
+            }
+        }
+
+    @Test
+    fun togglingAFavouriteDoesNotMoveItsRow() =
+        runTest {
+            val viewModel = viewModel()
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                val before = expectMostRecentItem()
+                val rowBefore = before.rows.indexOfFirst { it.key == tor }
+                assertTrue("the fixture must list Toronto below the top", rowBefore > 0)
+
+                viewModel.toggle(tor)
+                runCurrent()
+
+                val after = expectMostRecentItem()
+                // The tap took effect...
+                assertTrue(tor in after.favourites)
+                // ...and the list did not rearrange itself under the finger that made it.
+                assertEquals(rowBefore, after.rows.indexOfFirst { it.key == tor })
+            }
+        }
+
+    @Test
+    fun theRowOrderCatchesUpOnAnExplicitRetry() =
+        runTest {
+            val viewModel = viewModel()
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                val before = expectMostRecentItem()
+                assertTrue(before.rows.indexOfFirst { it.key == tor } > 0)
+
+                viewModel.toggle(tor)
+                runCurrent()
+                // Still where it was: the selection changed, the order did not.
+                assertTrue(expectMostRecentItem().rows.indexOfFirst { it.key == tor } > 0)
+
+                viewModel.retry()
+                runCurrent()
+
+                val after = expectMostRecentItem()
+                assertEquals("a retry is the user asking for the list to be re-sorted", 0, after.rows.indexOfFirst { it.key == tor })
             }
         }
 
