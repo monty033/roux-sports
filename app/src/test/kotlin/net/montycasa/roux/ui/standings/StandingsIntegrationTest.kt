@@ -1,5 +1,6 @@
 package net.montycasa.roux.ui.standings
 
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
@@ -81,6 +82,10 @@ class StandingsIntegrationTest {
     @Test
     fun coldStartStandingsTabShowsEveryCapturedTeamThroughTheLastRow() {
         openStandingsFromColdStart()
+        // The screen opens on the Eastern conference; the whole league is a tab away, and that is the table this
+        // test walks end to end.
+        rule.onNodeWithTag("standings.view.League").performClick()
+        rule.waitForIdle()
 
         // Verify the table by scrolling through every captured row, including the last team, rather
         // than counting composed nodes. The expected count and last team come from the real fixture.
@@ -115,10 +120,15 @@ class StandingsIntegrationTest {
     fun conferenceSwitcherChangesTheTableInTheRealShell() {
         openStandingsFromColdStart()
 
-        rule.onNodeWithTag("standings.view.Conference").performClick().assertIsSelected()
-        rule.onNodeWithText("Eastern").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Western").performScrollTo().assertIsDisplayed()
+        // The tabs jump between conferences keeping the ranking; the ranking strip jumps within the conference.
+        rule.onNodeWithTag("standings.view.Eastern").performClick().assertIsSelected()
+        // The strip opens on the playoff picture, which is the first ranking.
+        rule.onNodeWithTag("standings.mode.Playoffs").assertIsSelected()
         rule.onNodeWithText("NHL").assertDoesNotExist()
+        rule.onNodeWithTag("standings.mode.Division").performClick().assertIsSelected()
+        rule.onNodeWithText("Atlantic").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithTag("standings.view.Western").performClick().assertIsSelected()
+        rule.onNodeWithText("Central").performScrollTo().assertIsDisplayed()
         rule.onNodeWithTag("standings.view.League").performClick().assertIsSelected()
         rule.onNodeWithText("NHL").performScrollTo().assertIsDisplayed()
     }
@@ -130,10 +140,17 @@ class StandingsIntegrationTest {
         // Scores is the start destination. Go directly to Standings without interacting with Scores
         // or Teams, so neither can initialise the standings repository on this destination's behalf.
         rule.onNode(hasText("Standings") and isSelectable()).performClick().assertIsSelected()
+        // The chrome composes before the table does, so wait for a real row: the Eastern playoff picture is the
+        // page that opens, and the whole league is one tab away.
+        val anyRow =
+            SemanticsMatcher("standings row") {
+                it.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("standings.row.") == true
+            }
         rule.waitUntil(timeoutMillis = 10_000) {
-            rule.onAllNodesWithTag("standings.row.0.${fixtureTeams.first()}").fetchSemanticsNodes().isNotEmpty()
+            rule.onAllNodes(anyRow).fetchSemanticsNodes().isNotEmpty()
         }
-        rule.onNodeWithText("NHL").assertIsDisplayed()
+        rule.onNodeWithTag("standings.view.Eastern").assertIsSelected()
+        rule.onNodeWithText("Atlantic").assertIsDisplayed()
         rule
             .onAllNodes(
                 SemanticsMatcher("bottom navigation destination") {

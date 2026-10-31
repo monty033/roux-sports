@@ -15,23 +15,28 @@ import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.policy.StandingsGrouping
 import net.montycasa.roux.domain.policy.StandingsGroups
+import net.montycasa.roux.domain.policy.StandingsMode
 import net.montycasa.roux.domain.policy.StandingsView
 import net.montycasa.roux.domain.repo.PreferencesRepository
 import net.montycasa.roux.domain.repo.StandingsRepository
 
 data class StandingsUiState(
     val groups: StandingsGroups = StandingsGroups(emptyList()),
-    // Every view, grouped: the swipe shows the neighbouring view's table while the finger is still moving, so those
-    // rows have to exist before that view is selected.
-    val groupsByView: Map<StandingsView, StandingsGroups> = emptyMap(),
-    val view: StandingsView = StandingsView.League,
+    // Every view and every ranking, grouped: the swipe shows the neighbouring conference while the finger is still
+    // moving, and the ranking control has to be able to change the table without a round trip, so both axes are
+    // grouped ahead of time. The league page ignores the ranking and holds one entry.
+    val groupsByView: Map<StandingsView, Map<StandingsMode, StandingsGroups>> = emptyMap(),
+    // Opens on a conference rather than the whole league: the standings are read by someone following a team.
+    val view: StandingsView = StandingsView.Eastern,
+    // The ranking is one mode shared by both conferences, so a swipe compares the same table rather than changing
+    // two things at once. It is not persisted: there is nothing saved today, so there is nothing to migrate.
+    val mode: StandingsMode = StandingsMode.Playoffs,
     val isRefreshing: Boolean = false,
     val error: LoadError? = null,
     val stale: Freshness.Stale? = null,
     val loading: Boolean = true,
     val favouritesKnown: Boolean = false,
     val favouritesOnly: Boolean = true,
-    val pinnedShown: Boolean = false,
 )
 
 class StandingsViewModel(
@@ -49,6 +54,21 @@ class StandingsViewModel(
 
     fun setView(view: StandingsView) {
         mutableState.update { grouped(it.copy(view = view)) }
+    }
+
+    fun setMode(mode: StandingsMode) {
+        mutableState.update { grouped(it.copy(mode = mode)) }
+    }
+
+    /**
+     * One entry point for both axes. A swipe settles on a whole page - conference and ranking together - so the two
+     * are set in one update and no frame can show the new conference against the old ranking.
+     */
+    fun select(
+        view: StandingsView,
+        mode: StandingsMode,
+    ) {
+        mutableState.update { grouped(it.copy(view = view, mode = mode)) }
     }
 
     /** Also rereads the shared preferences, whose repository currently has no observable API. */
@@ -93,12 +113,22 @@ class StandingsViewModel(
     }
 
     private fun grouped(state: StandingsUiState): StandingsUiState {
-        val pinned = if (state.favouritesKnown && state.favouritesOnly) rows.filter { it.team.key in favourites } else emptyList()
-        val byView = StandingsView.entries.associateWith { StandingsGrouping.group(rows, it, pinned) }
+        // No favourites section: the table is the table. A pinned block splits one ranking into two, and the
+        // favourite teams are still marked where they are in the table itself.
+        val byView =
+            StandingsView.entries.associateWith { view ->
+                if (view == StandingsView.League) {
+                    mapOf(StandingsMode.Playoffs to StandingsGrouping.group(rows, view))
+                } else {
+                    StandingsMode.entries.associateWith { mode -> StandingsGrouping.group(rows, view, mode) }
+                }
+            }
+        val perView = byView.getValue(state.view)
         return state.copy(
-            groups = byView.getValue(state.view),
+            // The league page holds one grouping (the ranking does not apply to it), so the lookup falls back to it
+            // rather than to an empty table.
+            groups = perView[state.mode] ?: perView.values.first(),
             groupsByView = byView,
-            pinnedShown = pinned.isNotEmpty(),
         )
     }
 

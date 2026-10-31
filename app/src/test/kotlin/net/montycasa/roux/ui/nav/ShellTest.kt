@@ -333,8 +333,9 @@ class ShellTest {
         barItem("Standings").performClick()
         rule.onNodeWithTag("standings.header").assertExists()
         barItem("Standings").assertIsSelected()
-        // And the table itself arrives from the feed rather than staying a skeleton.
-        rule.waitUntil(timeoutMillis = 10_000) { rule.onAllNodesWithText("NHL").fetchSemanticsNodes().isNotEmpty() }
+        // And the table itself arrives from the feed rather than staying a skeleton. The screen opens on the
+        // Eastern conference, so the first heading that proves data is the Atlantic.
+        rule.waitUntil(timeoutMillis = 10_000) { rule.onAllNodesWithText("Atlantic").fetchSemanticsNodes().isNotEmpty() }
     }
 
     @Test

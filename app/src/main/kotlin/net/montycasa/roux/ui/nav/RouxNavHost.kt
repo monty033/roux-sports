@@ -450,7 +450,7 @@ private fun StandingsDestination() {
     StandingsScreen(
         state = state,
         onRefresh = standings::refresh,
-        onSetView = standings::setView,
+        onSelect = standings::select,
     )
 }
 

@@ -1,8 +1,10 @@
 <resources>
     <string name="standings_league">League</string>
+    <string name="standings_eastern">Eastern</string>
+    <string name="standings_western">Western</string>
     <string name="standings_conference">Conference</string>
     <string name="standings_division">Division</string>
-    <string name="standings_wild_card">Wild Card</string>
+    <string name="standings_playoffs">Playoffs</string>
     <string name="standings_team">Team</string>
     <string name="standings_gp">GP</string>
     <string name="standings_w">W</string>
@@ -11,6 +13,7 @@
     <string name="standings_pts">PTS</string>
     <string name="standings_loading">Loading standings…</string>
     <string name="standings_empty">No table yet.</string>
+    <string name="standings_conference_unknown">The feed did not name a conference for any team, so this page is empty. The league table still shows every team.</string>
     <string name="standings_error">Couldn’t load standings. Try again.</string>
     <string name="standings_refresh_error">Couldn’t refresh. Showing saved standings.</string>
     <string name="standings_playoff_line">Playoff line</string>

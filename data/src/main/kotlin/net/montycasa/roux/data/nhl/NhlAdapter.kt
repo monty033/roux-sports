@@ -126,6 +126,8 @@ internal object NhlAdapter {
                         TeamRef(
                             key = TeamKey(abbreviation),
                             name = row.teamName?.default,
+                            // Place-free club name. A blank common name is absence, not a name.
+                            shortName = row.teamCommonName?.default?.takeIf { it.isNotBlank() },
                             logoUrl = row.teamLogo,
                             darkLogoUrl = row.teamLogoDark,
                         ),

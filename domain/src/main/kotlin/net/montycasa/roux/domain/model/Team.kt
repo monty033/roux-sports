@@ -10,6 +10,11 @@ value class TeamKey(
 data class TeamRef(
     val key: TeamKey,
     val name: String? = null,
+    /**
+     * The club without its place, as the feed states it ("Hurricanes", "Maple Leafs"). Tables are scanned by club,
+     * so they show this; the full name stays for anywhere a place matters. Null when the feed omits it.
+     */
+    val shortName: String? = null,
     val logoUrl: String? = null,
     val darkLogoUrl: String? = null,
 ) {

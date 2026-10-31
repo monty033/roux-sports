@@ -17,6 +17,7 @@ import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.Season
 import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.model.TeamKey
+import net.montycasa.roux.domain.policy.StandingsMode
 import net.montycasa.roux.domain.policy.StandingsView
 import net.montycasa.roux.domain.repo.NotificationLedgerEntry
 import net.montycasa.roux.domain.repo.PreferencesRepository
@@ -89,6 +90,8 @@ class StandingsViewModelTest {
             val vm = model(repo)
             assertTrue(vm.uiState.value.loading)
             runCurrent()
+            // The screen opens on a conference; the league table is the whole-league page this test counts.
+            vm.setView(StandingsView.League)
             assertEquals(
                 32,
                 vm.uiState.value.groups.sections
@@ -105,36 +108,31 @@ class StandingsViewModelTest {
         }
 
     @Test
-    fun pinsOnlyWhenThePersistedScoresFilterIsOnAndKeepsTheWholeTable() =
+    fun theFilterStillFavoursTeamsButTheTableStaysOneRanking() =
         runTest {
+            // No favourites block: a filter may still say which teams are mine, but the table is the table, so a
+            // league ranking is never split into two lists with the same numbering restarting.
             val prefs = FakePreferences(teams = setOf(rows.first().team.key))
             val vm = model(prefs = prefs)
             runCurrent()
-            val pinned = vm.uiState.value
-            assertTrue(pinned.favouritesKnown)
-            assertTrue(pinned.favouritesOnly)
-            assertTrue(pinned.pinnedShown)
-            assertEquals(
-                "Your teams",
-                pinned.groups.sections
-                    .first()
-                    .title,
-            )
+            // The screen opens on a conference; the league ranking is the page this test is about.
+            vm.setView(StandingsView.League)
+            val shown = vm.uiState.value
+            assertTrue(shown.favouritesKnown)
+            assertTrue(shown.favouritesOnly)
+            assertEquals(listOf("NHL"), shown.groups.sections.map { it.title })
             assertEquals(
                 32,
-                pinned.groups.sections
-                    .last()
+                shown.groups.sections
+                    .single()
                     .rows.size,
             )
-            prefs.only = false
-            vm.refresh()
-            runCurrent()
-            assertFalse(vm.uiState.value.favouritesOnly)
-            assertFalse(vm.uiState.value.pinnedShown)
             assertEquals(
-                listOf("NHL"),
-                vm.uiState.value.groups.sections
-                    .map { it.title },
+                rows.map { it.team.key },
+                shown.groups.sections
+                    .single()
+                    .rows
+                    .map { it.team.key },
             )
         }
 
@@ -144,12 +142,10 @@ class StandingsViewModelTest {
             val vm = model(prefs = FakePreferences(failRead = true))
             runCurrent()
             assertFalse(vm.uiState.value.favouritesKnown)
-            assertFalse(vm.uiState.value.pinnedShown)
             assertEquals(
-                32,
+                16,
                 vm.uiState.value.groups.sections
-                    .single()
-                    .rows.size,
+                    .sumOf { it.rows.size },
             )
         }
 
@@ -159,7 +155,6 @@ class StandingsViewModelTest {
             val vm = model(prefs = FakePreferences(teams = setOf(rows.first().team.key), writable = false))
             runCurrent()
             assertFalse(vm.uiState.value.favouritesKnown)
-            assertFalse(vm.uiState.value.pinnedShown)
         }
 
     @Test
@@ -168,7 +163,6 @@ class StandingsViewModelTest {
             val vm = model()
             runCurrent()
             assertTrue(vm.uiState.value.favouritesKnown)
-            assertFalse(vm.uiState.value.pinnedShown)
         }
 
     @Test
@@ -215,11 +209,11 @@ class StandingsViewModelTest {
             // A failed refresh does not retract what the screen already knew about those rows.
             assertEquals(stale, vm.uiState.value.stale)
             assertEquals(LoadError.Local, vm.uiState.value.error)
+            // The Eastern page keeps all sixteen of its teams, whatever the refresh did.
             assertEquals(
-                32,
+                16,
                 vm.uiState.value.groups.sections
-                    .single()
-                    .rows.size,
+                    .sumOf { it.rows.size },
             )
         }
 
@@ -231,6 +225,7 @@ class StandingsViewModelTest {
             runCurrent()
             assertEquals(stale, vm.uiState.value.stale)
             assertEquals(LoadError.Network, vm.uiState.value.error)
+            vm.setView(StandingsView.League)
             assertEquals(
                 32,
                 vm.uiState.value.groups.sections
@@ -245,7 +240,7 @@ class StandingsViewModelTest {
             val repo = FakeStandings()
             val vm = model(repo)
             runCurrent()
-            vm.setView(StandingsView.Division)
+            vm.setMode(StandingsMode.Division)
             val old = vm.uiState.value.groups
             val pending = CompletableDeferred<Loadable<List<StandingRow>>>()
             repo.pending = pending
@@ -258,7 +253,7 @@ class StandingsViewModelTest {
             pending.complete(Loadable(rows.take(1), Freshness.Fresh, null))
             runCurrent()
             assertEquals(listOf(false, false), repo.calls)
-            assertEquals(StandingsView.Division, vm.uiState.value.view)
+            assertEquals(StandingsMode.Division, vm.uiState.value.mode)
             assertEquals(
                 1,
                 vm.uiState.value.groups.sections
@@ -348,4 +343,19 @@ class StandingsViewModelTest {
 
         override suspend fun pruneNotificationLedger(olderThan: Instant) = Unit
     }
+
+    @Test
+    fun opensOnTheEasternPlayoffPicture() =
+        runTest {
+            val vm = model(FakeStandings())
+            runCurrent()
+            assertEquals(StandingsView.Eastern, vm.uiState.value.view)
+            assertEquals(StandingsMode.Playoffs, vm.uiState.value.mode)
+            // And the grouping on screen belongs to that page, not to the league.
+            assertEquals(
+                listOf("Atlantic", "Metropolitan", "Wild Card"),
+                vm.uiState.value.groups.sections
+                    .map { it.title },
+            )
+        }
 }

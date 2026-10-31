@@ -7,3 +7,6 @@ result
 
 # Independent-review artifacts (frozen diffs, prompts, verdict logs) are working files, never committed.
 .review-*/
+
+# Agent planning notes for this repository are working files, never committed.
+.hermes/

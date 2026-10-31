@@ -202,7 +202,7 @@ private fun TeamLine(
 }
 
 @Composable
-private fun TeamLogo(
+internal fun TeamLogo(
     team: TeamRef,
     crestSize: Dp,
 ) {
