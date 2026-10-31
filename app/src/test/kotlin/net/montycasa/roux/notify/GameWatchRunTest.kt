@@ -111,8 +111,12 @@ class GameWatchRunTest {
         override suspend fun cancelAll() = Unit
     }
 
-    private class RecordingPoster : AlertPoster {
+    private class RecordingPoster(
+        private val able: Boolean = true,
+    ) : AlertPoster {
         val posted = CopyOnWriteArrayList<Alert>()
+
+        override fun canPost(): Boolean = able
 
         override fun post(
             alert: Alert,
@@ -275,5 +279,91 @@ class GameWatchRunTest {
 
             assertTrue("nothing was read, so nothing can be said about the game", outcome.failed)
             assertFalse("and no score was announced", outcome.posted > 0)
+        }
+
+    @Test
+    fun aGameTheFeedStillCallsScheduledIsWatchedFurther() =
+        runBlocking {
+            val preferences = preferences()
+            preferences.setFavourites(setOf(TeamKey("TOR")))
+            val poster = RecordingPoster()
+            val scheduler = RecordingScheduler()
+            // A watch fires at the scheduled start; the feed lags and still says Scheduled. Re-chaining only on
+            // Live would end the chain exactly when the goals start arriving.
+            val scheduled = game(state = GameState.Scheduled, away = null, home = null)
+
+            run(FakeScores { Loadable(day(scheduled), Freshness.Fresh, null) }, scheduler, poster, preferences)
+                .run(gameId)
+
+            assertEquals("a game that has not finished is watched again", 1, scheduler.repeated.size)
+            assertTrue("and not sooner than the poll policy allows", scheduler.repeated.single().second >= 25.seconds)
+        }
+
+    @Test
+    fun aGameStillPlayingAfterMidnightIsFoundInThePreviousDay() =
+        runBlocking {
+            val preferences = preferences()
+            preferences.setFavourites(setOf(TeamKey("TOR")))
+            val poster = RecordingPoster()
+            // 02:00Z on the 2nd is still the evening of the 1st in New York; the slate it belongs to is the 1st.
+            // The watch fires at 00:30 local on the 2nd, when "today" is already the 2nd.
+            val pass =
+                GameWatchRun(
+                    preferences = preferences,
+                    scores =
+                        object : ScoresRepository {
+                            override suspend fun loadDay(
+                                date: String,
+                                today: String,
+                            ): Loadable<ScoreDay> =
+                                if (date == "2025-01-01") {
+                                    Loadable(day(game()), Freshness.Stale(now - 1.minutes), null)
+                                } else {
+                                    Loadable(null, Freshness.Missing, null)
+                                }
+
+                            override suspend fun prefetchAdjacent(
+                                date: String,
+                                today: String,
+                            ) = Unit
+                        },
+                    scheduler = RecordingScheduler(),
+                    poster = poster,
+                    clock =
+                        object : Clock {
+                            override fun now(): Instant = Instant.parse("2025-01-02T05:30:00Z")
+                        },
+                    zone = zone,
+                )
+
+            val outcome = pass.run(gameId)
+
+            assertEquals("the game is found where it was played, not where the clock now is", 1, outcome.posted)
+            assertTrue(poster.posted.single() is Alert.GameStart)
+        }
+
+    @Test
+    fun aBlockedPosterDoesNotSpendTheClaim() =
+        runBlocking {
+            val preferences = preferences()
+            preferences.setFavourites(setOf(TeamKey("TOR")))
+            val blocked = RecordingPoster(able = false)
+            val scheduler = RecordingScheduler()
+            val pass = run(FakeScores { Loadable(day(game()), Freshness.Fresh, null) }, scheduler, blocked, preferences)
+
+            val blockedOutcome = pass.run(gameId)
+
+            assertEquals(0, blockedOutcome.posted)
+            assertEquals(
+                "nothing was claimed while the user could not receive notifications",
+                null,
+                preferences.getNotificationLedgerEntry(gameId),
+            )
+
+            // Granting the permission afterwards still gets the start: the claim was never spent.
+            val allowed = RecordingPoster()
+            val after = run(FakeScores { Loadable(day(game()), Freshness.Fresh, null) }, scheduler, allowed, preferences).run(gameId)
+            assertEquals(1, after.posted)
+            assertTrue(allowed.posted.single() is Alert.GameStart)
         }
 }

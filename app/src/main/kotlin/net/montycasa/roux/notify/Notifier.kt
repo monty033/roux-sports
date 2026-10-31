@@ -80,6 +80,14 @@ class Notifier(
         )
     }
 
+    /**
+     * Whether a post could land at all: the permission, and notifications enabled for the app.
+     *
+     * Deliberately not channel-specific. A channel can be silenced per-alert and the caller learns that from
+     * [post]'s outcome, but a permanent ledger claim must not be spent on a state the user can undo in settings.
+     */
+    override fun canPost(): Boolean = hasPermission() && NotificationManagerCompat.from(context).areNotificationsEnabled()
+
     override fun post(
         alert: Alert,
         game: Game,

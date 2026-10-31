@@ -79,7 +79,13 @@ class GameWatchWorkerTest {
                 ),
             scores = scores,
             scheduler = NoopScheduler(),
-            poster = AlertPoster { _: Alert, _: Game -> NotificationOutcome.NothingToPost },
+            poster =
+                object : AlertPoster {
+                    override fun post(
+                        alert: Alert,
+                        game: Game,
+                    ) = NotificationOutcome.NothingToPost
+                },
             clock =
                 object : Clock {
                     override fun now(): Instant = Instant.parse("2025-01-02T02:00:00Z")

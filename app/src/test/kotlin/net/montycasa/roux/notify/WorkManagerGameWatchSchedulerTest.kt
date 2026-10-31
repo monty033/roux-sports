@@ -306,7 +306,13 @@ private class InertWorkerFactory(
 
                     override suspend fun cancelAll() = Unit
                 },
-            poster = AlertPoster { _, _ -> NotificationOutcome.NothingToPost },
+            poster =
+                object : AlertPoster {
+                    override fun post(
+                        alert: net.montycasa.roux.domain.policy.Alert,
+                        game: net.montycasa.roux.domain.model.Game,
+                    ) = NotificationOutcome.NothingToPost
+                },
             clock = (context.applicationContext as net.montycasa.roux.RouxApp).container.clock,
         )
 

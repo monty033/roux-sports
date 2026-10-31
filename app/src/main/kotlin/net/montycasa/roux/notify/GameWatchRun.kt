@@ -13,14 +13,24 @@ import net.montycasa.roux.domain.repo.TeamAlertPreferences
 import java.time.ZoneId
 import kotlin.time.Clock
 import kotlin.time.Duration
-import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Duration.Companion.minutes
 
 /** Something that can post an alert. Narrower than [Notifier] so a test can watch what was asked for. */
-fun interface AlertPoster {
+interface AlertPoster {
     fun post(
         alert: Alert,
         game: Game,
     ): NotificationOutcome
+
+    /**
+     * Whether a post could land at all right now.
+     *
+     * Asked **before** a claim is taken, because a claim is permanent and a refusal is not: the user who has not
+     * granted the permission yet would otherwise lose the start of every game they follow, and granting it later
+     * would change nothing. The crash-between-claim-and-post tradeoff is about a crash, not about a recoverable
+     * "not now".
+     */
+    fun canPost(): Boolean = true
 }
 
 /**
@@ -55,33 +65,60 @@ class GameWatchRun(
     suspend fun run(gameId: String): Outcome {
         val now = clock.now()
         val today = civilDate(now)
-        val load = scores.loadDay(today, today)
-        // A failure with nothing cached is worth retrying; an empty cache with no error is simply nothing to say.
-        val day = load.data ?: return Outcome(posted = 0, failed = load.error != null, retryAfter = pauseAsked(load.error))
 
-        val game = day.games.firstOrNull { it.id.value == gameId } ?: return Outcome(posted = 0)
-        if (game.state is GameState.Final) return Outcome(posted = 0)
+        // Today first, then the previous civil day: a game that is still being played after the device's clock
+        // rolls over is no longer in today's slate, and its watch is still running. Looking only at today would
+        // end the chain at midnight, mid-game.
+        var failure: LoadError? = null
+        var slateDate: String? = null
+        var game: Game? = null
+        for (date in listOf(today, previousDay(today))) {
+            val load = scores.loadDay(date, today)
+            if (load.error != null && failure == null) failure = load.error
+            val found = load.data?.games?.firstOrNull { it.id.value == gameId } ?: continue
+            slateDate = date
+            game = found
+            break
+        }
 
-        val followed = listOf(game.home.key, game.away.key).filter { it in preferences.getFavourites() }
+        val playing = game ?: return Outcome(posted = 0, failed = failure != null, retryAfter = pauseAsked(failure))
+        if (playing.state is GameState.Final) return Outcome(posted = 0)
+
+        val followed = listOf(playing.home.key, playing.away.key).filter { it in preferences.getFavourites() }
         if (followed.isEmpty()) return Outcome(posted = 0)
 
         // Two favourites in one game is a real case: the start is announced if either asked for it, because the
         // user asked for it on a team that is playing.
         val perTeam = followed.map { preferences.getTeamAlertPreferences(it) }
         val forAlert = TeamAlertPreferences(start = perTeam.any { it.start }, goals = perTeam.any { it.goals })
-        val alerts = decider.decide(game, preferences.getNotificationLedgerEntry(gameId), forAlert, isFavourite = true)
+        val alerts =
+            decider.decide(
+                playing,
+                preferences.getNotificationLedgerEntry(gameId),
+                forAlert,
+                isFavourite = true,
+            )
 
-        val posted = alerts.count { alert -> claim(alert, gameId, now) && post(alert, game) }
+        val posted =
+            if (!poster.canPost()) {
+                // Nothing is claimable while the user cannot receive notifications: a claim is permanent and a
+                // missing permission is not, so burning the start of every followed game on it would mean
+                // granting the permission later changes nothing. The game stays watched.
+                0
+            } else {
+                alerts.count { alert -> claim(alert, gameId, now) && post(alert, playing) }
+            }
 
-        // Keep following a game that is still being played. The delay comes from the same policy the scores
-        // screen polls with, so a watched game is polled at the cadence that screen would use rather than at a
-        // number invented here.
-        if (game.state is GameState.Live) {
-            val next = PollPolicy.nextDelay(now, today, today, listOf(game)) ?: DEFAULT_LIVE_DELAY
-            scheduler.watchAgain(gameId, maxOf(next, pauseAsked(load.error) ?: Duration.ZERO))
+        // Keep following a game that has not finished - not only one the feed calls Live. A watch fires at the
+        // scheduled start and the feed often still says Scheduled for the first minutes, so re-chaining only on
+        // Live would end the chain exactly when the goals begin.
+        if (playing.state !is GameState.Final) {
+            val cadence =
+                PollPolicy.nextDelay(now, slateDate ?: today, today, listOf(playing)) ?: DEFAULT_IN_PROGRESS_DELAY
+            scheduler.watchAgain(gameId, maxOf(cadence, pauseAsked(failure) ?: Duration.ZERO))
         }
 
-        return Outcome(posted = posted, retryAfter = pauseAsked(load.error))
+        return Outcome(posted = posted, retryAfter = pauseAsked(failure), failed = failure != null && game == null)
     }
 
     private suspend fun claim(
@@ -107,6 +144,12 @@ class GameWatchRun(
     /** A usable server-requested pause, and only when the server actually asked for one. */
     private fun pauseAsked(error: LoadError?): Duration? = (error as? LoadError.Http)?.retryAfter
 
+    private fun previousDay(date: String): String =
+        java.time.LocalDate
+            .parse(date)
+            .minusDays(1)
+            .toString()
+
     private fun civilDate(instant: kotlin.time.Instant): String =
         java.time.Instant
             .ofEpochMilli(instant.toEpochMilliseconds())
@@ -115,7 +158,7 @@ class GameWatchRun(
             .toString()
 
     companion object {
-        /** Used only if the poll policy declines to name a cadence for a game it says is live. */
-        val DEFAULT_LIVE_DELAY: Duration = 60.seconds
+        /** Used when the poll policy declines to name a cadence for a game that has not finished. */
+        val DEFAULT_IN_PROGRESS_DELAY: Duration = 15.minutes
     }
 }
