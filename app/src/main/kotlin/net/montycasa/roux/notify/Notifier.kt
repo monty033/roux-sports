@@ -81,12 +81,19 @@ class Notifier(
     }
 
     /**
-     * Whether a post could land at all: the permission, and notifications enabled for the app.
+     * Whether [alert] could be posted now, by the same rules [post] applies.
      *
-     * Deliberately not channel-specific. A channel can be silenced per-alert and the caller learns that from
-     * [post]'s outcome, but a permanent ledger claim must not be spent on a state the user can undo in settings.
+     * Per channel, because the channels are separate promises: a user who silenced goals has not silenced
+     * starts, and a claim spent on the silenced one would mean unsilencing it later changes nothing. The answer
+     * here and the answer in [post] are the same function, so they cannot drift.
      */
-    override fun canPost(): Boolean = hasPermission() && NotificationManagerCompat.from(context).areNotificationsEnabled()
+    override fun canPost(alert: Alert): Boolean {
+        // A baseline is bookkeeping with no notification: it must never be held back, or the ledger would never
+        // learn the score it needs before it can tell a goal from the first sighting.
+        if (alert is Alert.Baseline) return true
+        ensureChannels()
+        return blockage(channelOf(alert)) == null
+    }
 
     override fun post(
         alert: Alert,

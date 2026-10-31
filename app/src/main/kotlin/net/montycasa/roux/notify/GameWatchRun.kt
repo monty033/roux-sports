@@ -23,14 +23,14 @@ interface AlertPoster {
     ): NotificationOutcome
 
     /**
-     * Whether a post could land at all right now.
+     * Whether this alert could land right now, asked **before** its claim is taken.
      *
-     * Asked **before** a claim is taken, because a claim is permanent and a refusal is not: the user who has not
-     * granted the permission yet would otherwise lose the start of every game they follow, and granting it later
-     * would change nothing. The crash-between-claim-and-post tradeoff is about a crash, not about a recoverable
-     * "not now".
+     * A claim is permanent and a refusal is not: the user who has not granted the permission yet, or has silenced
+     * the goals channel and may unsilence it, would otherwise lose the start - or the goal - for good. The
+     * crash-between-claim-and-post tradeoff is about a crash, not about a recoverable "not now". The check is per
+     * alert because the answer is per channel: silencing goals does not silence starts.
      */
-    fun canPost(): Boolean = true
+    fun canPost(alert: Alert): Boolean = true
 }
 
 /**
@@ -99,15 +99,9 @@ class GameWatchRun(
                 isFavourite = true,
             )
 
-        val posted =
-            if (!poster.canPost()) {
-                // Nothing is claimable while the user cannot receive notifications: a claim is permanent and a
-                // missing permission is not, so burning the start of every followed game on it would mean
-                // granting the permission later changes nothing. The game stays watched.
-                0
-            } else {
-                alerts.count { alert -> claim(alert, gameId, now) && post(alert, playing) }
-            }
+        // Each alert is checked against its own channel before its claim is spent, so a silenced channel costs
+        // nothing permanent; the game stays watched either way.
+        val posted = alerts.count { alert -> poster.canPost(alert) && claim(alert, gameId, now) && post(alert, playing) }
 
         // Keep following a game that has not finished - not only one the feed calls Live. A watch fires at the
         // scheduled start and the feed often still says Scheduled for the first minutes, so re-chaining only on

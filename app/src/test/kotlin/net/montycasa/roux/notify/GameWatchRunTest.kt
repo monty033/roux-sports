@@ -112,11 +112,11 @@ class GameWatchRunTest {
     }
 
     private class RecordingPoster(
-        private val able: Boolean = true,
+        private val ableFor: (Alert) -> Boolean = { true },
     ) : AlertPoster {
         val posted = CopyOnWriteArrayList<Alert>()
 
-        override fun canPost(): Boolean = able
+        override fun canPost(alert: Alert): Boolean = ableFor(alert)
 
         override fun post(
             alert: Alert,
@@ -347,7 +347,7 @@ class GameWatchRunTest {
         runBlocking {
             val preferences = preferences()
             preferences.setFavourites(setOf(TeamKey("TOR")))
-            val blocked = RecordingPoster(able = false)
+            val blocked = RecordingPoster { false }
             val scheduler = RecordingScheduler()
             val pass = run(FakeScores { Loadable(day(game()), Freshness.Fresh, null) }, scheduler, blocked, preferences)
 
@@ -365,5 +365,27 @@ class GameWatchRunTest {
             val after = run(FakeScores { Loadable(day(game()), Freshness.Fresh, null) }, scheduler, allowed, preferences).run(gameId)
             assertEquals(1, after.posted)
             assertTrue(allowed.posted.single() is Alert.GameStart)
+        }
+
+    @Test
+    fun aSilencedGoalsChannelDoesNotSpendTheGoal() =
+        runBlocking {
+            val preferences = preferences()
+            preferences.setFavourites(setOf(TeamKey("TOR")))
+            val scheduler = RecordingScheduler()
+            var current = game(away = 1, home = 0)
+            // Starts are allowed, goals are silenced: the two channels are separate promises.
+            val goalsMuted = RecordingPoster { alert -> alert !is Alert.Goal }
+            val pass = run(FakeScores { Loadable(day(current), Freshness.Fresh, null) }, scheduler, goalsMuted, preferences)
+            pass.run(gameId)
+
+            current = game(away = 2, home = 0)
+            assertEquals("a silenced goal is not claimed", 0, pass.run(gameId).posted)
+
+            // Unsilencing the channel afterwards still gets the goal that was missed.
+            val allAllowed = RecordingPoster()
+            val after = run(FakeScores { Loadable(day(current), Freshness.Fresh, null) }, scheduler, allAllowed, preferences).run(gameId)
+            assertEquals(1, after.posted)
+            assertEquals(Alert.Goal(GameId(gameId), goalCount = 2, awayScore = 2, homeScore = 0), allAllowed.posted.single())
         }
 }
