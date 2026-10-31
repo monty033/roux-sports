@@ -47,7 +47,20 @@ class GameWatchPlanTest {
     fun aFollowedGameIsWatchedForTheTimeUntilItStarts() {
         val wanted = GameWatchPlan.wanted(now, day(game(start = now + 2.hours)), setOf(TeamKey("TOR")), on())
 
-        assertEquals(listOf(WatchedGame("2025020123", 2.hours)), wanted)
+        assertEquals(listOf(WatchedGame("2025020123", 2.hours, firesAt = now + 2.hours)), wanted)
+    }
+
+    @Test
+    fun thePlanNamesTheStartTimeItIsWaitingForSoAMovedGameIsRecognisable() {
+        val scheduled = GameWatchPlan.wanted(now, day(game(start = now + 2.hours)), setOf(TeamKey("TOR")), on())
+        val moved = GameWatchPlan.wanted(now, day(game(start = now + 3.hours)), setOf(TeamKey("TOR")), on())
+        val underWay = GameWatchPlan.wanted(now, day(game(state = GameState.Live())), setOf(TeamKey("TOR")), on())
+
+        assertEquals(now + 2.hours, scheduled.single().firesAt)
+        // Same game, same subscription, different start: a reconcile compares these to notice the move.
+        assertEquals(now + 3.hours, moved.single().firesAt)
+        // Nothing to compare for a game already playing; it is due whenever it is enqueued.
+        assertNull(underWay.single().firesAt)
     }
 
     @Test
@@ -63,10 +76,10 @@ class GameWatchPlanTest {
         val pre = GameWatchPlan.wanted(now, day(game(state = GameState.Pre)), setOf(TeamKey("TOR")), on())
         val started = GameWatchPlan.wanted(now, day(game(start = now - 1.hours)), setOf(TeamKey("TOR")), on())
 
-        assertEquals(listOf(WatchedGame("2025020123", 0.minutes)), live)
-        assertEquals(listOf(WatchedGame("2025020123", 0.minutes)), pre)
+        assertEquals(listOf(WatchedGame("2025020123", 0.minutes, firesAt = null)), live)
+        assertEquals(listOf(WatchedGame("2025020123", 0.minutes, firesAt = null)), pre)
         // A scheduled game whose start has already passed is under way as far as anyone here can tell.
-        assertEquals(listOf(WatchedGame("2025020123", 0.minutes)), started)
+        assertEquals(listOf(WatchedGame("2025020123", 0.minutes, firesAt = null)), started)
     }
 
     @Test

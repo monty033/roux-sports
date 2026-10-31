@@ -9,10 +9,21 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.ZERO
 import kotlin.time.Instant
 
-/** One game whose alerts are wanted, and how long to wait before watching it. */
+/**
+ * One game whose alerts are wanted, how long to wait before watching it, and the moment that wait points at.
+ *
+ * [firesAt] is carried because a reconcile has to recognise its own earlier decision. The same start time
+ * means the work already scheduled is still the right work; a start time that moved means the old work would
+ * wake the device for a game that is no longer starting then. Without it a scheduler can only choose between
+ * duplicating work and keeping a schedule that has gone stale.
+ *
+ * It is null for a game already under way: that watch is due as soon as it can be enqueued, and there is no
+ * time to compare it against.
+ */
 data class WatchedGame(
     val gameId: String,
     val delay: Duration,
+    val firesAt: Instant?,
 )
 
 /**
@@ -71,8 +82,7 @@ object GameWatchPlan {
         for (game in day.games) {
             if (game.state is GameState.Final) continue
             if (!isFollowed(game, favourites, alertPreferences)) continue
-            val delay = delayUntil(now, game) ?: continue
-            wanted += WatchedGame(game.id.value, delay)
+            wanted += schedule(now, game) ?: continue
         }
         // A feed that lists the same game twice must not produce two watches.
         return wanted.distinctBy { it.gameId }
@@ -89,13 +99,26 @@ object GameWatchPlan {
         }
 
     /** Null when the game cannot be scheduled: it is neither under way nor has a start time to wait for. */
-    private fun delayUntil(
+    private fun schedule(
         now: Instant,
         game: Game,
-    ): Duration? =
+    ): WatchedGame? =
         when (game.state) {
-            is GameState.Live, GameState.Pre -> ZERO
-            GameState.Scheduled -> game.startTimeUtc?.let { start -> (start - now).coerceAtLeast(ZERO) }
-            else -> null
+            is GameState.Live, GameState.Pre -> {
+                WatchedGame(game.id.value, ZERO, firesAt = null)
+            }
+
+            GameState.Scheduled -> {
+                game.startTimeUtc?.let { start ->
+                    val delay = (start - now).coerceAtLeast(ZERO)
+                    // A start time already in the past is under way as far as this is concerned, so it is due
+                    // now rather than at a moment that has gone - and stays due now on every later pass.
+                    WatchedGame(game.id.value, delay, firesAt = start.takeIf { delay > ZERO })
+                }
+            }
+
+            else -> {
+                null
+            }
         }
 }

@@ -105,6 +105,30 @@ class WorkManagerGameWatchSchedulerTest {
         }
 
     @Test
+    fun aPostponedStartRetargetsTheWatchInsteadOfFiringAtTheOldTime() =
+        runBlocking {
+            scheduler.reconcile(now, day(game(startInHours = 2)), setOf(TeamKey("TOR")), alerts())
+            // The feed moves the game an hour later; a watch still pointing at the old start would fire an hour early.
+            scheduler.reconcile(now, day(game(startInHours = 3)), setOf(TeamKey("TOR")), alerts())
+
+            val work = watches().single()
+            assertEquals("one watch, moved rather than duplicated", 1, watches().size)
+            assertEquals(3.hours.inWholeMilliseconds, work.initialDelayMillis)
+        }
+
+    @Test
+    fun anUnchangedStartLeavesTheQueuedWatchAlone() =
+        runBlocking {
+            scheduler.reconcile(now, day(game(startInHours = 2)), setOf(TeamKey("TOR")), alerts())
+            val first = watches().single().id
+            scheduler.reconcile(now, day(game(startInHours = 2)), setOf(TeamKey("TOR")), alerts())
+
+            // Same id means the queued work was kept, not cancelled and re-created on every pass.
+            assertEquals("reconciling an unchanged day must not churn the queue", first, watches().single().id)
+            assertEquals(1, watches().size)
+        }
+
+    @Test
     fun turningAlertsOffCancelsTheWatchThatWasScheduled() =
         runBlocking {
             val today = day(game(startInHours = 2))
@@ -157,8 +181,13 @@ class WorkManagerGameWatchSchedulerTest {
             )
         }
 
+    /**
+     * Pins the *request*, not what it will do: the periodic worker's body arrives with the notifier, so this
+     * asserts the interval it is scheduled at and that repeated reconciles do not stack copies of it. It is
+     * deliberately not evidence that a late-published game gets picked up - that needs the body.
+     */
     @Test
-    fun thePeriodicReconcileIsEnqueuedExactlyOnce() =
+    fun thePeriodicReconcileIsEnqueuedExactlyOnceAtTwelveHours() =
         runBlocking {
             val today = day(game(startInHours = 2))
             scheduler.reconcile(now, today, setOf(TeamKey("TOR")), alerts())
@@ -166,7 +195,9 @@ class WorkManagerGameWatchSchedulerTest {
 
             val periodic = workManager.getWorkInfosForUniqueWork(WorkManagerGameWatchScheduler.RECONCILE_NAME).get()
             assertEquals("one periodic reconcile, however often it is reconciled", 1, periodic.size)
-            assertNotNull("and it is the periodic kind", periodic.single().periodicityInfo)
+            val periodicity = periodic.single().periodicityInfo
+            assertNotNull("and it is the periodic kind", periodicity)
+            assertEquals(12 * 60 * 60 * 1000L, periodicity!!.repeatIntervalMillis)
             assertTrue(periodic.single().state == WorkInfo.State.ENQUEUED)
         }
 

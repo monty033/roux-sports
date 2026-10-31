@@ -6,6 +6,7 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.google.common.util.concurrent.ListenableFuture
@@ -14,6 +15,7 @@ import net.montycasa.roux.domain.model.ScoreDay
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.notify.GameWatchPlan
 import net.montycasa.roux.domain.notify.GameWatchScheduler
+import net.montycasa.roux.domain.notify.WatchedGame
 import net.montycasa.roux.domain.repo.TeamAlertPreferences
 import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
@@ -30,6 +32,11 @@ import kotlin.time.Instant
  * Idempotence comes from unique work keyed by game id: reconciling twice enqueues each game once, and a
  * game that stops being wanted is cancelled by name rather than left to fire.
  *
+ * A watch carries the start time it was scheduled for, as a tag. That is what lets a reconcile tell "this
+ * is already the right work" from "the game moved", so a postponed start replaces the stale watch instead
+ * of leaving it to fire at the old time - and an unchanged start leaves the queued work alone rather than
+ * re-creating it on every pass.
+ *
  * The WorkManager instance is a constructor parameter rather than `WorkManager.getInstance(context)`
  * because a test that cannot substitute it can only observe the real scheduler, on a real clock.
  */
@@ -45,23 +52,29 @@ class WorkManagerGameWatchScheduler(
         val wanted = GameWatchPlan.wanted(now, day, favourites, alertPreferences)
         val wantedIds = wanted.mapTo(mutableSetOf()) { it.gameId }
 
+        val scheduled = scheduledWatches()
+
         // A game that has finished, or stopped being followed, must stop waking the device. Cancel by name:
         // anything already running is left to finish, and nothing is cancelled that is still wanted.
-        for (gameId in scheduledGameIds()) {
+        for (gameId in scheduled.keys) {
             if (gameId !in wantedIds) workManager.cancelUniqueWork(watchName(gameId))
         }
 
         for (game in wanted) {
+            if (settled(scheduled[game.gameId], game)) continue
             workManager.enqueueUniqueWork(
                 watchName(game.gameId),
-                // KEEP, not REPLACE: a watch already scheduled for this game is the same watch, and replacing it
-                // would reset the delay every time the app starts.
-                ExistingWorkPolicy.KEEP,
+                // Only reached when the game has no live watch of its own, so replacing cannot cancel work in
+                // flight - and a stale watch has to be replaced, because KEEP would leave it pointing at the old
+                // start time. Retargeting is safe: the delay is derived from the start time, so the fire time
+                // stays put however often this runs.
+                ExistingWorkPolicy.REPLACE,
                 OneTimeWorkRequestBuilder<GameWatchWorker>()
                     .setInitialDelay(game.delay.inWholeMilliseconds, TimeUnit.MILLISECONDS)
                     // The unique name is not readable back from WorkInfo, so it is also a tag: that is what lets a
                     // later reconcile find the work it scheduled for a game and cancel it by name.
                     .addTag(watchName(game.gameId))
+                    .addTag(targetTag(game))
                     .addTag(WATCH_TAG)
                     .build(),
             )
@@ -77,19 +90,58 @@ class WorkManagerGameWatchScheduler(
 
     override suspend fun cancelAll() {
         workManager.cancelUniqueWork(RECONCILE_NAME)
-        for (gameId in scheduledGameIds()) workManager.cancelUniqueWork(watchName(gameId))
+        for (gameId in scheduledWatches().keys) workManager.cancelUniqueWork(watchName(gameId))
     }
 
-    /** Game ids with work currently scheduled, read back from the tag rather than remembered in memory. */
-    private suspend fun scheduledGameIds(): Set<String> =
+    /**
+     * True when the work already recorded for this game is the work the plan is asking for, so enqueuing
+     * another would only churn.
+     *
+     * A watch that has already run is not re-armed: in the live-game case the plan will keep asking for it, and
+     * a fresh watch on every pass would ring again for the start the user has already been told about.
+     */
+    private fun settled(
+        existing: ScheduledWatch?,
+        game: WatchedGame,
+    ): Boolean =
+        when (existing?.state) {
+            null, WorkInfo.State.FAILED, WorkInfo.State.CANCELLED -> false
+
+            // A watch that is working, or has worked, is not re-armed.
+            WorkInfo.State.RUNNING, WorkInfo.State.SUCCEEDED -> true
+
+            // Queued for exactly this start time (or due now, for a game under way): nothing to change.
+            else -> existing.target == target(game)
+        }
+
+    /** Scheduled watches by game id, read back from their tags rather than remembered in memory. */
+    private suspend fun scheduledWatches(): Map<String, ScheduledWatch> =
         workManager
             .getWorkInfosByTag(WATCH_TAG)
             .await()
-            .mapNotNullTo(mutableSetOf()) { info ->
-                info.tags
-                    .firstOrNull { tag -> tag.startsWith(WATCH_PREFIX) }
-                    ?.removePrefix(WATCH_PREFIX)
+            .mapNotNull { info ->
+                val gameId =
+                    info.tags.firstOrNull { it.startsWith(WATCH_PREFIX) }?.removePrefix(WATCH_PREFIX)
+                        ?: return@mapNotNull null
+                val target =
+                    info.tags.firstOrNull { it.startsWith(TARGET_PREFIX) }?.removePrefix(TARGET_PREFIX)
+                        ?: return@mapNotNull null
+                gameId to ScheduledWatch(target, info.state)
             }
+            // A game can have several recorded generations; the unfinished one, or else the last one, is the one
+            // that describes what the platform is actually going to do.
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, generations) -> generations.firstOrNull { !it.state.isFinished } ?: generations.last() }
+
+    /** What the work was scheduled for: a start time, or "due now" for a game already under way. */
+    private fun target(game: WatchedGame): String = game.firesAt?.toString() ?: DUE_NOW
+
+    private fun targetTag(game: WatchedGame): String = TARGET_PREFIX + target(game)
+
+    private data class ScheduledWatch(
+        val target: String,
+        val state: WorkInfo.State,
+    )
 
     /**
      * AWAITS the platform's future without blocking a thread.
@@ -117,6 +169,8 @@ class WorkManagerGameWatchScheduler(
     companion object {
         const val WATCH_PREFIX = "watch-"
         const val WATCH_TAG = "game-watch"
+        const val TARGET_PREFIX = "target:"
+        const val DUE_NOW = "due-now"
         const val RECONCILE_NAME = "daily-reconcile"
         const val RECONCILE_INTERVAL_HOURS = 12L
 
