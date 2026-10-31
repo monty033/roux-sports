@@ -2,7 +2,6 @@ package net.montycasa.roux.notify
 
 import android.content.Context
 import androidx.work.ListenableWorker
-import androidx.work.WorkManager
 import androidx.work.WorkerFactory
 import androidx.work.WorkerParameters
 import net.montycasa.roux.AppContainer
@@ -50,18 +49,10 @@ class RouxWorkerFactory(
         GameWatchRun(
             preferences = container.preferences,
             scores = container.scores,
-            scheduler = WorkManagerGameWatchScheduler(WorkManager.getInstance(appContext)),
+            scheduler = gameWatchScheduler(appContext),
             poster = Notifier(appContext),
             clock = container.clock,
         )
 
-    private fun reconciler(appContext: Context): GameWatchReconciler =
-        GameWatchReconciler(
-            preferences = container.preferences,
-            scores = container.scores,
-            // WorkManager's own instance: a worker enqueueing through anything else would agree with a
-            // scheduler the app never reads back.
-            scheduler = WorkManagerGameWatchScheduler(WorkManager.getInstance(appContext)),
-            clock = container.clock,
-        )
+    private fun reconciler(appContext: Context): GameWatchReconciler = gameWatchReconciler(appContext, container)
 }

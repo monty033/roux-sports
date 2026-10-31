@@ -12,11 +12,13 @@ import coil3.svg.SvgDecoder
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.okhttp.OkHttp
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
 import net.montycasa.roux.data.cache.ResponseCache
 import net.montycasa.roux.data.net.NhlApi
 import net.montycasa.roux.data.net.NhlHttpClientFactory
@@ -29,6 +31,7 @@ import net.montycasa.roux.domain.repo.PreferencesRepository
 import net.montycasa.roux.domain.repo.ScoresRepository
 import net.montycasa.roux.domain.repo.StandingsRepository
 import net.montycasa.roux.notify.RouxWorkerFactory
+import net.montycasa.roux.notify.gameWatchReconciler
 import okio.Path
 import okio.Path.Companion.toPath
 import kotlin.time.Clock
@@ -51,6 +54,61 @@ open class RouxApp :
             engine = OkHttp.create(),
             version = versionName(),
         )
+    }
+
+    /**
+     * Runs the background bookkeeping this process owns, on a scope that dies with it.
+     *
+     * Nothing here holds the process open: a pass interrupted by the user leaving is work the periodic worker
+     * does again, so there is no reason to make the app wait for it.
+     */
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /**
+     * How many start-up passes this process has begun.
+     *
+     * Read by `NotificationsIntegrationTest`: "the app reconciles when it opens" is otherwise observable only
+     * by waiting on a network call, which is the kind of assertion that passes because of what it misses.
+     */
+    internal var startUpPasses = 0
+        private set
+
+    override fun onCreate() {
+        super.onCreate()
+        startWatchMaintenance()
+    }
+
+    /**
+     * Puts the scheduled watches back in step with what the user follows, as soon as the app opens.
+     *
+     * The periodic worker gets there eventually - twelve hours is its interval - and until it does, a game
+     * that started while the app was closed goes unwatched even though the user has just opened the app and
+     * can see it on Scores. Reconciliation is idempotent by contract, so the second path costs one comparison
+     * per followed game rather than a duplicate notification.
+     *
+     * `open` so an integration test can drive this without a network, and `suspend` so the test awaits the
+     * same call the app makes rather than racing it.
+     */
+    internal open suspend fun reconcileWatches() {
+        gameWatchReconciler(this, container).reconcile()
+    }
+
+    private fun startWatchMaintenance() {
+        startUpPasses++
+        appScope.launch {
+            try {
+                // A store with no favourites cannot want a watch, and reading it is local. Without this the
+                // first launch after install - which follows nobody - would open the cache, and on a cold
+                // device the network, to be told there is nothing to do.
+                if (container.preferences.getFavourites().isEmpty()) return@launch
+                reconcileWatches()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                // A slate that will not load, or a WorkManager that is not ready yet, leaves the existing
+                // watches exactly as they are - which is what the user asked for. The periodic pass retries.
+            }
+        }
     }
 
     /**

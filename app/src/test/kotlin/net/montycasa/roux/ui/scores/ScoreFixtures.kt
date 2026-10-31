@@ -13,6 +13,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -36,6 +39,15 @@ class ScoresIntegrationApp : RouxApp() {
 
     var offline = false
     var serveLogos = false
+
+    /**
+     * What the day endpoint answers with, when a test needs a slate the capture cannot supply.
+     *
+     * The capture is one finished evening: every game in it is Final, and a finished game is never watched. A
+     * test about a watch that has not fired yet needs a game that has not started, so it hands one over here
+     * rather than a test-only capture being written and kept in step with the real one.
+     */
+    var scoreDay: ByteArray? = null
     val requests = CopyOnWriteArrayList<Url>()
 
     private var activeContainer: AppContainer? = null
@@ -93,11 +105,26 @@ class ScoresIntegrationApp : RouxApp() {
                     when (request.url.host) {
                         "api-web.nhle.com" -> {
                             respond(
-                                when (request.url.encodedPath) {
-                                    "/v1/score/${ScoreFixture.date}" -> ScoreFixture.bytes
-                                    "/v1/standings/${ScoreFixture.date}" -> ScoreFixture.bytes("standings.json")
-                                    "/v1/standings-season" -> ScoreFixture.bytes("standings-season.json")
-                                    else -> error("Unexpected API path: ${request.url.encodedPath}")
+                                when {
+                                    // A notification naming a game is looked up in today's slate and then
+                                    // yesterday's - a game can run past midnight - so a neighbour day has to
+                                    // answer as well as the captured one. Only the date line is rewritten;
+                                    // the games stay the ones that were really captured.
+                                    request.url.encodedPath.startsWith("/v1/score/") -> {
+                                        dayFor(request.url.encodedPath.removePrefix("/v1/score/"))
+                                    }
+
+                                    request.url.encodedPath == "/v1/standings/${ScoreFixture.date}" -> {
+                                        ScoreFixture.bytes("standings.json")
+                                    }
+
+                                    request.url.encodedPath == "/v1/standings-season" -> {
+                                        ScoreFixture.bytes("standings-season.json")
+                                    }
+
+                                    else -> {
+                                        error("Unexpected API path: ${request.url.encodedPath}")
+                                    }
                                 },
                                 HttpStatusCode.OK,
                                 headersOf(HttpHeaders.ContentType, "application/json"),
@@ -118,6 +145,20 @@ class ScoresIntegrationApp : RouxApp() {
                     }
                 },
         )
+
+    /**
+     * The slate for [date], which is the captured one unless a test supplied its own through [scoreDay].
+     *
+     * The capture carries the day it was taken, and the repository refuses a body that claims to be a
+     * different day - correctly, since a feed answering yesterday's slate under today's date is the bug it is
+     * guarding against. So the date line is rewritten to the day that was asked for and nothing else is
+     * touched: same teams, same ids, same start times.
+     */
+    private fun dayFor(date: String): ByteArray {
+        val body = Json.parseToJsonElement((scoreDay ?: ScoreFixture.bytes).decodeToString()).jsonObject
+        val amended = JsonObject(body.toMutableMap().apply { put("currentDate", JsonPrimitive(date)) })
+        return Json.encodeToString(JsonElement.serializer(), amended).encodeToByteArray()
+    }
 }
 
 /** The existing data corpus is a test resource in :app too; no duplicate capture or rewritten date. */
