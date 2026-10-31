@@ -160,6 +160,9 @@ class DataStorePreferencesRepository(
             // decision with the caller: the only sane response to "you may not notify" is to stay silent.
             if (!isInterpretable(preferences)) return@edit
             val lastNotified = preferences[goalCountKey(gameId)]
+            // An unknown total means no score has ever been observed for this game, so there is nothing for a goal to
+            // be above. Recording a baseline comes first; announcing before that would announce a score nobody saw.
+            if (lastNotified == NotificationLedgerEntry.UNKNOWN_GOAL_COUNT) return@edit
             // Equal is a duplicate and lower is a correction downward. Neither is an event, and neither may drag
             // the ledger backwards - which is what would happen if a stale observation overwrote a newer one.
             if (lastNotified != null && goalCount <= lastNotified) return@edit
@@ -189,8 +192,9 @@ class DataStorePreferencesRepository(
                 preferences = preferences,
                 gameId = gameId,
                 // The recorded total only ever moves up. A start claim that arrives after a goal was announced must
-                // not lower it, or the goal becomes claimable again.
-                goalCount = maxOf(preferences[goalCountKey(gameId)] ?: 0, goalBaseline),
+                // not lower it, or the goal becomes claimable again; and an unknown total is replaced by whatever
+                // this claim knows, not silently treated as zero.
+                goalCount = mergeGoalCount(preferences[goalCountKey(gameId)], goalBaseline),
                 startNotified = true,
                 at = at,
             )
@@ -208,12 +212,20 @@ class DataStorePreferencesRepository(
         var claimed = false
         store.edit { preferences ->
             if (!isInterpretable(preferences)) return@edit
-            val stored = preferences[goalCountKey(gameId)]
-            if (stored != null && stored >= goalCount) return@edit
+            // A baseline only fills a gap. If another worker already wrote a complete entry, raising the total here
+            // could outrun a goal that is being claimed at the same moment and silence it. An entry whose total is
+            // unknown is the gap itself, so it is still fillable.
+            val recordedTotal = preferences[goalCountKey(gameId)]
+            val alreadyRecorded =
+                recordedTotal != null &&
+                    recordedTotal != NotificationLedgerEntry.UNKNOWN_GOAL_COUNT &&
+                    preferences[startNotifiedKey(gameId)] != null &&
+                    preferences[updatedAtKey(gameId)] != null
+            if (alreadyRecorded) return@edit
             writeLedger(
                 preferences = preferences,
                 gameId = gameId,
-                goalCount = maxOf(stored ?: 0, goalCount),
+                goalCount = mergeGoalCount(preferences[goalCountKey(gameId)], goalCount),
                 // Nothing was announced, so this must not claim the start either.
                 startNotified = preferences[startNotifiedKey(gameId)] ?: false,
                 at = at,
@@ -251,6 +263,23 @@ class DataStorePreferencesRepository(
         preferences[startNotifiedKey(gameId)] = startNotified
         preferences[updatedAtKey(gameId)] = at.toEpochMilliseconds()
     }
+
+    /**
+     * The next recorded total, given what is stored and what was just observed.
+     *
+     * [NotificationLedgerEntry.UNKNOWN_GOAL_COUNT] is not a number to compare against - it means nothing has been
+     * observed - so it never wins a maximum and is replaced by the first real observation.
+     */
+    private fun mergeGoalCount(
+        stored: Int?,
+        observed: Int,
+    ): Int =
+        when {
+            stored == null -> observed
+            stored == NotificationLedgerEntry.UNKNOWN_GOAL_COUNT -> observed
+            observed == NotificationLedgerEntry.UNKNOWN_GOAL_COUNT -> stored
+            else -> maxOf(stored, observed)
+        }
 
     override suspend fun pruneNotificationLedger(
         olderThan: Instant,

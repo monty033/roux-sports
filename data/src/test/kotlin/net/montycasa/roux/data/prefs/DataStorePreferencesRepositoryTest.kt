@@ -361,7 +361,7 @@ class DataStorePreferencesRepositoryTest {
             repository.setNotificationLedgerEntry("2024010001", old)
             repository.setNotificationLedgerEntry("2024010002", recent)
 
-            repository.pruneNotificationLedger(Instant.parse("2025-01-03T00:00:00Z"))
+            repository.pruneNotificationLedger(Instant.parse("2025-01-03T00:00:00Z"), keep = emptySet())
 
             assertNull(repository.getNotificationLedgerEntry("2024010001"))
             // Pruning by age must not sweep the ledger: a live game's dedup state has to survive,
@@ -467,7 +467,7 @@ class DataStorePreferencesRepositoryTest {
                             NotificationLedgerEntry(1, startNotified = true, updatedAt = Instant.fromEpochMilliseconds(2_000L)),
                         )
                     },
-                    { repository.pruneNotificationLedger(Instant.fromEpochMilliseconds(Long.MAX_VALUE)) },
+                    { repository.pruneNotificationLedger(Instant.fromEpochMilliseconds(Long.MAX_VALUE), keep = emptySet()) },
                 )
             for (refusal in refusals) {
                 assertThrows(UnsupportedPreferencesVersionException::class.java) {
@@ -741,6 +741,54 @@ class DataStorePreferencesRepositoryTest {
 
                 assertNull(repository.getNotificationLedgerEntry("finished-game"))
                 assertEquals(entry, repository.getNotificationLedgerEntry("long-overtime"))
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun aBaselineDoesNotAdvanceAnEntryThatAlreadyExists() =
+        runTest {
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(newDirectory(), scope)
+                val at = Instant.parse("2025-01-01T00:00:00Z")
+                assertEquals(true, repository.claimGoal("2025020123", 1, at))
+                // A baseline taken from a stale snapshot must not raise the total over a goal that is being claimed
+                // at the same moment: doing so would make that goal claim lose and never be announced.
+                assertEquals(false, repository.claimBaseline("2025020123", 5, at))
+                assertEquals(1, repository.getNotificationLedgerEntry("2025020123")?.lastNotifiedGoalCount)
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun anUnknownTotalBlocksGoalsUntilAScoreIsObserved() =
+        runTest {
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(newDirectory(), scope)
+                val at = Instant.parse("2025-01-01T00:00:00Z")
+                // The game started while the feed had no score: the start is claimed with an unknown total.
+                assertEquals(
+                    true,
+                    repository.claimStart("2025020123", NotificationLedgerEntry.UNKNOWN_GOAL_COUNT, at),
+                )
+                assertEquals(
+                    "nothing can be above an unknown total",
+                    false,
+                    repository.claimGoal("2025020123", 0, at),
+                )
+                val entry = repository.getNotificationLedgerEntry("2025020123")
+                assertEquals(NotificationLedgerEntry.UNKNOWN_GOAL_COUNT, entry?.lastNotifiedGoalCount)
+                assertEquals(true, entry?.goalCountIsUnknown)
+
+                // The first real score fills the gap rather than announcing anything.
+                assertEquals(true, repository.claimBaseline("2025020123", 3, at))
+                assertEquals(3, repository.getNotificationLedgerEntry("2025020123")?.lastNotifiedGoalCount)
+                assertEquals("and the start stays claimed", true, repository.getNotificationLedgerEntry("2025020123")?.startNotified)
+                assertEquals(true, repository.claimGoal("2025020123", 4, at))
             } finally {
                 closeScope(scope)
             }

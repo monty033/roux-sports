@@ -247,4 +247,33 @@ class NotificationDeciderTest {
             decider.decide(game(awayScore = 3, homeScore = 2), baselined, startOff, isFavourite = true),
         )
     }
+
+    @Test
+    fun aFirstSightWithoutAScoreRecordsAnUnknownAndStaysSilentWhenTheScoreArrives() {
+        // The feed supplies a live game with no score yet. Zero here would be a claim that the game is 0-0, and the
+        // first 2-1 that arrives would then be announced as a goal nobody saw.
+        val unknown = NotificationLedgerEntry.UNKNOWN_GOAL_COUNT
+        assertEquals(
+            listOf<Alert>(Alert.GameStart(gameId, goalBaseline = unknown)),
+            decider.decide(game(awayScore = null, homeScore = null), ledger = null, TeamAlertPreferences(), isFavourite = true),
+        )
+
+        val recordedUnknown = ledger(goalCount = unknown, startNotified = true)
+        assertEquals(
+            "the score that arrives becomes the baseline, silently",
+            listOf<Alert>(Alert.Baseline(gameId, goalCount = 3)),
+            decider.decide(game(awayScore = 2, homeScore = 1), recordedUnknown, TeamAlertPreferences(), isFavourite = true),
+        )
+
+        // From a real baseline onwards, goals behave normally.
+        assertEquals(
+            listOf<Alert>(Alert.Goal(gameId, goalCount = 4, awayScore = 2, homeScore = 2)),
+            decider.decide(
+                game(awayScore = 2, homeScore = 2),
+                ledger(goalCount = 3, startNotified = true),
+                TeamAlertPreferences(),
+                isFavourite = true,
+            ),
+        )
+    }
 }

@@ -11,12 +11,31 @@ data class TeamAlertPreferences(
     val goals: Boolean = true,
 )
 
-/** Durable notification state. Persist this BEFORE posting to enforce at-most-once delivery. */
+/**
+ * Durable notification state. Persist this BEFORE posting to enforce at-most-once delivery.
+ *
+ * [lastNotifiedGoalCount] is the high-water score total that has been announced. See
+ * [UNKNOWN_GOAL_COUNT] for a game first seen without a score.
+ */
 data class NotificationLedgerEntry(
     val lastNotifiedGoalCount: Int,
     val startNotified: Boolean,
     val updatedAt: Instant,
-)
+) {
+    /** True when the game was first seen without a score, so no total has ever been established. */
+    val goalCountIsUnknown: Boolean get() = lastNotifiedGoalCount == UNKNOWN_GOAL_COUNT
+
+    companion object {
+        /**
+         * "No score has ever been observed for this game."
+         *
+         * A missing score is unknown, not zero: treating it as zero would let the first score the feed
+         * later supplies be announced as a goal that was never seen happen. A total recorded as this
+         * value must be replaced by a real observation before any goal can be claimed.
+         */
+        const val UNKNOWN_GOAL_COUNT: Int = -1
+    }
+}
 
 /** Stores user preferences and notification deduplication state across app launches. */
 interface PreferencesRepository {
@@ -79,9 +98,10 @@ interface PreferencesRepository {
      * than the stored one: an equal count is a duplicate, and a lower count is the feed correcting
      * itself downward, so neither is an event and neither may move the ledger backwards.
      *
-     * False also covers a file written by a newer build, which this build must not write to. A claim
-     * that cannot be taken is answered with silence rather than an exception, because the caller's
-     * only reasonable response is to post nothing.
+     * False also covers a file written by a newer build, which this build must not write to, and a game
+     * whose total is still [NotificationLedgerEntry.UNKNOWN_GOAL_COUNT]: nothing has been observed, so
+     * nothing can be above it. A claim that cannot be taken is answered with silence rather than an
+     * exception, because the caller's only reasonable response is to post nothing.
      */
     suspend fun claimGoal(
         gameId: String,
@@ -109,6 +129,10 @@ interface PreferencesRepository {
      * A game first seen while its start alerts are switched off still needs a recorded total, or every
      * later goal would compare against nothing and be announced as the first one. This leaves
      * `startNotified` alone: nothing was announced, so nothing may say otherwise.
+     *
+     * It only fills a gap. If a complete entry exists - because another worker claimed first, or because
+     * a goal has already been announced - this returns false and writes nothing: a baseline derived from
+     * an older snapshot must not raise the total over a goal that is about to be claimed.
      */
     suspend fun claimBaseline(
         gameId: String,
@@ -128,12 +152,13 @@ interface PreferencesRepository {
     /**
      * Remove ledger entries timestamped strictly before [olderThan].
      *
-     * [keep] names games whose entries must survive the sweep regardless of age. A game in progress can
+     * [keep] names games whose entries must survive the sweep regardless of age. It is required rather
+     * than defaulted: a caller that does not say which games it is still watching cannot safely sweep. A game in progress can
      * outlive the retention window - a long overtime, a suspended game resumed the next day - and losing
      * its entry mid-game would let the next pass announce goals that were already announced.
      */
     suspend fun pruneNotificationLedger(
         olderThan: Instant,
-        keep: Set<String> = emptySet(),
+        keep: Set<String>,
     )
 }

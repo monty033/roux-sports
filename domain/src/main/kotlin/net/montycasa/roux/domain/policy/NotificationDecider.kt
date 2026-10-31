@@ -4,6 +4,7 @@ import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.repo.NotificationLedgerEntry
+import net.montycasa.roux.domain.repo.NotificationLedgerEntry.Companion.UNKNOWN_GOAL_COUNT
 import net.montycasa.roux.domain.repo.TeamAlertPreferences
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
@@ -95,8 +96,12 @@ class NotificationDecider {
 
         if (ledger == null) {
             return when {
-                preferences.start -> listOf(Alert.GameStart(game.id, goalBaseline = goalCount ?: 0))
+                // With no score there is no safe baseline: treating it as zero would let the first score the feed
+                // supplies later be announced as a goal nobody saw. Record it as unknown instead.
+                preferences.start -> listOf(Alert.GameStart(game.id, goalBaseline = goalCount ?: UNKNOWN_GOAL_COUNT))
+
                 goalCount != null -> listOf(Alert.Baseline(game.id, goalCount))
+
                 else -> emptyList()
             }
         }
@@ -104,6 +109,12 @@ class NotificationDecider {
         val alerts = mutableListOf<Alert>()
         if (preferences.start && !ledger.startNotified) {
             alerts += Alert.GameStart(game.id, goalBaseline = ledger.lastNotifiedGoalCount)
+        }
+        // A recorded unknown means the game was first seen without a score. The first score that arrives becomes the
+        // baseline silently; announcing it would claim a goal that was never seen happen.
+        if (ledger.goalCountIsUnknown && goalCount != null) {
+            alerts += Alert.Baseline(game.id, goalCount)
+            return alerts
         }
         if (preferences.goals && goalCount != null && goalCount > ledger.lastNotifiedGoalCount) {
             alerts +=
