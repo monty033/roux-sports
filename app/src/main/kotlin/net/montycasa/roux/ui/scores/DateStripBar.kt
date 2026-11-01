@@ -112,7 +112,7 @@ fun DateStripBar(
                         Text(
                             date.dayOfWeek.getDisplayName(DateTextStyle.SHORT, locale),
                             color = if (selected) foreground else MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = dateTextStyle(9),
+                            style = dateTextStyle(12),
                         )
                         Text(
                             stringResource(R.string.date_strip_day_label, date.dayOfMonth),
@@ -122,7 +122,7 @@ fun DateStripBar(
                         Text(
                             date.month.getDisplayName(DateTextStyle.SHORT, locale),
                             color = if (selected) foreground else Roux.accents.muted,
-                            style = dateTextStyle(8).copy(fontWeight = FontWeight.Bold, letterSpacing = 0.04.em),
+                            style = dateTextStyle(12).copy(fontWeight = FontWeight.Bold, letterSpacing = 0.04.em),
                         )
                     }
                 }

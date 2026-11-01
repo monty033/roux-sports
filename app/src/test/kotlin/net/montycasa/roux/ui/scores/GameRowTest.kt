@@ -622,7 +622,7 @@ class GameRowTest {
         assertEquals(FontWeight.Medium, winningScore.fontWeight)
         val label = textLayout(rule.onNodeWithText("FINAL · OT")).layoutInput.style
         assertEquals(accents.signature, label.color)
-        assertEquals(9.sp, label.fontSize)
+        assertEquals(12.sp, label.fontSize)
         assertEquals(FontWeight.ExtraBold, label.fontWeight)
         assertEquals(0.09.em, label.letterSpacing)
         val pill = rule.onNodeWithTag(STATE_CAPSULE_TAG)
@@ -697,7 +697,7 @@ class GameRowTest {
     fun knownShotsRenderAwayThenHomeWithTabularFigures() {
         launch(live.copy(awayShots = 18, homeShots = 14))
         val shots = textLayout(rule.onNodeWithText("18–14 sog")).layoutInput.style
-        assertEquals(11.sp, shots.fontSize)
+        assertEquals(12.sp, shots.fontSize)
         assertEquals("tnum", shots.fontFeatureSettings)
         assertEquals(RouxLightAccents.muted, shots.color)
     }

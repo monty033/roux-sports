@@ -522,7 +522,7 @@ private fun StandingsSectionTitle(
             // Not transformed: the table's wording stays readable by a screen reader and findable by text.
             title,
             style = MaterialTheme.typography.labelMedium,
-            fontSize = 11.sp,
+            fontSize = 12.sp,
             letterSpacing = 0.8.sp,
             color = Roux.accents.muted,
             maxLines = 1,
@@ -540,7 +540,7 @@ private fun PlayoffLine(modifier: Modifier = Modifier) {
         Text(
             stringResource(R.string.standings_playoff_line),
             style = MaterialTheme.typography.labelMedium,
-            fontSize = 11.sp,
+            fontSize = 12.sp,
             letterSpacing = 0.4.sp,
             color = Roux.accents.signature,
             maxLines = 1,

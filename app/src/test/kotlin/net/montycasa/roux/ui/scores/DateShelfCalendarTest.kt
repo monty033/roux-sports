@@ -122,9 +122,10 @@ class DateShelfCalendarTest {
         assertEquals(12f, textStyle("Today", "2026-11-16").fontSize.value, 0f)
         assertEquals(FontWeight.ExtraBold, textStyle("Today", "2026-11-16").fontWeight)
         listOf("Sun", "15", "Nov").forEach { assertEquals(RouxLightAccents.onFill, textStyle(it).color) }
-        assertEquals(9f, textStyle("Sun").fontSize.value, 0f)
+        // Weekday and month labels are 12 sp: the smallest size the P5 type audit allows for micro-labels.
+        assertEquals(12f, textStyle("Sun").fontSize.value, 0f)
         assertEquals(19f, textStyle("15").fontSize.value, 0f)
-        assertEquals(8f, textStyle("Nov").fontSize.value, 0f)
+        assertEquals(12f, textStyle("Nov").fontSize.value, 0f)
         assertEquals("tnum", textStyle("15").fontFeatureSettings)
         assertPaint("2026-11-15", RouxLightAccents.fill)
         chip("2026-11-16").performClick()

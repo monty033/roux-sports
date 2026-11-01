@@ -62,11 +62,32 @@ import net.montycasa.roux.ui.scores.DrawerUi
 import java.time.LocalDate
 import java.time.format.DateTimeParseException
 
-// Brand-panel colours are deliberately independent of MaterialTheme, even on a light page.
-private val panel = SHEET_PANEL
-private val ink = Color(0xFFEDEEF1)
-private val muted = Color(0xFF565B64)
-private val orange = Color(0xFFFF4B12)
+/**
+ * Brand-panel colours, independent of MaterialTheme even on a light page.
+ *
+ * Internal so ContrastAndTypeTest measures the values the drawer actually paints, rather than copies that can drift.
+ * Each text ink is the lowest-contrast value that still reads as its role on every surface it is drawn on, and the
+ * ladder is kept in order: ink > unselected > season > dimmedName > muted > dimmedTrailing (all >= 4.5:1 where they
+ * carry text).
+ */
+internal object DrawerPalette {
+    val panel = SHEET_PANEL
+    val teamRow = Color(0xFF101216)
+    val selectedRow = Color(0xFF15171C)
+    val ink = Color(0xFFEDEEF1)
+    val unselected = Color(0xFFB4B9C1)
+    val selectedName = Color.White
+    val orange = Color(0xFFFF4B12)
+    val season = Color(0xFF8A9099)
+    val muted = Color(0xFF7D8188)
+    val dimmedName = Color(0xFF80868E)
+    val dimmedTrailing = Color(0xFF737980)
+}
+
+private val panel = DrawerPalette.panel
+private val ink = DrawerPalette.ink
+private val muted = DrawerPalette.muted
+private val orange = DrawerPalette.orange
 private val rule = Color(0xFF1B1D22)
 
 /**
@@ -97,8 +118,8 @@ fun LeaguesPanel(
             Text(
                 season,
                 Modifier.padding(start = 10.dp, top = 4.dp, bottom = 2.dp).testTag("leagues.season"),
-                color = Color(0xFF6C727B),
-                fontSize = 9.sp,
+                color = DrawerPalette.season,
+                fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 0.24.em,
             )
@@ -142,7 +163,7 @@ fun LeaguesPanel(
                     Text(
                         stringResource(R.string.drawer_done),
                         color = orange,
-                        fontSize = 11.sp,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.ExtraBold,
                         letterSpacing = 0.1.em,
                     )
@@ -183,7 +204,7 @@ fun LeaguesPanel(
                     stringResource(R.string.drawer_footer),
                     Modifier.padding(start = 10.dp, end = 10.dp, top = 12.dp),
                     color = muted,
-                    fontSize = 8.sp,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 0.1.em,
                 )
@@ -202,7 +223,7 @@ private fun DrawerLabel(
         label,
         modifier.then(if (padded) Modifier.padding(horizontal = 10.dp, vertical = 6.dp) else Modifier),
         color = muted,
-        fontSize = 8.sp,
+        fontSize = 12.sp,
         fontWeight = FontWeight.ExtraBold,
         letterSpacing = 0.2.em,
     )
@@ -241,8 +262,8 @@ private fun DrawerRow(
             .background(
                 when {
                     dimmed -> Color.Transparent
-                    team -> Color(0xFF101216)
-                    selected -> Color(0xFF15171C)
+                    team -> DrawerPalette.teamRow
+                    selected -> DrawerPalette.selectedRow
                     else -> Color.Transparent
                 },
             )
@@ -268,10 +289,10 @@ private fun DrawerRow(
             Modifier.weight(1f),
             color =
                 when {
-                    dimmed -> Color(0xFF6E747E)
+                    dimmed -> DrawerPalette.dimmedName
                     team -> ink
-                    selected -> Color.White
-                    else -> Color(0xFFB4B9C1)
+                    selected -> DrawerPalette.selectedName
+                    else -> DrawerPalette.unselected
                 },
             fontSize = 15.sp,
             fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold,
@@ -282,11 +303,11 @@ private fun DrawerRow(
             trailing,
             color =
                 when {
-                    dimmed -> Color(0xFF5F656E)
+                    dimmed -> DrawerPalette.dimmedTrailing
                     selected -> orange
                     else -> muted
                 },
-            fontSize = 8.sp,
+            fontSize = 12.sp,
             fontWeight = FontWeight.ExtraBold,
             letterSpacing = 0.1.em,
         )

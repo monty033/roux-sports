@@ -27,8 +27,9 @@ internal val RouxLightCard = Color(0xFFFFFFFF)
 internal val RouxLightInk = Color(0xFF0C0D0F)
 internal val RouxLightInkMuted = Color(0xFF54585F)
 
-// --ink3 (muted rail labels) in final/scores-screen.html.
-internal val RouxLightMuted = Color(0xFF6B7078)
+// --ink3 (muted rail labels) in final/scores-screen.html. Darkened from #6B7078, which measured 4.44:1 on the
+// #F2F2EF page (standings section titles sit there); #686D75 measures 4.64:1 on the page and 5.21:1 on the card.
+internal val RouxLightMuted = Color(0xFF686D75)
 internal val RouxLightRule = Color(0xFFE3E3DD)
 internal val RouxLightSignature = Color(0xFFC93A06)
 internal val RouxLightFill = Color(0xFFFF4B12)

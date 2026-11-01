@@ -7,12 +7,14 @@ package net.montycasa.roux.ui.theme
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.unit.sp
 
 /**
  * Fixed light and dark schemes. No dynamic colour, ever: this app has a brand, and a wallpaper-derived
@@ -37,6 +39,17 @@ object Roux {
 }
 
 /**
+ * Material's own scale, with the one size we do not accept raised.
+ *
+ * M3 draws `labelSmall` at 11 sp, which is under the app's 12 sp floor, and it is the style the detail screen's
+ * section headers use. Raising it here fixes every call site at once instead of patching each one.
+ */
+private val RouxTypography =
+    Typography().let { base ->
+        base.copy(labelSmall = base.labelSmall.copy(fontSize = 12.sp, lineHeight = 16.sp))
+    }
+
+/**
  * Applies the scheme for [dark].
  *
  * The accents travel alongside the [ColorScheme] rather than inside it, so a screen can ask for
@@ -51,7 +64,7 @@ fun RouxTheme(
         LocalRouxAccents provides if (dark) RouxDarkAccents else RouxLightAccents,
         LocalRouxCardTypography provides RouxCardTypography,
     ) {
-        MaterialTheme(colorScheme = rouxColorScheme(dark), content = content)
+        MaterialTheme(colorScheme = rouxColorScheme(dark), typography = RouxTypography, content = content)
     }
 }
 

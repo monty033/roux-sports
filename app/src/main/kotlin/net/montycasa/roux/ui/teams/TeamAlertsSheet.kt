@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -35,8 +36,23 @@ import net.montycasa.roux.R
 import net.montycasa.roux.ui.reach.Reach
 import net.montycasa.roux.ui.reach.primaryControl
 
-/** The sheet's own surface, matching the leagues menu so the two read as the same material. */
-private val SHEET_PANEL = Color(0xFF1C1C1E)
+/**
+ * The sheet's own surface, matching the leagues menu so the two read as the same material.
+ *
+ * The panel is fixed dark in BOTH themes, so every piece of text the sheet draws takes its foreground from the
+ * constants below rather than from the theme. Without that, light-theme onSurface (near-black) lands on this panel
+ * at about 1.1:1. Internal so ContrastAndTypeTest measures these exact values.
+ */
+internal val SHEET_PANEL = Color(0xFF1C1C1E)
+
+/** Title, switch labels and warnings on [SHEET_PANEL]: 14.67:1. */
+internal val SHEET_INK = Color(0xFFEDEEF1)
+
+/** The explanatory disclosure on [SHEET_PANEL]: 7.11:1. */
+internal val SHEET_MUTED = Color(0xFFA2A8B1)
+
+/** The secondary (non-filled) action on [SHEET_PANEL]: 5.08:1. */
+internal val SHEET_ACCENT = Color(0xFFFF4B12)
 
 /**
  * The tallest a sheet may be, as a fraction of the window.
@@ -100,6 +116,7 @@ fun TeamAlertsSheet(
             Text(
                 stringResource(R.string.teams_alerts_title, alerts.team.name ?: alerts.team.key.abbrev),
                 style = MaterialTheme.typography.headlineSmall,
+                color = SHEET_INK,
             )
 
             if (showPrompt) {
@@ -127,7 +144,7 @@ fun TeamAlertsSheet(
                 Text(
                     stringResource(R.string.teams_alerts_disclosure),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = SHEET_MUTED,
                     modifier = Modifier.testTag("teams.alerts.disclosure"),
                 )
 
@@ -135,6 +152,7 @@ fun TeamAlertsSheet(
                     Text(
                         stringResource(R.string.teams_alerts_blocked),
                         style = MaterialTheme.typography.bodyMedium,
+                        color = SHEET_INK,
                         modifier = Modifier.testTag("teams.alerts.blocked"),
                     )
                     Button(
@@ -154,6 +172,7 @@ fun TeamAlertsSheet(
                     Text(
                         stringResource(R.string.teams_alerts_save_failed),
                         style = MaterialTheme.typography.bodyMedium,
+                        color = SHEET_INK,
                         modifier = Modifier.testTag("teams.alerts.save_failed"),
                     )
                 }
@@ -192,11 +211,13 @@ private fun PromptBlock(
         stringResource(R.string.teams_alerts_prompt_title),
         Modifier.fillMaxWidth().testTag("teams.alerts.prompt.title"),
         style = MaterialTheme.typography.titleMedium,
+        color = SHEET_INK,
     )
     Text(
         stringResource(R.string.teams_alerts_prompt_body),
         Modifier.fillMaxWidth().testTag("teams.alerts.prompt.body"),
         style = MaterialTheme.typography.bodyMedium,
+        color = SHEET_INK,
     )
     Button(
         onClick = onEnable,
@@ -211,6 +232,8 @@ private fun PromptBlock(
     TextButton(
         onClick = onDismissPrompt,
         modifier = Modifier.fillMaxWidth().heightIn(min = Reach.MIN_TARGET_DP.dp).testTag("teams.alerts.prompt.later"),
+        // A TextButton is drawn in primary, which is the light-theme #C93A06 (3.31:1 on this panel).
+        colors = ButtonDefaults.textButtonColors(contentColor = SHEET_ACCENT),
     ) {
         Text(stringResource(R.string.teams_alerts_prompt_later))
     }
@@ -229,7 +252,7 @@ private fun AlertSwitch(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Reach.MIN_TARGET_GAP_DP.dp),
     ) {
-        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, color = SHEET_INK)
         Switch(
             checked = checked,
             onCheckedChange = onChange,
