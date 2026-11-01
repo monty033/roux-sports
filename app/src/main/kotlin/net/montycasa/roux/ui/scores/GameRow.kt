@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -265,10 +266,14 @@ private fun StateRail(
     // The reference's .rr elements are empty spacers. .rstate centres one stack across the
     // full card height; its lines have no relationship to the two team rows.
     Column(
+        // A floor, not a ceiling. The rail is measured by its own widest line, so the capsule can never be
+        // squeezed into a wrap by a constant that was chosen for a different phone width. The club column
+        // is the one that yields, because a truncated club name still reads and a two-line capsule does not.
         Modifier
-            .width(width)
-            .fillMaxHeight()
+            .width(IntrinsicSize.Max)
+            .widthIn(min = width)
             .testTag(STATE_RAIL_TAG)
+            .fillMaxHeight()
             .drawBehind {
                 drawRect(
                     rule,
@@ -292,32 +297,37 @@ private fun StateRail(
                 }
 
                 is GameState.Live -> {
-                    // An overtime game's state is "OT", not "LIVE": the period is the fact worth the capsule, and
-                    // moving it there leaves the line below as a bare clock. That is what keeps the rail to one
-                    // line at 2.0 type on a 360 dp phone - "OT" and "12:34" together do not fit in 82 dp, and a
-                    // wrapped clock is worse than a clock with its period stated once, above it.
+                    // Extra periods put the period label beside the clock in one row.
                     val periodType = game.period?.periodType
                     // Only an extra period moves up into the capsule: a regulation game keeps "2nd 12:34" on
                     // one line because it fits, and "OT"/"SO" are the labels that do not.
                     val extra = periodType == "OT" || periodType == "SO"
-                    LiveCapsule(
-                        label =
-                            when {
-                                periodType == "OT" -> R.string.game_row_period_overtime
-                                periodType == "SO" -> R.string.game_row_period_shootout
-                                else -> R.string.game_row_live_label
-                            },
-                    )
-                    StateClock(
-                        if (extra) {
-                            game.period?.clock.orEmpty()
-                        } else {
+                    val label =
+                        when {
+                            periodType == "OT" -> R.string.game_row_period_overtime
+                            periodType == "SO" -> R.string.game_row_period_shootout
+                            else -> R.string.game_row_live_label
+                        }
+                    val intermission = game.period?.inIntermission == true
+                    if (extra) {
+                        // One line: capsule and clock beside each other. The period used to sit above a bare
+                        // clock, which read as two lines for a game that had only two facts to report.
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            LiveCapsule(label = label)
+                            StateClock(game.period?.clock.orEmpty(), live = true, intermission = intermission, inline = true)
+                        }
+                    } else {
+                        LiveCapsule(label = label)
+                        StateClock(
                             listOfNotNull(periodLabel(game.period), game.period?.clock?.takeIf { it.isNotBlank() })
-                                .joinToString(" ")
-                        },
-                        live = true,
-                        intermission = game.period?.inIntermission == true,
-                    )
+                                .joinToString(" "),
+                            live = true,
+                            intermission = intermission,
+                        )
+                    }
                 }
 
                 GameState.Final -> {
@@ -356,12 +366,17 @@ private fun StateClock(
     text: String,
     live: Boolean,
     intermission: Boolean = false,
+    inline: Boolean = false,
 ) {
     val breakDescription = if (intermission) stringResource(R.string.game_row_intermission) else null
     Text(
         text,
         // Keep the break available to accessibility without adding a fourth visible rail line.
-        modifier = Modifier.fillMaxWidth().semantics { if (breakDescription != null) contentDescription = "$text, $breakDescription" },
+        // An inline clock needs its own intrinsic width so its paragraph and node agree.
+        // Stacked clocks fill the measured rail content width, preserving the existing insets.
+        modifier =
+            (if (inline) Modifier.width(IntrinsicSize.Max) else Modifier.fillMaxWidth())
+                .semantics { if (breakDescription != null) contentDescription = "$text, $breakDescription" },
         style = Roux.cardTypography.clock,
         color = if (live) Roux.accents.signature else MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Start,
@@ -395,6 +410,8 @@ private fun LiveCapsule(
             style = Roux.cardTypography.finalState,
             color = Roux.accents.onFill,
             textAlign = TextAlign.Center,
+            maxLines = 1,
+            softWrap = false,
         )
     }
 }
