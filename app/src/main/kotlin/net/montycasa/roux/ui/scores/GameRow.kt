@@ -79,7 +79,7 @@ private data class CardMetrics(
 )
 
 private val wideCard = CardMetrics(92.dp, 34.dp, 15.sp, 22.sp, 30.dp, 8.dp, 13.dp)
-private val narrowCard = CardMetrics(82.dp, 32.dp, 14.sp, 21.sp, 28.dp, 7.dp, 11.dp)
+private val narrowCard = CardMetrics(128.dp, 32.dp, 14.sp, 21.sp, 28.dp, 7.dp, 11.dp)
 
 /**
  * One informational card per game; the host owns the existing navigation callback and tag.
@@ -361,7 +361,7 @@ private fun StateClock(
     Text(
         text,
         // Keep the break available to accessibility without adding a fourth visible rail line.
-        modifier = Modifier.semantics { if (breakDescription != null) contentDescription = "$text, $breakDescription" },
+        modifier = Modifier.fillMaxWidth().semantics { if (breakDescription != null) contentDescription = "$text, $breakDescription" },
         style = Roux.cardTypography.clock,
         color = if (live) Roux.accents.signature else MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Start,

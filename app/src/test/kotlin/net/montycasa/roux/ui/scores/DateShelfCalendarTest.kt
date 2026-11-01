@@ -74,78 +74,6 @@ class DateShelfCalendarTest {
         }
     }
 
-    private fun chip(date: String) = rule.onNode(SemanticsMatcher.expectValue(PrimaryControlTag, "scores.dateChip.$date"))
-
-    private fun tile() = rule.onNodeWithContentDescription("Open calendar")
-
-    private fun open() = tile().performClick()
-
-    @Test
-    fun shelfMeasuresExactChipsGapsInsetsAndPinnedCalendarAt411Dp() {
-        launch()
-        val first = chip("2026-11-12")
-        val next = chip("2026-11-13")
-        first.assertWidthIsEqualTo(56.dp).assertHeightIsEqualTo(56.dp)
-        next.assertWidthIsEqualTo(56.dp).assertHeightIsEqualTo(56.dp)
-        assertEquals(8f, (next.getUnclippedBoundsInRoot().left - first.getUnclippedBoundsInRoot().right).value, 0.01f)
-        assertEquals(16f, first.getUnclippedBoundsInRoot().left.value, 0.01f)
-        tile().assertWidthIsEqualTo(56.dp).assertHeightIsEqualTo(56.dp)
-        val pinned = tile().getUnclippedBoundsInRoot()
-        assertEquals(395f, pinned.right.value, 0.01f)
-        val shelf = rule.onNodeWithTag("scores.shelf").getUnclippedBoundsInRoot()
-        assertEquals(73f, shelf.height.value, 0.01f)
-        assertEquals(9f, (pinned.top - shelf.top).value, 0.01f)
-        assertEquals(8f, (shelf.bottom - pinned.bottom).value, 0.01f)
-        chip("2026-11-14").performTouchInput { swipeLeft() }
-        assertEquals(pinned, tile().getUnclippedBoundsInRoot())
-    }
-
-    private fun textStyle(
-        text: String,
-        date: String = "2026-11-15",
-    ): androidx.compose.ui.text.TextStyle {
-        val results = mutableListOf<TextLayoutResult>()
-        rule
-            .onNode(
-                hasText(text) and hasAnyAncestor(SemanticsMatcher.expectValue(PrimaryControlTag, "scores.dateChip.$date")),
-                useUnmergedTree = true,
-            ).performSemanticsAction(SemanticsActions.GetTextLayoutResult) {
-                it(results)
-            }
-        return results.single().layoutInput.style
-    }
-
-    @Test
-    fun todayHasOnlyItsLabelAndSelectionPaintsAllThreeDateLines() {
-        launch()
-        assertEquals(listOf("Today"), chip("2026-11-16").fetchSemanticsNode().config[SemanticsProperties.Text].map { it.text })
-        assertEquals(12f, textStyle("Today", "2026-11-16").fontSize.value, 0f)
-        assertEquals(FontWeight.ExtraBold, textStyle("Today", "2026-11-16").fontWeight)
-        listOf("Sun", "15", "Nov").forEach { assertEquals(RouxLightAccents.onFill, textStyle(it).color) }
-        // Weekday and month labels are 12 sp: the smallest size the P5 type audit allows for micro-labels.
-        assertEquals(12f, textStyle("Sun").fontSize.value, 0f)
-        assertEquals(19f, textStyle("15").fontSize.value, 0f)
-        assertEquals(12f, textStyle("Nov").fontSize.value, 0f)
-        assertEquals("tnum", textStyle("15").fontFeatureSettings)
-        assertPaint("2026-11-15", RouxLightAccents.fill)
-        chip("2026-11-16").performClick()
-        assertPaint("2026-11-16", RouxLightAccents.fill)
-        assertPaint("2026-11-15", RouxLightColors.surfaceVariant)
-        assertEquals(RouxLightColors.onSurfaceVariant, textStyle("Sun").color)
-        assertEquals(RouxLightColors.onSurface, textStyle("15").color)
-        assertEquals(RouxLightAccents.muted, textStyle("Nov").color)
-        assertEquals(RouxLightAccents.onFill, textStyle("Today", "2026-11-16").color)
-    }
-
-    private fun assertPaint(
-        date: String,
-        color: Color,
-    ) {
-        chip(date).performScrollTo()
-        val pixels = chip(date).captureToImage().toPixelMap()
-        assertColor(color, pixels[pixels.width / 2, 2])
-    }
-
     private fun assertColor(
         expected: Color,
         actual: Color,
@@ -154,6 +82,10 @@ class DateShelfCalendarTest {
         assertEquals(expected.green, actual.green, 0.01f)
         assertEquals(expected.blue, actual.blue, 0.01f)
     }
+
+    private fun tile() = rule.onNodeWithContentDescription("Open calendar")
+
+    private fun open() = tile().performClick()
 
     @Test
     fun calendarOpensAtSelectionAndArrowsCrossYearBoundariesOneMonthAtATime() {

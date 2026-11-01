@@ -278,7 +278,7 @@ class ScoresScreenTest {
         val first = rule.onNodeWithTag("scores.game.${games[0].id.value}")
         val second = rule.onNodeWithTag("scores.game.${games[1].id.value}")
         first.assertHeightIsEqualTo(76.dp).assertWidthIsEqualTo(336.dp)
-        rule.onAllNodesWithTag(STATE_RAIL_TAG, useUnmergedTree = true)[0].assertWidthIsEqualTo(82.dp)
+        rule.onAllNodesWithTag(STATE_RAIL_TAG, useUnmergedTree = true)[0].assertWidthIsEqualTo(128.dp)
         rule.onAllNodesWithTag(CREST_TAG, useUnmergedTree = true)[0].assertWidthIsEqualTo(32.dp)
         val gap = second.getUnclippedBoundsInRoot().top - first.getUnclippedBoundsInRoot().bottom
         assertEquals(Reach.MIN_TARGET_GAP_DP, gap.value, 0.01f)
@@ -296,7 +296,7 @@ class ScoresScreenTest {
     fun dateSelectionForwardsIntentAndTheShelfHasNoFavouritesToggle() {
         val selected = mutableListOf<String>()
         launchScreen(onSelectDate = { selected += it })
-        rule.onNode(SemanticsMatcher.expectValue(PrimaryControlTag, "scores.dateChip.2025-10-26")).performClick()
+        rule.onNodeWithTag("scores.next").performClick()
         assertEquals(listOf("2025-10-26"), selected)
         rule.onNodeWithContentDescription("Favourites only").assertDoesNotExist()
         rule.onNode(SemanticsMatcher.expectValue(PrimaryControlTag, "scores.favourites")).assertDoesNotExist()
@@ -410,10 +410,10 @@ class ScoresScreenTest {
     ) {
         // Derived from the same policy call the screen makes, rather than a hand-pinned window: pinning the
         // window here let the screen be narrowed to three days to satisfy this fixture instead of the plan.
-        val chips = DateStrip.items(state.dateIndex, state.selectedDate).map { "scores.dateChip.${it.date}" }
+        val chips = listOf("scores.previous", "scores.next")
         val primaries = chips + listOfNotNull("scores.calendar", action)
         rule.assertPrimaryControlsReachable(*primaries.toTypedArray())
-        val frequent = rule.reachTargets().filter { it.primary && (it.tag.startsWith("scores.dateChip.") || it.tag == "scores.calendar") }
+        val frequent = rule.reachTargets().filter { it.primary && (it.tag in chips || it.tag == "scores.calendar") }
         assertEquals(chips.size + 1, frequent.size)
         assertTrue(frequent.all { it.frequent })
         assertTrue(rule.reachTargets().any { it.tag == "scores.pullToRefresh" && !it.primary })

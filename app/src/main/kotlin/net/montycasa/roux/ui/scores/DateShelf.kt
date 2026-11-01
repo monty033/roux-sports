@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -50,10 +51,10 @@ internal fun DateShelf(
     Row(
         modifier
             .fillMaxWidth()
+            .height(72.dp)
             .testTag("scores.shelf")
             .background(MaterialTheme.colorScheme.surface)
             .drawBehind { drawLine(rule, Offset(0f, 0.5.dp.toPx()), Offset(size.width, 0.5.dp.toPx()), 1.dp.toPx()) }
-            .padding(top = 1.dp)
             .padding(horizontal = Reach.EDGE_INSET_DP.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(Reach.MIN_TARGET_GAP_DP.dp),
         verticalAlignment = Alignment.CenterVertically,

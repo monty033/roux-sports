@@ -18,11 +18,13 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -406,6 +408,7 @@ class StandingsScreenTest {
         // Identity comes from the crest and the club's own name; the abbreviation is only a fallback for a payload
         // that carries no name at all.
         rule.onAllNodesWithTag(CREST_TAG, useUnmergedTree = true).assertCountEquals(32)
+        rule.onAllNodesWithTag(CREST_TAG, useUnmergedTree = true)[0].assertWidthIsEqualTo(30.dp).assertHeightIsEqualTo(30.dp)
         val leader = rows.first()
         rule.onNodeWithText(leader.team.shortName!!).assertIsDisplayed()
     }

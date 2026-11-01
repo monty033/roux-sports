@@ -11,12 +11,15 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import com.github.takahirom.roborazzi.captureRoboImage
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
@@ -67,13 +70,21 @@ class GameRowStressTest {
             period = PeriodInfo(ordinal = 4, periodType = "OT", clock = "12:34"),
         )
 
-    private fun launch(fontScale: Float) {
+    private fun launch(
+        fontScale: Float,
+        shootout: Boolean = false,
+    ) {
         rule.setContent {
             RouxTheme {
                 val density = Density(LocalDensity.current.density, fontScale)
                 CompositionLocalProvider(LocalDensity provides density) {
                     BoxWithConstraints {
-                        GameRow(stress, narrow = maxWidth <= 380.dp, modifier = Modifier.testTag("game-row"))
+                        GameRow(
+                            if (shootout) stress.copy(period = stress.period!!.copy(periodType = "SO")) else stress,
+                            narrow =
+                                maxWidth <= 380.dp,
+                            modifier = Modifier.testTag("game-row"),
+                        )
                     }
                 }
             }
@@ -89,6 +100,7 @@ class GameRowStressTest {
     @Test
     fun atTwoXTypeOnA360dpPhoneTheRailKeepsEveryTextInsideItsBounds() {
         launch(fontScale = 2f)
+        rule.onNodeWithTag(STATE_RAIL_TAG, useUnmergedTree = true).assertWidthIsEqualTo(128.dp)
 
         val rail = rule.onNodeWithTag(STATE_RAIL_TAG, useUnmergedTree = true).fetchSemanticsNode()
         rule.onNodeWithTag(STATE_RAIL_TAG, useUnmergedTree = true).assertIsDisplayed()
@@ -139,7 +151,7 @@ class GameRowStressTest {
             assertTrue("no layout result for '$text' - the assertion would be vacuous", results.isNotEmpty())
             results.forEach { layout ->
                 assertFalse(
-                    "'$text' is ellipsised (${layout.lineCount} line(s), overflow=${layout.hasVisualOverflow})",
+                    "'$text' is ellipsised (${layout.lineCount} line(s), overflow=${layout.hasVisualOverflow}, size=${layout.size}, paragraph=${layout.multiParagraph.width}x${layout.multiParagraph.height})",
                     layout.hasVisualOverflow,
                 )
             }
@@ -169,6 +181,53 @@ class GameRowStressTest {
             wrapped.isEmpty(),
         )
     }
+
+    @Test
+    fun normalTypeAndShootoutAlsoFitOnOneLine() {
+        launch(fontScale = 1f, shootout = true)
+        railTexts().forEach { node ->
+            val results = mutableListOf<TextLayoutResult>()
+            node.config
+                .getOrNull(SemanticsActions.GetTextLayoutResult)
+                ?.action
+                ?.invoke(results)
+            assertTrue(results.isNotEmpty())
+            results.forEach {
+                assertEquals(1, it.lineCount)
+                assertFalse(it.hasVisualOverflow)
+            }
+        }
+    }
+
+    private fun snapshot(
+        scale: Float,
+        shootout: Boolean,
+    ) {
+        launch(scale, shootout)
+        rule.onNodeWithTag("game-row").assertHeightIsEqualTo(if (scale == 1f) 110.dp else 170.dp)
+        railTexts().forEach { node ->
+            val results = mutableListOf<TextLayoutResult>()
+            node.config
+                .getOrNull(SemanticsActions.GetTextLayoutResult)
+                ?.action
+                ?.invoke(results)
+            assertTrue(results.isNotEmpty())
+            results.forEach {
+                assertEquals(1, it.lineCount)
+                assertFalse(it.hasVisualOverflow)
+            }
+        }
+        val kind = if (shootout) "so" else "ot"
+        rule.onNodeWithTag("game-row").captureRoboImage("src/test/screenshots/game-row/narrow-$kind-$scale.png")
+    }
+
+    @Test fun narrowOvertimeNormal() = snapshot(1f, false)
+
+    @Test fun narrowOvertimeLarge() = snapshot(2f, false)
+
+    @Test fun narrowShootoutNormal() = snapshot(1f, true)
+
+    @Test fun narrowShootoutLarge() = snapshot(2f, true)
 
     @Test
     fun theRailIsNotWiderThanTheCardItSitsIn() {

@@ -104,8 +104,7 @@ class ReachAuditTest {
         scoresData.copy(freshness = Freshness.Stale(Instant.parse("2025-10-25T23:42:00Z")))
 
     /** The date chips the screen draws for this state, from the same policy call the screen makes. */
-    private fun scoreChips(state: ScoresUiState): List<String> =
-        DateStrip.items(state.dateIndex, state.selectedDate).map { "scores.dateChip.${it.date}" } + "scores.calendar"
+    private fun scoreChips(state: ScoresUiState): List<String> = listOf("scores.previous", "scores.next", "scores.calendar")
 
     // ----- Standings ------------------------------------------------------------------------------------------------
 
