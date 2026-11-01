@@ -1,10 +1,8 @@
 <resources>
     <string name="date_strip_today">Today</string>
-    <string name="calendar_open">Open calendar</string>
     <string name="calendar_previous">Previous month</string>
     <string name="calendar_next">Next month</string>
     <string name="calendar_today">TODAY</string>
-    <string name="calendar_done">DONE</string>
     <string name="calendar_dismiss">Close calendar</string>
     <string name="scores_empty_date">No games on %1$s</string>
     <string name="scores_next_games">Next games: %1$s</string>

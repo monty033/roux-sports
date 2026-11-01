@@ -37,8 +37,6 @@ import net.montycasa.roux.domain.model.ShotTotals
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.domain.model.ThreeStar
-import net.montycasa.roux.domain.policy.DateStrip
-import net.montycasa.roux.domain.policy.FavoritesHint
 import net.montycasa.roux.domain.policy.StandingsGrouping
 import net.montycasa.roux.domain.policy.StandingsMode
 import net.montycasa.roux.domain.policy.StandingsView
@@ -104,7 +102,7 @@ class ReachAuditTest {
         scoresData.copy(freshness = Freshness.Stale(Instant.parse("2025-10-25T23:42:00Z")))
 
     /** The date chips the screen draws for this state, from the same policy call the screen makes. */
-    private fun scoreChips(state: ScoresUiState): List<String> = listOf("scores.previous", "scores.next", "scores.calendar")
+    private fun scoreChips(state: ScoresUiState): List<String> = listOf("scores.previous", "scores.next", "scores.dateLabel")
 
     // ----- Standings ------------------------------------------------------------------------------------------------
 

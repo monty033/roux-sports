@@ -8,7 +8,6 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertHeightIsEqualTo
-import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.captureToImage
@@ -21,22 +20,17 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.height
 import com.github.takahirom.roborazzi.captureRoboImage
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.model.DateIndexEntry
-import net.montycasa.roux.ui.reach.PrimaryControlTag
 import net.montycasa.roux.ui.theme.RouxDarkAccents
 import net.montycasa.roux.ui.theme.RouxDarkColors
 import net.montycasa.roux.ui.theme.RouxLightAccents
-import net.montycasa.roux.ui.theme.RouxLightColors
 import net.montycasa.roux.ui.theme.RouxTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -52,6 +46,7 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class DateShelfCalendarTest {
     @get:Rule val rule = createComposeRule()
+    private lateinit var activity: androidx.activity.ComponentActivity
     private val state =
         mutableStateOf(
             ScoresUiState(
@@ -68,6 +63,7 @@ class DateShelfCalendarTest {
     ) {
         state.value = state.value.copy(selectedDate = selected)
         rule.setContent {
+            activity = androidx.compose.ui.platform.LocalContext.current as androidx.activity.ComponentActivity
             RouxTheme(dark) {
                 ScoresScreen(state.value, {}, {}, { state.value = state.value.copy(selectedDate = it) })
             }
@@ -83,7 +79,7 @@ class DateShelfCalendarTest {
         assertEquals(expected.blue, actual.blue, 0.01f)
     }
 
-    private fun tile() = rule.onNodeWithContentDescription("Open calendar")
+    private fun tile() = rule.onNodeWithTag("scores.dateLabel")
 
     private fun open() = tile().performClick()
 
@@ -103,63 +99,63 @@ class DateShelfCalendarTest {
     }
 
     @Test
-    fun tappingADayOnlyMovesTheDraftAndDoneAppliesIt() {
-        launch(selected = "2026-11-15")
+    fun tappingADayAppliesToScoresClosesAndReopensAtSelection() {
+        launch()
         open()
+        rule.onNodeWithText("DONE").assertDoesNotExist()
         rule.onNodeWithTag("calendar.day.2026-11-19").performClick()
-        // The sheet shows the draft as selected, but the screen behind it has not moved.
-        rule.onNodeWithTag("calendar.day.2026-11-19").assertIsSelected()
-        assertEquals("2026-11-15", state.value.selectedDate)
-        rule.onNodeWithText("DONE").performClick()
         rule.onNodeWithTag("calendar.sheet").assertDoesNotExist()
-        assertEquals("2026-11-19", state.value.selectedDate)
+        rule.onNodeWithText("No games on Thu, Nov 19").assertExists()
+        open()
+        rule.onNodeWithTag("calendar.day.2026-11-19").assertIsSelected()
+        rule.onNodeWithContentDescription("Next month").performClick()
+        rule.onNodeWithText("December 2026").assertExists()
     }
 
     @Test
-    fun todayJumpsTheDraftAndOnlyDoneApplies() {
+    fun todayAppliesImmediately() {
         launch(selected = "2026-12-15")
         open()
         rule.onNodeWithText("TODAY").performClick()
-        rule.onNodeWithText("November 2026").assertExists()
-        rule.onNodeWithTag("calendar.day.2026-11-16").assertIsSelected()
-        // TODAY is a draft too: nothing is applied until DONE.
-        assertEquals("2026-12-15", state.value.selectedDate)
-        rule.onNodeWithTag("calendar.day.2026-11-20").performClick()
-        rule.onNodeWithText("DONE").performClick()
         rule.onNodeWithTag("calendar.sheet").assertDoesNotExist()
-        assertEquals("2026-11-20", state.value.selectedDate)
+        rule.onNodeWithText("No games on Mon, Nov 16").assertExists()
         open()
-        rule.onNodeWithText("November 2026").assertExists()
-        rule.onNodeWithTag("calendar.day.2026-11-20").assertIsSelected()
+        rule.onNodeWithTag("calendar.day.2026-11-16").assertIsSelected()
     }
 
     @Test
-    fun scrimTapDiscardsTheDraftAndLeavesTheScoresWhereTheyWere() {
+    fun scrimDismissLeavesScoresUnchanged() {
         launch()
         open()
-        rule.onNodeWithTag("calendar.day.2026-11-19").performClick()
-        rule.onNodeWithTag("calendar.day.2026-11-19").assertIsSelected()
+        rule.onNodeWithContentDescription("Next month").performClick()
         rule.onNodeWithTag("calendar.scrim").performTouchInput {
             click(
                 androidx.compose.ui.geometry
                     .Offset(8f, 8f),
             )
         }
-        rule.onNodeWithTag("calendar.sheet").assertDoesNotExist()
-        assertEquals("2026-11-15", state.value.selectedDate)
-        // Reopening starts from the applied date, not from the discarded draft.
-        open()
-        rule.onNodeWithTag("calendar.day.2026-11-15").assertIsSelected()
-        rule.onNodeWithTag("calendar.day.2026-11-19").assertIsNotSelected()
+        assertUnchanged()
     }
 
     @Test
-    fun dialogDismissActionDiscardsTheDraft() {
+    fun backDismissLeavesScoresUnchanged() {
         launch()
         open()
-        rule.onNodeWithTag("calendar.day.2026-11-19").performClick()
+        rule.runOnIdle { activity.onBackPressedDispatcher.onBackPressed() }
+        assertUnchanged()
+    }
+
+    @Test
+    fun dialogDismissLeavesScoresUnchanged() {
+        launch()
+        open()
         rule.onNodeWithTag("calendar.sheet").performSemanticsAction(SemanticsActions.Dismiss)
+        assertUnchanged()
+    }
+
+    private fun assertUnchanged() {
         rule.onNodeWithTag("calendar.sheet").assertDoesNotExist()
+        rule.onNodeWithText("No games on Sun, Nov 15").assertExists()
         assertEquals("2026-11-15", state.value.selectedDate)
     }
 
@@ -190,6 +186,7 @@ class DateShelfCalendarTest {
         rule.onNodeWithTag("calendar.dot.2026-11-17", useUnmergedTree = true).assertDoesNotExist()
         rule.onNodeWithTag("calendar.dot.2026-11-18", useUnmergedTree = true).assertDoesNotExist()
         rule.onNodeWithTag("calendar.day.2026-11-16").performClick()
+        open()
         rule.onNodeWithTag("calendar.day.2026-11-16").assertIsSelected()
         assertTrue(state.value.dateIndex.isNotEmpty())
     }
