@@ -3,6 +3,7 @@ package net.montycasa.roux.domain.repo
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import net.montycasa.roux.domain.model.TeamKey
+import net.montycasa.roux.domain.model.ThemeMode
 import kotlin.time.Instant
 
 /** Per-team controls for game-start and goal alerts. Both are enabled by default. */
@@ -39,6 +40,15 @@ data class NotificationLedgerEntry(
 
 /** Stores user preferences and notification deduplication state across app launches. */
 interface PreferencesRepository {
+    /** Saved theme choice; defaults to System when unset. */
+    suspend fun getThemeMode(): ThemeMode
+
+    /** Save a theme choice in the shared preferences store. */
+    suspend fun setThemeMode(mode: ThemeMode)
+
+    /** Saved theme as it changes, starting with the current value. */
+    fun observeThemeMode(): Flow<ThemeMode> = flow { emit(getThemeMode()) }
+
     /** Read the saved favourite teams; an empty set means none are selected. */
     suspend fun getFavourites(): Set<TeamKey>
 
@@ -71,7 +81,7 @@ interface PreferencesRepository {
      *
      * The default body reads once and completes, which is honest for a store that cannot notify: a
      * caller that needs live updates gets a stale value rather than a lie about the future. The
-     * DataStore implementation overrides all three to observe the file.
+     * DataStore implementation overrides these flows to observe the file.
      */
     fun observeFavourites(): Flow<Set<TeamKey>> = flow { emit(getFavourites()) }
 

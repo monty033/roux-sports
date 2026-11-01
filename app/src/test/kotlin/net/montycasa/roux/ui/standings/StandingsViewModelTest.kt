@@ -17,6 +17,7 @@ import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.Season
 import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.model.TeamKey
+import net.montycasa.roux.domain.model.ThemeMode
 import net.montycasa.roux.domain.policy.StandingsMode
 import net.montycasa.roux.domain.policy.StandingsView
 import net.montycasa.roux.domain.repo.NotificationLedgerEntry
@@ -310,6 +311,10 @@ class StandingsViewModelTest {
         val failRead: Boolean = false,
         val writable: Boolean = true,
     ) : PreferencesRepository {
+        override suspend fun getThemeMode() = ThemeMode.System
+
+        override suspend fun setThemeMode(mode: ThemeMode) = Unit
+
         override suspend fun getFavourites(): Set<TeamKey> {
             if (failRead) error("unreadable")
             return teams

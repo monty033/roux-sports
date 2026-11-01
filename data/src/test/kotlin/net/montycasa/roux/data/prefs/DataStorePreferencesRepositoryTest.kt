@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import net.montycasa.roux.domain.model.TeamKey
+import net.montycasa.roux.domain.model.ThemeMode
 import net.montycasa.roux.domain.repo.NotificationLedgerEntry
 import net.montycasa.roux.domain.repo.TeamAlertPreferences
 import okio.Path
@@ -41,6 +42,35 @@ import kotlin.time.Instant
  * pass for an in-memory map.
  */
 class DataStorePreferencesRepositoryTest {
+    @Test fun themeDefaultsToSystem() =
+        runTest {
+            val scope = newScope()
+            try {
+                assertEquals(
+                    ThemeMode.System,
+                    DataStorePreferencesRepository(newDirectory(), scope).getThemeMode(),
+                )
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test fun themeModesSurviveReopen() =
+        runTest {
+            for (mode in ThemeMode.entries) {
+                val directory = newDirectory()
+                val writerScope = newScope()
+                DataStorePreferencesRepository(directory, writerScope).setThemeMode(mode)
+                closeScope(writerScope)
+                val readerScope = newScope()
+                try {
+                    assertEquals(mode, openWhenReleased(directory, readerScope).getThemeMode())
+                } finally {
+                    closeScope(readerScope)
+                }
+            }
+        }
+
     private companion object {
         /** Verbatim from datastore-core, which appends the offending file path. */
         const val MULTIPLE_INSTANCES = "There are multiple DataStores active for the same file:"

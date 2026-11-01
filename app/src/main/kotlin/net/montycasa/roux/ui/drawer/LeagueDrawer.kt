@@ -107,6 +107,7 @@ fun LeaguesPanel(
     modifier: Modifier = Modifier,
     seasonDate: String? = null,
     catalog: List<DrawerLeague> = drawerCatalog,
+    onSettings: () -> Unit = {},
 ) {
     Column(
         modifier
@@ -199,6 +200,12 @@ fun LeaguesPanel(
                         .fillMaxWidth()
                         .height(1.dp)
                         .background(rule),
+                )
+                DrawerRow(
+                    label = stringResource(R.string.settings_title),
+                    trailing = "",
+                    tag = "leagues.settings",
+                    onClick = onSettings,
                 )
                 Text(
                     stringResource(R.string.drawer_footer),
