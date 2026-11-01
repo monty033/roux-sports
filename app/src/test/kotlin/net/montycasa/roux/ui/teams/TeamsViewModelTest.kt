@@ -21,6 +21,7 @@ import net.montycasa.roux.domain.model.Season
 import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
+import net.montycasa.roux.domain.model.ThemeMode
 import net.montycasa.roux.domain.repo.NotificationLedgerEntry
 import net.montycasa.roux.domain.repo.PreferencesRepository
 import net.montycasa.roux.domain.repo.StandingsRepository
@@ -483,6 +484,10 @@ private class FakeStandings : StandingsRepository {
 private class FakePreferences(
     var teams: Set<TeamKey> = emptySet(),
 ) : PreferencesRepository {
+    override suspend fun getThemeMode() = ThemeMode.System
+
+    override suspend fun setThemeMode(mode: ThemeMode) = Unit
+
     var reads = 0
     val writes = mutableListOf<Set<TeamKey>>()
     var beforeRead: suspend () -> Unit = {}

@@ -826,6 +826,20 @@ STEP P9: One-thumb walkthrough sign-off
 - Reviewer: deepseek-v4.1-flash via OpenCode Go; routine
 - Reason: Records manual results
 
+STEP P10: Settings screen and theme mode
+- Files: `domainM/model/ThemeMode.kt`, `domainM/repo/PreferencesRepository.kt`, `dataM/prefs/DataStorePreferencesRepository.kt`, `appM/MainActivity.kt`, `appM/ui/settings/SettingsScreen.kt`, `appM/ui/nav/RouxNavHost.kt`, `appM/ui/drawer/LeagueDrawer.kt`, `app/src/main/res/values/strings.xml`, preference and UI tests, `appT/ui/AuditStates.kt`, affected screenshot goldens
+- Depends on: P7; existing preferences store and navigation shell
+- Acceptance test (file + assertion): `DataStorePreferencesRepositoryTest.kt` verifies System default and all modes after reopen; `SettingsScreenTest.kt` verifies six resolution combinations, selected rows, callbacks, 48 dp reach and drawer entry; shared contrast/type and screenshot audits include Settings
+- Risk class: none
+- Privacy class: public-repo
+- Q1 / Q2 / Q3 / Q4 / Q5: Y / Y / N / Y / N
+- Hard trigger: none
+- Tier: Free
+- Effort: medium
+- Route: OpenCode Go
+- Reviewer: deepseek-v4.1-flash via OpenCode Go; routine
+- Reason: Durable theme choice with UI-only system interpretation and immediate app-wide application
+
 STEP E1: Backup and data-extraction rules
 - Files: `MANIFEST`, `app/src/main/res/xml/data_extraction_rules.xml`
 - Depends on: N8; Patrick's backup decision

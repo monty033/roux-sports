@@ -138,6 +138,7 @@ class ContrastAndTypeTest {
         }
         pairs += TextPair("$tag onBackground on background", scheme.onBackground, scheme.background)
         pairs += TextPair("$tag onPrimary on primary", scheme.onPrimary, scheme.primary)
+        pairs += TextPair("$tag Settings back action on surface", scheme.primary, scheme.surface)
         pairs += TextPair("$tag onFill on live fill", accents.onFill, accents.fill)
         return pairs
     }

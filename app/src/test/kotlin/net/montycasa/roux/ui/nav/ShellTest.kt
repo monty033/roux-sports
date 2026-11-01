@@ -58,6 +58,19 @@ class ShellTest {
     // Bar assertions match the selectable item rather than the text alone: a destination's own screen
     // may legitimately render the same word, and matching the item keeps the assertion unambiguous.
     @Test
+    fun drawerSettingsNavigatesAndBackReturnsHome() {
+        launchShell()
+        pullSheetOpen()
+        rule.onNodeWithTag("leagues.settings").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Theme").assertIsDisplayed()
+        rule.onNodeWithText("Back").performClick()
+        rule.waitForIdle()
+        barItem("Scores").assertIsSelected()
+        rule.onNodeWithText("Theme").assertDoesNotExist()
+    }
+
+    @Test
     fun aTabPressStillLandsOnItsPage() {
         launchShell()
 

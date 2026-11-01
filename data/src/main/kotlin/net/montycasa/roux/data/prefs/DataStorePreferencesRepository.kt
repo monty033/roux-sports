@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import net.montycasa.roux.domain.model.TeamKey
+import net.montycasa.roux.domain.model.ThemeMode
 import net.montycasa.roux.domain.policy.LeagueOrder
 import net.montycasa.roux.domain.repo.NotificationLedgerEntry
 import net.montycasa.roux.domain.repo.PreferencesRepository
@@ -58,6 +59,21 @@ class DataStorePreferencesRepository(
             // every earlier build put it. The name is unchanged on purpose - moving it would orphan saved state.
             produceFile = { directory.resolve(FILE_NAME) },
         )
+
+    private fun themeMode(preferences: Preferences?): ThemeMode =
+        ThemeMode.entries.firstOrNull { it.name == preferences?.get(THEME_MODE) } ?: ThemeMode.System
+
+    override suspend fun getThemeMode(): ThemeMode = themeMode(readablePreferences())
+
+    override fun observeThemeMode(): Flow<ThemeMode> = store.data.map { themeMode(if (isInterpretable(it)) it else null) }
+
+    override suspend fun setThemeMode(mode: ThemeMode) {
+        requireWritable()
+        store.edit { preferences ->
+            preferences[VERSION] = PREFERENCES_VERSION
+            preferences[THEME_MODE] = mode.name
+        }
+    }
 
     override suspend fun getFavourites(): Set<TeamKey> {
         val preferences = readablePreferences() ?: return emptySet()
@@ -387,6 +403,7 @@ class DataStorePreferencesRepository(
 
         val VERSION = intPreferencesKey("prefs_version")
         val FAVOURITES = stringSetPreferencesKey("favourites_abbreviations")
+        val THEME_MODE = stringPreferencesKey("theme_mode")
         val LEAGUE_ORDER = stringPreferencesKey("league_order")
         val FAVOURITES_ONLY = booleanPreferencesKey("favourites_only")
     }

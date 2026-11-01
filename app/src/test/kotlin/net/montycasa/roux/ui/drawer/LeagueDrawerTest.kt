@@ -39,6 +39,7 @@ import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.ScoreDay
 import net.montycasa.roux.domain.model.TeamKey
+import net.montycasa.roux.domain.model.ThemeMode
 import net.montycasa.roux.domain.repo.NotificationLedgerEntry
 import net.montycasa.roux.domain.repo.PreferencesRepository
 import net.montycasa.roux.domain.repo.ScoresRepository
@@ -231,7 +232,7 @@ class LeagueDrawerTest {
         // Audit the panel's targets. The sheet itself carries no click action, and the scrim is the dismiss area
         // rather than a panel target.
         val targets = rule.reachTargets().filter { it.tag.startsWith("leagues.") && it.tag != "leagues.scrim" }
-        assertEquals(listOf("leagues.myTeams", "leagues.edit", "leagues.nhl"), targets.map { it.tag })
+        assertEquals(listOf("leagues.myTeams", "leagues.edit", "leagues.nhl", "leagues.settings"), targets.map { it.tag })
         assertTrue(targets.none { it.primary })
         val root = rule.onRoot().fetchSemanticsNode().size
         val violations =
@@ -268,10 +269,9 @@ class LeagueDrawerTest {
     }
 
     @Test
-    fun settingsIsDeliberatelyAbsent() {
+    fun settingsIsAvailableInTheFooter() {
         launch()
-        rule.onNodeWithText("Settings", ignoreCase = true).assertDoesNotExist()
-        rule.onNodeWithContentDescription("Settings", ignoreCase = true).assertDoesNotExist()
+        rule.onNodeWithText("Settings", ignoreCase = true).assertExists()
     }
 
     @Test
@@ -498,6 +498,10 @@ private val twoAvailable = drawerCatalog.map { if (it.id == "nfl") it.copy(avail
 private class DrawerPreferences(
     var order: List<String> = listOf("nhl", "nfl", "mlb"),
 ) : PreferencesRepository {
+    override suspend fun getThemeMode() = ThemeMode.System
+
+    override suspend fun setThemeMode(mode: ThemeMode) = Unit
+
     val writes = mutableListOf<List<String>>()
 
     override suspend fun getLeagueOrder(): List<String> = order

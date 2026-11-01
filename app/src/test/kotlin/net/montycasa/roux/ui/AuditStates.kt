@@ -26,6 +26,7 @@ import net.montycasa.roux.domain.model.PlayerRef
 import net.montycasa.roux.domain.model.ShotTotals
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
+import net.montycasa.roux.domain.model.ThemeMode
 import net.montycasa.roux.domain.model.ThreeStar
 import net.montycasa.roux.domain.policy.StandingsGrouping
 import net.montycasa.roux.domain.policy.StandingsMode
@@ -147,6 +148,10 @@ internal object AuditStates {
 
     internal fun screens(): List<ContentCase> =
         listOf(
+            ContentCase("settings") {
+                net.montycasa.roux.ui.settings
+                    .SettingsScreen(ThemeMode.System, {}, {})
+            },
             ContentCase("scores.data") { ScoresScreen(scoresData, {}, {}, {}) },
             ContentCase("scores.empty") { ScoresScreen(scoresFresh, {}, {}, {}) },
             ContentCase("scores.stale") { ScoresScreen(scoresStale, {}, {}, {}) },

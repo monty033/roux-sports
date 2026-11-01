@@ -95,6 +95,7 @@ import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
+import net.montycasa.roux.domain.model.ThemeMode
 import net.montycasa.roux.notify.GameWatchReconciler
 import net.montycasa.roux.notify.WorkManagerGameWatchScheduler
 import net.montycasa.roux.notify.hasNotificationPermission
@@ -364,6 +365,15 @@ fun RouxNavHost(
                     startDestination = HOME_ROUTE,
                     modifier = Modifier.padding(innerPadding),
                 ) {
+                    composable("settings") {
+                        val mode by remember(container.preferences) { container.preferences.observeThemeMode() }
+                            .collectAsStateWithLifecycle(initialValue = ThemeMode.System)
+                        net.montycasa.roux.ui.settings.SettingsScreen(
+                            mode = mode,
+                            onMode = { mode -> scope.launch { container.preferences.setThemeMode(mode) } },
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
                     composable(HOME_ROUTE) {
                         HorizontalPager(
                             state = pagerState,
@@ -425,6 +435,10 @@ fun RouxNavHost(
             LeaguesPanel(
                 drawer = drawerUi,
                 seasonDate = scoresState.loadedDate,
+                onSettings = {
+                    closeLeagues()
+                    navController.navigate("settings") { launchSingleTop = true }
+                },
                 editing = editing,
                 onEditing = { editing = it },
                 onLeagueOrder = scores::setLeagueOrder,

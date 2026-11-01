@@ -5,10 +5,16 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import net.montycasa.roux.domain.model.ThemeMode
 import net.montycasa.roux.notify.Notifier
 import net.montycasa.roux.ui.nav.GameRequest
 import net.montycasa.roux.ui.nav.RouxNavHost
+import net.montycasa.roux.ui.settings.resolveDark
 import net.montycasa.roux.ui.theme.RouxTheme
 
 class MainActivity : ComponentActivity() {
@@ -32,7 +38,11 @@ class MainActivity : ComponentActivity() {
             //
             // No inset padding here: the shell's Scaffold owns the insets, so the navigation bar's own
             // background reaches the bottom edge instead of stopping short of it.
-            RouxTheme {
+            val preferences = (application as RouxApp).container.preferences
+            // DataStore reads asynchronously: a brief System-theme frame may precede the stored choice.
+            val mode by remember(preferences) { preferences.observeThemeMode() }
+                .collectAsStateWithLifecycle(initialValue = ThemeMode.System)
+            RouxTheme(dark = resolveDark(mode, isSystemInDarkTheme())) {
                 RouxNavHost(
                     requestedGame = requestedGame.value,
                     // Cleared once acted on: holding it would mean the same tap, or any recomposition, navigates

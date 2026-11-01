@@ -14,6 +14,7 @@ import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
+import net.montycasa.roux.domain.model.ThemeMode
 import net.montycasa.roux.domain.repo.PreferencesRepository
 import net.montycasa.roux.domain.repo.StandingsRepository
 import net.montycasa.roux.domain.repo.TeamAlertPreferences
@@ -60,6 +61,10 @@ class TeamsViewModelNotificationsTest {
         private var goals: Boolean = false,
         private val writable: Boolean = true,
     ) : PreferencesRepository {
+        override suspend fun getThemeMode() = ThemeMode.System
+
+        override suspend fun setThemeMode(mode: ThemeMode) = Unit
+
         val writes = CopyOnWriteArrayList<Pair<TeamKey, TeamAlertPreferences>>()
 
         override suspend fun getFavourites(): Set<TeamKey> = setOf(TeamKey("TOR"))

@@ -27,6 +27,7 @@ import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.ScoreDay
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
+import net.montycasa.roux.domain.model.ThemeMode
 import net.montycasa.roux.domain.policy.FavoritesHint
 import net.montycasa.roux.domain.policy.LeagueCalendar
 import net.montycasa.roux.domain.repo.NotificationLedgerEntry
@@ -860,6 +861,10 @@ private class FakePreferencesRepository(
     teams: Set<TeamKey> = emptySet(),
     storedOnly: Boolean? = null,
 ) : PreferencesRepository {
+    override suspend fun getThemeMode() = ThemeMode.System
+
+    override suspend fun setThemeMode(mode: ThemeMode) = Unit
+
     // Backed by flows so the observing reads behave like the real store: a write reaches a collector. The plain
     // properties below keep every existing test reading naturally.
     private val favouritesFlow = MutableStateFlow(teams)
