@@ -80,7 +80,7 @@ private fun pageIndex(
 private val RANK_WIDTH = 18.dp
 
 /** The same crest the scores cards use, at table size: identity without the card's height. */
-private val CREST_SIZE = 20.dp
+private val CREST_SIZE = 30.dp
 
 private val CHIP_SHAPE = RoundedCornerShape(12.dp)
 

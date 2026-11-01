@@ -359,7 +359,7 @@ class GameRowTest {
     fun doubleTypeFitsKnownShotsAndTwoDigitScores() {
         launch(live.copy(homeScore = 12, awayScore = 10, homeShots = 14, awayShots = 18), fontScale = 2f)
         assertTextFits(expectedCount = 9)
-        rule.onNodeWithTag(STATE_RAIL_TAG).assertWidthIsEqualTo(82.dp)
+        rule.onNodeWithTag(STATE_RAIL_TAG).assertWidthIsEqualTo(128.dp)
     }
 
     @Test
@@ -468,7 +468,7 @@ class GameRowTest {
     ) {
         val card = rule.onNodeWithTag(cardTag)
         card.assertWidthIsEqualTo(cardWidth).assertHeightIsEqualTo(76.dp)
-        rule.onNodeWithTag(STATE_RAIL_TAG, useUnmergedTree = true).assertWidthIsEqualTo(82.dp)
+        rule.onNodeWithTag(STATE_RAIL_TAG, useUnmergedTree = true).assertWidthIsEqualTo(128.dp)
         val rows = rule.onAllNodesWithTag(TEAM_LINE_TAG, useUnmergedTree = true)
         val crests = rule.onAllNodesWithTag(CREST_TAG, useUnmergedTree = true)
         assertEquals(2, rows.fetchSemanticsNodes().size)
