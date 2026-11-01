@@ -3,9 +3,12 @@
 package net.montycasa.roux.ui.scores
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -21,6 +24,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.PlatformTextStyle
@@ -46,6 +51,7 @@ fun DateStripBar(
     today: String,
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
+    onOpenCalendar: () -> Unit = {},
 ) {
     val locale = LocalConfiguration.current.locales[0]
     val date = LocalDate.parse(selectedDate)
@@ -67,30 +73,51 @@ fun DateStripBar(
         ) {
             Icon(outlineGlyph("Previous day", "M15,5 L8,12 L15,19"), "Previous day")
         }
-        BoxWithConstraints(
-            Modifier
-                .weight(1f, fill = false)
-                .widthIn(max = 112.dp)
-                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp))
-                .padding(horizontal = 8.dp, vertical = 8.dp)
-                .testTag("scores.dateLabel")
-                .semantics(mergeDescendants = true) {
-                    stateDescription =
-                        date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL).withLocale(locale))
-                },
-        ) {
-            val monthDay = date.format(DateTimeFormatter.ofPattern("MMM d", locale))
-            val candidates =
-                if (selectedDate ==
-                    today
-                ) {
-                    listOf("$todayLabel, $monthDay", todayLabel)
-                } else {
-                    listOf(date.format(DateTimeFormatter.ofPattern("EEE, MMM d", locale)), monthDay, date.dayOfMonth.toString())
-                }
-            val width = with(density) { maxWidth.roundToPx() }
-            val label = candidates.firstOrNull { measurer.measure(it, style, softWrap = false).size.width <= width } ?: candidates.last()
-            Text(label, Modifier.fillMaxWidth(), style = style, maxLines = 1, softWrap = false, overflow = TextOverflow.Visible)
+        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+            BoxWithConstraints(
+                Modifier
+                    .widthIn(max = 112.dp)
+                    .fillMaxWidth()
+                    .height(Reach.PRIMARY_MIN_HEIGHT_DP.dp)
+                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp))
+                    .clickable(role = Role.Button, onClick = onOpenCalendar)
+                    .primaryControl("scores.dateLabel", frequent = true)
+                    .padding(horizontal = 8.dp)
+                    .testTag("scores.dateLabel")
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = "Change date, " +
+                            if (selectedDate == today) {
+                                "$todayLabel, ${date.format(DateTimeFormatter.ofPattern("MMM d", locale))}"
+                            } else {
+                                date.format(DateTimeFormatter.ofPattern("EEE, MMM d", locale))
+                            }
+                        stateDescription =
+                            date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL).withLocale(locale))
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                val monthDay = date.format(DateTimeFormatter.ofPattern("MMM d", locale))
+                val candidates =
+                    if (selectedDate ==
+                        today
+                    ) {
+                        listOf("$todayLabel, $monthDay", todayLabel)
+                    } else {
+                        listOf(date.format(DateTimeFormatter.ofPattern("EEE, MMM d", locale)), monthDay, date.dayOfMonth.toString())
+                    }
+                val width = with(density) { maxWidth.roundToPx() }
+                val label =
+                    candidates.firstOrNull { measurer.measure(it, style, softWrap = false).size.width <= width } ?: candidates.last()
+                Text(
+                    label,
+                    Modifier.fillMaxWidth(),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    style = style,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Visible,
+                )
+            }
         }
         IconButton(
             onClick = { onSelect(items[index + 1].date) },

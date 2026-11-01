@@ -152,6 +152,7 @@ internal object AuditStates {
                 net.montycasa.roux.ui.settings
                     .SettingsScreen(ThemeMode.System, {}, {})
             },
+            // Scores cases include the centred, actionable date shelf in both themes.
             ContentCase("scores.data") { ScoresScreen(scoresData, {}, {}, {}) },
             ContentCase("scores.empty") { ScoresScreen(scoresFresh, {}, {}, {}) },
             ContentCase("scores.stale") { ScoresScreen(scoresStale, {}, {}, {}) },

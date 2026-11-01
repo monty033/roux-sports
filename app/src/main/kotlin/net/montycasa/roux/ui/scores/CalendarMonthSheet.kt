@@ -58,7 +58,7 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 
-/** Picks immediately, so every dismissal preserves the same date as DONE. No calendar fetch is needed. */
+/** Selections apply immediately; dismissal alone leaves Scores unchanged. */
 @Composable
 internal fun CalendarMonthSheet(
     selectedDate: String,
@@ -69,10 +69,6 @@ internal fun CalendarMonthSheet(
     bottomInsets: WindowInsets = WindowInsets(0, 0, 0, 0),
 ) {
     var displayedMonth by rememberSaveable { mutableStateOf(selectedDate.take(7)) }
-    // The sheet holds a draft, and only DONE applies it. Tapping a day or TODAY moves the draft; dismissing the sheet -
-    // scrim, back or the dialog dismiss action - throws the draft away and leaves the scores where they were. That is
-    // what makes TODAY and DONE two different buttons rather than decoration.
-    var draft by rememberSaveable { mutableStateOf(selectedDate) }
     val month = YearMonth.parse(displayedMonth)
     val locale = LocalConfiguration.current.locales[0]
     val title = month.format(DateTimeFormatter.ofPattern("MMMM yyyy", locale))
@@ -139,23 +135,20 @@ internal fun CalendarMonthSheet(
                         val date = start.plusDays((week * 7 + day).toLong())
                         CalendarDay(
                             date,
-                            date.toString() == draft,
+                            date.toString() == selectedDate,
                             YearMonth.from(date) != month,
                             date.toString() in games,
                             Modifier.weight(1f),
                         ) {
-                            draft = date.toString()
+                            onApply(date.toString())
+                            onDismiss()
                         }
                     }
                 }
             }
             Row(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CalendarAction(stringResource(R.string.calendar_today), false, Modifier.weight(1f)) {
-                    displayedMonth = today.take(7)
-                    draft = today
-                }
-                CalendarAction(stringResource(R.string.calendar_done), true, Modifier.weight(1f)) {
-                    onApply(draft)
+                    onApply(today)
                     onDismiss()
                 }
             }

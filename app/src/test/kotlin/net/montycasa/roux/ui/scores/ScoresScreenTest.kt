@@ -33,7 +33,6 @@ import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
-import net.montycasa.roux.domain.policy.DateStrip
 import net.montycasa.roux.domain.policy.FavoritesHint
 import net.montycasa.roux.ui.reach.PrimaryControlTag
 import net.montycasa.roux.ui.reach.Reach
@@ -41,7 +40,6 @@ import net.montycasa.roux.ui.reach.assertPrimaryControlsReachable
 import net.montycasa.roux.ui.reach.reachTargets
 import net.montycasa.roux.ui.theme.RouxTheme
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -411,9 +409,9 @@ class ScoresScreenTest {
         // Derived from the same policy call the screen makes, rather than a hand-pinned window: pinning the
         // window here let the screen be narrowed to three days to satisfy this fixture instead of the plan.
         val chips = listOf("scores.previous", "scores.next")
-        val primaries = chips + listOfNotNull("scores.calendar", action)
+        val primaries = chips + listOfNotNull("scores.dateLabel", action)
         rule.assertPrimaryControlsReachable(*primaries.toTypedArray())
-        val frequent = rule.reachTargets().filter { it.primary && (it.tag in chips || it.tag == "scores.calendar") }
+        val frequent = rule.reachTargets().filter { it.primary && (it.tag in chips || it.tag == "scores.dateLabel") }
         assertEquals(chips.size + 1, frequent.size)
         assertTrue(frequent.all { it.frequent })
         assertTrue(rule.reachTargets().any { it.tag == "scores.pullToRefresh" && !it.primary })

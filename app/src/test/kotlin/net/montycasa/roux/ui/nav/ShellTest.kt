@@ -7,9 +7,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertWidthIsEqualTo
-import androidx.compose.ui.test.click
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
-import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -21,7 +19,6 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
-import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -42,7 +39,6 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
-import kotlin.math.abs
 
 /**
  * S3.4: the shell has three destinations, it starts on Scores, and the bar survives the reach audit at
@@ -439,14 +435,14 @@ class ShellTest {
     }
 
     @Test
-    fun calendarCoversTheShellAndHidesTabsUntilDone() {
+    fun calendarCoversTheShellAndHidesTabsUntilSelection() {
         launchShell()
         val window = rule.onRoot().getUnclippedBoundsInRoot()
-        rule.onNodeWithContentDescription("Open calendar").performClick()
+        rule.onNodeWithTag("scores.dateLabel").performClick()
         assertEquals(window, rule.onNodeWithTag("calendar.overlay").getUnclippedBoundsInRoot())
         barItem("Teams").assertDoesNotExist()
         barItem("Standings").assertDoesNotExist()
-        rule.onNodeWithText("DONE").performClick()
+        rule.onNodeWithText("TODAY").performClick()
         rule.onNodeWithTag("calendar.overlay").assertDoesNotExist()
         barItem("Scores").assertIsSelected()
         barItem("Teams").assertExists()
