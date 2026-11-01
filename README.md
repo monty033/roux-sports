@@ -80,6 +80,20 @@ Beyond compiling, it enforces:
 - **Tests at real device size** — Robolectric tests run at Pixel 9 dimensions, and the render
   smoke compares against a committed screenshot baseline.
 
+## Screenshot baselines
+
+`ScreenshotMatrixTest` photographs every screen state in `AuditStates` in both themes, one golden per
+(state, theme), under `app/src/test/screenshots/matrix/`. The same state list feeds the contrast and type-size
+audit, so a screen added to the audit is covered by both without further edits.
+
+A changed baseline is a claim that the UI changed, so baseline changes need diff images reviewed before
+re-recording: open the changed PNG, confirm the difference is intended, then record. Re-recording a whole
+directory to make a run go green defeats the purpose, because it discards the evidence the baseline exists to
+keep.
+
+Record with `./gradlew :app:recordRoborazziDebug --tests "*ScreenshotMatrixTest"`, then re-run
+`./gradlew :app:testDebugUnitTest --tests "*ScreenshotMatrixTest"` without it to verify.
+
 ## Contributing
 
 Work happens on the `openclaw` fork and reaches upstream through a pull request. Upstream
