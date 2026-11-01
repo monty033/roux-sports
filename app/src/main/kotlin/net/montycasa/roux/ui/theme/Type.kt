@@ -33,10 +33,10 @@ val RouxCardTypography =
         clock = cardText.copy(fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 16.sp),
         finalState =
             cardText.copy(
-                fontSize = 9.sp,
+                fontSize = 12.sp,
                 fontWeight = FontWeight.ExtraBold,
-                lineHeight = 12.sp,
+                lineHeight = 16.sp,
                 letterSpacing = 0.09.em,
             ),
-        shots = cardText.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold, lineHeight = 14.sp),
+        shots = cardText.copy(fontSize = 12.sp, fontWeight = FontWeight.SemiBold, lineHeight = 14.sp),
     )

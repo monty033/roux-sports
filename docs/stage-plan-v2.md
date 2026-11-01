@@ -753,7 +753,9 @@ STEP P5: Contrast and minimum type-size assertions
 - Depends on: Patrick's decision on the drawer's 8–9 sp text versus R10
 - Acceptance test (file + assertion): `appT/ui/ContrastAndTypeTest.kt`:
   - every text node has contrast ≥ 4.5:1 in both themes
-  - body text ≥ 14 sp, except the allowlisted, decided tags
+  - no text below 12 sp (decided 2026-11-01: the app's label floor is 12 sp, so the
+    micro-labels were raised to meet it rather than excused by an allowlist)
+  - prose (a string of 40+ characters) ≥ 14 sp
 - Risk class: none
 - Privacy class: public-repo
 - Q1 / Q2 / Q3 / Q4 / Q5: Y / Y / N / Y / N
