@@ -13,7 +13,6 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.text.TextLayoutResult
@@ -53,6 +52,10 @@ import kotlin.time.Instant
 @Config(sdk = [35], qualifiers = "en-rUS-w360dp-h780dp-mdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class GameRowStressTest {
+    // Measured at 360 dp after the inline rail change; the three-digit team scores set the height.
+    private val heightAt1x = 110.dp
+    private val heightAt2x = 170.dp
+
     @get:Rule
     val rule = createComposeRule()
 
@@ -90,6 +93,17 @@ class GameRowStressTest {
             }
         }
         rule.waitForIdle()
+        val rail = rule.onNodeWithTag(STATE_RAIL_TAG, useUnmergedTree = true).fetchSemanticsNode()
+        assertTrue("rail must retain its 128 dp floor", rail.boundsInRoot.width >= 128.dp.value * rule.density.density)
+        val capsule = rule.onNodeWithTag(STATE_CAPSULE_TAG, useUnmergedTree = true).fetchSemanticsNode()
+        val clock =
+            railTexts().single {
+                it.config.getOrNull(SemanticsProperties.Text)?.any { text -> text.text == "12:34" } == true
+            }
+        assertTrue(
+            "period capsule and clock must share a row",
+            kotlin.math.abs(capsule.boundsInRoot.center.y - clock.boundsInRoot.center.y) < rule.density.density,
+        )
     }
 
     private fun railTexts(): List<SemanticsNode> {
@@ -100,7 +114,13 @@ class GameRowStressTest {
     @Test
     fun atTwoXTypeOnA360dpPhoneTheRailKeepsEveryTextInsideItsBounds() {
         launch(fontScale = 2f)
-        rule.onNodeWithTag(STATE_RAIL_TAG, useUnmergedTree = true).assertWidthIsEqualTo(128.dp)
+        // The rail is no longer a constant: it now measures its own content with the profile width as a
+        // floor, so that the period capsule and the clock can share a line instead of stacking.
+        val railWidth = rule.onNodeWithTag(STATE_RAIL_TAG, useUnmergedTree = true).fetchSemanticsNode()
+        assertTrue(
+            "rail is ${railWidth.boundsInRoot.width / rule.density.density} dp, under its 128 dp floor",
+            railWidth.boundsInRoot.width >= 128.dp.value * rule.density.density,
+        )
 
         val rail = rule.onNodeWithTag(STATE_RAIL_TAG, useUnmergedTree = true).fetchSemanticsNode()
         rule.onNodeWithTag(STATE_RAIL_TAG, useUnmergedTree = true).assertIsDisplayed()
@@ -194,7 +214,10 @@ class GameRowStressTest {
             assertTrue(results.isNotEmpty())
             results.forEach {
                 assertEquals(1, it.lineCount)
-                assertFalse(it.hasVisualOverflow)
+                assertFalse(
+                    "overflow: ${node.config.getOrNull(SemanticsProperties.Text)} size=${it.size} paragraph=${it.multiParagraph.width}",
+                    it.hasVisualOverflow,
+                )
             }
         }
     }
@@ -204,7 +227,7 @@ class GameRowStressTest {
         shootout: Boolean,
     ) {
         launch(scale, shootout)
-        rule.onNodeWithTag("game-row").assertHeightIsEqualTo(if (scale == 1f) 110.dp else 170.dp)
+        rule.onNodeWithTag("game-row").assertHeightIsEqualTo(if (scale == 1f) heightAt1x else heightAt2x)
         railTexts().forEach { node ->
             val results = mutableListOf<TextLayoutResult>()
             node.config
@@ -214,7 +237,10 @@ class GameRowStressTest {
             assertTrue(results.isNotEmpty())
             results.forEach {
                 assertEquals(1, it.lineCount)
-                assertFalse(it.hasVisualOverflow)
+                assertFalse(
+                    "overflow: ${node.config.getOrNull(SemanticsProperties.Text)} size=${it.size} paragraph=${it.multiParagraph.width}",
+                    it.hasVisualOverflow,
+                )
             }
         }
         val kind = if (shootout) "so" else "ot"

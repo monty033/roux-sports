@@ -15,6 +15,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
@@ -359,7 +360,7 @@ class GameRowTest {
     fun doubleTypeFitsKnownShotsAndTwoDigitScores() {
         launch(live.copy(homeScore = 12, awayScore = 10, homeShots = 14, awayShots = 18), fontScale = 2f)
         assertTextFits(expectedCount = 9)
-        rule.onNodeWithTag(STATE_RAIL_TAG).assertWidthIsEqualTo(128.dp)
+        rule.onNodeWithTag(STATE_RAIL_TAG).assertWidthIsAtLeast(128.dp)
     }
 
     @Test
