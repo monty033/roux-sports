@@ -952,11 +952,95 @@ class GameDetailScreenTest {
 
     @Test
     fun `the row's height is the text column's height`() {
-        show(withGoals(listOf(crestGoal())))
+        // Even the shortest text column (time + name, no assists) is taller than the 44 dp crest at the tested
+        // scales, so a crest-taller-than-text fixture cannot be built. The gutter test is the direct guard; this
+        // still checks the normal case does not acquire extra height from the crest.
+        show(
+            withGoals(
+                listOf(
+                    goal(
+                        period = 1,
+                        time = "10:00",
+                        isHome = false,
+                        scorer = "Matvei Michkov",
+                        goalsToDate = 10,
+                        awayScore = 1,
+                        homeScore = 0,
+                    ),
+                ),
+            ),
+        )
 
         val row = compose.onNodeWithTag("detail.scoring.row.00").getUnclippedBoundsInRoot()
         val text = compose.onNodeWithTag("detail.scoring.row.00.text", useUnmergedTree = true).getUnclippedBoundsInRoot()
         assertEquals(text.bottom.value - text.top.value, row.bottom.value - row.top.value, 1f)
+    }
+
+    @Test
+    fun `the crest gutter reports zero height at font scale one`() {
+        show(withGoals(gutterGoals()), fontScale = 1f)
+        assertCrestGutterZeroHeight()
+    }
+
+    @Test
+    fun `the crest gutter reports zero height at font scale two`() {
+        show(withGoals(gutterGoals()), fontScale = 2f)
+        assertCrestGutterZeroHeight()
+    }
+
+    private fun gutterGoals() =
+        listOf(
+            goal(
+                period = 1,
+                time = "10:00",
+                isHome = false,
+                scorer = "Matvei Michkov",
+                goalsToDate = 10,
+                assists = listOf(GoalAssist("Noah Cates", 3)),
+                awayScore = 1,
+                homeScore = 0,
+            ),
+            goal(
+                period = 1,
+                time = "11:00",
+                isHome = true,
+                scorer = "Alexandre Texier-Delorme\nWilliamson",
+                goalsToDate = 10,
+                assists = listOf(GoalAssist("Noah Cates", 3)),
+                awayScore = 1,
+                homeScore = 1,
+            ),
+            goal(
+                period = 1,
+                time = "12:00",
+                isHome = false,
+                scorer = "Cole Knuble",
+                goalsToDate = 3,
+                awayScore = 2,
+                homeScore = 1,
+            ),
+        )
+
+    private fun assertCrestGutterZeroHeight() {
+        listOf(0 to "CBJ", 1 to "PHI", 2 to "CBJ").forEach { (index, abbrev) ->
+            val padded = index.padded()
+            val gutter =
+                compose
+                    .onNodeWithTag("detail.scoring.row.$padded.crestGutter", useUnmergedTree = true)
+                    .getUnclippedBoundsInRoot()
+            assertEquals("gutter $index must report zero height", 0f, (gutter.bottom - gutter.top).value, 0.01f)
+            val crest =
+                compose
+                    .onNodeWithTag("detail.scoring.row.$padded.crest.$abbrev", useUnmergedTree = true)
+                    .getUnclippedBoundsInRoot()
+            assertEquals("crest $index width", 44f, (crest.right - crest.left).value, 1f)
+            assertEquals("crest $index height", 44f, (crest.bottom - crest.top).value, 1f)
+        }
+        assertTrue(
+            "the long name must wrap for the gutter fixture",
+            textLayout("detail.scoring.row.01.sentence").lineCount > 1,
+        )
+        compose.onNodeWithTag("detail.scoring.row.02.assists", useUnmergedTree = true).assertDoesNotExist()
     }
 
     @Test

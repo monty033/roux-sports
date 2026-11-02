@@ -166,6 +166,7 @@ private fun ScoringRow(
         // Zero height: the crest is measured at full size, placed at the measured offset, and reports no row height.
         Box(
             Modifier
+                .testTag("detail.scoring.row.$padded.crestGutter")
                 .width(ROW_CREST)
                 .layout { measurable, _ ->
                     val crestPx = crestSizePx.roundToInt()
