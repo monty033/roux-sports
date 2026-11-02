@@ -56,7 +56,7 @@ internal fun GameDestination(
         failureLabel = "Game stats could not be loaded",
         onRetry = onRetry,
     ) { rail ->
-        GameStatsRows(rail)
+        GameStatsRows(game = game, rail = rail)
     }
 
     SectionCard(

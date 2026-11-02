@@ -23,6 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.TeamRef
@@ -41,12 +42,20 @@ internal fun <T> SectionCard(
     headerCrest: TeamRef? = null,
     /** Null when this card has nothing useful to retry - the page retries as a whole, not one endpoint. */
     onRetry: (() -> Unit)? = null,
-    hideWhenEmpty: (T) -> Boolean = { false },
+    /**
+     * A card that exists only to show something draws nothing until there is something to show. Non-null means the
+     * card renders only once its data has loaded and this predicate keeps it; a failure still renders, because a card
+     * that failed is not a card that is empty.
+     */
+    hideWhenEmpty: ((T) -> Boolean)? = null,
     inlineRetry: Boolean = false,
     content: @Composable (T) -> Unit,
 ) {
     val data = loadable.data
-    if (data != null && hideWhenEmpty(data)) return
+    if (hideWhenEmpty != null) {
+        if (data == null && loadable.error == null) return
+        if (data != null && hideWhenEmpty(data)) return
+    }
     Column(
         Modifier
             .fillMaxWidth()
@@ -69,9 +78,10 @@ internal fun <T> SectionCard(
             }
             Text(
                 title.uppercase(),
-                style = if (emphasised) MaterialTheme.typography.titleSmall else MaterialTheme.typography.labelSmall,
-                fontWeight = if (emphasised) FontWeight.Bold else null,
-                color = if (emphasised) MaterialTheme.colorScheme.onSurface else LocalRouxAccents.current.muted,
+                style = if (emphasised) MaterialTheme.typography.titleMedium else MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.6.sp,
+                color = MaterialTheme.colorScheme.onSurface,
             )
         }
         Spacer(Modifier.height(if (emphasised) 10.dp else 8.dp))

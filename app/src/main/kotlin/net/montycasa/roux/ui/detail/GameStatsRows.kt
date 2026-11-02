@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -19,10 +20,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameRightRail
 import net.montycasa.roux.ui.theme.LocalRouxAccents
 import kotlin.math.roundToInt
@@ -50,9 +53,39 @@ private val TEAM_STAT_LABELS =
     )
 
 @Composable
-internal fun GameStatsRows(rail: GameRightRail) {
+internal fun GameStatsRows(
+    game: Game,
+    rail: GameRightRail,
+) {
     val rows = rail.comparisonRows()
     Column {
+        // The numbers below are meaningless without the club they belong to, so each 46 dp column is named over its
+        // own values. The abbreviations stay muted and small: the numbers remain the loudest thing in a row.
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                game.away.abbrev.uppercase(),
+                modifier =
+                    Modifier
+                        .width(46.dp)
+                        .testTag("detail.stats.away"),
+                style = MaterialTheme.typography.labelSmall,
+                color = LocalRouxAccents.current.muted,
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                game.home.abbrev.uppercase(),
+                modifier =
+                    Modifier
+                        .width(46.dp)
+                        .testTag("detail.stats.home"),
+                textAlign = TextAlign.End,
+                style = MaterialTheme.typography.labelSmall,
+                color = LocalRouxAccents.current.muted,
+            )
+        }
         rows.forEach { row ->
             Row(
                 Modifier
