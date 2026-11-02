@@ -19,6 +19,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
@@ -61,6 +62,115 @@ import org.robolectric.annotation.Config
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [34], qualifiers = "w411dp-h923dp-xhdpi")
 class GameDetailScreenTest {
+    @Test
+    fun `finished info follows every other summary section`() {
+        show(
+            fullDetail.copy(
+                landing =
+                    fullDetail.landing.copy(
+                        data =
+                            fullDetail.landing.data!!.copy(
+                                venue =
+                                    net.montycasa.roux.domain.model
+                                        .Venue("Centre Bell", "Montreal"),
+                            ),
+                    ),
+            ),
+        )
+        compose.onNodeWithText("Centre Bell · Montreal").assert(hasAnyAncestor(hasTestTag("detail.section.info")))
+        val tops =
+            listOf("scoring", "stats", "stars", "info").map {
+                compose
+                    .onNodeWithTag("detail.section.$it")
+                    .getUnclippedBoundsInRoot()
+                    .top.value
+            }
+        assertTrue(tops.zipWithNext().all { (a, b) -> a < b })
+    }
+
+    @Test
+    fun `scheduled empty sections leave only game info`() {
+        show(
+            fullDetail.copy(
+                landing =
+                    Loadable(
+                        GameLanding(
+                            venue =
+                                net.montycasa.roux.domain.model
+                                    .Venue("Centre Bell", null),
+                        ),
+                        Freshness.Fresh,
+                        null,
+                    ),
+                rightRail = Loadable(GameRightRail(), Freshness.Fresh, null),
+            ),
+            shownGame = game.copy(state = GameState.Scheduled),
+        )
+        listOf("scoring", "stats", "stars").forEach { compose.onNodeWithTag("detail.section.$it").assertDoesNotExist() }
+        compose.onNodeWithTag("detail.section.info").assertExists()
+        compose.onNodeWithText("Centre Bell").assertExists()
+        compose.onNodeWithText("Where to watch").assertDoesNotExist()
+        compose.onAllNodesWithText("No ", substring = true).assertCountEquals(0)
+    }
+
+    @Test
+    fun `absent venue and broadcasts omit info`() {
+        show(fullDetail)
+        compose.onNodeWithTag("detail.section.info").assertDoesNotExist()
+    }
+
+    @Test
+    fun `scheduled landing failure retains retry`() {
+        show(
+            fullDetail.copy(landing = Loadable(null, Freshness.Missing, LoadError.Http(503))),
+            shownGame = game.copy(state = GameState.Scheduled),
+        )
+        compose.onNodeWithText("Scoring could not be loaded").assertExists()
+        compose.onNodeWithTag("detail.section.scoring.retry").assertExists().performClick()
+        compose.onNodeWithTag("detail.section.info.retry").performScrollTo().assertTouchHeightIsEqualTo(48.dp)
+    }
+
+    @Test
+    fun `broadcast countries keep feed order with national first and three distinct networks`() {
+        val broadcasts =
+            listOf(
+                "TSN2" to "H",
+                "TVAS" to "N",
+                "TVAS" to "H",
+                "RDS" to "A",
+                "Extra" to "H",
+            ).map { (network, market) ->
+                net.montycasa.roux.domain.model
+                    .Broadcast(network, "CA", market)
+            } +
+                net.montycasa.roux.domain.model
+                    .Broadcast("NHLN", "US", "N")
+        show(fullDetail.copy(landing = fullDetail.landing.copy(data = GameLanding(broadcasts = broadcasts))))
+        compose.onNodeWithText("CA: TVAS · TSN2 · RDS\nUS: NHLN").assertExists()
+        compose.onNodeWithText("Arena").assertDoesNotExist()
+    }
+
+    @Test
+    fun `finished empty summary also hides all empty cards`() {
+        show(
+            fullDetail.copy(
+                landing = Loadable(GameLanding(), Freshness.Fresh, null),
+                rightRail = Loadable(GameRightRail(), Freshness.Fresh, null),
+            ),
+        )
+        listOf("scoring", "stats", "stars", "info").forEach {
+            compose.onNodeWithTag("detail.section.$it").assertDoesNotExist()
+        }
+    }
+
+    @Test
+    fun `empty club roster hides the whole player card`() {
+        show(fullDetail.copy(boxscore = Loadable(GameBoxscore(), Freshness.Fresh, null)))
+        compose.onNodeWithTag("detail.tab.PHI").performClick()
+        compose.onNodeWithTag("detail.section.players").assertDoesNotExist()
+        compose.onNodeWithText("No player lines for this club").assertDoesNotExist()
+    }
+
     @get:Rule
     val compose = createComposeRule()
 
@@ -88,7 +198,13 @@ class GameDetailScreenTest {
                 ),
             boxscore =
                 Loadable(
-                    GameBoxscore(goalies = listOf(GoalieLine(PlayerRef("C. Talbot", "PHI"), 25, 28))),
+                    GameBoxscore(
+                        goalies =
+                            listOf(
+                                GoalieLine(PlayerRef("C. Talbot", "PHI"), 25, 28),
+                                GoalieLine(PlayerRef("Away goalie", "CBJ"), 20, 24),
+                            ),
+                    ),
                     Freshness.Fresh,
                     null,
                 ),

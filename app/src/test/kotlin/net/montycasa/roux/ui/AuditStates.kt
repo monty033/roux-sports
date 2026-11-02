@@ -132,6 +132,16 @@ internal object AuditStates {
                                 PeriodScoring(2, 0, 1),
                                 PeriodScoring(3, 1, 2),
                             ),
+                        venue =
+                            net.montycasa.roux.domain.model
+                                .Venue("Centre Bell", "Montreal"),
+                        broadcasts =
+                            listOf(
+                                net.montycasa.roux.domain.model
+                                    .Broadcast("TSN2", "CA", "H"),
+                                net.montycasa.roux.domain.model
+                                    .Broadcast("NHLN", "US", "N"),
+                            ),
                         threeStars = listOf(ThreeStar(1, PlayerRef("T. Konecny", "PHI"))),
                     ),
                     Freshness.Fresh,
@@ -182,9 +192,49 @@ internal object AuditStates {
                 GameDetailScreen(detailGame, DetailUiState(detail = fullDetail, refreshing = false, unexpectedFailure = false), {}, {})
             },
             ContentCase("detail.live") {
+                // A live game in the second period: the period rows must add up to the score on the board, because a
+                // screenshot whose periods disagree with the hero is unauditable.
                 GameDetailScreen(
                     detailGame.copy(state = GameState.Live(), period = PeriodInfo(2, "REG", "12:34", false), awayScore = 2, homeScore = 1),
-                    DetailUiState(detail = fullDetail, refreshing = false, unexpectedFailure = false),
+                    DetailUiState(
+                        detail =
+                            fullDetail.copy(
+                                landing =
+                                    fullDetail.landing.copy(
+                                        data =
+                                            fullDetail.landing.data!!.copy(
+                                                periodScoring = listOf(PeriodScoring(1, 2, 1), PeriodScoring(2, 0, 0)),
+                                            ),
+                                    ),
+                            ),
+                        refreshing = false,
+                        unexpectedFailure = false,
+                    ),
+                    {},
+                    {},
+                )
+            },
+            ContentCase("detail.scheduled") {
+                GameDetailScreen(
+                    detailGame.copy(
+                        state = GameState.Scheduled,
+                        homeScore = null,
+                        awayScore = null,
+                        startTimeUtc = Instant.parse("2026-10-26T23:00:00Z"),
+                    ),
+                    DetailUiState(
+                        detail =
+                            fullDetail.copy(
+                                landing =
+                                    fullDetail.landing.copy(
+                                        data = fullDetail.landing.data!!.copy(periodScoring = emptyList(), threeStars = emptyList()),
+                                    ),
+                                rightRail = Loadable(GameRightRail(), Freshness.Fresh, null),
+                                boxscore = Loadable(GameBoxscore(), Freshness.Fresh, null),
+                            ),
+                        refreshing = false,
+                        unexpectedFailure = false,
+                    ),
                     {},
                     {},
                 )

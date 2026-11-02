@@ -28,6 +28,58 @@ import org.junit.Test
  */
 class LandingAdapterTest {
     @Test
+    fun scheduledVenueAndBroadcastsKeepFeedOrder() {
+        val landing =
+            successOf(
+                """{"id":1,"gameState":"FUT",
+            "venue":{"default":" Centre Bell "},"venueLocation":{"default":" Montreal ","fr":"Montréal"},
+            "tvBroadcasts":[{"id":131,"network":" TSN2 ","countryCode":" CA ","market":" H ","sequenceNumber":112},
+            {"network":"NHLN","countryCode":"US","market":"N"}]}""",
+            )
+        assertEquals(
+            net.montycasa.roux.domain.model
+                .Venue("Centre Bell", "Montreal"),
+            landing.venue,
+        )
+        assertEquals(
+            listOf(
+                net.montycasa.roux.domain.model
+                    .Broadcast("TSN2", "CA", "H"),
+                net.montycasa.roux.domain.model
+                    .Broadcast("NHLN", "US", "N"),
+            ),
+            landing.broadcasts,
+        )
+    }
+
+    @Test
+    fun absentGameInfoIsEmpty() {
+        val landing = successOf("""{"id":1}""")
+        assertNull(landing.venue)
+        assertTrue(landing.broadcasts.isEmpty())
+    }
+
+    @Test
+    fun malformedBroadcastsLoseOnlyTheirOwnEntry() {
+        val landing =
+            successOf(
+                """{"id":1,"venue":{"default":" "},"tvBroadcasts":[
+            {"network":"TSN2"},{"countryCode":"CA"},42,null,{"network":{}},
+            {"network":" "},{"network":"NHLN","countryCode":" ","market":" "}]}""",
+            )
+        assertNull(landing.venue)
+        assertEquals(
+            listOf(
+                net.montycasa.roux.domain.model
+                    .Broadcast("TSN2", null, null),
+                net.montycasa.roux.domain.model
+                    .Broadcast("NHLN", null, null),
+            ),
+            landing.broadcasts,
+        )
+    }
+
+    @Test
     fun liveMomentSurvivesWithoutSummary() {
         val landing =
             successOf(

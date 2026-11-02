@@ -37,10 +37,6 @@ internal fun PeriodScoringTable(
     landing: GameLanding,
 ) {
     val periods = landing.periodScoring.sortedBy { it.period }
-    if (periods.isEmpty()) {
-        EmptySectionLine("No scoring yet")
-        return
-    }
     val hasOvertime = periods.any { it.period > 3 }
     val periodCount = if (hasOvertime) 4 else 3
 

@@ -39,12 +39,9 @@ internal fun TeamDestination(
         emphasised = true,
         headerCrest = team,
         loadable = boxscore,
+        hideWhenEmpty = { goalies.isEmpty() && skaters.isEmpty() },
         failureLabel = "Player stats could not be loaded",
     ) { _ ->
-        if (goalies.isEmpty() && skaters.isEmpty()) {
-            EmptySectionLine("No player lines for this club")
-        } else {
-            PlayerTables(goalies = goalies, skaters = skaters)
-        }
+        PlayerTables(goalies = goalies, skaters = skaters)
     }
 }

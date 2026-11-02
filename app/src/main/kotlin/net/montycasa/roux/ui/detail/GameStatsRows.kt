@@ -52,10 +52,6 @@ private val TEAM_STAT_LABELS =
 @Composable
 internal fun GameStatsRows(rail: GameRightRail) {
     val rows = rail.comparisonRows()
-    if (rows.isEmpty()) {
-        EmptySectionLine("No team totals in this game")
-        return
-    }
     Column {
         rows.forEach { row ->
             Row(

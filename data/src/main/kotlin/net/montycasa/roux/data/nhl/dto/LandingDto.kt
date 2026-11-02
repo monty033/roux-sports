@@ -19,6 +19,9 @@ internal data class LandingDto(
     val awayTeam: LandingTeamDto? = null,
     val homeTeam: LandingTeamDto? = null,
     val summary: LandingSummaryDto? = null,
+    val venue: LocalizedNameDto? = null,
+    val venueLocation: LocalizedNameDto? = null,
+    val tvBroadcasts: List<LandingBroadcastDto?>? = null,
 )
 
 @Serializable
@@ -70,4 +73,11 @@ internal data class LandingStarDto(
 internal data class LandingClockDto(
     val timeRemaining: String? = null,
     val inIntermission: Boolean? = null,
+)
+
+@Serializable
+internal data class LandingBroadcastDto(
+    val network: String? = null,
+    val countryCode: String? = null,
+    val market: String? = null,
 )

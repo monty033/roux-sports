@@ -2,6 +2,7 @@ package net.montycasa.roux.data.nhl
 
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -9,12 +10,14 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.intOrNull
+import net.montycasa.roux.data.nhl.dto.LandingBroadcastDto
 import net.montycasa.roux.data.nhl.dto.LandingClockDto
 import net.montycasa.roux.data.nhl.dto.LandingDto
 import net.montycasa.roux.data.nhl.dto.LandingGoalDto
 import net.montycasa.roux.data.nhl.dto.LandingPeriodDescriptorDto
 import net.montycasa.roux.data.nhl.dto.LandingScoringPeriodDto
 import net.montycasa.roux.data.nhl.dto.LandingStarDto
+import net.montycasa.roux.domain.model.Broadcast
 import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.GameLanding
 import net.montycasa.roux.domain.model.GameState
@@ -22,6 +25,7 @@ import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.PeriodScoring
 import net.montycasa.roux.domain.model.PlayerRef
 import net.montycasa.roux.domain.model.ThreeStar
+import net.montycasa.roux.domain.model.Venue
 
 /**
  * Maps the landing moment, period scoring and three stars.
@@ -48,8 +52,12 @@ internal object LandingAdapter {
                 val clock = root["clock"] as? JsonObject
                 feedJson
                     .decodeFromJsonElement<LandingDto>(
-                        JsonObject(root.filterKeys { it !in setOf("periodDescriptor", "clock", "gameState") }),
+                        JsonObject(root.filterKeys { it !in setOf("periodDescriptor", "clock", "gameState", "tvBroadcasts") }),
                     ).copy(
+                        tvBroadcasts =
+                            (root["tvBroadcasts"] as? JsonArray)?.mapNotNull { entry ->
+                                runCatching { feedJson.decodeFromJsonElement<LandingBroadcastDto>(entry) }.getOrNull()
+                            },
                         gameState = root["gameState"].stringOrNull(),
                         periodDescriptor =
                             descriptor?.let {
@@ -99,6 +107,15 @@ internal object LandingAdapter {
 
         return ParseResult.Success(
             GameLanding(
+                venue =
+                    landing.venue
+                        ?.default
+                        .clean()
+                        ?.let { Venue(it, landing.venueLocation?.default.clean()) },
+                broadcasts =
+                    landing.tvBroadcasts.orEmpty().mapNotNull { broadcast ->
+                        broadcast?.network.clean()?.let { Broadcast(it, broadcast?.countryCode.clean(), broadcast?.market.clean()) }
+                    },
                 periodScoring = periods,
                 threeStars = stars,
                 state = state,
@@ -124,6 +141,8 @@ internal object LandingAdapter {
             ),
         )
     }
+
+    private fun String?.clean(): String? = this?.trim()?.takeIf { it.isNotEmpty() }
 
     private fun JsonElement?.stringOrNull(): String? = (this as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
 
