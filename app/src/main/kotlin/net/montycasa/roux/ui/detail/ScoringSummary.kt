@@ -29,10 +29,12 @@ import net.montycasa.roux.domain.model.GoalStrength
 import net.montycasa.roux.ui.theme.LocalRouxAccents
 
 /**
- * Every goal, grouped the way a period is read: periods ascending, newest goal first inside each.
+ * Every goal, grouped the way a period is read: periods ascending, the period's first goal first inside each.
  *
- * All overtime periods share one `OT` group, the same way the period tables share one `OT` column - there is no useful
- * distinction between the fourth and fifth extra period on a scoring summary, and two headers would pretend there was.
+ * The clock runs down, so the first goal of a period has the most time remaining and the last has the least; the card
+ * reads forwards through the period. All overtime periods share one `OT` group, the same way the period tables share one
+ * `OT` column - there is no useful distinction between the fourth and fifth extra period on a scoring summary, and two
+ * headers would pretend there was.
  */
 @Composable
 internal fun ScoringSummary(
@@ -166,12 +168,15 @@ private fun assistLine(
 }
 
 /**
- * Periods ascending, goals inside a period newest first.
+ * Periods ascending, goals inside a period in the order they happened: largest time remaining first.
  *
- * Overtime is folded into one group keyed 4. Its goals run latest period first, then latest clock first, which is the
- * same "newest at the top" reading a single period has.
+ * The clock runs down, so the first goal of a period has the most time left and the last has the least. The seconds are
+ * parsed and compared numerically: `"9:30"` is 570 seconds and belongs after `"14:22"`, which a string comparison would
+ * put it before.
+ *
+ * Overtime is folded into one group keyed 4. Its goals run latest period first, then largest time remaining first.
  */
-private fun scoringGroups(goals: List<GoalEvent>): List<ScoringGroup> {
+internal fun scoringGroups(goals: List<GoalEvent>): List<ScoringGroup> {
     var rowIndex = 0
     return goals
         .groupBy { goal -> minOf(goal.period, OVERTIME_KEY) }
@@ -180,10 +185,11 @@ private fun scoringGroups(goals: List<GoalEvent>): List<ScoringGroup> {
             val ordered =
                 if (key == OVERTIME_KEY) {
                     periodGoals.sortedWith(
-                        compareByDescending<GoalEvent> { it.period }.thenByDescending { it.timeInPeriod },
+                        compareByDescending<GoalEvent> { it.period }
+                            .thenByDescending { timeInPeriodSeconds(it.timeInPeriod) ?: UNPARSED_TIME },
                     )
                 } else {
-                    periodGoals.sortedByDescending { it.timeInPeriod }
+                    periodGoals.sortedByDescending { timeInPeriodSeconds(it.timeInPeriod) ?: UNPARSED_TIME }
                 }
             ScoringGroup(
                 key = key,
@@ -191,6 +197,16 @@ private fun scoringGroups(goals: List<GoalEvent>): List<ScoringGroup> {
                 goals = ordered.map { IndexedGoal(index = rowIndex++, goal = it) },
             )
         }
+}
+
+/** `"MM:SS"` or `"M:SS"` as seconds, or null when the feed sent something this card cannot place on a clock. */
+internal fun timeInPeriodSeconds(time: String): Int? {
+    val parts = time.trim().split(":")
+    if (parts.size != 2) return null
+    val minutes = parts[0].toIntOrNull() ?: return null
+    val seconds = parts[1].toIntOrNull() ?: return null
+    if (minutes < 0 || seconds !in 0..59) return null
+    return minutes * 60 + seconds
 }
 
 private fun periodLabel(key: Int): String =
@@ -201,13 +217,13 @@ private fun periodLabel(key: Int): String =
         else -> "OT"
     }
 
-private data class ScoringGroup(
+internal data class ScoringGroup(
     val key: Int,
     val label: String,
     val goals: List<IndexedGoal>,
 )
 
-private data class IndexedGoal(
+internal data class IndexedGoal(
     val index: Int,
     val goal: GoalEvent,
 )
@@ -215,3 +231,6 @@ private data class IndexedGoal(
 private val TIME_COLUMN = 46.dp
 private const val OVERTIME_KEY = 4
 private const val MISSING_SCORE = "—"
+
+/** Sorts an unparseable time after every real goal, without pretending it was two minutes before the period began. */
+private const val UNPARSED_TIME = -1

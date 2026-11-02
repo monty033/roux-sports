@@ -129,11 +129,11 @@ internal object AuditStates {
 
     // The goals sum to the same 3-4 as the hero and the period table: period 1 is 2-1, period 2 is 0-1, period 3 is
     // 1-2. Each running score is the feed's own, not a replay of these rows.
-    private val fullGoals =
+    internal val fullGoals =
         listOf(
             GoalEvent(
                 1,
-                "05:12",
+                "14:22",
                 isHome = false,
                 scorer = "A. Fantilli",
                 goalsToDate = 4,
@@ -157,7 +157,7 @@ internal object AuditStates {
             ),
             GoalEvent(
                 1,
-                "14:22",
+                "05:12",
                 isHome = false,
                 scorer = "K. Johnson",
                 goalsToDate = 5,
@@ -181,7 +181,7 @@ internal object AuditStates {
             ),
             GoalEvent(
                 3,
-                "06:44",
+                "18:57",
                 isHome = true,
                 scorer = "T. Zegras",
                 goalsToDate = 4,
@@ -205,7 +205,7 @@ internal object AuditStates {
             ),
             GoalEvent(
                 3,
-                "18:57",
+                "06:44",
                 isHome = true,
                 scorer = "J. Drysdale",
                 goalsToDate = 1,
@@ -216,11 +216,11 @@ internal object AuditStates {
                 homeScore = 4,
             ),
         )
-    private val liveGoals =
+    internal val liveGoals =
         listOf(
             GoalEvent(
                 1,
-                "07:12",
+                "16:05",
                 isHome = false,
                 scorer = "A. Fantilli",
                 goalsToDate = 4,
@@ -244,7 +244,7 @@ internal object AuditStates {
             ),
             GoalEvent(
                 1,
-                "16:05",
+                "07:12",
                 isHome = false,
                 scorer = "K. Johnson",
                 goalsToDate = 5,

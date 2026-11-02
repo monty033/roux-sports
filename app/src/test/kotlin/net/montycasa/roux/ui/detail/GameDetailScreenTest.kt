@@ -577,7 +577,7 @@ class GameDetailScreenTest {
     }
 
     @Test
-    fun `scoring summary runs periods ascending and newest goal first inside a period`() {
+    fun `scoring summary runs periods ascending and first goal first inside a period`() {
         show(
             withGoals(
                 listOf(
@@ -594,8 +594,8 @@ class GameDetailScreenTest {
         assertEquals("1ST", labelOf("detail.scoring.period.1"))
         assertEquals("2ND", labelOf("detail.scoring.period.2"))
 
-        // Rows are numbered in display order: the 15:00 goal of the first period comes first, then 05:00, then the
-        // second period's goal.
+        // Rows are numbered in display order: the first goal of the first period (the most time remaining) comes
+        // first, then the later 05:00 goal, then the second period's goal.
         val rows =
             listOf("detail.scoring.row.00", "detail.scoring.row.01", "detail.scoring.row.02").map {
                 compose
@@ -614,17 +614,17 @@ class GameDetailScreenTest {
         show(
             withGoals(
                 listOf(
-                    goal(period = 1, time = "10:00", isHome = false, awayScore = 1, homeScore = 0),
-                    goal(period = 1, time = "15:00", isHome = false, awayScore = 2, homeScore = 0),
+                    goal(period = 1, time = "10:00", isHome = false, awayScore = 2, homeScore = 0),
+                    goal(period = 1, time = "15:00", isHome = false, awayScore = 1, homeScore = 0),
                     goal(period = 2, time = "05:00", isHome = true, awayScore = 2, homeScore = 1),
                 ),
             ),
             shownGame = game.copy(awayScore = 3, homeScore = 1),
         )
 
-        // Newest first, so the 15:00 goal owns the first row and its own 2-0, not the 3-1 on the board.
+        // First goal first, so the 15:00 goal owns the first row and its own 1-0, not the 3-1 on the board.
         val firstRow = mergedLabelOf("detail.scoring.row.00")
-        assertTrue(firstRow.contains("2–0"))
+        assertTrue(firstRow.contains("1–0"))
         assertTrue(!firstRow.contains("3–1"))
         assertTrue(mergedLabelOf("detail.scoring.row.02").contains("2–1"))
     }
@@ -641,8 +641,8 @@ class GameDetailScreenTest {
                         scorer = "K. Marchenko",
                         goalsToDate = 12,
                         assists = listOf(GoalAssist("J. Voracek", 4), GoalAssist("Z. Werenski", null)),
-                        awayScore = 2,
-                        homeScore = 1,
+                        awayScore = 1,
+                        homeScore = 0,
                     ),
                     goal(period = 1, time = "10:00", isHome = true, scorer = "A. Fantilli", awayScore = 1, homeScore = 1),
                 ),
@@ -689,6 +689,9 @@ class GameDetailScreenTest {
                         it.config[SemanticsProperties.TestTag].startsWith("detail.scoring.period.")
                 },
             ).assertCountEquals(1)
+        // Latest extra period first, then its own largest time remaining first.
+        assertTrue(mergedLabelOf("detail.scoring.row.00").contains("01:15"))
+        assertTrue(mergedLabelOf("detail.scoring.row.01").contains("02:22"))
     }
 
     @Test
