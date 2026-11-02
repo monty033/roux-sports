@@ -90,10 +90,10 @@ class ScreenshotMatrixTest {
                     }
                 }
                 if (screen.name in scoringStates) {
-                    // The full state is longer than the viewport, so anchor its capture on period 3: that is the
-                    // real period the audit exists to show. The live state has only the first period, so its card
-                    // top is both the header and every goal.
-                    val anchor = if (screen.name == "detail.full") "detail.scoring.row.08" else "detail.section.scoring-summary"
+                    // The page-level scoring image cannot show the whole card — it is taller than the viewport and
+                    // Compose only scrolls an anchor just into view — so it anchors on the card and shows rows. The
+                    // complete card, heading included, is recorded by ScoringCardScreenshotTest.
+                    val anchor = "detail.section.scoring-summary"
                     rule.onNodeWithTag(anchor).performScrollTo()
                     rule.waitForIdle()
                     try {

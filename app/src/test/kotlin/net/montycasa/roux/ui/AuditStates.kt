@@ -116,7 +116,7 @@ internal object AuditStates {
     private val teams = teamStandings().map { it.team.copy(logoUrl = null, darkLogoUrl = null) }
     private val teamsList = TeamsUiState(rows = teams, isRefreshing = false, freshness = Freshness.Fresh)
 
-    private val detailGame =
+    internal val detailGame =
         Game(
             id = GameId("2026020229"),
             date = "2026-11-01",
