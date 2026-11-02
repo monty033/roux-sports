@@ -2,23 +2,32 @@ package net.montycasa.roux.data.nhl
 
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.intOrNull
+import net.montycasa.roux.data.nhl.dto.LandingClockDto
 import net.montycasa.roux.data.nhl.dto.LandingDto
 import net.montycasa.roux.data.nhl.dto.LandingGoalDto
+import net.montycasa.roux.data.nhl.dto.LandingPeriodDescriptorDto
 import net.montycasa.roux.data.nhl.dto.LandingScoringPeriodDto
 import net.montycasa.roux.data.nhl.dto.LandingStarDto
+import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.GameLanding
+import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.PeriodScoring
 import net.montycasa.roux.domain.model.PlayerRef
 import net.montycasa.roux.domain.model.ThreeStar
 
 /**
- * Turns the landing payload into the two sections it owns: period scoring and the three stars.
+ * Maps the landing moment, period scoring and three stars.
  *
  * A landing payload for a game that has not started carries `matchup` instead of `summary`. That is a successful fetch
- * with nothing to show, not a failure, so it maps to an empty [GameLanding] rather than to [ParseResult.Failure] - the
+ * with nothing to show, not a failure, so it maps to a [GameLanding] with empty sections rather than to [ParseResult.Failure] - the
  * page then simply has no scoring or stars to draw.
  */
 internal object LandingAdapter {
@@ -31,7 +40,35 @@ internal object LandingAdapter {
     fun parse(json: String): ParseResult<GameLanding> {
         val landing =
             try {
-                feedJson.decodeFromString<LandingDto>(json)
+                // Decode optional moment values separately: malformed moment fields must not lose the page.
+                val root =
+                    feedJson.parseToJsonElement(json) as? JsonObject
+                        ?: return ParseResult.Failure("NHL landing decoding failed: expected object")
+                val descriptor = root["periodDescriptor"] as? JsonObject
+                val clock = root["clock"] as? JsonObject
+                feedJson
+                    .decodeFromJsonElement<LandingDto>(
+                        JsonObject(root.filterKeys { it !in setOf("periodDescriptor", "clock", "gameState") }),
+                    ).copy(
+                        gameState = root["gameState"].stringOrNull(),
+                        periodDescriptor =
+                            descriptor?.let {
+                                LandingPeriodDescriptorDto(
+                                    number = (it["number"] as? JsonPrimitive)?.intOrNull?.takeIf { number -> number > 0 },
+                                    periodType = it["periodType"].stringOrNull(),
+                                )
+                            },
+                        clock =
+                            clock?.let {
+                                LandingClockDto(
+                                    timeRemaining =
+                                        it["timeRemaining"].stringOrNull()?.takeIf { time ->
+                                            time.matches(Regex("[0-9]{2}:[0-5][0-9]"))
+                                        },
+                                    inIntermission = (it["inIntermission"] as? JsonPrimitive)?.booleanOrNull,
+                                )
+                            },
+                    )
             } catch (exception: SerializationException) {
                 return ParseResult.Failure("NHL landing decoding failed: ${exception.message}")
             } catch (exception: IllegalArgumentException) {
@@ -41,20 +78,21 @@ internal object LandingAdapter {
         // The id is the only field whose absence makes the payload unusable: it is what the page is about. Team
         // abbreviations are optional because a goal can be attributed by isHome alone.
         landing.id ?: return ParseResult.Failure("NHL landing mapping failed: missing id")
-        val summary =
-            landing.summary
-                ?: return ParseResult.Success(GameLanding())
+        val summary = landing.summary
+        val state = landing.gameState?.let(GameState::fromFeed)
 
         val away = landing.awayTeam?.abbrev?.takeIf { it.isNotBlank() }
         val home = landing.homeTeam?.abbrev?.takeIf { it.isNotBlank() }
 
         val periods =
-            summary.scoring
+            summary
+                ?.scoring
                 .orEmpty()
                 .mapNotNull { it?.toPeriodScoring(away, home) }
                 .sortedBy { it.period }
         val stars =
-            summary.threeStars
+            summary
+                ?.threeStars
                 .orEmpty()
                 .mapNotNull { it?.toThreeStar() }
                 .sortedBy { it.rank }
@@ -63,9 +101,31 @@ internal object LandingAdapter {
             GameLanding(
                 periodScoring = periods,
                 threeStars = stars,
+                state = state,
+                period =
+                    landing.periodDescriptor?.number?.let {
+                        PeriodInfo(
+                            ordinal = it,
+                            periodType = landing.periodDescriptor.periodType,
+                            clock = landing.clock?.timeRemaining,
+                            inIntermission = landing.clock?.inIntermission ?: false,
+                        )
+                    },
+                finalKind =
+                    if (state == GameState.Final) {
+                        if (landing.periodDescriptor?.periodType == null) {
+                            FinalKind.REG
+                        } else {
+                            FinalKind.from(landing.periodDescriptor.periodType)
+                        }
+                    } else {
+                        null
+                    },
             ),
         )
     }
+
+    private fun JsonElement?.stringOrNull(): String? = (this as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
 
     /**
      * Counts a period's goals by side.

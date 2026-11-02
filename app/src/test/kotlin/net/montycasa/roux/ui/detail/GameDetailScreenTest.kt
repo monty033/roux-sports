@@ -113,6 +113,60 @@ class GameDetailScreenTest {
     }
 
     @Test
+    fun `landing supplies live moment missing from route snapshot`() {
+        show(
+            fullDetail.copy(
+                landing =
+                    fullDetail.landing.copy(
+                        data =
+                            GameLanding(
+                                state = GameState.Live(),
+                                period =
+                                    net.montycasa.roux.domain.model
+                                        .PeriodInfo(2, "REG", "12:34"),
+                            ),
+                    ),
+            ),
+            shownGame = game.copy(state = GameState.Scheduled, period = null, finalKind = null),
+        )
+        compose.onAllNodesWithText("2nd 12:34").assertCountEquals(1)
+        compose.onAllNodesWithText("Live").assertCountEquals(0)
+    }
+
+    @Test
+    fun `landing supplies final overtime missing from route snapshot`() {
+        show(
+            fullDetail.copy(
+                landing =
+                    fullDetail.landing.copy(
+                        data =
+                            GameLanding(
+                                state = GameState.Final,
+                                finalKind = FinalKind.OT,
+                            ),
+                    ),
+            ),
+            shownGame = game.copy(state = GameState.Live(), period = null, finalKind = null),
+        )
+        compose.onAllNodesWithText("Final/OT").assertCountEquals(1)
+    }
+
+    @Test
+    fun `snapshot period remains when landing has no moment`() {
+        show(
+            fullDetail.copy(landing = fullDetail.landing.copy(data = GameLanding())),
+            shownGame =
+                game.copy(
+                    state = GameState.Live(),
+                    period =
+                        net.montycasa.roux.domain.model
+                            .PeriodInfo(2, "REG", "12:34"),
+                ),
+        )
+        compose.onAllNodesWithText("2nd 12:34").assertCountEquals(1)
+    }
+
+    @Test
     fun `live period and clock appear once without duplicate status`() {
         show(
             fullDetail,

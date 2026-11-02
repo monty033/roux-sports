@@ -62,6 +62,13 @@ fun GameDetailScreen(
     val scope = rememberCoroutineScope()
     val detail = state.detail
     val staleSince = detail.staleSince()
+    val landing = detail.landing.data
+    val heroGame =
+        game.copy(
+            state = landing?.state ?: game.state,
+            period = landing?.period ?: game.period,
+            finalKind = landing?.finalKind ?: game.finalKind,
+        )
 
     Column(
         modifier
@@ -82,7 +89,7 @@ fun GameDetailScreen(
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp),
             ) {
-                GameHero(game = game, zone = zone)
+                GameHero(game = heroGame, zone = zone)
 
                 when (page) {
                     0 -> {
