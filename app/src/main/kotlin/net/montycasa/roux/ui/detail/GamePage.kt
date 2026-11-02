@@ -38,6 +38,17 @@ internal fun GameDestination(
     }
 
     SectionCard(
+        title = "Shots by period",
+        hideWhenEmpty = { it.shotsByPeriod.isEmpty() },
+        tag = "detail.section.shots",
+        loadable = detail.rightRail,
+        failureLabel = "Shots could not be loaded",
+        onRetry = onRetry,
+    ) { rail ->
+        ShotsByPeriodTable(game = game, rail = rail)
+    }
+
+    SectionCard(
         title = "Game stats",
         hideWhenEmpty = { it.comparisonRows().isEmpty() },
         tag = "detail.section.stats",

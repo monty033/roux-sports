@@ -138,6 +138,20 @@ data class ShotTotals(
     val homeShots: Int,
 )
 
+/**
+ * One period's shots, both clubs.
+ *
+ * Kept beside the [ShotTotals] rather than merged into it because the card reads across periods and the published
+ * total is not required to equal their sum. [periodType] is the feed's own token (`REG`, `OT`) and is kept as it
+ * arrived; the page decides how to label a column.
+ */
+data class PeriodShots(
+    val period: Int,
+    val periodType: String?,
+    val away: Int,
+    val home: Int,
+)
+
 /** Power-play goals against chances, both clubs. */
 data class PowerPlaySummary(
     val awayGoals: Int,
@@ -200,6 +214,14 @@ data class SkaterLine(
 /** The right rail payload: the per-team totals the page shows beside the boxscore, including shots and power play. */
 data class GameRightRail(
     val shots: ShotTotals? = null,
+    /**
+     * Shots period by period, ordered by period.
+     *
+     * Empty when the feed omitted the array or every entry was unusable. It is deliberately independent of [shots]:
+     * the published total is the authority for the `T` column, and a feed that omits one period must not make the card
+     * silently present a smaller total as the game's total.
+     */
+    val shotsByPeriod: List<PeriodShots> = emptyList(),
     val powerPlay: PowerPlaySummary? = null,
     val teamStats: List<TeamStat> = emptyList(),
 )

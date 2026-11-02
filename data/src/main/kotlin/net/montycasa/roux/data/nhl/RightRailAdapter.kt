@@ -9,6 +9,7 @@ import net.montycasa.roux.data.nhl.dto.PeriodShotsDto
 import net.montycasa.roux.data.nhl.dto.RightRailDto
 import net.montycasa.roux.data.nhl.dto.TeamStatRowDto
 import net.montycasa.roux.domain.model.GameRightRail
+import net.montycasa.roux.domain.model.PeriodShots
 import net.montycasa.roux.domain.model.PowerPlaySummary
 import net.montycasa.roux.domain.model.ShotTotals
 import net.montycasa.roux.domain.model.TeamStat
@@ -43,9 +44,11 @@ internal object RightRailAdapter {
             }
 
         val rows = rail.teamGameStats.orEmpty().mapNotNull { it }
+        val periodShots = rail.shotsByPeriod.orEmpty().mapNotNull { it }
         return ParseResult.Success(
             GameRightRail(
-                shots = rows.shots(rail.shotsByPeriod.orEmpty().mapNotNull { it }),
+                shots = rows.shots(periodShots),
+                shotsByPeriod = periodShots.periodShots(),
                 powerPlay = rows.powerPlay(),
                 // Every remaining row is passed through in the notation the league used, so the page can decide how to
                 // draw it. Dropping the rows the page has no typed field for is how eight of ten stats went missing.
@@ -61,6 +64,27 @@ internal object RightRailAdapter {
     }
 
     private fun List<TeamStatRowDto>.row(category: String): TeamStatRowDto? = firstOrNull { it.category == category }
+
+    /**
+     * The per-period detail, kept as the page reads it: period order, both sides present and positive.
+     *
+     * An entry without a usable period number or with a missing side cannot be placed in a grid, and inventing a zero
+     * for the missing side would print a number the feed never asserted. Dropping just that entry - rather than the
+     * whole array - is what lets the other periods survive a single bad row.
+     */
+    private fun List<PeriodShotsDto>.periodShots(): List<PeriodShots> =
+        mapNotNull { entry ->
+            val descriptor = entry.periodDescriptor ?: return@mapNotNull null
+            val number = descriptor.number?.takeIf { it > 0 } ?: return@mapNotNull null
+            val away = entry.away?.takeIf { it > 0 } ?: return@mapNotNull null
+            val home = entry.home?.takeIf { it > 0 } ?: return@mapNotNull null
+            PeriodShots(
+                period = number,
+                periodType = descriptor.periodType,
+                away = away,
+                home = home,
+            )
+        }.sortedBy { it.period }
 
     private fun List<TeamStatRowDto>.shots(periods: List<PeriodShotsDto>): ShotTotals? {
         row(SOG)?.let { sog ->

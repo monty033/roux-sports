@@ -40,6 +40,7 @@ import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.GoalieLine
 import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.PeriodScoring
+import net.montycasa.roux.domain.model.PeriodShots
 import net.montycasa.roux.domain.model.PlayerRef
 import net.montycasa.roux.domain.model.PowerPlaySummary
 import net.montycasa.roux.domain.model.ShotTotals
@@ -210,6 +211,18 @@ class GameDetailScreenTest {
                 ),
             rightRail = Loadable(GameRightRail(shots = ShotTotals(awayShots = 21, homeShots = 28)), Freshness.Fresh, null),
         )
+
+    private fun withShots(
+        periods: List<PeriodShots>,
+        totals: ShotTotals? = ShotTotals(awayShots = 15, homeShots = 32),
+    ) = fullDetail.copy(
+        rightRail =
+            Loadable(
+                GameRightRail(shots = totals, shotsByPeriod = periods),
+                Freshness.Fresh,
+                null,
+            ),
+    )
 
     private fun show(
         detail: GameDetail,
@@ -425,6 +438,106 @@ class GameDetailScreenTest {
         show(fullDetail, shownGame = game.copy(homeScore = null, awayScore = null))
         assertEquals("—", labelOf("detail.period.CBJ.T"))
         assertEquals("—", labelOf("detail.period.PHI.T"))
+    }
+
+    @Test
+    fun `shots card reads every period and the published total`() {
+        show(
+            withShots(
+                listOf(
+                    PeriodShots(1, "REG", away = 7, home = 2),
+                    PeriodShots(2, "REG", away = 5, home = 13),
+                    PeriodShots(3, "REG", away = 1, home = 16),
+                ),
+            ),
+        )
+
+        compose.onNodeWithTag("detail.section.shots").assertExists()
+        listOf("1", "2", "3", "T").forEach { assertEquals(it, labelOf("detail.shots.header.$it")) }
+        assertEquals("7", labelOf("detail.shots.CBJ.1"))
+        assertEquals("5", labelOf("detail.shots.CBJ.2"))
+        assertEquals("1", labelOf("detail.shots.CBJ.3"))
+        assertEquals("15", labelOf("detail.shots.CBJ.T"))
+        assertEquals("2", labelOf("detail.shots.PHI.1"))
+        assertEquals("13", labelOf("detail.shots.PHI.2"))
+        assertEquals("16", labelOf("detail.shots.PHI.3"))
+        assertEquals("32", labelOf("detail.shots.PHI.T"))
+    }
+
+    @Test
+    fun `shots card sits between scoring and game stats`() {
+        show(
+            withShots(
+                listOf(
+                    PeriodShots(1, "REG", away = 7, home = 2),
+                    PeriodShots(2, "REG", away = 5, home = 13),
+                    PeriodShots(3, "REG", away = 1, home = 16),
+                ),
+            ),
+        )
+
+        val tops =
+            listOf("scoring", "shots", "stats").map {
+                compose
+                    .onNodeWithTag("detail.section.$it")
+                    .getUnclippedBoundsInRoot()
+                    .top.value
+            }
+        assertTrue(tops.zipWithNext().all { (a, b) -> a < b })
+    }
+
+    /** The total is the league's, not the cells' sum: the cells here add to 9 and 9, and T must still say 15 and 32. */
+    @Test
+    fun `shots T shows the published total when the cells disagree`() {
+        show(
+            withShots(
+                listOf(
+                    PeriodShots(1, "REG", away = 3, home = 3),
+                    PeriodShots(2, "REG", away = 4, home = 4),
+                    PeriodShots(3, "REG", away = 2, home = 2),
+                ),
+                totals = ShotTotals(awayShots = 15, homeShots = 32),
+            ),
+        )
+
+        assertEquals("15", labelOf("detail.shots.CBJ.T"))
+        assertEquals("32", labelOf("detail.shots.PHI.T"))
+    }
+
+    @Test
+    fun `an overtime game gets one combined shots OT column`() {
+        show(
+            withShots(
+                listOf(
+                    PeriodShots(1, "REG", away = 3, home = 3),
+                    PeriodShots(2, "REG", away = 4, home = 4),
+                    PeriodShots(3, "REG", away = 2, home = 2),
+                    PeriodShots(4, "OT", away = 1, home = 2),
+                    PeriodShots(5, "OT2", away = 2, home = 1),
+                ),
+                totals = ShotTotals(awayShots = 12, homeShots = 12),
+            ),
+        )
+
+        listOf("1", "2", "3", "OT", "T").forEach { assertEquals(it, labelOf("detail.shots.header.$it")) }
+        compose
+            .onAllNodes(
+                SemanticsMatcher("shots period table heading") {
+                    it.config.contains(SemanticsProperties.TestTag) &&
+                        it.config[SemanticsProperties.TestTag].startsWith("detail.shots.header.")
+                },
+            ).assertCountEquals(5)
+        compose.onNodeWithTag("detail.shots.header.5").assertDoesNotExist()
+        assertEquals("3", labelOf("detail.shots.CBJ.4"))
+        assertEquals("3", labelOf("detail.shots.PHI.4"))
+    }
+
+    @Test
+    fun `empty shots by period draws no shots card even with published totals`() {
+        show(withShots(emptyList(), totals = ShotTotals(awayShots = 15, homeShots = 32)))
+
+        compose.onNodeWithTag("detail.section.shots").assertDoesNotExist()
+        compose.onNodeWithText("SHOTS BY PERIOD").assertDoesNotExist()
     }
 
     @Test

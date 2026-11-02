@@ -33,6 +33,9 @@ class ScreenshotMatrixTest {
     /** States whose page is longer than the viewport, so the last card needs its own image. */
     private val scrolledStates = listOf("detail.full", "detail.live", "detail.scheduled")
 
+    /** States with a shots card: it sits between two cards, so neither the top nor the info image can show it. */
+    private val shotsStates = listOf("detail.full", "detail.live")
+
     @Test
     fun everyAuditStateInBothThemes() {
         val screens = AuditStates.screens()
@@ -63,6 +66,16 @@ class ScreenshotMatrixTest {
                     failures += failure
                 }
                 captured++
+                // A card between two others is in neither image: scrolling to it is the only way the matrix sees it.
+                if (screen.name in shotsStates) {
+                    rule.onNodeWithTag("detail.section.shots").performScrollTo()
+                    rule.waitForIdle()
+                    try {
+                        rule.onRoot().captureRoboImage("src/test/screenshots/matrix/$file-shots.png")
+                    } catch (failure: AssertionError) {
+                        failures += failure
+                    }
+                }
                 // The bottom of a long page needs its own image, or the last card ships unseen.
                 if (screen.name in scrolledStates) {
                     rule.onNodeWithTag("detail.section.info").performScrollTo()
