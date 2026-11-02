@@ -10,17 +10,27 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameLanding
@@ -28,6 +38,7 @@ import net.montycasa.roux.domain.model.GoalEvent
 import net.montycasa.roux.domain.model.GoalModifier
 import net.montycasa.roux.domain.model.GoalStrength
 import net.montycasa.roux.ui.theme.LocalRouxAccents
+import kotlin.math.roundToInt
 
 /**
  * Every goal, grouped the way a period is read: periods ascending, the period's first goal first inside each.
@@ -118,12 +129,11 @@ private fun PeriodDivider() {
 }
 
 /**
- * A goal row: the time on the first line of the text column, then a row where the crest and the scorer's name share a
- * vertically centred line, then the assist line. The score columns stay top-aligned with the time.
+ * A goal row: a tight text column (time, name, assists) exactly as before, with the crest in the row's gutter.
  *
- * The crest and name are siblings in one centred row, so no measured offset or duplicated zero-alpha time is needed:
- * the time row above naturally reserves its own height, and the crest's centre follows the name's centre at every font
- * scale, even when the name wraps.
+ * The crest is taken out of the row's height: a zero-height gutter holds it and an offset translates it down. The
+ * offset is measured from the time line's height and the name's first-line height, so the crest's centre lands on the
+ * name line at every font scale, and a wrapped name keeps it centred on the first line rather than the whole block.
  */
 @Composable
 private fun ScoringRow(
@@ -133,52 +143,86 @@ private fun ScoringRow(
     val goal = indexed.goal
     val padded = indexed.index.toString().padStart(2, '0')
     val scoringTeam = if (goal.isHome) game.home else game.away
+    var rowTopPx by remember { mutableFloatStateOf(0f) }
+    var nameTopPx by remember { mutableFloatStateOf(0f) }
+    var nameLineHeightPx by remember { mutableFloatStateOf(0f) }
+    val density = LocalDensity.current
+    val crestSizePx = with(density) { ROW_CREST.toPx() }
+    val crestOffsetPx =
+        if (nameLineHeightPx > 0f) {
+            (nameTopPx - rowTopPx + (nameLineHeightPx - crestSizePx) / 2f).coerceAtLeast(0f)
+        } else {
+            0f
+        }
     Row(
         Modifier
             .fillMaxWidth()
             .padding(vertical = 6.dp)
             .testTag("detail.scoring.row.$padded")
-            .semantics(mergeDescendants = true) {},
+            .semantics(mergeDescendants = true) {}
+            .onGloballyPositioned { coordinates -> rowTopPx = coordinates.positionInRoot().y },
         verticalAlignment = Alignment.Top,
     ) {
-        Column(Modifier.weight(1f)) {
-            Row(Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
-                // The time stays indented past the crest column, exactly as the reference draws line 1.
-                Spacer(Modifier.width(ROW_CREST + CREST_GAP))
-                Text(
-                    goal.timeInPeriod,
-                    modifier = Modifier.weight(1f).testTag("detail.scoring.row.$padded.time"),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Clip,
+        // Zero height: the crest is measured at full size, placed at the measured offset, and reports no row height.
+        Box(
+            Modifier
+                .width(ROW_CREST)
+                .layout { measurable, _ ->
+                    val crestPx = crestSizePx.roundToInt()
+                    val placeable = measurable.measure(Constraints.fixed(crestPx, crestPx))
+                    layout(placeable.width, 0) {
+                        placeable.place(0, crestOffsetPx.roundToInt())
+                    }
+                },
+        ) {
+            Box(
+                Modifier
+                    .size(ROW_CREST)
+                    .testTag("detail.scoring.row.$padded.crest.${scoringTeam.abbrev}"),
+            ) {
+                TeamLogo(
+                    team = scoringTeam,
+                    crestSize = ROW_CREST,
+                    imageTag = "detail.logo.scoring.row.$padded.${scoringTeam.abbrev}",
                 )
             }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.testTag("detail.scoring.row.$padded.crest.${scoringTeam.abbrev}")) {
-                    TeamLogo(
-                        team = scoringTeam,
-                        crestSize = ROW_CREST,
-                        imageTag = "detail.logo.scoring.row.$padded.${scoringTeam.abbrev}",
-                    )
-                }
-                Spacer(Modifier.width(CREST_GAP))
-                Text(
-                    nameLine(goal),
-                    modifier = Modifier.weight(1f).testTag("detail.scoring.row.$padded.sentence"),
-                    // The name line is prose, so it stays at 14 sp or above even when it wraps.
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
+        }
+        Spacer(Modifier.width(CREST_GAP))
+        Column(Modifier.weight(1f).testTag("detail.scoring.row.$padded.text")) {
+            Text(
+                goal.timeInPeriod,
+                modifier = Modifier.fillMaxWidth().testTag("detail.scoring.row.$padded.time"),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                overflow = TextOverflow.Clip,
+            )
+            Text(
+                nameLine(goal),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = NAME_TOP_GAP)
+                        .onGloballyPositioned { coordinates -> nameTopPx = coordinates.positionInRoot().y }
+                        .testTag("detail.scoring.row.$padded.sentence"),
+                // The name line is prose, so it stays at 14 sp or above even when it wraps.
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                onTextLayout = { layout ->
+                    if (layout.lineCount > 0) {
+                        nameLineHeightPx = (layout.getLineBottom(0) - layout.getLineTop(0)).toFloat()
+                    }
+                },
+            )
             if (goal.assists.isNotEmpty()) {
                 Text(
                     assistLine(goal),
                     modifier =
                         Modifier
-                            .padding(start = ROW_CREST + CREST_GAP, top = 1.dp)
+                            .fillMaxWidth()
+                            .padding(top = ASSIST_TOP_GAP)
                             .testTag("detail.scoring.row.$padded.assists"),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Normal,
@@ -335,6 +379,8 @@ internal data class IndexedGoal(
 
 private val ROW_CREST = 44.dp
 private val CREST_GAP = 10.dp
+private val NAME_TOP_GAP = 2.dp
+private val ASSIST_TOP_GAP = 1.dp
 private val SCORE_COLUMN = 34.dp
 private val DIVIDER_INSET = 8.dp
 private const val DIVIDER_ALPHA = 0.35f

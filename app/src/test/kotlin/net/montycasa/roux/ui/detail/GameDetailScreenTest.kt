@@ -263,13 +263,15 @@ class GameDetailScreenTest {
         homeScore = homeScore,
     )
 
+    private val testDensity = 2.75f
+
     private fun show(
         detail: GameDetail,
         fontScale: Float = 1f,
         shownGame: Game = game,
     ) {
         compose.setContent {
-            CompositionLocalProvider(LocalDensity provides Density(2.75f, fontScale)) {
+            CompositionLocalProvider(LocalDensity provides Density(testDensity, fontScale)) {
                 RouxTheme(dark = true) {
                     GameDetailScreen(
                         game = shownGame,
@@ -949,6 +951,61 @@ class GameDetailScreenTest {
     }
 
     @Test
+    fun `the row's height is the text column's height`() {
+        show(withGoals(listOf(crestGoal())))
+
+        val row = compose.onNodeWithTag("detail.scoring.row.00").getUnclippedBoundsInRoot()
+        val text = compose.onNodeWithTag("detail.scoring.row.00.text", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        assertEquals(text.bottom.value - text.top.value, row.bottom.value - row.top.value, 1f)
+    }
+
+    @Test
+    fun `the time-to-name gap stays at two dp`() {
+        show(withGoals(listOf(crestGoal())))
+
+        val time = compose.onNodeWithTag("detail.scoring.row.00.time", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val name = compose.onNodeWithTag("detail.scoring.row.00.sentence", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val gapDp = (name.top.value - time.bottom.value) / testDensity
+        assertEquals("time-to-name gap must stay the 42aecb5 2 dp", 2f, gapDp, 1.5f)
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w411dp-h923dp-xhdpi")
+    fun `a wrapped name keeps the crest on its first line at font scale two`() {
+        show(
+            withGoals(
+                listOf(
+                    goal(
+                        period = 1,
+                        time = "10:00",
+                        isHome = false,
+                        scorer = "Alexandre Texier-Delorme\nWilliamson",
+                        goalsToDate = 10,
+                        strength = GoalStrength.PowerPlay,
+                        assists = listOf(GoalAssist("Noah Cates", 3)),
+                        awayScore = 1,
+                        homeScore = 0,
+                    ),
+                ),
+            ),
+            fontScale = 2f,
+        )
+
+        val name = compose.onNodeWithTag("detail.scoring.row.00.sentence", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val crest =
+            compose.onNodeWithTag("detail.scoring.row.00.crest.CBJ", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val layout = textLayout("detail.scoring.row.00.sentence")
+        assertTrue(
+            "the name must wrap for this test: text=${layout.layoutInput.text.text} " +
+                "size=${layout.size} constraints=${layout.layoutInput.constraints} lines=${layout.lineCount}",
+            layout.lineCount > 1,
+        )
+        val firstLineCentre = name.top.value + (layout.getLineTop(0) + layout.getLineBottom(0)) / (2f * testDensity)
+        val crestCentre = (crest.top.value + crest.bottom.value) / 2f
+        assertEquals(firstLineCentre, crestCentre, 2f)
+    }
+
+    @Test
     @Config(sdk = [34], qualifiers = "w411dp-h923dp-xhdpi")
     fun `the crest centres on the name at 411 dp font scale one`() {
         show(withGoals(listOf(crestGoal())), fontScale = 1f)
@@ -983,6 +1040,7 @@ class GameDetailScreenTest {
 
     private fun assertCrestCentresOnName() {
         val row = compose.onNodeWithTag("detail.scoring.row.00").getUnclippedBoundsInRoot()
+        val text = compose.onNodeWithTag("detail.scoring.row.00.text", useUnmergedTree = true).getUnclippedBoundsInRoot()
         val crest =
             compose.onNodeWithTag("detail.scoring.row.00.crest.CBJ", useUnmergedTree = true).getUnclippedBoundsInRoot()
         val time = compose.onNodeWithTag("detail.scoring.row.00.time", useUnmergedTree = true).getUnclippedBoundsInRoot()
@@ -994,15 +1052,26 @@ class GameDetailScreenTest {
         val homeScore =
             compose.onNodeWithTag("detail.scoring.row.00.home", useUnmergedTree = true).getUnclippedBoundsInRoot()
 
+        assertEquals("the crest must not add row height", text.bottom.value - text.top.value, row.bottom.value - row.top.value, 1f)
         assertEquals(row.left.value, crest.left.value, 1f)
         assertEquals(44f, crest.bottom.value - crest.top.value, 1f)
-        assertTrue("the time must stay above the crest", time.bottom.value <= crest.top.value + 0.5f)
+        val nameLayout = textLayout("detail.scoring.row.00.sentence")
+        val firstLineTop = name.top.value + nameLayout.getLineTop(0) / testDensity
+        val firstLineBottom = name.top.value + nameLayout.getLineBottom(0) / testDensity
         val crestCentre = (crest.top.value + crest.bottom.value) / 2f
-        val nameCentre = (name.top.value + name.bottom.value) / 2f
-        assertEquals("crest centre $crestCentre vs name centre $nameCentre", nameCentre, crestCentre, 2f)
+        val nameCentre = (firstLineTop + firstLineBottom) / 2f
+        assertEquals(
+            "crest centre $crestCentre vs name centre $nameCentre; rowTop=${row.top} nameTop=${name.top} " +
+                "timeTop=${time.top} timeBottom=${time.bottom} crestTop=${crest.top} crestBottom=${crest.bottom} " +
+                "firstLine=$firstLineTop..$firstLineBottom",
+            nameCentre,
+            crestCentre,
+            2f,
+        )
         assertEquals("the scores align to the time line", time.top.value, awayScore.top.value, 1f)
         assertEquals("the scores align to the time line", time.top.value, homeScore.top.value, 1f)
-        assertTrue("the crest must clear the assist line", crest.bottom.value <= assist.top.value + 0.5f)
+        assertTrue("the crest must stay in its gutter", crest.right.value <= assist.left.value + 0.5f)
+        assertTrue("the crest must not touch the row above", crest.top.value >= row.top.value - 0.5f)
         assertTrue(awayScore.right.value <= homeScore.left.value)
     }
 
