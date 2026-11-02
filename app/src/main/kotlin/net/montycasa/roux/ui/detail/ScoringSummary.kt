@@ -118,10 +118,12 @@ private fun PeriodDivider() {
 }
 
 /**
- * A goal row: the scoring club's crest at the far left, then a two-line text column, then the fixed score columns.
+ * A goal row: a left column with the time stacked over the scoring club's crest, then the text column, then the score
+ * columns.
  *
- * The score columns top-align with the time line rather than the middle of the text block, so the numbers stay on one
- * reading line while the sentence beneath wraps to whatever height it needs.
+ * The score columns top-align with the time, which is now the top line of the left column. The crest sits below it so
+ * the time has its own line. The left column is wider than the crest alone because the clock has to fit at font scale
+ * 2.0 without shrinking or clipping.
  */
 @Composable
 private fun ScoringRow(
@@ -139,23 +141,30 @@ private fun ScoringRow(
             .semantics(mergeDescendants = true) {},
         verticalAlignment = Alignment.Top,
     ) {
-        Box(Modifier.testTag("detail.scoring.row.$padded.crest.${scoringTeam.abbrev}")) {
-            TeamLogo(
-                team = scoringTeam,
-                crestSize = ROW_CREST,
-                imageTag = "detail.logo.scoring.row.$padded.${scoringTeam.abbrev}",
-            )
-        }
-        Spacer(Modifier.width(CREST_GAP))
-        Column(Modifier.weight(1f)) {
+        Column(
+            modifier = Modifier.width(LEFT_COLUMN_WIDTH).testTag("detail.scoring.row.$padded.left"),
+            horizontalAlignment = Alignment.Start,
+        ) {
             Text(
                 goal.timeInPeriod,
-                modifier = Modifier.testTag("detail.scoring.row.$padded.time"),
+                modifier = Modifier.fillMaxWidth().testTag("detail.scoring.row.$padded.time"),
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.primary,
                 maxLines = 1,
+                overflow = TextOverflow.Clip,
             )
+            Spacer(Modifier.height(TIME_CREST_GAP))
+            Box(Modifier.testTag("detail.scoring.row.$padded.crest.${scoringTeam.abbrev}")) {
+                TeamLogo(
+                    team = scoringTeam,
+                    crestSize = ROW_CREST,
+                    imageTag = "detail.logo.scoring.row.$padded.${scoringTeam.abbrev}",
+                )
+            }
+        }
+        Spacer(Modifier.width(CREST_GAP))
+        Column(Modifier.weight(1f)) {
             Text(
                 nameLine(goal),
                 modifier = Modifier.padding(top = 2.dp).testTag("detail.scoring.row.$padded.sentence"),
@@ -322,6 +331,8 @@ internal data class IndexedGoal(
 )
 
 private val ROW_CREST = 44.dp
+private val LEFT_COLUMN_WIDTH = 76.dp
+private val TIME_CREST_GAP = 2.dp
 private val CREST_GAP = 10.dp
 private val SCORE_COLUMN = 34.dp
 private val DIVIDER_INSET = 8.dp
