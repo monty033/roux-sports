@@ -57,6 +57,16 @@ class ScreenshotMatrixTest {
                 }
                 rule.waitForIdle()
                 val file = screen.name.replace('.', '-') + "-" + theme
+                // Always start from the top. The scrolled captures below leave the list where they finished, so without
+                // this the dark pass photographed the light pass's scroll position and the "unscrolled" image was not.
+                // Anchored on the hero rather than "the first scrollable": on the scores and standings pages that is the
+                // date shelf, and scrolling it would silently change those goldens too.
+                if (screen.name.startsWith("detail.")) {
+                    runCatching {
+                        rule.onNodeWithTag("detail.hero").performScrollTo()
+                        rule.waitForIdle()
+                    }
+                }
                 // The card at the top of the page is the one place a state is distinguishable - the hero carries the
                 // live capsule, the clock and the score - so it is always captured unscrolled. Scrolling before the
                 // capture made detail.full and detail.live produce the same picture, which audited nothing.

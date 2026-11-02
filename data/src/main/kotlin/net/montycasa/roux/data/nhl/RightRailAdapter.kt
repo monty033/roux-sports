@@ -66,18 +66,22 @@ internal object RightRailAdapter {
     private fun List<TeamStatRowDto>.row(category: String): TeamStatRowDto? = firstOrNull { it.category == category }
 
     /**
-     * The per-period detail, kept as the page reads it: period order, both sides present and positive.
+     * The per-period detail, kept as the page reads it: period order, both sides present.
      *
      * An entry without a usable period number or with a missing side cannot be placed in a grid, and inventing a zero
      * for the missing side would print a number the feed never asserted. Dropping just that entry - rather than the
      * whole array - is what lets the other periods survive a single bad row.
+     *
+     * A reported zero is kept. `0` is a real shot count (a period where the club did not get a shot), and rendering it
+     * as the em dash that means "period did not arrive" would erase a fact the feed did assert. Only `null` and a
+     * negative count are unusable.
      */
     private fun List<PeriodShotsDto>.periodShots(): List<PeriodShots> =
         mapNotNull { entry ->
             val descriptor = entry.periodDescriptor ?: return@mapNotNull null
             val number = descriptor.number?.takeIf { it > 0 } ?: return@mapNotNull null
-            val away = entry.away?.takeIf { it > 0 } ?: return@mapNotNull null
-            val home = entry.home?.takeIf { it > 0 } ?: return@mapNotNull null
+            val away = entry.away?.takeIf { it >= 0 } ?: return@mapNotNull null
+            val home = entry.home?.takeIf { it >= 0 } ?: return@mapNotNull null
             PeriodShots(
                 period = number,
                 periodType = descriptor.periodType,

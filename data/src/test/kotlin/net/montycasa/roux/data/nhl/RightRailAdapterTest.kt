@@ -80,11 +80,11 @@ class RightRailAdapterTest {
     }
 
     /**
-     * One unusable entry is dropped, not the array: a missing side has no value to print and a non-positive side is
-     * not a shot count, but the period before and the overtime after are still real.
+     * One unusable entry is dropped, not the array: a missing side has no value to print and a negative count is not a
+     * shot count, but a real zero is a period where the club did not shoot, and the periods around it still stand.
      */
     @Test
-    fun anEntryWithAMissingOrNonPositiveSideIsDroppedWhileNeighboursSurvive() {
+    fun anEntryWithAMissingSideOrPeriodIsDroppedWhileARealZeroSurvives() {
         val rail =
             successOf(
                 withPeriodRows(
@@ -94,6 +94,8 @@ class RightRailAdapterTest {
                         periodRow(3, away = 4, home = 0),
                         periodRow(null, away = 9, home = 9),
                         periodRow(4, away = 2, home = 1, type = "OT"),
+                        periodRow(5, away = 6, home = null),
+                        periodRow(6, away = 0, home = 3),
                     ),
                 ),
             )
@@ -101,7 +103,9 @@ class RightRailAdapterTest {
         assertEquals(
             listOf(
                 PeriodShots(period = 1, periodType = "REG", away = 7, home = 2),
+                PeriodShots(period = 3, periodType = "REG", away = 4, home = 0),
                 PeriodShots(period = 4, periodType = "OT", away = 2, home = 1),
+                PeriodShots(period = 6, periodType = "REG", away = 0, home = 3),
             ),
             rail.shotsByPeriod,
         )
