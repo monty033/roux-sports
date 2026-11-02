@@ -30,6 +30,9 @@ class ScreenshotMatrixTest {
     @get:Rule
     val rule = createComposeRule()
 
+    /** States whose page is longer than the viewport, so the last card needs its own image. */
+    private val scrolledStates = listOf("detail.full", "detail.live", "detail.scheduled")
+
     @Test
     fun everyAuditStateInBothThemes() {
         val screens = AuditStates.screens()
@@ -50,17 +53,26 @@ class ScreenshotMatrixTest {
                     dark.value = isDark
                 }
                 rule.waitForIdle()
-                // Show the last card as well as the stats and stars on completed/live games.
-                if (screen.name in listOf("detail.full", "detail.live")) {
-                    rule.onNodeWithTag("detail.section.info").performScrollTo()
-                }
                 val file = screen.name.replace('.', '-') + "-" + theme
+                // The card at the top of the page is the one place a state is distinguishable - the hero carries the
+                // live capsule, the clock and the score - so it is always captured unscrolled. Scrolling before the
+                // capture made detail.full and detail.live produce the same picture, which audited nothing.
                 try {
                     rule.onRoot().captureRoboImage("src/test/screenshots/matrix/$file.png")
                 } catch (failure: AssertionError) {
                     failures += failure
                 }
                 captured++
+                // The bottom of a long page needs its own image, or the last card ships unseen.
+                if (screen.name in scrolledStates) {
+                    rule.onNodeWithTag("detail.section.info").performScrollTo()
+                    rule.waitForIdle()
+                    try {
+                        rule.onRoot().captureRoboImage("src/test/screenshots/matrix/$file-info.png")
+                    } catch (failure: AssertionError) {
+                        failures += failure
+                    }
+                }
             }
         }
         assertEquals("one golden per (state, theme)", screens.size * 2, captured)

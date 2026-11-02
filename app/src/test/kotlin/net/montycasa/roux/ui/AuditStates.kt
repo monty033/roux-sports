@@ -192,9 +192,24 @@ internal object AuditStates {
                 GameDetailScreen(detailGame, DetailUiState(detail = fullDetail, refreshing = false, unexpectedFailure = false), {}, {})
             },
             ContentCase("detail.live") {
+                // A live game in the second period: the period rows must add up to the score on the board, because a
+                // screenshot whose periods disagree with the hero is unauditable.
                 GameDetailScreen(
                     detailGame.copy(state = GameState.Live(), period = PeriodInfo(2, "REG", "12:34", false), awayScore = 2, homeScore = 1),
-                    DetailUiState(detail = fullDetail, refreshing = false, unexpectedFailure = false),
+                    DetailUiState(
+                        detail =
+                            fullDetail.copy(
+                                landing =
+                                    fullDetail.landing.copy(
+                                        data =
+                                            fullDetail.landing.data!!.copy(
+                                                periodScoring = listOf(PeriodScoring(1, 2, 1), PeriodScoring(2, 0, 0)),
+                                            ),
+                                    ),
+                            ),
+                        refreshing = false,
+                        unexpectedFailure = false,
+                    ),
                     {},
                     {},
                 )
