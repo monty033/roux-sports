@@ -794,7 +794,7 @@ class GameDetailScreenTest {
     }
 
     @Test
-    fun `the sentence prints full names, season goals and inline assists`() {
+    fun `the name line parenthesises the season count and the assist line owns its own text`() {
         show(
             withGoals(
                 listOf(
@@ -813,24 +813,41 @@ class GameDetailScreenTest {
             ),
         )
 
-        val assisted = rowSentence(0)
-        assertTrue(assisted.startsWith("Kirill Marchenko 12"))
-        assertTrue(assisted.contains("(Assists: Jakub Voracek 4, Zach Werenski)"))
-        // Werenski's count is absent in the feed, so it is absent here rather than printed as (null) or (0).
-        assertTrue(!assisted.contains("Zach Werenski 0"))
+        val nameLine = rowSentence(0)
+        assertTrue(nameLine.startsWith("Kirill Marchenko (12)"))
+        assertTrue(!nameLine.contains("Kirill Marchenko 12"))
+        assertTrue(!nameLine.contains("Assists:"))
 
-        val unassisted = rowSentence(1)
-        assertEquals("Adam Fantilli", unassisted)
-        assertTrue(!unassisted.contains("Assists:"))
-        assertTrue(!unassisted.contains("("))
+        val assists = labelOf("detail.scoring.row.00.assists")
+        assertEquals("Assists: Jakub Voracek (4), Zach Werenski", assists)
+        assertTrue(!assists.startsWith("("))
+        assertTrue(!assists.contains("(Assists:"))
+
+        // A null count on an assist leaves that name bare rather than printing (null) or (0).
+        assertTrue(!assists.contains("Zach Werenski ("))
+    }
+
+    @Test
+    fun `an unassisted goal has no assist line and a missing season count prints no parentheses`() {
+        show(
+            withGoals(
+                listOf(goal(period = 1, time = "10:00", isHome = true, scorer = "Matvei Michkov", awayScore = 0, homeScore = 1)),
+            ),
+        )
+
+        assertEquals("Matvei Michkov", rowSentence(0))
+        assertTrue(!rowSentence(0).contains("("))
+        assertTrue(!rowSentence(0).contains("()"))
+        compose.onNodeWithTag("detail.scoring.row.00.assists").assertDoesNotExist()
     }
 
     @Test
     fun `the row prints full first and last names`() {
         show(withGoals(AuditStates.fullGoals))
 
-        assertTrue(rowSentence(0).startsWith("Matvei Michkov 10"))
+        assertTrue(rowSentence(0).startsWith("Matvei Michkov (10)"))
         assertTrue(!rowSentence(0).contains("M. Michkov"))
+        assertTrue(!rowSentence(0).contains("Matvei Michkov 10"))
     }
 
     @Test
@@ -858,12 +875,15 @@ class GameDetailScreenTest {
         )
 
         val both = rowSentence(0)
-        assertTrue(both.contains("(short-handed) (empty net)"))
+        assertTrue(both.contains("short-handed empty net"))
+        assertTrue(!both.contains("(short-handed)"))
         assertTrue(!both.contains("SH"))
         assertTrue(!both.contains("EN"))
-        assertTrue(rowSentence(1).contains("(power play)"))
+        assertTrue(rowSentence(1).contains("power play"))
+        assertTrue(!rowSentence(1).contains("(power play)"))
         assertTrue(!rowSentence(1).contains("PP"))
-        assertTrue(rowSentence(2).contains("(penalty shot)"))
+        assertTrue(rowSentence(2).contains("penalty shot"))
+        assertTrue(!rowSentence(2).contains("(penalty shot)"))
         assertTrue(!rowSentence(2).contains("PS"))
     }
 

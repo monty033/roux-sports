@@ -157,12 +157,20 @@ private fun ScoringRow(
                 maxLines = 1,
             )
             Text(
-                goalSentence(goal),
+                nameLine(goal),
                 modifier = Modifier.padding(top = 2.dp).testTag("detail.scoring.row.$padded.sentence"),
-                // The sentence is prose, so it stays at 14 sp or above even when it wraps.
+                // The name line is prose, so it stays at 14 sp or above even when it wraps.
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurface,
             )
+            if (goal.assists.isNotEmpty()) {
+                Text(
+                    assistLine(goal),
+                    modifier = Modifier.padding(top = 1.dp).testTag("detail.scoring.row.$padded.assists"),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
         }
         ScoreCell(
             value = goal.awayScore?.toString() ?: MISSING_SCORE,
@@ -202,24 +210,31 @@ private fun ScoreCell(
 }
 
 /**
- * The goal as one sentence: full name, season goals, strength in prose, then the assists.
+ * The name line: full name, the season goal count in parentheses, then strength and modifier in prose.
  *
- * The feed already carries full first and last names; the adapter composes them, so this only lays the sentence out. An
- * unassisted goal stops before the assists fragment rather than printing an empty parenthetical.
+ * The feed already carries full first and last names; the adapter composes them, so this only lays the line out. A
+ * missing season count leaves no empty parentheses.
  */
-private fun goalSentence(goal: GoalEvent): String =
+private fun nameLine(goal: GoalEvent): String =
     buildString {
         append(goal.scorer)
-        goal.goalsToDate?.let { seasonGoals -> append(' ').append(seasonGoals) }
+        goal.goalsToDate?.let { seasonGoals -> append(" (").append(seasonGoals).append(')') }
         strengthPhrases(goal).forEach { phrase -> append(' ').append(phrase) }
-        if (goal.assists.isNotEmpty()) {
-            append(" (Assists: ")
-            goal.assists.forEachIndexed { index, assist ->
-                if (index > 0) append(", ")
-                append(assist.name)
-                assist.assistsToDate?.let { count -> append(' ').append(count) }
-            }
-            append(')')
+    }
+
+/**
+ * The assist line, printed only when there is at least one assist.
+ *
+ * Each assist carries its own season count in parentheses; a missing count leaves the name bare. The fragment has no
+ * outer parentheses because it owns its line.
+ */
+private fun assistLine(goal: GoalEvent): String =
+    buildString {
+        append("Assists: ")
+        goal.assists.forEachIndexed { index, assist ->
+            if (index > 0) append(", ")
+            append(assist.name)
+            assist.assistsToDate?.let { count -> append(" (").append(count).append(')') }
         }
     }
 
@@ -227,13 +242,13 @@ private fun goalSentence(goal: GoalEvent): String =
 private fun strengthPhrases(goal: GoalEvent): List<String> =
     buildList {
         when (goal.strength) {
-            GoalStrength.PowerPlay -> add("(power play)")
-            GoalStrength.ShortHanded -> add("(short-handed)")
+            GoalStrength.PowerPlay -> add("power play")
+            GoalStrength.ShortHanded -> add("short-handed")
             GoalStrength.EvenStrength, GoalStrength.Unknown -> Unit
         }
         when (goal.modifier) {
-            GoalModifier.EmptyNet -> add("(empty net)")
-            GoalModifier.PenaltyShot -> add("(penalty shot)")
+            GoalModifier.EmptyNet -> add("empty net")
+            GoalModifier.PenaltyShot -> add("penalty shot")
             GoalModifier.None, GoalModifier.Other -> Unit
         }
     }
