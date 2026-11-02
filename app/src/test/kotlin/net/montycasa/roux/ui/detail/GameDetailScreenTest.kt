@@ -782,7 +782,6 @@ class GameDetailScreenTest {
         listOf(
             "detail.scoring.period.1.away.abbrev",
             "detail.scoring.period.1.home.abbrev",
-            "detail.scoring.row.00.time",
             "detail.scoring.row.00.away",
             "detail.scoring.row.00.home",
         ).forEach { tag ->
@@ -793,8 +792,6 @@ class GameDetailScreenTest {
                 !layout.hasVisualOverflow,
             )
         }
-        val time = textLayout("detail.scoring.row.00.time")
-        assertTrue("the time is below 12 sp", time.layoutInput.style.fontSize.value >= 12f)
     }
 
     @Test
@@ -949,7 +946,7 @@ class GameDetailScreenTest {
     }
 
     @Test
-    fun `the time sits above the crest and the score columns align to the time`() {
+    fun `the row reads crest, then time over the sentence, then the score columns`() {
         show(
             withGoals(
                 listOf(
@@ -969,19 +966,14 @@ class GameDetailScreenTest {
             compose.onNodeWithTag("detail.scoring.row.00.away", useUnmergedTree = true).getUnclippedBoundsInRoot()
         val homeScore =
             compose.onNodeWithTag("detail.scoring.row.00.home", useUnmergedTree = true).getUnclippedBoundsInRoot()
-        val nextCrest =
-            compose.onNodeWithTag("detail.scoring.row.01.crest.PHI", useUnmergedTree = true).getUnclippedBoundsInRoot()
 
-        assertEquals(row.left.value, time.left.value, 1f)
         assertEquals(row.left.value, crest.left.value, 1f)
         assertEquals(44f, crest.bottom.value - crest.top.value, 1f)
-        assertTrue("the crest must sit below the time", crest.top.value >= time.bottom.value)
-        assertTrue("the time must be the first thing in the left column", time.top.value <= crest.top.value)
-        assertTrue("the next row's crest must clear this one", nextCrest.top.value >= crest.bottom.value)
+        assertTrue(time.top.value < sentence.top.value)
+        assertTrue(time.left.value >= crest.right.value)
         assertTrue(sentence.left.value >= crest.right.value)
         assertTrue(sentence.right.value <= awayScore.left.value + 1f)
-        assertEquals("scores align to the time line", time.top.value, awayScore.top.value, 1f)
-        assertEquals("scores align to the time line", time.top.value, homeScore.top.value, 1f)
+        assertEquals(time.top.value, awayScore.top.value, 1f)
         assertTrue(awayScore.right.value <= homeScore.left.value)
     }
 
