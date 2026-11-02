@@ -5,12 +5,14 @@ package net.montycasa.roux.ui.detail
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTouchHeightIsEqualTo
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -23,6 +25,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
+import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameBoxscore
 import net.montycasa.roux.domain.model.GameDetail
@@ -31,6 +34,7 @@ import net.montycasa.roux.domain.model.GameLanding
 import net.montycasa.roux.domain.model.GameRightRail
 import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.GoalieLine
+import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.PeriodScoring
 import net.montycasa.roux.domain.model.PlayerRef
 import net.montycasa.roux.domain.model.PowerPlaySummary
@@ -91,19 +95,147 @@ class GameDetailScreenTest {
     private fun show(
         detail: GameDetail,
         fontScale: Float = 1f,
+        shownGame: Game = game,
     ) {
         compose.setContent {
             CompositionLocalProvider(LocalDensity provides Density(2.75f, fontScale)) {
                 RouxTheme(dark = true) {
                     GameDetailScreen(
-                        game = game,
+                        game = shownGame,
                         state = DetailUiState(detail = detail, refreshing = false, unexpectedFailure = false),
                         onBack = {},
                         onRetry = {},
+                        zone = java.time.ZoneId.of("America/New_York"),
                     )
                 }
             }
         }
+    }
+
+    @Test
+    fun `live period and clock appear once without duplicate status`() {
+        show(
+            fullDetail,
+            shownGame =
+                game.copy(
+                    state = GameState.Live(),
+                    period =
+                        net.montycasa.roux.domain.model
+                            .PeriodInfo(2, "REG", "12:34"),
+                ),
+        )
+        compose.onAllNodesWithText("2nd 12:34").assertCountEquals(1)
+        compose.onAllNodesWithText("LIVE", ignoreCase = true).assertCountEquals(0)
+    }
+
+    @Test
+    fun `live overtime is OT rather than fourth`() {
+        show(
+            fullDetail,
+            shownGame =
+                game.copy(
+                    state = GameState.Live(),
+                    period =
+                        net.montycasa.roux.domain.model
+                            .PeriodInfo(4, "OT", "03:21"),
+                ),
+        )
+        compose.onAllNodesWithText("OT 03:21").assertCountEquals(1)
+        compose.onNodeWithText("4th", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun `final overtime is explicit`() = checkFinal(FinalKind.OT, "Final/OT")
+
+    @Test
+    fun `final shootout is explicit`() = checkFinal(FinalKind.SO, "Final/SO")
+
+    @Test
+    fun `final without kind is plain`() = checkFinal(null, "Final")
+
+    private fun checkFinal(
+        kind: FinalKind?,
+        expected: String,
+    ) {
+        show(fullDetail, shownGame = game.copy(finalKind = kind))
+        compose.onAllNodesWithText(expected).assertCountEquals(1)
+        compose.onAllNodesWithText("FINAL").assertCountEquals(0)
+    }
+
+    @Test
+    fun `scheduled shows local start without stale period`() {
+        show(
+            fullDetail,
+            shownGame =
+                game.copy(
+                    state = GameState.Scheduled,
+                    startTimeUtc = kotlin.time.Instant.parse("2026-10-26T23:00:00Z"),
+                    period =
+                        net.montycasa.roux.domain.model
+                            .PeriodInfo(2, "REG", "12:34"),
+                ),
+        )
+        compose.onAllNodesWithText("Puck drops 7:00pm").assertCountEquals(1)
+        compose.onNodeWithText("12:34", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("2nd", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun `total uses score even when periods disagree`() {
+        show(
+            fullDetail.copy(landing = fullDetail.landing.copy(data = GameLanding(periodScoring = listOf(PeriodScoring(1, 4, 4))))),
+            shownGame = game.copy(awayScore = 3, homeScore = 2),
+        )
+        assertEquals("3", labelOf("detail.period.CBJ.T"))
+        assertEquals("2", labelOf("detail.period.PHI.T"))
+    }
+
+    @Test
+    fun `five periods combine all overtime into one of five columns`() {
+        show(
+            fullDetail.copy(
+                landing =
+                    fullDetail.landing.copy(
+                        data =
+                            GameLanding(
+                                periodScoring =
+                                    (1..5).map {
+                                        PeriodScoring(it, 1, 1)
+                                    },
+                            ),
+                    ),
+            ),
+            shownGame = game.copy(awayScore = 5, homeScore = 5),
+        )
+        listOf("1", "2", "3", "OT", "T").forEach {
+            assertEquals(it, labelOf("detail.period.header.$it"))
+        }
+        compose
+            .onAllNodes(
+                SemanticsMatcher("period table heading") {
+                    it.config.contains(SemanticsProperties.TestTag) &&
+                        it.config[SemanticsProperties.TestTag].startsWith("detail.period.header.")
+                },
+            ).assertCountEquals(5)
+        compose.onNodeWithTag("detail.period.header.5").assertDoesNotExist()
+        assertEquals("2", labelOf("detail.period.CBJ.4"))
+        assertEquals("2", labelOf("detail.period.PHI.4"))
+        assertEquals("5", labelOf("detail.period.CBJ.T"))
+        assertEquals("5", labelOf("detail.period.PHI.T"))
+    }
+
+    @Test
+    fun `missing score is a dash`() {
+        show(fullDetail, shownGame = game.copy(homeScore = null, awayScore = null))
+        assertEquals("—", labelOf("detail.period.CBJ.T"))
+        assertEquals("—", labelOf("detail.period.PHI.T"))
+    }
+
+    @Test
+    fun `first tab is Game and Summary is absent`() {
+        show(fullDetail)
+        assertEquals("Game", labelOf("detail.tab.Game.label"))
+        compose.onAllNodesWithText("Summary", substring = true, useUnmergedTree = true).assertCountEquals(0)
     }
 
     @Test
@@ -156,7 +288,7 @@ class GameDetailScreenTest {
     fun `each period heading sits over its own column of numbers`() {
         show(fullDetail)
 
-        listOf("1", "2", "F").forEach { label ->
+        listOf("1", "2", "T").forEach { label ->
             val header = compose.onNodeWithTag("detail.period.header.$label").getUnclippedBoundsInRoot()
             val awayCell = compose.onNodeWithTag("detail.period.CBJ.$label").getUnclippedBoundsInRoot()
             val homeCell = compose.onNodeWithTag("detail.period.PHI.$label").getUnclippedBoundsInRoot()
@@ -204,7 +336,7 @@ class GameDetailScreenTest {
         assertEquals("Flyers", labelOf("detail.tab.PHI.label"))
         assertEquals("Blue Jackets", labelOf("detail.tab.CBJ.label"))
         // The summary pill has no club, so it takes no crest.
-        assertEquals("Summary", labelOf("detail.tab.Summary.label"))
+        assertEquals("Game", labelOf("detail.tab.Game.label"))
     }
 
     @Test
@@ -298,7 +430,7 @@ class GameDetailScreenTest {
         show(fullDetail)
 
         compose.onNodeWithTag("detail.back").assertTouchHeightIsEqualTo(48.dp)
-        listOf("detail.tab.Summary", "detail.tab.CBJ", "detail.tab.PHI").forEach { tag ->
+        listOf("detail.tab.Game", "detail.tab.CBJ", "detail.tab.PHI").forEach { tag ->
             // reachTarget pins the 48 dp minimum, so a tab is pressable even when its visual is shorter.
             compose.onNodeWithTag(tag).assertTouchHeightIsEqualTo(48.dp)
         }
@@ -310,7 +442,7 @@ class GameDetailScreenTest {
         show(fullDetail, fontScale = 2f)
 
         compose.onNodeWithTag("detail.back").assertTouchHeightIsEqualTo(48.dp)
-        compose.onNodeWithTag("detail.tab.Summary").assertTouchHeightIsEqualTo(48.dp)
+        compose.onNodeWithTag("detail.tab.Game").assertTouchHeightIsEqualTo(48.dp)
     }
 }
 

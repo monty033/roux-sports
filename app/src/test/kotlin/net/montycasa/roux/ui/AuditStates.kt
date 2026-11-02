@@ -125,7 +125,12 @@ internal object AuditStates {
             landing =
                 Loadable(
                     GameLanding(
-                        periodScoring = listOf(PeriodScoring(1, 2, 1), PeriodScoring(2, 0, 1)),
+                        periodScoring =
+                            listOf(
+                                PeriodScoring(1, 2, 1),
+                                PeriodScoring(2, 0, 1),
+                                PeriodScoring(3, 1, 2),
+                            ),
                         threeStars = listOf(ThreeStar(1, PlayerRef("T. Konecny", "PHI"))),
                     ),
                     Freshness.Fresh,
