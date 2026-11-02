@@ -48,6 +48,17 @@ internal fun GameDestination(
         ShotsByPeriodTable(game = game, rail = rail)
     }
 
+    SectionCard(
+        title = "Game stats",
+        hideWhenEmpty = { it.comparisonRows().isEmpty() },
+        tag = "detail.section.stats",
+        loadable = detail.rightRail,
+        failureLabel = "Game stats could not be loaded",
+        onRetry = onRetry,
+    ) { rail ->
+        GameStatsRows(game = game, rail = rail)
+    }
+
     // The period table's tag is already detail.section.scoring, so the summary takes its own hook rather than
     // making every existing onNodeWithTag("detail.section.scoring") ambiguous.
     SectionCard(
@@ -59,17 +70,6 @@ internal fun GameDestination(
         hideWhenEmpty = { it.goals.isEmpty() },
     ) { landing ->
         ScoringSummary(game = game, landing = landing)
-    }
-
-    SectionCard(
-        title = "Game stats",
-        hideWhenEmpty = { it.comparisonRows().isEmpty() },
-        tag = "detail.section.stats",
-        loadable = detail.rightRail,
-        failureLabel = "Game stats could not be loaded",
-        onRetry = onRetry,
-    ) { rail ->
-        GameStatsRows(game = game, rail = rail)
     }
 
     SectionCard(

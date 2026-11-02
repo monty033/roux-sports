@@ -161,6 +161,7 @@ private fun ScoringRow(
                 modifier = Modifier.padding(top = 2.dp).testTag("detail.scoring.row.$padded.sentence"),
                 // The name line is prose, so it stays at 14 sp or above even when it wraps.
                 style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             if (goal.assists.isNotEmpty()) {
@@ -168,6 +169,7 @@ private fun ScoringRow(
                     assistLine(goal),
                     modifier = Modifier.padding(top = 1.dp).testTag("detail.scoring.row.$padded.assists"),
                     style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Normal,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
             }

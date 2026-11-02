@@ -28,6 +28,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -828,6 +829,29 @@ class GameDetailScreenTest {
     }
 
     @Test
+    fun `assist names are regular while the scorer's line keeps its emphasis`() {
+        show(
+            withGoals(
+                listOf(
+                    goal(
+                        period = 1,
+                        time = "10:00",
+                        isHome = false,
+                        scorer = "Kirill Marchenko",
+                        goalsToDate = 12,
+                        assists = listOf(GoalAssist("Jakub Voracek", 4)),
+                        awayScore = 1,
+                        homeScore = 0,
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(FontWeight.SemiBold, textLayout("detail.scoring.row.00.sentence").layoutInput.style.fontWeight)
+        assertEquals(FontWeight.Normal, textLayout("detail.scoring.row.00.assists").layoutInput.style.fontWeight)
+    }
+
+    @Test
     fun `an unassisted goal has no assist line and a missing season count prints no parentheses`() {
         show(
             withGoals(
@@ -979,7 +1003,7 @@ class GameDetailScreenTest {
     }
 
     @Test
-    fun `the scoring summary sits after shots and before game stats`() {
+    fun `the scoring summary sits below game stats and above three stars`() {
         show(
             withGoals(listOf(goal(period = 1, time = "15:00", isHome = false))).let { detail ->
                 detail.copy(
@@ -997,7 +1021,7 @@ class GameDetailScreenTest {
         )
 
         val tops =
-            listOf("scoring", "shots", "scoring-summary", "stats").map {
+            listOf("scoring", "shots", "stats", "scoring-summary", "stars").map {
                 compose
                     .onNodeWithTag("detail.section.$it")
                     .getUnclippedBoundsInRoot()
