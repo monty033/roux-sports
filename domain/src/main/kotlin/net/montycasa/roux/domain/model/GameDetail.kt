@@ -154,10 +154,8 @@ data class GoalAssist(
 /**
  * One goal, with everything the feed already sends and the page used to throw away.
  *
- * [timeInPeriod] is the feed's own elapsed clock (`"12:49"`), kept verbatim for traceability. [elapsedSeconds] is that
- * same value parsed once; the card orders by it because the feed's goal order and its clock both run forward through a
- * period. [timeRemaining] is the label the card prints, derived from the period length at mapping time so ordering and
- * display can never use different clocks.
+ * [timeInPeriod] is the feed's own elapsed clock (`"12:49"`), kept verbatim: it is both the value the card prints and
+ * the value it orders by, parsed numerically. There is no second clock on the model, so the two cannot drift.
  *
  * [awayScore] and [homeScore] are the running score immediately after this goal, as published - never replayed from
  * the goals before it. [goalsToDate] is likewise the scorer's season total as of this goal, not a count of this game.
@@ -165,8 +163,6 @@ data class GoalAssist(
 data class GoalEvent(
     val period: Int,
     val timeInPeriod: String,
-    val elapsedSeconds: Int?,
-    val timeRemaining: String,
     val isHome: Boolean,
     val scorer: String,
     val goalsToDate: Int?,

@@ -275,8 +275,6 @@ class LandingAdapterTest {
             GoalEvent(
                 period = 1,
                 timeInPeriod = "10:58",
-                elapsedSeconds = 658,
-                timeRemaining = "09:02",
                 isHome = false,
                 scorer = "K. Marchenko",
                 goalsToDate = 12,
@@ -288,48 +286,6 @@ class LandingAdapterTest {
             ),
             landing.goals.single(),
         )
-    }
-
-    @Test
-    fun elapsedTimeMapsToTheRemainingClockThePeriodActuallyUses() {
-        data class ClockCase(
-            val json: String,
-            val elapsedSeconds: Int,
-            val remaining: String,
-        )
-        val cases =
-            listOf(
-                ClockCase(
-                    """{"id":1,"gameType":2,"summary":{"scoring":[{"periodDescriptor":{"number":1,"periodType":"REG"},
-                    "goals":[{"isHome":false,"name":{"default":"Reg Goal"},"timeInPeriod":"12:49"}]}]}}""",
-                    elapsedSeconds = 769,
-                    remaining = "07:11",
-                ),
-                ClockCase(
-                    """{"id":1,"gameType":2,"summary":{"scoring":[{"periodDescriptor":{"number":4,"periodType":"OT"},
-                    "goals":[{"isHome":false,"name":{"default":"Regular OT"},"timeInPeriod":"02:22"}]}]}}""",
-                    elapsedSeconds = 142,
-                    remaining = "02:38",
-                ),
-                ClockCase(
-                    """{"id":1,"gameType":3,"summary":{"scoring":[{"periodDescriptor":{"number":4,"periodType":"OT"},
-                    "goals":[{"isHome":false,"name":{"default":"Playoff OT"},"timeInPeriod":"02:22"}]}]}}""",
-                    elapsedSeconds = 142,
-                    remaining = "17:38",
-                ),
-                ClockCase(
-                    // A clock past its period is not turned into a negative label: the feed's own value is shown.
-                    """{"id":1,"gameType":2,"summary":{"scoring":[{"periodDescriptor":{"number":1,"periodType":"REG"},
-                    "goals":[{"isHome":false,"name":{"default":"Long Period"},"timeInPeriod":"21:00"}]}]}}""",
-                    elapsedSeconds = 1260,
-                    remaining = "21:00",
-                ),
-            )
-        cases.forEach { case ->
-            val goal = successOf(case.json).goals.single()
-            assertEquals("elapsed for ${case.json}", case.elapsedSeconds, goal.elapsedSeconds)
-            assertEquals("remaining for ${case.json}", case.remaining, goal.timeRemaining)
-        }
     }
 
     @Test
@@ -384,8 +340,6 @@ class LandingAdapterTest {
         assertEquals(0, landing.goals.first().homeScore)
         assertEquals(4, landing.goals.first().goalsToDate)
         assertEquals(1, landing.goals.first().period)
-        assertEquals(658, landing.goals.first().elapsedSeconds)
-        assertEquals("09:02", landing.goals.first().timeRemaining)
         assertEquals(
             2,
             landing.goals
@@ -395,8 +349,6 @@ class LandingAdapterTest {
         // The last goal's running score is the final score, but it is that goal's own fields, not the game's.
         assertEquals(4, landing.goals.last().awayScore)
         assertEquals(3, landing.goals.last().homeScore)
-        // The captured fixture's fourth period is regular-season OT (gameType 2), so 02:22 elapsed leaves 02:38.
-        assertEquals("02:38", landing.goals.last().timeRemaining)
     }
 
     private fun successOf(json: String): GameLanding {

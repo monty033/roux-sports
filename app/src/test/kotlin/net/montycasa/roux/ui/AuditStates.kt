@@ -127,15 +127,13 @@ internal object AuditStates {
             awayScore = 3,
         )
 
-    // Real landing data for UTA @ PHI, 2026-11-01, final 3-6. The feed's clocks are elapsed time; the remaining label
-    // is the adapter's 20:00 / 5:00 conversion. Period 3 is the sequence this audit exists to photograph.
+    // Real landing data for UTA @ PHI, 2026-11-01, final 3-6. The feed's clocks are elapsed time and the card prints
+    // them verbatim. Period 3 is the sequence this audit exists to photograph.
     internal val fullGoals =
         listOf(
             auditGoal(
                 1,
                 "12:49",
-                769,
-                "07:11",
                 isHome = true,
                 scorer = "M. Michkov",
                 goalsToDate = 10,
@@ -146,8 +144,6 @@ internal object AuditStates {
             auditGoal(
                 1,
                 "14:24",
-                864,
-                "05:36",
                 isHome = false,
                 scorer = "D. Simashev",
                 goalsToDate = 3,
@@ -158,8 +154,6 @@ internal object AuditStates {
             auditGoal(
                 2,
                 "01:06",
-                66,
-                "18:54",
                 isHome = true,
                 scorer = "T. Konecny",
                 goalsToDate = 1,
@@ -170,8 +164,6 @@ internal object AuditStates {
             auditGoal(
                 2,
                 "05:50",
-                350,
-                "14:10",
                 isHome = true,
                 scorer = "N. Cates",
                 goalsToDate = 2,
@@ -182,8 +174,6 @@ internal object AuditStates {
             auditGoal(
                 3,
                 "01:02",
-                62,
-                "18:58",
                 isHome = true,
                 scorer = "C. Dvorak",
                 goalsToDate = 3,
@@ -194,8 +184,6 @@ internal object AuditStates {
             auditGoal(
                 3,
                 "05:35",
-                335,
-                "14:25",
                 isHome = true,
                 scorer = "O. Bonk",
                 goalsToDate = 1,
@@ -206,8 +194,6 @@ internal object AuditStates {
             auditGoal(
                 3,
                 "16:00",
-                960,
-                "04:00",
                 isHome = false,
                 scorer = "M. Sergachev",
                 goalsToDate = 5,
@@ -219,8 +205,6 @@ internal object AuditStates {
             auditGoal(
                 3,
                 "17:07",
-                1027,
-                "02:53",
                 isHome = false,
                 scorer = "L. Cooley",
                 goalsToDate = 8,
@@ -232,8 +216,6 @@ internal object AuditStates {
             auditGoal(
                 3,
                 "18:26",
-                1106,
-                "01:34",
                 isHome = true,
                 scorer = "C. Knuble",
                 goalsToDate = 3,
@@ -251,8 +233,6 @@ internal object AuditStates {
     private fun auditGoal(
         period: Int,
         elapsed: String,
-        elapsedSeconds: Int,
-        remaining: String,
         isHome: Boolean,
         scorer: String,
         goalsToDate: Int,
@@ -264,8 +244,6 @@ internal object AuditStates {
     ) = GoalEvent(
         period = period,
         timeInPeriod = elapsed,
-        elapsedSeconds = elapsedSeconds,
-        timeRemaining = remaining,
         isHome = isHome,
         scorer = scorer,
         goalsToDate = goalsToDate,

@@ -248,13 +248,9 @@ class GameDetailScreenTest {
         modifier: GoalModifier = GoalModifier.None,
         awayScore: Int? = null,
         homeScore: Int? = null,
-        elapsedSeconds: Int? = clockSeconds(time),
-        timeRemaining: String = time,
     ) = GoalEvent(
         period = period,
         timeInPeriod = time,
-        elapsedSeconds = elapsedSeconds,
-        timeRemaining = timeRemaining,
         isHome = isHome,
         scorer = scorer,
         goalsToDate = goalsToDate,
@@ -582,7 +578,7 @@ class GameDetailScreenTest {
     }
 
     @Test
-    fun `period three of the real game shows its literal remaining clocks in order`() {
+    fun `period three of the real game shows its literal elapsed clocks in order`() {
         show(
             withGoals(AuditStates.fullGoals.filter { it.period == 3 }),
             shownGame =
@@ -594,29 +590,37 @@ class GameDetailScreenTest {
         )
 
         assertEquals("3RD", labelOf("detail.scoring.period.3"))
-        // The real period 3 clocks: elapsed 01:02, 05:35, 16:00, 17:07, 18:26 in a 20:00 period.
-        val expected = listOf("18:58", "14:25", "04:00", "02:53", "01:34")
+        // The feed's own elapsed clocks for period 3, printed verbatim, first goal first.
+        val expected = listOf("01:02", "05:35", "16:00", "17:07", "18:26")
         val actual = expected.indices.map { index -> rowTime(index) }
         assertEquals(expected, actual)
     }
 
     @Test
-    fun `the full audit fixture climbs in score while its displayed clock falls`() {
+    fun `the card prints the feed's elapsed string verbatim`() {
+        show(withGoals(listOf(goal(period = 1, time = "9:30", isHome = false, awayScore = 1, homeScore = 0))))
+
+        // Not 09:30 and not a derived remaining value: exactly the string the payload sent.
+        assertEquals("9:30", rowTime(0))
+    }
+
+    @Test
+    fun `the full audit fixture rises in score as its elapsed clock climbs`() {
         assertClockAndScoreInvariant(name = "detail.full", goals = AuditStates.fullGoals)
     }
 
     @Test
-    fun `the live audit fixture climbs in score while its displayed clock falls`() {
+    fun `the live audit fixture rises in score as its elapsed clock climbs`() {
         assertClockAndScoreInvariant(name = "detail.live", goals = AuditStates.liveGoals)
     }
 
     @Test
-    fun `non-padded elapsed values sort numerically and still fall on the displayed clock`() {
+    fun `non-padded elapsed values sort numerically and climb down the card`() {
         val nonPadded =
             listOf(
-                goal(period = 1, time = "9:30", isHome = false, awayScore = 1, homeScore = 0, timeRemaining = "10:30"),
-                goal(period = 1, time = "14:22", isHome = true, awayScore = 1, homeScore = 1, timeRemaining = "05:38"),
-                goal(period = 1, time = "16:00", isHome = false, awayScore = 2, homeScore = 1, timeRemaining = "04:00"),
+                goal(period = 1, time = "9:30", isHome = false, awayScore = 1, homeScore = 0),
+                goal(period = 1, time = "14:22", isHome = true, awayScore = 1, homeScore = 1),
+                goal(period = 1, time = "16:00", isHome = false, awayScore = 2, homeScore = 1),
             )
 
         assertClockAndScoreInvariant(name = "non-padded", goals = nonPadded)
@@ -632,9 +636,9 @@ class GameDetailScreenTest {
                 val firstClock = requireNotNull(clockSeconds(rowTime(first.index)))
                 val nextClock = requireNotNull(clockSeconds(rowTime(next.index)))
                 assertTrue(
-                    "$name ${group.label}: displayed clock rose from ${first.goal.timeRemaining} " +
-                        "to ${next.goal.timeRemaining}",
-                    nextClock <= firstClock,
+                    "$name ${group.label}: elapsed clock fell from ${first.goal.timeInPeriod} " +
+                        "to ${next.goal.timeInPeriod}",
+                    nextClock >= firstClock,
                 )
                 val firstAway = labelOf("detail.scoring.row.${first.index.padded()}.away").toInt()
                 val nextAway = labelOf("detail.scoring.row.${next.index.padded()}.away").toInt()

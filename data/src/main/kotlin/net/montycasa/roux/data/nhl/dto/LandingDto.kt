@@ -13,8 +13,6 @@ import kotlinx.serialization.json.JsonElement
 @Serializable
 internal data class LandingDto(
     val id: Long? = null,
-    /** 2 is the regular season and 3 the playoffs; OT period length depends on it. */
-    val gameType: Int? = null,
     val gameState: String? = null,
     val periodDescriptor: LandingPeriodDescriptorDto? = null,
     val clock: LandingClockDto? = null,

@@ -116,17 +116,8 @@ internal object LandingAdapter {
                     val period = rawPeriod ?: return@flatMap emptyList()
                     // A goal with no period cannot be placed, and one with no scorer cannot be attributed. Both are
                     // dropped alone: unlike a period count, a goal list stays honest when it is short.
-                    val descriptor = period.periodDescriptor
-                    val number = descriptor?.number?.takeIf { it > 0 } ?: return@flatMap emptyList()
-                    period.goals.orEmpty().mapNotNull {
-                        it?.toGoalEvent(
-                            period = number,
-                            periodType = descriptor.periodType,
-                            gameType = landing.gameType,
-                            awayAbbrev = away,
-                            homeAbbrev = home,
-                        )
-                    }
+                    val number = period.periodDescriptor?.number?.takeIf { it > 0 } ?: return@flatMap emptyList()
+                    period.goals.orEmpty().mapNotNull { it?.toGoalEvent(number, away, home) }
                 }
 
         return ParseResult.Success(
@@ -203,8 +194,6 @@ internal object LandingAdapter {
      */
     private fun LandingGoalDto.toGoalEvent(
         period: Int,
-        periodType: String?,
-        gameType: Int?,
         awayAbbrev: String?,
         homeAbbrev: String?,
     ): GoalEvent? {
@@ -216,20 +205,9 @@ internal object LandingAdapter {
                 val assistName = entry.name?.default.clean() ?: return@mapNotNull null
                 GoalAssist(name = assistName, assistsToDate = entry.assistsToDate)
             }
-        val rawTime = timeInPeriod.clean().orEmpty()
-        val elapsed = elapsedSeconds(rawTime)
-        val remaining =
-            elapsed?.let { seconds ->
-                periodLengthSeconds(period = period, periodType = periodType, gameType = gameType) - seconds
-            }
-        // A clock past its period is a feed problem, not a negative time: show what the feed wrote and leave it to the
-        // card's caller to inspect. The same fallback covers an unparseable value.
-        val displayed = if (remaining == null || remaining < 0) rawTime else formatClock(remaining)
         return GoalEvent(
             period = period,
-            timeInPeriod = rawTime,
-            elapsedSeconds = elapsed,
-            timeRemaining = displayed,
+            timeInPeriod = timeInPeriod.clean().orEmpty(),
             isHome = side == Side.Home,
             scorer = scorer,
             goalsToDate = goalsToDate,
@@ -239,48 +217,6 @@ internal object LandingAdapter {
             awayScore = awayScore,
             homeScore = homeScore,
         )
-    }
-
-    /** `"MM:SS"` or `"M:SS"` as elapsed seconds, or null when the feed sent something this adapter cannot parse. */
-    private fun elapsedSeconds(time: String): Int? {
-        val parts = time.trim().split(":")
-        if (parts.size != 2) return null
-        val minutes = parts[0].toIntOrNull() ?: return null
-        val seconds = parts[1].toIntOrNull() ?: return null
-        if (minutes < 0 || seconds !in 0..59) return null
-        return minutes * 60 + seconds
-    }
-
-    /**
-     * The clock a period starts with.
-     *
-     * Regulation is always 20:00. Overtime is 5:00 in the regular season (`gameType` 2) and 20:00 in the playoffs
-     * (`gameType` 3). Any other or missing type falls back to 20:00 rather than assuming a five-minute overtime.
-     */
-    private fun periodLengthSeconds(
-        period: Int,
-        periodType: String?,
-        gameType: Int?,
-    ): Int =
-        when {
-            periodType.equals("REG", ignoreCase = true) -> {
-                REGULATION_SECONDS
-            }
-
-            periodType.equals("OT", ignoreCase = true) || period > MAX_REGULATION_PERIOD -> {
-                if (gameType == REGULAR_SEASON) OVERTIME_REGULAR_SEASON_SECONDS else REGULATION_SECONDS
-            }
-
-            else -> {
-                REGULATION_SECONDS
-            }
-        }
-
-    /** Zero-padded `MM:SS`, because 7:11 reads as seven minutes and eleven seconds, not seven-to-eleven. */
-    private fun formatClock(totalSeconds: Int): String {
-        val minutes = totalSeconds / 60
-        val seconds = totalSeconds % 60
-        return "${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}"
     }
 
     private fun String?.toStrength(): GoalStrength =
@@ -331,9 +267,4 @@ internal object LandingAdapter {
     }
 
     private enum class Side { Away, Home }
-
-    private const val REGULATION_SECONDS = 20 * 60
-    private const val OVERTIME_REGULAR_SEASON_SECONDS = 5 * 60
-    private const val MAX_REGULATION_PERIOD = 3
-    private const val REGULAR_SEASON = 2
 }

@@ -35,10 +35,10 @@ import net.montycasa.roux.ui.theme.LocalRouxAccents
 /**
  * Every goal, grouped the way a period is read: periods ascending, the period's first goal first inside each.
  *
- * The clock runs down, so the first goal of a period has the most time remaining and the last has the least; the card
- * reads forwards through the period. All overtime periods share one `OT` group, the same way the period tables share one
- * `OT` column - there is no useful distinction between the fourth and fifth extra period on a scoring summary, and two
- * headers would pretend there was.
+ * The feed's clock is elapsed time, so it climbs down the card as the period goes on, and the running score climbs with
+ * it. All overtime periods share one `OT` group, the same way the period tables share one `OT` column - there is no
+ * useful distinction between the fourth and fifth extra period on a scoring summary, and two headers would pretend
+ * there was.
  */
 @Composable
 internal fun ScoringSummary(
@@ -129,7 +129,7 @@ private fun ScoringRow(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                goal.timeRemaining,
+                goal.timeInPeriod,
                 modifier = Modifier.width(TIME_COLUMN),
                 style = MaterialTheme.typography.labelMedium,
                 color = LocalRouxAccents.current.muted,
@@ -253,9 +253,9 @@ private fun assistLine(
 /**
  * Periods ascending, goals inside a period in the order they happened: elapsed seconds ascending.
  *
- * The feed writes elapsed time, so the first goal of a period has the smallest elapsed value and the last has the
- * largest. The card shows the matching time-remaining label, which therefore falls down the card. Ordering uses the
- * parsed [GoalEvent.elapsedSeconds], never the raw string: `"9:30"` is 570 seconds and belongs after `"14:22"`.
+ * The feed writes elapsed time, so the first goal of a period has the smallest value and the last has the largest; the
+ * times climb down the card. Ordering parses [GoalEvent.timeInPeriod] numerically, never comparing the raw string:
+ * `"9:30"` is 570 seconds and belongs before `"14:22"`.
  *
  * Overtime is folded into one group keyed 4. Its goals run oldest extra period first, then elapsed ascending, so the
  * last goal of the game is the bottom row of the card.
@@ -270,10 +270,10 @@ internal fun scoringGroups(goals: List<GoalEvent>): List<ScoringGroup> {
                 if (key == OVERTIME_KEY) {
                     periodGoals.sortedWith(
                         compareBy<GoalEvent> { it.period }
-                            .thenBy { it.elapsedSeconds ?: UNPARSED_ELAPSED },
+                            .thenBy { elapsedSeconds(it.timeInPeriod) ?: UNPARSED_ELAPSED },
                     )
                 } else {
-                    periodGoals.sortedBy { it.elapsedSeconds ?: UNPARSED_ELAPSED }
+                    periodGoals.sortedBy { elapsedSeconds(it.timeInPeriod) ?: UNPARSED_ELAPSED }
                 }
             ScoringGroup(
                 key = key,
@@ -281,6 +281,16 @@ internal fun scoringGroups(goals: List<GoalEvent>): List<ScoringGroup> {
                 goals = ordered.map { IndexedGoal(index = rowIndex++, goal = it) },
             )
         }
+}
+
+/** `"MM:SS"` or `"M:SS"` as elapsed seconds; null when the feed sent something the card cannot place on a clock. */
+private fun elapsedSeconds(time: String): Int? {
+    val parts = time.trim().split(":")
+    if (parts.size != 2) return null
+    val minutes = parts[0].toIntOrNull() ?: return null
+    val seconds = parts[1].toIntOrNull() ?: return null
+    if (minutes < 0 || seconds !in 0..59) return null
+    return minutes * 60 + seconds
 }
 
 private fun periodLabel(key: Int): String =
