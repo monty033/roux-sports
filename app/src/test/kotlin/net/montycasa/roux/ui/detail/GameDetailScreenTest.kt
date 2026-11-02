@@ -56,6 +56,7 @@ import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.domain.model.TeamStat
 import net.montycasa.roux.domain.model.ThreeStar
+import net.montycasa.roux.ui.AuditStates
 import net.montycasa.roux.ui.theme.RouxTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -247,9 +248,13 @@ class GameDetailScreenTest {
         modifier: GoalModifier = GoalModifier.None,
         awayScore: Int? = null,
         homeScore: Int? = null,
+        elapsedSeconds: Int? = clockSeconds(time),
+        timeRemaining: String = time,
     ) = GoalEvent(
         period = period,
         timeInPeriod = time,
+        elapsedSeconds = elapsedSeconds,
+        timeRemaining = timeRemaining,
         isHome = isHome,
         scorer = scorer,
         goalsToDate = goalsToDate,
@@ -577,36 +582,68 @@ class GameDetailScreenTest {
     }
 
     @Test
-    fun `scoring summary runs periods ascending and first goal first inside a period`() {
+    fun `period three of the real game shows its literal remaining clocks in order`() {
         show(
-            withGoals(
-                listOf(
-                    goal(period = 2, time = "08:00", isHome = true),
-                    goal(period = 1, time = "05:00", isHome = false),
-                    goal(period = 1, time = "15:00", isHome = false),
+            withGoals(AuditStates.fullGoals.filter { it.period == 3 }),
+            shownGame =
+                game.copy(
+                    away = TeamRef(TeamKey("UTA"), name = "Mammoth"),
+                    awayScore = 3,
+                    homeScore = 6,
                 ),
-            ),
         )
 
-        val first = compose.onNodeWithTag("detail.scoring.period.1").getUnclippedBoundsInRoot()
-        val second = compose.onNodeWithTag("detail.scoring.period.2").getUnclippedBoundsInRoot()
-        assertTrue(first.top.value < second.top.value)
-        assertEquals("1ST", labelOf("detail.scoring.period.1"))
-        assertEquals("2ND", labelOf("detail.scoring.period.2"))
+        assertEquals("3RD", labelOf("detail.scoring.period.3"))
+        // The real period 3 clocks: elapsed 01:02, 05:35, 16:00, 17:07, 18:26 in a 20:00 period.
+        val expected = listOf("18:58", "14:25", "04:00", "02:53", "01:34")
+        val actual = expected.indices.map { index -> rowTime(index) }
+        assertEquals(expected, actual)
+    }
 
-        // Rows are numbered in display order: the first goal of the first period (the most time remaining) comes
-        // first, then the later 05:00 goal, then the second period's goal.
-        val rows =
-            listOf("detail.scoring.row.00", "detail.scoring.row.01", "detail.scoring.row.02").map {
-                compose
-                    .onNodeWithTag(it)
-                    .getUnclippedBoundsInRoot()
-                    .top.value
+    @Test
+    fun `the full audit fixture climbs in score while its displayed clock falls`() {
+        assertClockAndScoreInvariant(name = "detail.full", goals = AuditStates.fullGoals)
+    }
+
+    @Test
+    fun `the live audit fixture climbs in score while its displayed clock falls`() {
+        assertClockAndScoreInvariant(name = "detail.live", goals = AuditStates.liveGoals)
+    }
+
+    @Test
+    fun `non-padded elapsed values sort numerically and still fall on the displayed clock`() {
+        val nonPadded =
+            listOf(
+                goal(period = 1, time = "9:30", isHome = false, awayScore = 1, homeScore = 0, timeRemaining = "10:30"),
+                goal(period = 1, time = "14:22", isHome = true, awayScore = 1, homeScore = 1, timeRemaining = "05:38"),
+                goal(period = 1, time = "16:00", isHome = false, awayScore = 2, homeScore = 1, timeRemaining = "04:00"),
+            )
+
+        assertClockAndScoreInvariant(name = "non-padded", goals = nonPadded)
+    }
+
+    private fun assertClockAndScoreInvariant(
+        name: String,
+        goals: List<GoalEvent>,
+    ) {
+        show(withGoals(goals))
+        scoringGroups(goals).forEach { group ->
+            group.goals.zipWithNext().forEach { (first, next) ->
+                val firstClock = requireNotNull(clockSeconds(rowTime(first.index)))
+                val nextClock = requireNotNull(clockSeconds(rowTime(next.index)))
+                assertTrue(
+                    "$name ${group.label}: displayed clock rose from ${first.goal.timeRemaining} " +
+                        "to ${next.goal.timeRemaining}",
+                    nextClock <= firstClock,
+                )
+                val firstAway = labelOf("detail.scoring.row.${first.index.padded()}.away").toInt()
+                val nextAway = labelOf("detail.scoring.row.${next.index.padded()}.away").toInt()
+                val firstHome = labelOf("detail.scoring.row.${first.index.padded()}.home").toInt()
+                val nextHome = labelOf("detail.scoring.row.${next.index.padded()}.home").toInt()
+                assertTrue("$name ${group.label}: away score fell", nextAway >= firstAway)
+                assertTrue("$name ${group.label}: home score fell", nextHome >= firstHome)
             }
-        assertTrue(rows.zipWithNext().all { (a, b) -> a < b })
-        assertTrue(mergedLabelOf("detail.scoring.row.00").contains("15:00"))
-        assertTrue(mergedLabelOf("detail.scoring.row.01").contains("05:00"))
-        assertTrue(mergedLabelOf("detail.scoring.row.02").contains("08:00"))
+        }
     }
 
     @Test
@@ -614,19 +651,111 @@ class GameDetailScreenTest {
         show(
             withGoals(
                 listOf(
-                    goal(period = 1, time = "10:00", isHome = false, awayScore = 2, homeScore = 0),
-                    goal(period = 1, time = "15:00", isHome = false, awayScore = 1, homeScore = 0),
+                    goal(period = 1, time = "10:00", isHome = false, awayScore = 1, homeScore = 0),
+                    goal(period = 1, time = "15:00", isHome = false, awayScore = 2, homeScore = 0),
                     goal(period = 2, time = "05:00", isHome = true, awayScore = 2, homeScore = 1),
                 ),
             ),
             shownGame = game.copy(awayScore = 3, homeScore = 1),
         )
 
-        // First goal first, so the 15:00 goal owns the first row and its own 1-0, not the 3-1 on the board.
+        // First goal first, so the 10:00 goal owns the first row and its own 1-0, not the 3-1 on the board.
         val firstRow = mergedLabelOf("detail.scoring.row.00")
         assertTrue(firstRow.contains("1–0"))
         assertTrue(!firstRow.contains("3–1"))
         assertTrue(mergedLabelOf("detail.scoring.row.02").contains("2–1"))
+    }
+
+    @Test
+    fun `each goal row carries only its scorer's crest`() {
+        show(
+            withGoals(
+                listOf(
+                    goal(period = 1, time = "10:00", isHome = false, awayScore = 1, homeScore = 0),
+                    goal(period = 1, time = "15:00", isHome = true, awayScore = 1, homeScore = 1),
+                ),
+            ),
+        )
+
+        val awayCrest =
+            compose.onNodeWithTag("detail.scoring.row.00.crest.CBJ", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        assertEquals(24f, awayCrest.bottom.value - awayCrest.top.value, 1f)
+        compose.onNodeWithTag("detail.scoring.row.00.crest.PHI", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithTag("detail.scoring.row.01.crest.PHI", useUnmergedTree = true).assertExists()
+        compose.onNodeWithTag("detail.scoring.row.01.crest.CBJ", useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun `the away and home score columns hold the numbers under their own club`() {
+        show(
+            withGoals(
+                listOf(
+                    goal(period = 1, time = "10:00", isHome = false, awayScore = 3, homeScore = 1),
+                    goal(period = 1, time = "15:00", isHome = true, awayScore = 3, homeScore = 2),
+                ),
+            ),
+        )
+
+        assertEquals("3", labelOf("detail.scoring.row.00.away"))
+        assertEquals("1", labelOf("detail.scoring.row.00.home"))
+        assertEquals("3", labelOf("detail.scoring.row.01.away"))
+        assertEquals("2", labelOf("detail.scoring.row.01.home"))
+
+        val awayHeader = compose.onNodeWithTag("detail.scoring.header.away").getUnclippedBoundsInRoot()
+        val homeHeader = compose.onNodeWithTag("detail.scoring.header.home").getUnclippedBoundsInRoot()
+        val awayScore =
+            compose.onNodeWithTag("detail.scoring.row.01.away", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val homeScore =
+            compose.onNodeWithTag("detail.scoring.row.01.home", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        assertTrue(awayHeader.right.value <= homeHeader.left.value)
+        assertEquals(awayHeader.left.value, awayScore.left.value, 1f)
+        assertEquals(awayHeader.right.value, awayScore.right.value, 1f)
+        assertEquals(homeHeader.left.value, homeScore.left.value, 1f)
+        assertEquals(homeHeader.right.value, homeScore.right.value, 1f)
+    }
+
+    @Test
+    fun `the score header names both clubs above their columns`() {
+        show(withGoals(listOf(goal(period = 1, time = "15:00", isHome = false))))
+
+        assertEquals("CBJ", labelOf("detail.scoring.header.away.abbrev"))
+        assertEquals("PHI", labelOf("detail.scoring.header.home.abbrev"))
+        compose.onNodeWithTag("detail.scoring.header.away.crest").assertExists()
+        compose.onNodeWithTag("detail.scoring.header.home.crest").assertExists()
+
+        val header = compose.onNodeWithTag("detail.scoring.header.away").getUnclippedBoundsInRoot()
+        val period = compose.onNodeWithTag("detail.scoring.period.1").getUnclippedBoundsInRoot()
+        assertTrue(header.bottom.value <= period.top.value + 1f)
+        // The header is not a goal: the only row is 00 and there is no 01 for it to occupy.
+        compose.onNodeWithTag("detail.scoring.row.00").assertExists()
+        compose.onNodeWithTag("detail.scoring.row.01").assertDoesNotExist()
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w360dp-h780dp-xhdpi")
+    fun `the score header and numbers fit their columns at font scale two`() {
+        show(
+            withGoals(listOf(goal(period = 1, time = "15:00", isHome = false, awayScore = 3, homeScore = 1))),
+            fontScale = 2f,
+        )
+
+        listOf(
+            "detail.scoring.header.away.abbrev",
+            "detail.scoring.header.home.abbrev",
+            "detail.scoring.row.00.away",
+            "detail.scoring.row.00.home",
+        ).forEach { tag ->
+            val layout = textLayout(tag)
+            assertTrue(
+                "$tag overflowed its column: size=${layout.size} lines=${layout.lineCount} " +
+                    "line0=${if (layout.lineCount > 0) layout.getLineRight(0) - layout.getLineLeft(0) else -1f} " +
+                    "text=${layout.layoutInput.text.text} constraints=${layout.layoutInput.constraints} " +
+                    "font=${layout.layoutInput.style.fontSize} spacing=${layout.layoutInput.style.letterSpacing} " +
+                    "lineRight=${if (layout.lineCount > 0) layout.getLineRight(0) else -1f} " +
+                    "lineBottom=${if (layout.lineCount > 0) layout.getLineBottom(0) else -1f}",
+                !layout.hasVisualOverflow,
+            )
+        }
     }
 
     @Test
@@ -636,7 +765,7 @@ class GameDetailScreenTest {
                 listOf(
                     goal(
                         period = 1,
-                        time = "15:00",
+                        time = "10:00",
                         isHome = false,
                         scorer = "K. Marchenko",
                         goalsToDate = 12,
@@ -644,7 +773,7 @@ class GameDetailScreenTest {
                         awayScore = 1,
                         homeScore = 0,
                     ),
-                    goal(period = 1, time = "10:00", isHome = true, scorer = "A. Fantilli", awayScore = 1, homeScore = 1),
+                    goal(period = 1, time = "15:00", isHome = true, scorer = "A. Fantilli", awayScore = 1, homeScore = 1),
                 ),
             ),
         )
@@ -689,9 +818,10 @@ class GameDetailScreenTest {
                         it.config[SemanticsProperties.TestTag].startsWith("detail.scoring.period.")
                 },
             ).assertCountEquals(1)
-        // Latest extra period first, then its own largest time remaining first.
-        assertTrue(mergedLabelOf("detail.scoring.row.00").contains("01:15"))
-        assertTrue(mergedLabelOf("detail.scoring.row.01").contains("02:22"))
+        // Oldest extra period first, then its own largest time remaining first: the game's last goal is the bottom
+        // row, not the top one.
+        assertTrue(mergedLabelOf("detail.scoring.row.00").contains("02:22"))
+        assertTrue(mergedLabelOf("detail.scoring.row.01").contains("01:15"))
     }
 
     @Test
@@ -701,7 +831,7 @@ class GameDetailScreenTest {
                 listOf(
                     goal(
                         period = 1,
-                        time = "15:00",
+                        time = "05:00",
                         isHome = false,
                         strength = GoalStrength.ShortHanded,
                         modifier = GoalModifier.EmptyNet,
@@ -709,7 +839,7 @@ class GameDetailScreenTest {
                     goal(period = 1, time = "10:00", isHome = true, strength = GoalStrength.PowerPlay),
                     goal(
                         period = 1,
-                        time = "05:00",
+                        time = "15:00",
                         isHome = false,
                         strength = GoalStrength.EvenStrength,
                         modifier = GoalModifier.PenaltyShot,
@@ -876,6 +1006,22 @@ class GameDetailScreenTest {
             .config[SemanticsProperties.Text]
             .joinToString("") { it.text }
 
+    private fun Int.padded(): String = toString().padStart(2, '0')
+
+    private fun clockSeconds(clock: String): Int? {
+        val parts = clock.split(":")
+        if (parts.size != 2) return null
+        val minutes = parts[0].toIntOrNull() ?: return null
+        val seconds = parts[1].toIntOrNull() ?: return null
+        return if (minutes < 0 || seconds !in 0..59) null else minutes * 60 + seconds
+    }
+
+    /** The leading clock on a scoring row, read from the merged text that starts with it. */
+    private fun rowTime(index: Int): String {
+        val text = mergedLabelOf("detail.scoring.row." + index.toString().padStart(2, '0'))
+        return requireNotNull(Regex("""^\d{1,2}:\d{2}""").find(text)) { "no clock at the start of row $index: $text" }.value
+    }
+
     /** A scoring row merges its two lines, so the merged tree is where its whole text lives. */
     private fun mergedLabelOf(tag: String): String =
         compose
@@ -883,6 +1029,16 @@ class GameDetailScreenTest {
             .fetchSemanticsNode()
             .config[SemanticsProperties.Text]
             .joinToString("") { it.text }
+
+    private fun textLayout(tag: String): TextLayoutResult {
+        val node = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode()
+        val layouts = mutableListOf<TextLayoutResult>()
+        node.config
+            .getOrNull(SemanticsActions.GetTextLayoutResult)
+            ?.action
+            ?.invoke(layouts)
+        return requireNotNull(layouts.firstOrNull()) { "$tag has no text layout" }
+    }
 
     /** Every resolvable font size under a node, from the unmerged tree, so a label style cannot hide under a parent. */
     private fun textSizes(node: SemanticsNode): List<Float> {

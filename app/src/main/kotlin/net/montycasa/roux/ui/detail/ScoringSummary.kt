@@ -3,8 +3,10 @@
 package net.montycasa.roux.ui.detail
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -18,6 +20,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
@@ -26,6 +29,7 @@ import net.montycasa.roux.domain.model.GameLanding
 import net.montycasa.roux.domain.model.GoalEvent
 import net.montycasa.roux.domain.model.GoalModifier
 import net.montycasa.roux.domain.model.GoalStrength
+import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.ui.theme.LocalRouxAccents
 
 /**
@@ -42,6 +46,7 @@ internal fun ScoringSummary(
     landing: GameLanding,
 ) {
     Column {
+        ScoreHeader(game = game)
         scoringGroups(landing.goals).forEach { group ->
             Text(
                 group.label,
@@ -59,26 +64,84 @@ internal fun ScoringSummary(
     }
 }
 
+/**
+ * Names the two fixed score columns before any goal is listed.
+ *
+ * The crest and abbreviation are stacked above the column so neither has to share the row with the other: at font
+ * scale 2.0 three letters are already the widest thing the column can hold, which is why full club names are not used.
+ */
+@Composable
+private fun ScoreHeader(game: Game) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        Spacer(Modifier.weight(1f))
+        ScoreColumnHeader(team = game.away, side = "away")
+        Spacer(Modifier.width(SCORE_DASH_COLUMN))
+        ScoreColumnHeader(team = game.home, side = "home")
+    }
+}
+
+@Composable
+private fun ScoreColumnHeader(
+    team: TeamRef,
+    side: String,
+) {
+    Column(
+        modifier = Modifier.width(SCORE_COLUMN).testTag("detail.scoring.header.$side"),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(Modifier.testTag("detail.scoring.header.$side.crest")) {
+            TeamLogo(
+                team = team,
+                crestSize = HEADER_CREST,
+                imageTag = "detail.logo.scoring.header.$side",
+            )
+        }
+        Text(
+            team.abbrev,
+            modifier = Modifier.fillMaxWidth().testTag("detail.scoring.header.$side.abbrev"),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = LocalRouxAccents.current.muted,
+            maxLines = 1,
+            overflow = TextOverflow.Clip,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
 @Composable
 private fun ScoringRow(
     game: Game,
     indexed: IndexedGoal,
 ) {
     val goal = indexed.goal
+    val padded = indexed.index.toString().padStart(2, '0')
+    val scoringTeam = if (goal.isHome) game.home else game.away
     Column(
         Modifier
             .fillMaxWidth()
-            .padding(vertical = 6.dp)
-            .testTag("detail.scoring.row.${indexed.index.toString().padStart(2, '0')}")
+            .padding(vertical = 3.dp)
+            .testTag("detail.scoring.row.$padded")
             .semantics(mergeDescendants = true) {},
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                goal.timeInPeriod,
+                goal.timeRemaining,
                 modifier = Modifier.width(TIME_COLUMN),
                 style = MaterialTheme.typography.labelMedium,
                 color = LocalRouxAccents.current.muted,
             )
+            Box(Modifier.testTag("detail.scoring.row.$padded.crest.${scoringTeam.abbrev}")) {
+                TeamLogo(
+                    team = scoringTeam,
+                    crestSize = ROW_CREST,
+                    imageTag = "detail.logo.scoring.row.$padded.${scoringTeam.abbrev}",
+                )
+            }
+            Spacer(Modifier.width(CREST_GAP))
             Text(
                 goal.scorer,
                 modifier = Modifier.weight(1f),
@@ -90,29 +153,56 @@ private fun ScoringRow(
             goal.goalsToDate?.let { seasonGoals ->
                 Text(
                     "($seasonGoals)",
-                    modifier = Modifier.padding(start = 4.dp),
+                    modifier = Modifier.padding(start = 2.dp),
                     style = MaterialTheme.typography.labelMedium,
                     color = LocalRouxAccents.current.muted,
                 )
             }
             strengthTags(goal).forEach { tag -> StrengthTag(tag) }
+            ScoreCell(
+                value = goal.awayScore?.toString() ?: MISSING_SCORE,
+                tag = "detail.scoring.row.$padded.away",
+            )
             Text(
-                runningScore(goal),
-                modifier = Modifier.padding(start = 8.dp),
+                "–",
+                modifier = Modifier.width(SCORE_DASH_COLUMN),
                 style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = LocalRouxAccents.current.muted,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+            )
+            ScoreCell(
+                value = goal.homeScore?.toString() ?: MISSING_SCORE,
+                tag = "detail.scoring.row.$padded.home",
             )
         }
         Text(
             assistLine(game = game, goal = goal),
-            modifier = Modifier.padding(start = TIME_COLUMN, top = 2.dp),
+            modifier = Modifier.padding(start = TIME_COLUMN + ROW_CREST + CREST_GAP, top = 2.dp),
             // labelLarge rather than labelMedium: an assist line is often a full sentence of names, and this repo
             // requires prose to be at least 14 sp.
             style = MaterialTheme.typography.labelLarge,
             color = LocalRouxAccents.current.muted,
         )
     }
+}
+
+/** One fixed score column: right-aligned so a row of digits lines up down the whole card. */
+@Composable
+private fun ScoreCell(
+    value: String,
+    tag: String,
+) {
+    Text(
+        value,
+        modifier = Modifier.width(SCORE_COLUMN).testTag(tag),
+        style = MaterialTheme.typography.bodyMedium,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurface,
+        textAlign = TextAlign.End,
+        maxLines = 1,
+        overflow = TextOverflow.Clip,
+    )
 }
 
 @Composable
@@ -146,13 +236,6 @@ private fun strengthTags(goal: GoalEvent): List<String> =
         }
     }
 
-/** The running score after this goal, away first. A missing half is a dash, never a number the feed did not send. */
-private fun runningScore(goal: GoalEvent): String {
-    val away = goal.awayScore ?: return MISSING_SCORE
-    val home = goal.homeScore ?: return MISSING_SCORE
-    return "$away–$home"
-}
-
 /** The scoring club and its assists; the season count is printed only when the feed published one for that assist. */
 private fun assistLine(
     game: Game,
@@ -168,13 +251,14 @@ private fun assistLine(
 }
 
 /**
- * Periods ascending, goals inside a period in the order they happened: largest time remaining first.
+ * Periods ascending, goals inside a period in the order they happened: elapsed seconds ascending.
  *
- * The clock runs down, so the first goal of a period has the most time left and the last has the least. The seconds are
- * parsed and compared numerically: `"9:30"` is 570 seconds and belongs after `"14:22"`, which a string comparison would
- * put it before.
+ * The feed writes elapsed time, so the first goal of a period has the smallest elapsed value and the last has the
+ * largest. The card shows the matching time-remaining label, which therefore falls down the card. Ordering uses the
+ * parsed [GoalEvent.elapsedSeconds], never the raw string: `"9:30"` is 570 seconds and belongs after `"14:22"`.
  *
- * Overtime is folded into one group keyed 4. Its goals run latest period first, then largest time remaining first.
+ * Overtime is folded into one group keyed 4. Its goals run oldest extra period first, then elapsed ascending, so the
+ * last goal of the game is the bottom row of the card.
  */
 internal fun scoringGroups(goals: List<GoalEvent>): List<ScoringGroup> {
     var rowIndex = 0
@@ -185,11 +269,11 @@ internal fun scoringGroups(goals: List<GoalEvent>): List<ScoringGroup> {
             val ordered =
                 if (key == OVERTIME_KEY) {
                     periodGoals.sortedWith(
-                        compareByDescending<GoalEvent> { it.period }
-                            .thenByDescending { timeInPeriodSeconds(it.timeInPeriod) ?: UNPARSED_TIME },
+                        compareBy<GoalEvent> { it.period }
+                            .thenBy { it.elapsedSeconds ?: UNPARSED_ELAPSED },
                     )
                 } else {
-                    periodGoals.sortedByDescending { timeInPeriodSeconds(it.timeInPeriod) ?: UNPARSED_TIME }
+                    periodGoals.sortedBy { it.elapsedSeconds ?: UNPARSED_ELAPSED }
                 }
             ScoringGroup(
                 key = key,
@@ -197,16 +281,6 @@ internal fun scoringGroups(goals: List<GoalEvent>): List<ScoringGroup> {
                 goals = ordered.map { IndexedGoal(index = rowIndex++, goal = it) },
             )
         }
-}
-
-/** `"MM:SS"` or `"M:SS"` as seconds, or null when the feed sent something this card cannot place on a clock. */
-internal fun timeInPeriodSeconds(time: String): Int? {
-    val parts = time.trim().split(":")
-    if (parts.size != 2) return null
-    val minutes = parts[0].toIntOrNull() ?: return null
-    val seconds = parts[1].toIntOrNull() ?: return null
-    if (minutes < 0 || seconds !in 0..59) return null
-    return minutes * 60 + seconds
 }
 
 private fun periodLabel(key: Int): String =
@@ -228,9 +302,14 @@ internal data class IndexedGoal(
     val goal: GoalEvent,
 )
 
-private val TIME_COLUMN = 46.dp
+private val TIME_COLUMN = 38.dp
+private val ROW_CREST = PERIOD_CREST
+private val HEADER_CREST = PERIOD_CREST
+private val CREST_GAP = 2.dp
+private val SCORE_COLUMN = 34.dp
+private val SCORE_DASH_COLUMN = 10.dp
 private const val OVERTIME_KEY = 4
 private const val MISSING_SCORE = "—"
 
-/** Sorts an unparseable time after every real goal, without pretending it was two minutes before the period began. */
-private const val UNPARSED_TIME = -1
+/** Sorts an unparseable elapsed time after every real goal, never before the opening faceoff. */
+private const val UNPARSED_ELAPSED = Int.MAX_VALUE
