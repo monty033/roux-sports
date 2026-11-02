@@ -4,7 +4,10 @@ package net.montycasa.roux.ui.detail
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
@@ -23,6 +26,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -37,6 +41,10 @@ import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameLanding
 import net.montycasa.roux.domain.model.GameRightRail
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.GoalAssist
+import net.montycasa.roux.domain.model.GoalEvent
+import net.montycasa.roux.domain.model.GoalModifier
+import net.montycasa.roux.domain.model.GoalStrength
 import net.montycasa.roux.domain.model.GoalieLine
 import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.PeriodScoring
@@ -222,6 +230,34 @@ class GameDetailScreenTest {
                 Freshness.Fresh,
                 null,
             ),
+    )
+
+    private fun withGoals(goals: List<GoalEvent>) =
+        fullDetail.copy(landing = fullDetail.landing.copy(data = fullDetail.landing.data!!.copy(goals = goals)))
+
+    @Suppress("LongParameterList")
+    private fun goal(
+        period: Int,
+        time: String,
+        isHome: Boolean,
+        scorer: String = "A. Scorer",
+        goalsToDate: Int? = null,
+        assists: List<GoalAssist> = emptyList(),
+        strength: GoalStrength = GoalStrength.EvenStrength,
+        modifier: GoalModifier = GoalModifier.None,
+        awayScore: Int? = null,
+        homeScore: Int? = null,
+    ) = GoalEvent(
+        period = period,
+        timeInPeriod = time,
+        isHome = isHome,
+        scorer = scorer,
+        goalsToDate = goalsToDate,
+        assists = assists,
+        strength = strength,
+        modifier = modifier,
+        awayScore = awayScore,
+        homeScore = homeScore,
     )
 
     private fun show(
@@ -541,6 +577,207 @@ class GameDetailScreenTest {
     }
 
     @Test
+    fun `scoring summary runs periods ascending and newest goal first inside a period`() {
+        show(
+            withGoals(
+                listOf(
+                    goal(period = 2, time = "08:00", isHome = true),
+                    goal(period = 1, time = "05:00", isHome = false),
+                    goal(period = 1, time = "15:00", isHome = false),
+                ),
+            ),
+        )
+
+        val first = compose.onNodeWithTag("detail.scoring.period.1").getUnclippedBoundsInRoot()
+        val second = compose.onNodeWithTag("detail.scoring.period.2").getUnclippedBoundsInRoot()
+        assertTrue(first.top.value < second.top.value)
+        assertEquals("1ST", labelOf("detail.scoring.period.1"))
+        assertEquals("2ND", labelOf("detail.scoring.period.2"))
+
+        // Rows are numbered in display order: the 15:00 goal of the first period comes first, then 05:00, then the
+        // second period's goal.
+        val rows =
+            listOf("detail.scoring.row.00", "detail.scoring.row.01", "detail.scoring.row.02").map {
+                compose
+                    .onNodeWithTag(it)
+                    .getUnclippedBoundsInRoot()
+                    .top.value
+            }
+        assertTrue(rows.zipWithNext().all { (a, b) -> a < b })
+        assertTrue(mergedLabelOf("detail.scoring.row.00").contains("15:00"))
+        assertTrue(mergedLabelOf("detail.scoring.row.01").contains("05:00"))
+        assertTrue(mergedLabelOf("detail.scoring.row.02").contains("08:00"))
+    }
+
+    @Test
+    fun `a scoring row carries its own running score not the final score`() {
+        show(
+            withGoals(
+                listOf(
+                    goal(period = 1, time = "10:00", isHome = false, awayScore = 1, homeScore = 0),
+                    goal(period = 1, time = "15:00", isHome = false, awayScore = 2, homeScore = 0),
+                    goal(period = 2, time = "05:00", isHome = true, awayScore = 2, homeScore = 1),
+                ),
+            ),
+            shownGame = game.copy(awayScore = 3, homeScore = 1),
+        )
+
+        // Newest first, so the 15:00 goal owns the first row and its own 2-0, not the 3-1 on the board.
+        val firstRow = mergedLabelOf("detail.scoring.row.00")
+        assertTrue(firstRow.contains("2–0"))
+        assertTrue(!firstRow.contains("3–1"))
+        assertTrue(mergedLabelOf("detail.scoring.row.02").contains("2–1"))
+    }
+
+    @Test
+    fun `unassisted goals and missing season counts are not invented`() {
+        show(
+            withGoals(
+                listOf(
+                    goal(
+                        period = 1,
+                        time = "15:00",
+                        isHome = false,
+                        scorer = "K. Marchenko",
+                        goalsToDate = 12,
+                        assists = listOf(GoalAssist("J. Voracek", 4), GoalAssist("Z. Werenski", null)),
+                        awayScore = 2,
+                        homeScore = 1,
+                    ),
+                    goal(period = 1, time = "10:00", isHome = true, scorer = "A. Fantilli", awayScore = 1, homeScore = 1),
+                ),
+            ),
+        )
+
+        val assisted = mergedLabelOf("detail.scoring.row.00")
+        assertTrue(assisted.contains("(12)"))
+        assertTrue(assisted.contains("CBJ · A: J. Voracek (4), Z. Werenski"))
+        // Werenski's count is absent in the feed, so it is absent here rather than printed as (null) or (0).
+        assertTrue(!assisted.contains("Z. Werenski ("))
+
+        val unassisted = mergedLabelOf("detail.scoring.row.01")
+        assertTrue(unassisted.contains("PHI · Unassisted"))
+        assertTrue(!unassisted.contains("("))
+    }
+
+    @Test
+    fun `empty goal list draws no scoring summary card`() {
+        show(fullDetail)
+
+        compose.onNodeWithTag("detail.section.scoring-summary").assertDoesNotExist()
+        compose.onNodeWithText("SCORING SUMMARY").assertDoesNotExist()
+    }
+
+    @Test
+    fun `all overtime periods share one OT header`() {
+        show(
+            withGoals(
+                listOf(
+                    goal(period = 4, time = "02:22", isHome = false),
+                    goal(period = 5, time = "01:15", isHome = true),
+                ),
+            ),
+        )
+
+        compose.onNodeWithTag("detail.scoring.period.4").assertExists()
+        compose.onNodeWithTag("detail.scoring.period.5").assertDoesNotExist()
+        assertEquals("OT", labelOf("detail.scoring.period.4"))
+        compose
+            .onAllNodes(
+                SemanticsMatcher("scoring period headings") {
+                    it.config.contains(SemanticsProperties.TestTag) &&
+                        it.config[SemanticsProperties.TestTag].startsWith("detail.scoring.period.")
+                },
+            ).assertCountEquals(1)
+    }
+
+    @Test
+    fun `strength and modifier tags print in strength then modifier order`() {
+        show(
+            withGoals(
+                listOf(
+                    goal(
+                        period = 1,
+                        time = "15:00",
+                        isHome = false,
+                        strength = GoalStrength.ShortHanded,
+                        modifier = GoalModifier.EmptyNet,
+                    ),
+                    goal(period = 1, time = "10:00", isHome = true, strength = GoalStrength.PowerPlay),
+                    goal(
+                        period = 1,
+                        time = "05:00",
+                        isHome = false,
+                        strength = GoalStrength.EvenStrength,
+                        modifier = GoalModifier.PenaltyShot,
+                    ),
+                ),
+            ),
+        )
+
+        val both = mergedLabelOf("detail.scoring.row.00")
+        assertTrue(both.contains("SH"))
+        assertTrue(both.contains("EN"))
+        assertTrue(both.indexOf("SH") < both.indexOf("EN"))
+        assertTrue(mergedLabelOf("detail.scoring.row.01").contains("PP"))
+        assertTrue(mergedLabelOf("detail.scoring.row.02").contains("PS"))
+        assertTrue(!mergedLabelOf("detail.scoring.row.02").contains("EV"))
+    }
+
+    @Test
+    fun `the scoring summary sits after shots and before game stats`() {
+        show(
+            withGoals(listOf(goal(period = 1, time = "15:00", isHome = false))).let { detail ->
+                detail.copy(
+                    rightRail =
+                        Loadable(
+                            GameRightRail(
+                                shots = ShotTotals(awayShots = 15, homeShots = 32),
+                                shotsByPeriod = listOf(PeriodShots(1, "REG", away = 7, home = 8)),
+                            ),
+                            Freshness.Fresh,
+                            null,
+                        ),
+                )
+            },
+        )
+
+        val tops =
+            listOf("scoring", "shots", "scoring-summary", "stats").map {
+                compose
+                    .onNodeWithTag("detail.section.$it")
+                    .getUnclippedBoundsInRoot()
+                    .top.value
+            }
+        assertTrue(tops.zipWithNext().all { (a, b) -> a < b })
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w360dp-h780dp-xhdpi")
+    fun `scoring summary text stays at or above twelve sp at font scale two`() {
+        show(
+            withGoals(
+                listOf(
+                    goal(
+                        period = 1,
+                        time = "15:00",
+                        isHome = false,
+                        goalsToDate = 12,
+                        assists = listOf(GoalAssist("J. Voracek", 4)),
+                        strength = GoalStrength.PowerPlay,
+                    ),
+                ),
+            ),
+            fontScale = 2f,
+        )
+
+        val card = compose.onNodeWithTag("detail.section.scoring-summary", useUnmergedTree = true).fetchSemanticsNode()
+        val sizes = textSizes(card)
+        assertTrue("no text nodes found in the scoring summary", sizes.isNotEmpty())
+        sizes.forEach { size -> assertTrue("text at $size sp is under the 12 sp floor", size >= 12f) }
+    }
+
+    @Test
     fun `first tab is Game and Summary is absent`() {
         show(fullDetail)
         assertEquals("Game", labelOf("detail.tab.Game.label"))
@@ -635,6 +872,35 @@ class GameDetailScreenTest {
             .fetchSemanticsNode()
             .config[SemanticsProperties.Text]
             .joinToString("") { it.text }
+
+    /** A scoring row merges its two lines, so the merged tree is where its whole text lives. */
+    private fun mergedLabelOf(tag: String): String =
+        compose
+            .onNodeWithTag(tag)
+            .fetchSemanticsNode()
+            .config[SemanticsProperties.Text]
+            .joinToString("") { it.text }
+
+    /** Every resolvable font size under a node, from the unmerged tree, so a label style cannot hide under a parent. */
+    private fun textSizes(node: SemanticsNode): List<Float> {
+        val sizes = mutableListOf<Float>()
+        node.config.getOrNull(SemanticsProperties.Text)?.let {
+            val layouts = mutableListOf<TextLayoutResult>()
+            node.config
+                .getOrNull(SemanticsActions.GetTextLayoutResult)
+                ?.action
+                ?.invoke(layouts)
+            layouts
+                .firstOrNull()
+                ?.layoutInput
+                ?.style
+                ?.fontSize
+                ?.value
+                ?.let(sizes::add)
+        }
+        node.children.forEach { sizes += textSizes(it) }
+        return sizes
+    }
 
     @Test
     fun `the club pills carry a crest and the club's name, not its abbreviation`() {

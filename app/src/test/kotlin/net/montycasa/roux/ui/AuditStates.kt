@@ -20,6 +20,10 @@ import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameLanding
 import net.montycasa.roux.domain.model.GameRightRail
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.GoalAssist
+import net.montycasa.roux.domain.model.GoalEvent
+import net.montycasa.roux.domain.model.GoalModifier
+import net.montycasa.roux.domain.model.GoalStrength
 import net.montycasa.roux.domain.model.GoalieLine
 import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.PeriodScoring
@@ -122,6 +126,136 @@ internal object AuditStates {
             homeScore = 4,
             awayScore = 3,
         )
+
+    // The goals sum to the same 3-4 as the hero and the period table: period 1 is 2-1, period 2 is 0-1, period 3 is
+    // 1-2. Each running score is the feed's own, not a replay of these rows.
+    private val fullGoals =
+        listOf(
+            GoalEvent(
+                1,
+                "05:12",
+                isHome = false,
+                scorer = "A. Fantilli",
+                goalsToDate = 4,
+                assists = listOf(GoalAssist("K. Johnson", 4), GoalAssist("J. Christiansen", 1)),
+                strength = GoalStrength.EvenStrength,
+                modifier = GoalModifier.None,
+                awayScore = 1,
+                homeScore = 0,
+            ),
+            GoalEvent(
+                1,
+                "09:30",
+                isHome = true,
+                scorer = "T. Konecny",
+                goalsToDate = 6,
+                assists = listOf(GoalAssist("T. Zegras", 5)),
+                strength = GoalStrength.PowerPlay,
+                modifier = GoalModifier.None,
+                awayScore = 1,
+                homeScore = 1,
+            ),
+            GoalEvent(
+                1,
+                "14:22",
+                isHome = false,
+                scorer = "K. Johnson",
+                goalsToDate = 5,
+                assists = listOf(GoalAssist("Z. Werenski", 7)),
+                strength = GoalStrength.EvenStrength,
+                modifier = GoalModifier.None,
+                awayScore = 2,
+                homeScore = 1,
+            ),
+            GoalEvent(
+                2,
+                "08:15",
+                isHome = true,
+                scorer = "N. Cates",
+                goalsToDate = 1,
+                assists = emptyList(),
+                strength = GoalStrength.EvenStrength,
+                modifier = GoalModifier.None,
+                awayScore = 2,
+                homeScore = 2,
+            ),
+            GoalEvent(
+                3,
+                "06:44",
+                isHome = true,
+                scorer = "T. Zegras",
+                goalsToDate = 4,
+                assists = listOf(GoalAssist("J. Drysdale", 2)),
+                strength = GoalStrength.PowerPlay,
+                modifier = GoalModifier.None,
+                awayScore = 2,
+                homeScore = 3,
+            ),
+            GoalEvent(
+                3,
+                "12:11",
+                isHome = false,
+                scorer = "Z. Werenski",
+                goalsToDate = 2,
+                assists = listOf(GoalAssist("K. Johnson", 6), GoalAssist("A. Fantilli", 3)),
+                strength = GoalStrength.EvenStrength,
+                modifier = GoalModifier.None,
+                awayScore = 3,
+                homeScore = 3,
+            ),
+            GoalEvent(
+                3,
+                "18:57",
+                isHome = true,
+                scorer = "J. Drysdale",
+                goalsToDate = 1,
+                assists = listOf(GoalAssist("N. Cates", 2)),
+                strength = GoalStrength.EvenStrength,
+                modifier = GoalModifier.EmptyNet,
+                awayScore = 3,
+                homeScore = 4,
+            ),
+        )
+    private val liveGoals =
+        listOf(
+            GoalEvent(
+                1,
+                "07:12",
+                isHome = false,
+                scorer = "A. Fantilli",
+                goalsToDate = 4,
+                assists = listOf(GoalAssist("K. Johnson", 4)),
+                strength = GoalStrength.EvenStrength,
+                modifier = GoalModifier.None,
+                awayScore = 1,
+                homeScore = 0,
+            ),
+            GoalEvent(
+                1,
+                "11:40",
+                isHome = true,
+                scorer = "T. Konecny",
+                goalsToDate = 6,
+                assists = listOf(GoalAssist("T. Zegras", 5)),
+                strength = GoalStrength.PowerPlay,
+                modifier = GoalModifier.None,
+                awayScore = 1,
+                homeScore = 1,
+            ),
+            GoalEvent(
+                1,
+                "16:05",
+                isHome = false,
+                scorer = "K. Johnson",
+                goalsToDate = 5,
+                assists = listOf(GoalAssist("Z. Werenski", 7), GoalAssist("J. Christiansen", 1)),
+                strength = GoalStrength.EvenStrength,
+                modifier = GoalModifier.None,
+                awayScore = 2,
+                homeScore = 1,
+            ),
+        )
+
     private val fullDetail =
         GameDetail(
             landing =
@@ -133,6 +267,7 @@ internal object AuditStates {
                                 PeriodScoring(2, 0, 1),
                                 PeriodScoring(3, 1, 2),
                             ),
+                        goals = fullGoals,
                         venue =
                             net.montycasa.roux.domain.model
                                 .Venue("Centre Bell", "Montreal"),
@@ -224,6 +359,7 @@ internal object AuditStates {
                                         data =
                                             fullDetail.landing.data!!.copy(
                                                 periodScoring = listOf(PeriodScoring(1, 2, 1), PeriodScoring(2, 0, 0)),
+                                                goals = liveGoals,
                                             ),
                                     ),
                                 // The game is in the second period, so the shots card stops at the second: a
@@ -262,7 +398,12 @@ internal object AuditStates {
                             fullDetail.copy(
                                 landing =
                                     fullDetail.landing.copy(
-                                        data = fullDetail.landing.data!!.copy(periodScoring = emptyList(), threeStars = emptyList()),
+                                        data =
+                                            fullDetail.landing.data!!.copy(
+                                                periodScoring = emptyList(),
+                                                threeStars = emptyList(),
+                                                goals = emptyList(),
+                                            ),
                                     ),
                                 rightRail = Loadable(GameRightRail(), Freshness.Fresh, null),
                                 boxscore = Loadable(GameBoxscore(), Freshness.Fresh, null),

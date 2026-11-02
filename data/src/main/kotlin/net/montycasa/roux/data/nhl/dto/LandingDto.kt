@@ -58,6 +58,28 @@ internal data class LandingGoalDto(
     val isHome: Boolean? = null,
     /** Declared as [JsonElement] because it is not a string in this payload; see [isHome]. */
     val teamAbbrev: JsonElement? = null,
+    val playerId: Long? = null,
+    val name: LocalizedNameDto? = null,
+    val firstName: LocalizedNameDto? = null,
+    val lastName: LocalizedNameDto? = null,
+    /** As the feed writes it: `"10:58"`. */
+    val timeInPeriod: String? = null,
+    /** `ev`, `pp` or `sh`; kept raw so an unfamiliar token cannot lose the goal. */
+    val strength: String? = null,
+    /** `none`, empty-net and penalty-shot variants; kept raw for the same reason as [strength]. */
+    val goalModifier: String? = null,
+    val goalsToDate: Int? = null,
+    val awayScore: Int? = null,
+    val homeScore: Int? = null,
+    val assists: List<LandingGoalAssistDto?>? = null,
+)
+
+@Serializable
+internal data class LandingGoalAssistDto(
+    val name: LocalizedNameDto? = null,
+    val assistsToDate: Int? = null,
+    val playerId: Long? = null,
+    val sweaterNumber: Int? = null,
 )
 
 @Serializable
