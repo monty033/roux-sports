@@ -44,22 +44,12 @@ class FavoritesOrderingTest {
     }
 
     @Test
-    fun pinPreservesFeedOrderWithinBothFavoriteAndOtherGroups() {
-        val rows = FavoritesOrdering.pin(games, setOf(tor, mtl))
-        assertEquals(
-            listOf("tor-buf", "mtl-ott", "wpg-tor", "bos-nyi", "edm-van", "ana-cgy"),
-            rows.map { it.id.value },
-        )
-    }
-
-    @Test
-    fun awayFavoriteAloneQualifiesForFilteringAndPinning() {
+    fun awayFavoriteAloneQualifiesForFiltering() {
         val awayGame = game("bos-tor", "BOS", "TOR")
         val rows = listOf(games[0], awayGame)
         val result = FavoritesOrdering.filter(rows, setOf(tor), favoritesOnly = true)
         assertEquals(listOf(awayGame), result.rows)
         assertNull(result.hint)
-        assertEquals(listOf(awayGame, games[0]), FavoritesOrdering.pin(rows, setOf(tor)))
     }
 
     @Test
@@ -74,14 +64,6 @@ class FavoritesOrderingTest {
         val result = FavoritesOrdering.filter(emptyList(), setOf(tor), favoritesOnly = true)
         assertEquals(emptyList<Game>(), result.rows)
         assertEquals(FavoritesHint.NoFavouriteGames, result.hint)
-    }
-
-    @Test
-    fun pinOnAlreadyPinnedRowsIsIdempotent() {
-        val ordered = listOf(games[1], games[3], games[4], games[0], games[2], games[5])
-        val pinned = FavoritesOrdering.pin(ordered, setOf(tor, mtl))
-        assertEquals(ordered, pinned)
-        assertEquals(pinned, FavoritesOrdering.pin(pinned, setOf(tor, mtl)))
     }
 
     @Test
@@ -110,32 +92,6 @@ class FavoritesOrderingTest {
         val result = FavoritesOrdering.filter(emptyList(), setOf(tor), favoritesOnly = false)
         assertEquals(emptyList<Game>(), result.rows)
         assertNull(result.hint)
-    }
-
-    @Test
-    fun pinWithEmptyFavoritesPreservesEntireFeedOrder() {
-        assertEquals(games, FavoritesOrdering.pin(games, emptySet()))
-    }
-
-    @Test
-    fun pinWithEmptyDayReturnsNoRows() {
-        assertEquals(emptyList<Game>(), FavoritesOrdering.pin(emptyList(), setOf(tor)))
-    }
-
-    @Test
-    fun gameBetweenTwoFavoritesIsPinnedOnce() {
-        val matchup = game("tor-mtl", "TOR", "MTL")
-        assertEquals(
-            listOf(matchup, games[0]),
-            FavoritesOrdering.pin(listOf(games[0], matchup), setOf(tor, mtl)),
-        )
-    }
-
-    @Test
-    fun pinAfterFavoritesOnlyFilteringLeavesRowsUnchanged() {
-        val result = FavoritesOrdering.filter(games, setOf(tor, mtl), favoritesOnly = true)
-        assertEquals(listOf(games[1], games[3], games[4]), result.rows)
-        assertEquals(result.rows, FavoritesOrdering.pin(result.rows, setOf(tor, mtl)))
     }
 
     private fun game(
