@@ -3,6 +3,7 @@
 package net.montycasa.roux.ui.detail
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,12 +20,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import net.montycasa.roux.R
 import net.montycasa.roux.domain.model.Game
+import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.TeamRef
+import net.montycasa.roux.ui.common.LiveCapsule
+import net.montycasa.roux.ui.common.StateClock
 import net.montycasa.roux.ui.common.TeamNames
+import net.montycasa.roux.ui.common.periodLabel
 import net.montycasa.roux.ui.theme.LocalRouxAccents
 import java.time.ZoneId
 
@@ -35,17 +42,46 @@ internal fun GameHero(
 ) {
     Column(
         Modifier
+            .testTag("detail.hero")
             .fillMaxWidth()
             .padding(top = 8.dp, bottom = 12.dp)
             .clip(RoundedCornerShape(14.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .padding(horizontal = 16.dp, vertical = 14.dp),
     ) {
-        Text(
-            heroStatus(game, zone),
-            style = MaterialTheme.typography.labelSmall,
-            color = LocalRouxAccents.current.muted,
-        )
+        if (game.state is GameState.Live) {
+            val period = game.period
+            val extra = period?.periodType == "OT" || period?.periodType == "SO"
+            val label =
+                when (period?.periodType) {
+                    "OT" -> R.string.game_row_period_overtime
+                    "SO" -> R.string.game_row_period_shootout
+                    else -> R.string.game_row_live_label
+                }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                LiveCapsule(label, testTag = "detail.hero.live.capsule")
+                StateClock(
+                    if (period?.inIntermission == true) {
+                        stringResource(R.string.game_row_intermission)
+                    } else if (extra) {
+                        period?.clock.orEmpty()
+                    } else {
+                        listOfNotNull(periodLabel(period), period?.clock?.takeIf { it.isNotBlank() }).joinToString(" ")
+                    },
+                    live = true,
+                    inline = true,
+                )
+            }
+        } else {
+            Text(
+                heroStatus(game, zone),
+                style = MaterialTheme.typography.labelSmall,
+                color = LocalRouxAccents.current.muted,
+            )
+        }
         Spacer(Modifier.height(10.dp))
         TeamScoreLine(team = game.away, score = game.awayScore, side = "away")
         Spacer(Modifier.height(6.dp))

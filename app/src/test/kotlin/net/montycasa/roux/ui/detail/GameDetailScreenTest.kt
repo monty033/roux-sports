@@ -6,11 +6,14 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTouchHeightIsEqualTo
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -179,7 +182,16 @@ class GameDetailScreenTest {
                 ),
         )
         compose.onAllNodesWithText("2nd 12:34").assertCountEquals(1)
-        compose.onAllNodesWithText("LIVE", ignoreCase = true).assertCountEquals(0)
+        compose.onNodeWithTag("detail.hero.live.capsule").assertIsDisplayed()
+        compose.onNodeWithText("LIVE").assertIsDisplayed()
+        compose.onNodeWithText("12:34", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("2nd", substring = true).assertIsDisplayed()
+        compose
+            .onNodeWithTag("detail.hero.live.capsule", useUnmergedTree = true)
+            .assert(hasAnyAncestor(hasTestTag("detail.hero")))
+        compose
+            .onNodeWithText("2nd 12:34", useUnmergedTree = true)
+            .assert(hasAnyAncestor(hasTestTag("detail.hero")))
     }
 
     @Test
@@ -194,8 +206,20 @@ class GameDetailScreenTest {
                             .PeriodInfo(4, "OT", "03:21"),
                 ),
         )
-        compose.onAllNodesWithText("OT 03:21").assertCountEquals(1)
+        compose.onNodeWithTag("detail.hero.live.capsule").assertIsDisplayed()
+        compose.onNodeWithText("OT").assertIsDisplayed()
+        compose.onNodeWithText("03:21").assertIsDisplayed()
+        compose.onNodeWithText("OT 03:21").assertDoesNotExist()
+        compose.onNodeWithText("period", substring = true).assertDoesNotExist()
         compose.onNodeWithText("4th", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun `live intermission replaces the clock with the score row break wording`() {
+        show(fullDetail, shownGame = game.copy(state = GameState.Live(), period = PeriodInfo(2, "REG", "12:34", true)))
+        compose.onNodeWithTag("detail.hero.live.capsule").assertIsDisplayed()
+        compose.onNodeWithText("Intermission").assertIsDisplayed()
+        compose.onNodeWithText("12:34", substring = true).assertDoesNotExist()
     }
 
     @Test
@@ -212,6 +236,7 @@ class GameDetailScreenTest {
         expected: String,
     ) {
         show(fullDetail, shownGame = game.copy(finalKind = kind))
+        compose.onNodeWithTag("detail.hero.live.capsule").assertDoesNotExist()
         compose.onAllNodesWithText(expected).assertCountEquals(1)
         compose.onAllNodesWithText("FINAL").assertCountEquals(0)
     }
@@ -229,6 +254,7 @@ class GameDetailScreenTest {
                             .PeriodInfo(2, "REG", "12:34"),
                 ),
         )
+        compose.onNodeWithTag("detail.hero.live.capsule").assertDoesNotExist()
         compose.onAllNodesWithText("Puck drops 7:00pm").assertCountEquals(1)
         compose.onNodeWithText("12:34", substring = true).assertDoesNotExist()
         compose.onNodeWithText("2nd", substring = true).assertDoesNotExist()

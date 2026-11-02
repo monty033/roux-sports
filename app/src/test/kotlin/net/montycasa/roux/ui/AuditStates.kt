@@ -21,6 +21,7 @@ import net.montycasa.roux.domain.model.GameLanding
 import net.montycasa.roux.domain.model.GameRightRail
 import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.GoalieLine
+import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.PeriodScoring
 import net.montycasa.roux.domain.model.PlayerRef
 import net.montycasa.roux.domain.model.ShotTotals
@@ -179,6 +180,14 @@ internal object AuditStates {
             },
             ContentCase("detail.full") {
                 GameDetailScreen(detailGame, DetailUiState(detail = fullDetail, refreshing = false, unexpectedFailure = false), {}, {})
+            },
+            ContentCase("detail.live") {
+                GameDetailScreen(
+                    detailGame.copy(state = GameState.Live(), period = PeriodInfo(2, "REG", "12:34", false), awayScore = 2, homeScore = 1),
+                    DetailUiState(detail = fullDetail, refreshing = false, unexpectedFailure = false),
+                    {},
+                    {},
+                )
             },
             ContentCase("detail.partial") {
                 GameDetailScreen(detailGame, DetailUiState(detail = partialDetail, refreshing = false, unexpectedFailure = false), {}, {})
