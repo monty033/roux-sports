@@ -42,6 +42,7 @@ import net.montycasa.roux.domain.policy.FavoritesOrdering
 import net.montycasa.roux.domain.policy.LeagueCalendar
 import net.montycasa.roux.domain.policy.LeagueOrder
 import net.montycasa.roux.domain.policy.PollPolicy
+import net.montycasa.roux.domain.policy.ScoresOrdering
 import net.montycasa.roux.domain.repo.PreferencesRepository
 import net.montycasa.roux.domain.repo.ScoresRepository
 import kotlin.random.Random
@@ -137,7 +138,7 @@ class ScoresViewModel(
                 favouriteCount = settings.favourites.size,
                 leagueOrder = settings.order,
                 loadedDate = load.value.data?.date,
-                rows = if (settings.only) filtered.rows else FavoritesOrdering.pin(filtered.rows, settings.favourites),
+                rows = ScoresOrdering.order(filtered.rows, settings.favourites),
                 favoritesHint = filtered.hint,
                 favouritesOnly = settings.only,
                 isRefreshing = load.refreshing,
@@ -186,7 +187,7 @@ class ScoresViewModel(
                     wanted.associateWith { date ->
                         val games = scores.cachedDay(date, today)?.games.orEmpty()
                         val filtered = FavoritesOrdering.filter(games, settings.favourites, settings.only)
-                        if (settings.only) filtered.rows else FavoritesOrdering.pin(filtered.rows, settings.favourites)
+                        ScoresOrdering.order(filtered.rows, settings.favourites)
                     }
                 // Accumulated, not replaced: the day you settle on is no longer beside the selection, so replacing the
                 // map took its rows away at the exact moment the page needed them and the list drew one blank frame.

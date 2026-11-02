@@ -18,7 +18,7 @@ data class FavoritesResult(
     val hint: FavoritesHint?,
 )
 
-/** Pure filtering and stable pinning for one day's games, with team identity supplied by the caller. */
+/** Pure filtering for one day's games, with team identity supplied by the caller. */
 object FavoritesOrdering {
     /**
      * Keep games involving either favourite team when [favoritesOnly] is on, preserving feed order.
@@ -28,7 +28,7 @@ object FavoritesOrdering {
      * including an empty day, because team selection cannot fix the day's lack of favourite games.
      * With the toggle off, selected favourites never hide rows or produce an absence hint.
      * An empty day with no favourites still yields PickTeams; missing selection takes precedence.
-     * Filtering does not pin rows; callers may apply [pin] separately in either toggle state.
+     * Filtering does not order rows; callers apply [ScoresOrdering] in either toggle state.
      */
     fun filter(
         games: List<Game>,
@@ -39,21 +39,6 @@ object FavoritesOrdering {
         if (!favoritesOnly) return FavoritesResult(games, null)
         val rows = games.filter { it.involves(favorites) }
         return FavoritesResult(rows, if (rows.isEmpty()) FavoritesHint.NoFavouriteGames else null)
-    }
-
-    /**
-     * Move games involving either favourite team first, retaining feed order within both groups.
-     * A single partition pass over [rows] avoids sorting away the feed's order. Empty favourites or
-     * rows leave the order unchanged, and a game involving two favourites still appears only once.
-     * Callers may pin with favourites-only on: all remaining games are already favourites, so this
-     * is harmless and idempotent, allowing the same ordering step regardless of the filter toggle.
-     */
-    fun pin(
-        rows: List<Game>,
-        favorites: Set<TeamKey>,
-    ): List<Game> {
-        val (pinned, remaining) = rows.partition { it.involves(favorites) }
-        return pinned + remaining
     }
 
     private fun Game.involves(favorites: Set<TeamKey>): Boolean = home.key in favorites || away.key in favorites

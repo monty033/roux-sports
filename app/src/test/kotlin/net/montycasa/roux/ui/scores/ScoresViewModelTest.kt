@@ -65,6 +65,29 @@ class ScoresViewModelTest {
     }
 
     @Test
+    fun exposedRowsUseStateThenFavoritesThenStartOrder() =
+        runTest {
+            val final = game(id = "final", state = GameState.Final, home = "MTL")
+            val upcoming = game(id = "upcoming", state = GameState.Pre)
+            val live = game(id = "live", home = "BOS").copy(away = TeamRef(TeamKey("NYR")))
+            val favoriteLive = game(id = "favorite-live", home = "MTL").copy(startTimeUtc = origin)
+            val early = live.copy(id = GameId("early"), startTimeUtc = origin - 1.hours)
+            val scores = FakeScoresRepository(testScheduler)
+            scores.respond = { date, _ -> freshDay(date, listOf(final, upcoming, live, favoriteLive, early)) }
+            val preferences = FakePreferencesRepository(setOf(TeamKey("MTL")), storedOnly = false)
+            val viewModel = viewModel(scores, preferences)
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                assertEquals(listOf(favoriteLive, early, live, upcoming, final), viewModel.uiState.value.rows)
+                viewModel.setFavouritesOnly(true)
+                runCurrent()
+                assertEquals(listOf(favoriteLive, upcoming, final), viewModel.uiState.value.rows)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
     fun liveGamePollsAtTwentyFiveSeconds() =
         runTest {
             val scores = FakeScoresRepository(testScheduler)
