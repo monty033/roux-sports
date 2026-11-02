@@ -14,6 +14,8 @@ import kotlinx.serialization.json.JsonElement
 internal data class LandingDto(
     val id: Long? = null,
     val gameState: String? = null,
+    val periodDescriptor: LandingPeriodDescriptorDto? = null,
+    val clock: LandingClockDto? = null,
     val awayTeam: LandingTeamDto? = null,
     val homeTeam: LandingTeamDto? = null,
     val summary: LandingSummaryDto? = null,
@@ -62,4 +64,10 @@ internal data class LandingStarDto(
     val teamAbbrev: String? = null,
     val name: LocalizedNameDto? = null,
     val position: String? = null,
+)
+
+@Serializable
+internal data class LandingClockDto(
+    val timeRemaining: String? = null,
+    val inIntermission: Boolean? = null,
 )

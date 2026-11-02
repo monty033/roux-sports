@@ -126,6 +126,13 @@ class GameRowTest {
     }
 
     @Test
+    fun liveRetainsScoreRowCapsuleTag() {
+        launch(live)
+        rule.onNodeWithTag(STATE_CAPSULE_TAG, useUnmergedTree = true).assertIsDisplayed()
+        rule.onNodeWithTag("detail.hero.live.capsule", useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test
     fun scheduledShowsTorontoTimeInTwelveHourFormat() {
         launch()
         rule.onNodeWithText("7:00 PM").assertIsDisplayed()

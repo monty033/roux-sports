@@ -2,7 +2,6 @@
 
 package net.montycasa.roux.ui.scores
 
-import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -16,7 +15,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
@@ -55,8 +53,10 @@ import net.montycasa.roux.R
 import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameState
-import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.TeamRef
+import net.montycasa.roux.ui.common.LiveCapsule
+import net.montycasa.roux.ui.common.StateClock
+import net.montycasa.roux.ui.common.periodLabel
 import net.montycasa.roux.ui.common.rememberStartTimeLabel
 import net.montycasa.roux.ui.theme.Roux
 
@@ -316,11 +316,11 @@ private fun StateRail(
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            LiveCapsule(label = label)
+                            LiveCapsule(label = label, testTag = STATE_CAPSULE_TAG)
                             StateClock(game.period?.clock.orEmpty(), live = true, intermission = intermission, inline = true)
                         }
                     } else {
-                        LiveCapsule(label = label)
+                        LiveCapsule(label = label, testTag = STATE_CAPSULE_TAG)
                         StateClock(
                             listOfNotNull(periodLabel(game.period), game.period?.clock?.takeIf { it.isNotBlank() })
                                 .joinToString(" "),
@@ -359,61 +359,6 @@ private fun Shots(
         color = Roux.accents.muted,
         textAlign = TextAlign.Start,
     )
-}
-
-@Composable
-private fun StateClock(
-    text: String,
-    live: Boolean,
-    intermission: Boolean = false,
-    inline: Boolean = false,
-) {
-    val breakDescription = if (intermission) stringResource(R.string.game_row_intermission) else null
-    Text(
-        text,
-        // Keep the break available to accessibility without adding a fourth visible rail line.
-        // An inline clock needs its own intrinsic width so its paragraph and node agree.
-        // Stacked clocks fill the measured rail content width, preserving the existing insets.
-        modifier =
-            (if (inline) Modifier.width(IntrinsicSize.Max) else Modifier.fillMaxWidth())
-                .semantics { if (breakDescription != null) contentDescription = "$text, $breakDescription" },
-        style = Roux.cardTypography.clock,
-        color = if (live) Roux.accents.signature else MaterialTheme.colorScheme.onSurfaceVariant,
-        textAlign = TextAlign.Start,
-    )
-}
-
-@Composable
-private fun LiveCapsule(
-    @StringRes label: Int,
-) {
-    val liveDescription = stringResource(R.string.game_row_live_description)
-    Row(
-        Modifier
-            .testTag(STATE_CAPSULE_TAG)
-            .width(IntrinsicSize.Max)
-            .background(Roux.accents.fill, CircleShape)
-            .border(1.5.dp, Roux.accents.fill, CircleShape)
-            .padding(1.5.dp)
-            .padding(horizontal = 6.dp, vertical = 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            Modifier
-                .size(6.dp)
-                .background(Roux.accents.onFill, CircleShape)
-                .semantics { contentDescription = liveDescription },
-        )
-        Text(
-            stringResource(label),
-            style = Roux.cardTypography.finalState,
-            color = Roux.accents.onFill,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            softWrap = false,
-        )
-    }
 }
 
 @Composable
@@ -508,30 +453,6 @@ private fun gameRowLiveState(game: Game): String {
     period?.clock?.takeIf { it.isNotBlank() }?.let { pieces += it }
     return pieces.joinToString(", ")
 }
-
-@Composable
-private fun periodLabel(period: PeriodInfo?): String =
-    stringResource(
-        // A supplied period type takes precedence over its number (including playoff overtime).
-        when (period?.periodType) {
-            "OT" -> {
-                R.string.game_row_period_overtime
-            }
-
-            "SO" -> {
-                R.string.game_row_period_shootout
-            }
-
-            else -> {
-                when (period?.ordinal) {
-                    1 -> R.string.game_row_period_first
-                    2 -> R.string.game_row_period_second
-                    3 -> R.string.game_row_period_third
-                    else -> R.string.game_row_period_unavailable
-                }
-            }
-        },
-    )
 
 @Composable
 private fun startTimeLabel(game: Game): String = rememberStartTimeLabel(game)

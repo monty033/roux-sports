@@ -11,9 +11,13 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import net.montycasa.roux.data.Fixtures
+import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.GameLanding
+import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.PeriodScoring
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -23,6 +27,70 @@ import org.junit.Test
  * `teamAbbrev` is an object while a star's is a string, and a backup goalie can appear with a 00:00 line.
  */
 class LandingAdapterTest {
+    @Test
+    fun liveMomentSurvivesWithoutSummary() {
+        val landing =
+            successOf(
+                """{"id":1,"gameState":"LIVE","periodDescriptor":{"number":3,"periodType":"REG"},
+                "clock":{"timeRemaining":"12:34","inIntermission":false}}""",
+            )
+        assertEquals(PeriodInfo(3, "REG", "12:34", false), landing.period)
+        assertEquals(GameState.Live(), landing.state)
+    }
+
+    @Test
+    fun intermissionSurvivesZeroOrMissingClockTime() {
+        listOf("\"timeRemaining\":\"00:00\",", "").forEach { time ->
+            val landing =
+                successOf(
+                    """{"id":1,"gameState":"LIVE","periodDescriptor":{"number":2,"periodType":"REG"},
+                    "clock":{$time"inIntermission":true}}""",
+                )
+            assertEquals(PeriodInfo(2, "REG", if (time.isEmpty()) null else "00:00", true), landing.period)
+        }
+    }
+
+    @Test
+    fun finalKindRequiresFinalState() {
+        listOf("FINAL", "OFF", "LIVE").forEach { state ->
+            listOf("OT" to FinalKind.OT, "SO" to FinalKind.SO, "REG" to FinalKind.REG, null to FinalKind.REG).forEach { (type, kind) ->
+                val descriptor = type?.let { "\"periodDescriptor\":{\"number\":4,\"periodType\":\"$it\"}," }.orEmpty()
+                val landing = successOf("""{"id":1,$descriptor"gameState":"$state"}""")
+                assertEquals("$state / $type", if (state == "LIVE") null else kind, landing.finalKind)
+            }
+        }
+    }
+
+    @Test
+    fun missingMomentKeepsScoring() {
+        val root = fixtureJson().filterKeys { it !in setOf("periodDescriptor", "clock") }
+        val landing = successOf(JsonObject(root + ("gameState" to JsonPrimitive("LIVE"))).toString())
+        assertNull(landing.period)
+        assertNull(landing.finalKind)
+        assertEquals(4, landing.periodScoring.size)
+        assertEquals(PeriodScoring(1, 3, 0), landing.periodScoring.first())
+    }
+
+    @Test
+    fun malformedMomentKeepsScoringAndDoesNotInventValues() {
+        val root = fixtureJson()
+        val malformed =
+            Json
+                .parseToJsonElement(
+                    """{"periodDescriptor":{"number":"oops","periodType":[]},
+                "clock":{"timeRemaining":"bad","inIntermission":{}},"gameState":{}}""",
+                ).jsonObject
+        val landing = successOf(JsonObject(root + malformed).toString())
+        assertNull(landing.period)
+        assertNull(landing.state)
+        assertNull(landing.finalKind)
+        assertEquals(4, landing.periodScoring.size)
+
+        val validNumber = Json.parseToJsonElement("""{"number":2,"periodType":"REG"}""")
+        val partial = successOf(JsonObject(root + malformed + ("periodDescriptor" to validNumber)).toString())
+        assertEquals(PeriodInfo(2, "REG", null), partial.period)
+    }
+
     @Test
     fun capturedFinalMapsFourPeriodsIncludingOvertime() {
         val landing = successOf(Fixtures.text(FIXTURE))

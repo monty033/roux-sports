@@ -74,7 +74,7 @@ data class GameDetail(
 }
 
 /**
- * The landing payload: period scoring and the three stars.
+ * The landing payload: the current moment, period scoring and the three stars.
  *
  * Both are empty for a game that has not started, which is the normal shape for most of the day rather than a failure -
  * the payload carries `matchup` instead of `summary`. Presence of these sections is therefore decided by what arrived,
@@ -83,6 +83,9 @@ data class GameDetail(
 data class GameLanding(
     val periodScoring: List<PeriodScoring> = emptyList(),
     val threeStars: List<ThreeStar> = emptyList(),
+    val period: PeriodInfo? = null,
+    val finalKind: FinalKind? = null,
+    val state: GameState? = null,
 )
 
 /** A star of the game, ranked 1..3 by the league. */
