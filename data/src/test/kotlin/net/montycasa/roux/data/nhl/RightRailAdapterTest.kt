@@ -5,10 +5,13 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.put
 import net.montycasa.roux.data.Fixtures
 import net.montycasa.roux.domain.model.GameRightRail
+import net.montycasa.roux.domain.model.PeriodShots
 import net.montycasa.roux.domain.model.PowerPlaySummary
 import net.montycasa.roux.domain.model.ShotTotals
 import org.junit.Assert.assertEquals
@@ -45,6 +48,67 @@ class RightRailAdapterTest {
     @Test
     fun totalsRowWinsOverPeriodsThatDisagree() {
         val rail = successOf(withPeriodShots(away = 99, home = 99))
+        assertEquals(ShotTotals(awayShots = 15, homeShots = 32), rail.shots)
+    }
+
+    /**
+     * The per-period detail is kept separately from the total, in period order even when the feed writes it shuffled,
+     * and reading it does not disturb the published total.
+     */
+    @Test
+    fun threePeriodsBecomeThreePeriodShotsInOrderAndTheTotalIsUnchanged() {
+        val rail =
+            successOf(
+                withPeriodRows(
+                    listOf(
+                        periodRow(3, away = 1, home = 6),
+                        periodRow(1, away = 7, home = 2),
+                        periodRow(2, away = 5, home = 13),
+                    ),
+                ),
+            )
+
+        assertEquals(
+            listOf(
+                PeriodShots(period = 1, periodType = "REG", away = 7, home = 2),
+                PeriodShots(period = 2, periodType = "REG", away = 5, home = 13),
+                PeriodShots(period = 3, periodType = "REG", away = 1, home = 6),
+            ),
+            rail.shotsByPeriod,
+        )
+        assertEquals(ShotTotals(awayShots = 15, homeShots = 32), rail.shots)
+    }
+
+    /**
+     * One unusable entry is dropped, not the array: a missing side has no value to print and a negative count is not a
+     * shot count, but a real zero is a period where the club did not shoot, and the periods around it still stand.
+     */
+    @Test
+    fun anEntryWithAMissingSideOrPeriodIsDroppedWhileARealZeroSurvives() {
+        val rail =
+            successOf(
+                withPeriodRows(
+                    listOf(
+                        periodRow(1, away = 7, home = 2),
+                        periodRow(2, away = null, home = 13),
+                        periodRow(3, away = 4, home = 0),
+                        periodRow(null, away = 9, home = 9),
+                        periodRow(4, away = 2, home = 1, type = "OT"),
+                        periodRow(5, away = 6, home = null),
+                        periodRow(6, away = 0, home = 3),
+                    ),
+                ),
+            )
+
+        assertEquals(
+            listOf(
+                PeriodShots(period = 1, periodType = "REG", away = 7, home = 2),
+                PeriodShots(period = 3, periodType = "REG", away = 4, home = 0),
+                PeriodShots(period = 4, periodType = "OT", away = 2, home = 1),
+                PeriodShots(period = 6, periodType = "REG", away = 0, home = 3),
+            ),
+            rail.shotsByPeriod,
+        )
         assertEquals(ShotTotals(awayShots = 15, homeShots = 32), rail.shots)
     }
 
@@ -180,6 +244,28 @@ class RightRailAdapterTest {
             }
         return JsonObject(fixture.with("shotsByPeriod" to JsonArray(periods))).toString()
     }
+
+    private fun withPeriodRows(rows: List<JsonObject>): String = JsonObject(root().with("shotsByPeriod" to JsonArray(rows))).toString()
+
+    private fun periodRow(
+        number: Int?,
+        away: Int?,
+        home: Int?,
+        type: String = "REG",
+    ): JsonObject =
+        buildJsonObject {
+            if (number != null) {
+                put(
+                    "periodDescriptor",
+                    buildJsonObject {
+                        put("number", number)
+                        put("periodType", type)
+                    },
+                )
+            }
+            if (away != null) put("away", away)
+            if (home != null) put("home", home)
+        }
 
     private companion object {
         const val FIXTURE = "gc-final-right-rail.json"

@@ -23,6 +23,7 @@ import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.GoalieLine
 import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.PeriodScoring
+import net.montycasa.roux.domain.model.PeriodShots
 import net.montycasa.roux.domain.model.PlayerRef
 import net.montycasa.roux.domain.model.ShotTotals
 import net.montycasa.roux.domain.model.TeamKey
@@ -153,9 +154,28 @@ internal object AuditStates {
                     Freshness.Fresh,
                     null,
                 ),
+            rightRail =
+                Loadable(
+                    GameRightRail(
+                        shots = ShotTotals(awayShots = 21, homeShots = 28),
+                        shotsByPeriod =
+                            listOf(
+                                PeriodShots(1, "REG", away = 7, home = 8),
+                                PeriodShots(2, "REG", away = 6, home = 10),
+                                PeriodShots(3, "REG", away = 8, home = 10),
+                            ),
+                    ),
+                    Freshness.Fresh,
+                    null,
+                ),
+        )
+    private val partialDetail =
+        fullDetail.copy(
+            landing = Loadable(null, Freshness.Missing, LoadError.Http(503)),
+            // The partial state is about the landing failure; the rail loads, and with no per-period detail the
+            // shots card stays absent so this state's golden keeps showing only that failure.
             rightRail = Loadable(GameRightRail(shots = ShotTotals(awayShots = 21, homeShots = 28)), Freshness.Fresh, null),
         )
-    private val partialDetail = fullDetail.copy(landing = Loadable(null, Freshness.Missing, LoadError.Http(503)))
 
     internal class ContentCase(
         val name: String,
@@ -205,6 +225,21 @@ internal object AuditStates {
                                             fullDetail.landing.data!!.copy(
                                                 periodScoring = listOf(PeriodScoring(1, 2, 1), PeriodScoring(2, 0, 0)),
                                             ),
+                                    ),
+                                // The game is in the second period, so the shots card stops at the second: a
+                                // screenshot with a third-period cell for a period not played would be unauditable.
+                                rightRail =
+                                    Loadable(
+                                        GameRightRail(
+                                            shots = ShotTotals(awayShots = 12, homeShots = 19),
+                                            shotsByPeriod =
+                                                listOf(
+                                                    PeriodShots(1, "REG", away = 7, home = 8),
+                                                    PeriodShots(2, "REG", away = 5, home = 11),
+                                                ),
+                                        ),
+                                        Freshness.Fresh,
+                                        null,
                                     ),
                             ),
                         refreshing = false,

@@ -32,6 +32,7 @@ import net.montycasa.roux.domain.model.GameRightRail
 import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.GoalieLine
 import net.montycasa.roux.domain.model.PeriodScoring
+import net.montycasa.roux.domain.model.PeriodShots
 import net.montycasa.roux.domain.model.PlayerRef
 import net.montycasa.roux.domain.model.ShotTotals
 import net.montycasa.roux.domain.model.TeamKey
@@ -179,9 +180,28 @@ class ReachAuditTest {
                     Freshness.Fresh,
                     null,
                 ),
+            rightRail =
+                Loadable(
+                    GameRightRail(
+                        shots = ShotTotals(awayShots = 21, homeShots = 28),
+                        shotsByPeriod =
+                            listOf(
+                                PeriodShots(1, "REG", away = 7, home = 8),
+                                PeriodShots(2, "REG", away = 6, home = 10),
+                                PeriodShots(3, "REG", away = 8, home = 10),
+                            ),
+                    ),
+                    Freshness.Fresh,
+                    null,
+                ),
+        )
+    private val partialDetail =
+        fullDetail.copy(
+            landing = Loadable(null, Freshness.Missing, LoadError.Http(503)),
+            // The partial state is about the landing failure; the rail loads, and with no per-period detail the
+            // shots card stays absent so the reach grid is the same page as before this card existed.
             rightRail = Loadable(GameRightRail(shots = ShotTotals(awayShots = 21, homeShots = 28)), Freshness.Fresh, null),
         )
-    private val partialDetail = fullDetail.copy(landing = Loadable(null, Freshness.Missing, LoadError.Http(503)))
 
     // ----- The matrix -----------------------------------------------------------------------------------------------
 
