@@ -41,12 +41,20 @@ internal fun <T> SectionCard(
     headerCrest: TeamRef? = null,
     /** Null when this card has nothing useful to retry - the page retries as a whole, not one endpoint. */
     onRetry: (() -> Unit)? = null,
-    hideWhenEmpty: (T) -> Boolean = { false },
+    /**
+     * A card that exists only to show something draws nothing until there is something to show. Non-null means the
+     * card renders only once its data has loaded and this predicate keeps it; a failure still renders, because a card
+     * that failed is not a card that is empty.
+     */
+    hideWhenEmpty: ((T) -> Boolean)? = null,
     inlineRetry: Boolean = false,
     content: @Composable (T) -> Unit,
 ) {
     val data = loadable.data
-    if (data != null && hideWhenEmpty(data)) return
+    if (hideWhenEmpty != null) {
+        if (data == null && loadable.error == null) return
+        if (data != null && hideWhenEmpty(data)) return
+    }
     Column(
         Modifier
             .fillMaxWidth()

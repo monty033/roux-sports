@@ -140,7 +140,9 @@ private fun DetailTabStrip(
         Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            // The top inset is the R4 clearance between a control clipped at the page's bottom edge and the tabs.
+            // The bottom inset alone places the tabs, so this shrinks the viewport rather than moving them.
+            .padding(start = 12.dp, top = 8.dp, end = 12.dp, bottom = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         // The club pills carry the real crest and the club's own name: an abbreviation on a tab asks the reader to
