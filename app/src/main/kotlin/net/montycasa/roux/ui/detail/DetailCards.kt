@@ -23,6 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.TeamRef
@@ -77,9 +78,10 @@ internal fun <T> SectionCard(
             }
             Text(
                 title.uppercase(),
-                style = if (emphasised) MaterialTheme.typography.titleSmall else MaterialTheme.typography.labelSmall,
-                fontWeight = if (emphasised) FontWeight.Bold else null,
-                color = if (emphasised) MaterialTheme.colorScheme.onSurface else LocalRouxAccents.current.muted,
+                style = if (emphasised) MaterialTheme.typography.titleMedium else MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.6.sp,
+                color = MaterialTheme.colorScheme.onSurface,
             )
         }
         Spacer(Modifier.height(if (emphasised) 10.dp else 8.dp))
