@@ -28,6 +28,7 @@ internal fun GameDestination(
 ) {
     SectionCard(
         title = "Scoring by period",
+        hideWhenEmpty = { it.periodScoring.isEmpty() },
         tag = "detail.section.scoring",
         loadable = detail.landing,
         failureLabel = "Scoring could not be loaded",
@@ -38,6 +39,7 @@ internal fun GameDestination(
 
     SectionCard(
         title = "Game stats",
+        hideWhenEmpty = { it.comparisonRows().isEmpty() },
         tag = "detail.section.stats",
         loadable = detail.rightRail,
         failureLabel = "Game stats could not be loaded",
@@ -48,12 +50,44 @@ internal fun GameDestination(
 
     SectionCard(
         title = "Three stars",
+        hideWhenEmpty = { it.threeStars.isEmpty() },
         tag = "detail.section.stars",
         loadable = detail.landing,
         failureLabel = "Three stars could not be loaded",
         onRetry = onRetry,
     ) { landing ->
         ThreeStars(landing)
+    }
+
+    SectionCard(
+        title = "Game info",
+        tag = "detail.section.info",
+        loadable = detail.landing,
+        failureLabel = "Game info could not be loaded",
+        inlineRetry = true,
+        onRetry = onRetry,
+        hideWhenEmpty = { it.venue == null && it.broadcasts.isEmpty() },
+    ) { landing ->
+        landing.venue?.let { venue ->
+            InfoRow("Arena", listOfNotNull(venue.name, venue.city).joinToString(" · "))
+        }
+        if (landing.broadcasts.isNotEmpty()) {
+            InfoRow(
+                "Where to watch",
+                landing.broadcasts
+                    .groupBy { it.country }
+                    .map { (country, broadcasts) ->
+                        val networks =
+                            broadcasts
+                                .sortedBy { if (it.market == "N") 0 else 1 }
+                                .map { it.network }
+                                .distinct()
+                                .take(3)
+                                .joinToString(" · ")
+                        if (country == null) networks else "$country: $networks"
+                    }.joinToString("\n"),
+            )
+        }
     }
 
     if (staleSince != null) {
@@ -68,10 +102,6 @@ internal fun GameDestination(
 
 @Composable
 private fun ThreeStars(landing: GameLanding) {
-    if (landing.threeStars.isEmpty()) {
-        EmptySectionLine("No stars named yet")
-        return
-    }
     Column {
         landing.threeStars.forEach { star ->
             Row(
@@ -98,5 +128,16 @@ private fun ThreeStars(landing: GameLanding) {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun InfoRow(
+    label: String,
+    value: String,
+) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = LocalRouxAccents.current.muted)
+        Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
     }
 }

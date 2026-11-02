@@ -41,9 +41,12 @@ internal fun <T> SectionCard(
     headerCrest: TeamRef? = null,
     /** Null when this card has nothing useful to retry - the page retries as a whole, not one endpoint. */
     onRetry: (() -> Unit)? = null,
+    hideWhenEmpty: (T) -> Boolean = { false },
+    inlineRetry: Boolean = false,
     content: @Composable (T) -> Unit,
 ) {
     val data = loadable.data
+    if (data != null && hideWhenEmpty(data)) return
     Column(
         Modifier
             .fillMaxWidth()
@@ -78,10 +81,18 @@ internal fun <T> SectionCard(
             }
 
             loadable.error != null -> {
-                Column {
-                    Text(failureLabel, style = MaterialTheme.typography.bodySmall)
-                    if (onRetry != null) {
+                if (inlineRetry && onRetry != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(failureLabel, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                        Spacer(Modifier.width(8.dp))
                         RetryLine(onRetry, tag)
+                    }
+                } else {
+                    Column {
+                        Text(failureLabel, style = MaterialTheme.typography.bodySmall)
+                        if (onRetry != null) {
+                            RetryLine(onRetry, tag)
+                        }
                     }
                 }
             }

@@ -86,6 +86,19 @@ data class GameLanding(
     val period: PeriodInfo? = null,
     val finalKind: FinalKind? = null,
     val state: GameState? = null,
+    val venue: Venue? = null,
+    val broadcasts: List<Broadcast> = emptyList(),
+)
+
+data class Venue(
+    val name: String,
+    val city: String?,
+)
+
+data class Broadcast(
+    val network: String,
+    val country: String?,
+    val market: String?,
 )
 
 /** A star of the game, ranked 1..3 by the league. */
