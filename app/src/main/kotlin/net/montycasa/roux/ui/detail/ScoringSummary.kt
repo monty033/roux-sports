@@ -227,6 +227,10 @@ private fun nameLine(goal: GoalEvent): String =
  *
  * Each assist carries its own season count in parentheses; a missing count leaves the name bare. The fragment has no
  * outer parentheses because it owns its line.
+ *
+ * The space inside `name (count)` is non-breaking: the line wraps on the phone at 411 dp, and a plain space let the
+ * count fall onto the next line by itself, so `Porter Martone` ended one line and `(4)` began the next — a name read
+ * as though it were unassisted and a stray parenthetical under it.
  */
 private fun assistLine(goal: GoalEvent): String =
     buildString {
@@ -234,7 +238,7 @@ private fun assistLine(goal: GoalEvent): String =
         goal.assists.forEachIndexed { index, assist ->
             if (index > 0) append(", ")
             append(assist.name)
-            assist.assistsToDate?.let { count -> append(" (").append(count).append(')') }
+            assist.assistsToDate?.let { count -> append('\u00A0').append('(').append(count).append(')') }
         }
     }
 

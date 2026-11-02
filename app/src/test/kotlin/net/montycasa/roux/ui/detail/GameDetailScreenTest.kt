@@ -819,7 +819,7 @@ class GameDetailScreenTest {
         assertTrue(!nameLine.contains("Assists:"))
 
         val assists = labelOf("detail.scoring.row.00.assists")
-        assertEquals("Assists: Jakub Voracek (4), Zach Werenski", assists)
+        assertEquals("Assists: Jakub Voracek\u00A0(4), Zach Werenski", assists)
         assertTrue(!assists.startsWith("("))
         assertTrue(!assists.contains("(Assists:"))
 
