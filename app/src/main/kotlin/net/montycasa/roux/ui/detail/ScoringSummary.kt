@@ -118,10 +118,12 @@ private fun PeriodDivider() {
 }
 
 /**
- * A goal row: the scoring club's crest at the far left, then a two-line text column, then the fixed score columns.
+ * A goal row: the time on the first line of the text column, then a row where the crest and the scorer's name share a
+ * vertically centred line, then the assist line. The score columns stay top-aligned with the time.
  *
- * The score columns top-align with the time line rather than the middle of the text block, so the numbers stay on one
- * reading line while the sentence beneath wraps to whatever height it needs.
+ * The crest and name are siblings in one centred row, so no measured offset or duplicated zero-alpha time is needed:
+ * the time row above naturally reserves its own height, and the crest's centre follows the name's centre at every font
+ * scale, even when the name wraps.
  */
 @Composable
 private fun ScoringRow(
@@ -139,35 +141,45 @@ private fun ScoringRow(
             .semantics(mergeDescendants = true) {},
         verticalAlignment = Alignment.Top,
     ) {
-        Box(Modifier.testTag("detail.scoring.row.$padded.crest.${scoringTeam.abbrev}")) {
-            TeamLogo(
-                team = scoringTeam,
-                crestSize = ROW_CREST,
-                imageTag = "detail.logo.scoring.row.$padded.${scoringTeam.abbrev}",
-            )
-        }
-        Spacer(Modifier.width(CREST_GAP))
         Column(Modifier.weight(1f)) {
-            Text(
-                goal.timeInPeriod,
-                modifier = Modifier.testTag("detail.scoring.row.$padded.time"),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.primary,
-                maxLines = 1,
-            )
-            Text(
-                nameLine(goal),
-                modifier = Modifier.padding(top = 2.dp).testTag("detail.scoring.row.$padded.sentence"),
-                // The name line is prose, so it stays at 14 sp or above even when it wraps.
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
+            Row(Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
+                // The time stays indented past the crest column, exactly as the reference draws line 1.
+                Spacer(Modifier.width(ROW_CREST + CREST_GAP))
+                Text(
+                    goal.timeInPeriod,
+                    modifier = Modifier.weight(1f).testTag("detail.scoring.row.$padded.time"),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                )
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.testTag("detail.scoring.row.$padded.crest.${scoringTeam.abbrev}")) {
+                    TeamLogo(
+                        team = scoringTeam,
+                        crestSize = ROW_CREST,
+                        imageTag = "detail.logo.scoring.row.$padded.${scoringTeam.abbrev}",
+                    )
+                }
+                Spacer(Modifier.width(CREST_GAP))
+                Text(
+                    nameLine(goal),
+                    modifier = Modifier.weight(1f).testTag("detail.scoring.row.$padded.sentence"),
+                    // The name line is prose, so it stays at 14 sp or above even when it wraps.
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
             if (goal.assists.isNotEmpty()) {
                 Text(
                     assistLine(goal),
-                    modifier = Modifier.padding(top = 1.dp).testTag("detail.scoring.row.$padded.assists"),
+                    modifier =
+                        Modifier
+                            .padding(start = ROW_CREST + CREST_GAP, top = 1.dp)
+                            .testTag("detail.scoring.row.$padded.assists"),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Normal,
                     color = MaterialTheme.colorScheme.onSurface,

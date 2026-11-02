@@ -782,6 +782,7 @@ class GameDetailScreenTest {
         listOf(
             "detail.scoring.period.1.away.abbrev",
             "detail.scoring.period.1.home.abbrev",
+            "detail.scoring.row.00.time",
             "detail.scoring.row.00.away",
             "detail.scoring.row.00.home",
         ).forEach { tag ->
@@ -792,6 +793,8 @@ class GameDetailScreenTest {
                 !layout.hasVisualOverflow,
             )
         }
+        val time = textLayout("detail.scoring.row.00.time")
+        assertTrue("the time is below 12 sp", time.layoutInput.style.fontSize.value >= 12f)
     }
 
     @Test
@@ -946,22 +949,46 @@ class GameDetailScreenTest {
     }
 
     @Test
-    fun `the row reads crest, then time over the sentence, then the score columns`() {
-        show(
-            withGoals(
-                listOf(
-                    goal(period = 1, time = "10:00", isHome = false, scorer = "Kirill Marchenko", awayScore = 1, homeScore = 0),
-                    goal(period = 1, time = "15:00", isHome = true, scorer = "Adam Fantilli", awayScore = 1, homeScore = 1),
-                ),
-            ),
+    @Config(sdk = [34], qualifiers = "w411dp-h923dp-xhdpi")
+    fun `the crest centres on the name at 411 dp font scale one`() {
+        show(withGoals(listOf(crestGoal())), fontScale = 1f)
+        assertCrestCentresOnName()
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w411dp-h923dp-xhdpi")
+    fun `the crest centres on the name at 411 dp font scale one point three`() {
+        show(withGoals(listOf(crestGoal())), fontScale = 1.3f)
+        assertCrestCentresOnName()
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w411dp-h923dp-xhdpi")
+    fun `the crest centres on the name at 411 dp font scale two`() {
+        show(withGoals(listOf(crestGoal())), fontScale = 2f)
+        assertCrestCentresOnName()
+    }
+
+    private fun crestGoal() =
+        goal(
+            period = 1,
+            time = "10:00",
+            isHome = false,
+            scorer = "Matvei Michkov",
+            goalsToDate = 10,
+            assists = listOf(GoalAssist("Noah Cates", 3)),
+            awayScore = 1,
+            homeScore = 0,
         )
 
+    private fun assertCrestCentresOnName() {
         val row = compose.onNodeWithTag("detail.scoring.row.00").getUnclippedBoundsInRoot()
         val crest =
             compose.onNodeWithTag("detail.scoring.row.00.crest.CBJ", useUnmergedTree = true).getUnclippedBoundsInRoot()
         val time = compose.onNodeWithTag("detail.scoring.row.00.time", useUnmergedTree = true).getUnclippedBoundsInRoot()
-        val sentence =
-            compose.onNodeWithTag("detail.scoring.row.00.sentence", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val name = compose.onNodeWithTag("detail.scoring.row.00.sentence", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val assist =
+            compose.onNodeWithTag("detail.scoring.row.00.assists", useUnmergedTree = true).getUnclippedBoundsInRoot()
         val awayScore =
             compose.onNodeWithTag("detail.scoring.row.00.away", useUnmergedTree = true).getUnclippedBoundsInRoot()
         val homeScore =
@@ -969,11 +996,13 @@ class GameDetailScreenTest {
 
         assertEquals(row.left.value, crest.left.value, 1f)
         assertEquals(44f, crest.bottom.value - crest.top.value, 1f)
-        assertTrue(time.top.value < sentence.top.value)
-        assertTrue(time.left.value >= crest.right.value)
-        assertTrue(sentence.left.value >= crest.right.value)
-        assertTrue(sentence.right.value <= awayScore.left.value + 1f)
-        assertEquals(time.top.value, awayScore.top.value, 1f)
+        assertTrue("the time must stay above the crest", time.bottom.value <= crest.top.value + 0.5f)
+        val crestCentre = (crest.top.value + crest.bottom.value) / 2f
+        val nameCentre = (name.top.value + name.bottom.value) / 2f
+        assertEquals("crest centre $crestCentre vs name centre $nameCentre", nameCentre, crestCentre, 2f)
+        assertEquals("the scores align to the time line", time.top.value, awayScore.top.value, 1f)
+        assertEquals("the scores align to the time line", time.top.value, homeScore.top.value, 1f)
+        assertTrue("the crest must clear the assist line", crest.bottom.value <= assist.top.value + 0.5f)
         assertTrue(awayScore.right.value <= homeScore.left.value)
     }
 
