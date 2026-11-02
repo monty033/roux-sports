@@ -17,6 +17,7 @@ import net.montycasa.roux.data.nhl.dto.LandingGoalDto
 import net.montycasa.roux.data.nhl.dto.LandingPeriodDescriptorDto
 import net.montycasa.roux.data.nhl.dto.LandingScoringPeriodDto
 import net.montycasa.roux.data.nhl.dto.LandingStarDto
+import net.montycasa.roux.data.nhl.dto.LocalizedNameDto
 import net.montycasa.roux.domain.model.Broadcast
 import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.GameLanding
@@ -186,6 +187,21 @@ internal object LandingAdapter {
     }
 
     /**
+     * The feed's full first and last name, which is what the card prints.
+     *
+     * Returns null when either half is absent, letting the caller fall back to the payload's abbreviated `name.default`
+     * rather than inventing a surname.
+     */
+    private fun fullName(
+        first: LocalizedNameDto?,
+        last: LocalizedNameDto?,
+    ): String? {
+        val firstPart = first?.default.clean() ?: return null
+        val lastPart = last?.default.clean() ?: return null
+        return "$firstPart $lastPart"
+    }
+
+    /**
      * One goal, with its own season totals and running score.
      *
      * Returns null when the goal cannot be placed (no side) or attributed (no name). Everything else is kept even when
@@ -198,11 +214,13 @@ internal object LandingAdapter {
         homeAbbrev: String?,
     ): GoalEvent? {
         val side = side(awayAbbrev, homeAbbrev) ?: return null
-        val scorer = name?.default.clean() ?: return null
+        val scorer = fullName(firstName, lastName) ?: name?.default.clean() ?: return null
         val mappedAssists =
             assists.orEmpty().mapNotNull { assist ->
                 val entry = assist ?: return@mapNotNull null
-                val assistName = entry.name?.default.clean() ?: return@mapNotNull null
+                val assistName =
+                    fullName(entry.firstName, entry.lastName) ?: entry.name?.default.clean()
+                        ?: return@mapNotNull null
                 GoalAssist(name = assistName, assistsToDate = entry.assistsToDate)
             }
         return GoalEvent(

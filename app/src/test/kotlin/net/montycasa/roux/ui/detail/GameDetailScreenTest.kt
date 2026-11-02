@@ -18,6 +18,7 @@ import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -589,7 +590,7 @@ class GameDetailScreenTest {
                 ),
         )
 
-        assertEquals("3RD", labelOf("detail.scoring.period.3"))
+        assertEquals("3rd", labelOf("detail.scoring.period.3.label"))
         // The feed's own elapsed clocks for period 3, printed verbatim, first goal first.
         val expected = listOf("01:02", "05:35", "16:00", "17:07", "18:26")
         val actual = expected.indices.map { index -> rowTime(index) }
@@ -664,10 +665,10 @@ class GameDetailScreenTest {
         )
 
         // First goal first, so the 10:00 goal owns the first row and its own 1-0, not the 3-1 on the board.
-        val firstRow = mergedLabelOf("detail.scoring.row.00")
-        assertTrue(firstRow.contains("1–0"))
-        assertTrue(!firstRow.contains("3–1"))
-        assertTrue(mergedLabelOf("detail.scoring.row.02").contains("2–1"))
+        assertEquals("1", labelOf("detail.scoring.row.00.away"))
+        assertEquals("0", labelOf("detail.scoring.row.00.home"))
+        assertEquals("2", labelOf("detail.scoring.row.02.away"))
+        assertEquals("1", labelOf("detail.scoring.row.02.home"))
     }
 
     @Test
@@ -683,7 +684,7 @@ class GameDetailScreenTest {
 
         val awayCrest =
             compose.onNodeWithTag("detail.scoring.row.00.crest.CBJ", useUnmergedTree = true).getUnclippedBoundsInRoot()
-        assertEquals(24f, awayCrest.bottom.value - awayCrest.top.value, 1f)
+        assertEquals(44f, awayCrest.bottom.value - awayCrest.top.value, 1f)
         compose.onNodeWithTag("detail.scoring.row.00.crest.PHI", useUnmergedTree = true).assertDoesNotExist()
         compose.onNodeWithTag("detail.scoring.row.01.crest.PHI", useUnmergedTree = true).assertExists()
         compose.onNodeWithTag("detail.scoring.row.01.crest.CBJ", useUnmergedTree = true).assertDoesNotExist()
@@ -705,8 +706,8 @@ class GameDetailScreenTest {
         assertEquals("3", labelOf("detail.scoring.row.01.away"))
         assertEquals("2", labelOf("detail.scoring.row.01.home"))
 
-        val awayHeader = compose.onNodeWithTag("detail.scoring.header.away").getUnclippedBoundsInRoot()
-        val homeHeader = compose.onNodeWithTag("detail.scoring.header.home").getUnclippedBoundsInRoot()
+        val awayHeader = compose.onNodeWithTag("detail.scoring.period.1.away.abbrev").getUnclippedBoundsInRoot()
+        val homeHeader = compose.onNodeWithTag("detail.scoring.period.1.home.abbrev").getUnclippedBoundsInRoot()
         val awayScore =
             compose.onNodeWithTag("detail.scoring.row.01.away", useUnmergedTree = true).getUnclippedBoundsInRoot()
         val homeScore =
@@ -719,51 +720,81 @@ class GameDetailScreenTest {
     }
 
     @Test
-    fun `the score header names both clubs above their columns`() {
+    fun `no global header remains and each period heading names both clubs`() {
         show(withGoals(listOf(goal(period = 1, time = "15:00", isHome = false))))
 
-        assertEquals("CBJ", labelOf("detail.scoring.header.away.abbrev"))
-        assertEquals("PHI", labelOf("detail.scoring.header.home.abbrev"))
-        compose.onNodeWithTag("detail.scoring.header.away.crest").assertExists()
-        compose.onNodeWithTag("detail.scoring.header.home.crest").assertExists()
+        assertEquals("1st", labelOf("detail.scoring.period.1.label"))
+        assertEquals("CBJ", labelOf("detail.scoring.period.1.away.abbrev"))
+        assertEquals("PHI", labelOf("detail.scoring.period.1.home.abbrev"))
+        compose.onNodeWithTag("detail.scoring.header.away").assertDoesNotExist()
+        compose.onNodeWithTag("detail.scoring.header.home").assertDoesNotExist()
 
-        val header = compose.onNodeWithTag("detail.scoring.header.away").getUnclippedBoundsInRoot()
-        val period = compose.onNodeWithTag("detail.scoring.period.1").getUnclippedBoundsInRoot()
-        assertTrue(header.bottom.value <= period.top.value + 1f)
-        // The header is not a goal: the only row is 00 and there is no 01 for it to occupy.
+        val heading = compose.onNodeWithTag("detail.scoring.period.1").getUnclippedBoundsInRoot()
+        val firstRow = compose.onNodeWithTag("detail.scoring.row.00").getUnclippedBoundsInRoot()
+        assertTrue(heading.bottom.value <= firstRow.top.value + 1f)
+        // The heading is not a goal: the only row is 00 and there is no 01 for it to occupy.
         compose.onNodeWithTag("detail.scoring.row.00").assertExists()
         compose.onNodeWithTag("detail.scoring.row.01").assertDoesNotExist()
     }
 
     @Test
     @Config(sdk = [34], qualifiers = "w360dp-h780dp-xhdpi")
-    fun `the score header and numbers fit their columns at font scale two`() {
+    fun `score columns and heading abbreviations fit at 360 dp font scale two`() {
         show(
             withGoals(listOf(goal(period = 1, time = "15:00", isHome = false, awayScore = 3, homeScore = 1))),
             fontScale = 2f,
         )
+        assertScoreColumnsFit()
+    }
 
+    @Test
+    @Config(sdk = [34], qualifiers = "w360dp-h780dp-xhdpi")
+    fun `score columns and heading abbreviations fit at 360 dp font scale one point three`() {
+        show(
+            withGoals(listOf(goal(period = 1, time = "15:00", isHome = false, awayScore = 3, homeScore = 1))),
+            fontScale = 1.3f,
+        )
+        assertScoreColumnsFit()
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w360dp-h780dp-xhdpi")
+    fun `score columns and heading abbreviations fit at 360 dp font scale one`() {
+        show(
+            withGoals(listOf(goal(period = 1, time = "15:00", isHome = false, awayScore = 3, homeScore = 1))),
+            fontScale = 1f,
+        )
+        assertScoreColumnsFit()
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w411dp-h923dp-xhdpi")
+    fun `score columns and heading abbreviations fit at 411 dp font scale two`() {
+        show(
+            withGoals(listOf(goal(period = 1, time = "15:00", isHome = false, awayScore = 3, homeScore = 1))),
+            fontScale = 2f,
+        )
+        assertScoreColumnsFit()
+    }
+
+    private fun assertScoreColumnsFit() {
         listOf(
-            "detail.scoring.header.away.abbrev",
-            "detail.scoring.header.home.abbrev",
+            "detail.scoring.period.1.away.abbrev",
+            "detail.scoring.period.1.home.abbrev",
             "detail.scoring.row.00.away",
             "detail.scoring.row.00.home",
         ).forEach { tag ->
             val layout = textLayout(tag)
             assertTrue(
                 "$tag overflowed its column: size=${layout.size} lines=${layout.lineCount} " +
-                    "line0=${if (layout.lineCount > 0) layout.getLineRight(0) - layout.getLineLeft(0) else -1f} " +
-                    "text=${layout.layoutInput.text.text} constraints=${layout.layoutInput.constraints} " +
-                    "font=${layout.layoutInput.style.fontSize} spacing=${layout.layoutInput.style.letterSpacing} " +
-                    "lineRight=${if (layout.lineCount > 0) layout.getLineRight(0) else -1f} " +
-                    "lineBottom=${if (layout.lineCount > 0) layout.getLineBottom(0) else -1f}",
+                    "text=${layout.layoutInput.text.text} constraints=${layout.layoutInput.constraints}",
                 !layout.hasVisualOverflow,
             )
         }
     }
 
     @Test
-    fun `unassisted goals and missing season counts are not invented`() {
+    fun `the sentence prints full names, season goals and inline assists`() {
         show(
             withGoals(
                 listOf(
@@ -771,26 +802,76 @@ class GameDetailScreenTest {
                         period = 1,
                         time = "10:00",
                         isHome = false,
-                        scorer = "K. Marchenko",
+                        scorer = "Kirill Marchenko",
                         goalsToDate = 12,
-                        assists = listOf(GoalAssist("J. Voracek", 4), GoalAssist("Z. Werenski", null)),
+                        assists = listOf(GoalAssist("Jakub Voracek", 4), GoalAssist("Zach Werenski", null)),
                         awayScore = 1,
                         homeScore = 0,
                     ),
-                    goal(period = 1, time = "15:00", isHome = true, scorer = "A. Fantilli", awayScore = 1, homeScore = 1),
+                    goal(period = 1, time = "15:00", isHome = true, scorer = "Adam Fantilli", awayScore = 1, homeScore = 1),
                 ),
             ),
         )
 
-        val assisted = mergedLabelOf("detail.scoring.row.00")
-        assertTrue(assisted.contains("(12)"))
-        assertTrue(assisted.contains("CBJ · A: J. Voracek (4), Z. Werenski"))
+        val assisted = rowSentence(0)
+        assertTrue(assisted.startsWith("Kirill Marchenko 12"))
+        assertTrue(assisted.contains("(Assists: Jakub Voracek 4, Zach Werenski)"))
         // Werenski's count is absent in the feed, so it is absent here rather than printed as (null) or (0).
-        assertTrue(!assisted.contains("Z. Werenski ("))
+        assertTrue(!assisted.contains("Zach Werenski 0"))
 
-        val unassisted = mergedLabelOf("detail.scoring.row.01")
-        assertTrue(unassisted.contains("PHI · Unassisted"))
+        val unassisted = rowSentence(1)
+        assertEquals("Adam Fantilli", unassisted)
+        assertTrue(!unassisted.contains("Assists:"))
         assertTrue(!unassisted.contains("("))
+    }
+
+    @Test
+    fun `the row prints full first and last names`() {
+        show(withGoals(AuditStates.fullGoals))
+
+        assertTrue(rowSentence(0).startsWith("Matvei Michkov 10"))
+        assertTrue(!rowSentence(0).contains("M. Michkov"))
+    }
+
+    @Test
+    fun `strength is prose and the abbreviation codes are gone`() {
+        show(
+            withGoals(
+                listOf(
+                    goal(
+                        period = 1,
+                        time = "05:00",
+                        isHome = false,
+                        strength = GoalStrength.ShortHanded,
+                        modifier = GoalModifier.EmptyNet,
+                    ),
+                    goal(period = 1, time = "10:00", isHome = true, strength = GoalStrength.PowerPlay),
+                    goal(
+                        period = 1,
+                        time = "15:00",
+                        isHome = false,
+                        strength = GoalStrength.EvenStrength,
+                        modifier = GoalModifier.PenaltyShot,
+                    ),
+                ),
+            ),
+        )
+
+        val both = rowSentence(0)
+        assertTrue(both.contains("(short-handed) (empty net)"))
+        assertTrue(!both.contains("SH"))
+        assertTrue(!both.contains("EN"))
+        assertTrue(rowSentence(1).contains("(power play)"))
+        assertTrue(!rowSentence(1).contains("PP"))
+        assertTrue(rowSentence(2).contains("(penalty shot)"))
+        assertTrue(!rowSentence(2).contains("PS"))
+    }
+
+    @Test
+    fun `one divider separates each pair of period blocks`() {
+        show(withGoals(AuditStates.fullGoals))
+
+        compose.onAllNodesWithTag("detail.scoring.divider").assertCountEquals(2)
     }
 
     @Test
@@ -814,51 +895,67 @@ class GameDetailScreenTest {
 
         compose.onNodeWithTag("detail.scoring.period.4").assertExists()
         compose.onNodeWithTag("detail.scoring.period.5").assertDoesNotExist()
-        assertEquals("OT", labelOf("detail.scoring.period.4"))
-        compose
-            .onAllNodes(
-                SemanticsMatcher("scoring period headings") {
-                    it.config.contains(SemanticsProperties.TestTag) &&
-                        it.config[SemanticsProperties.TestTag].startsWith("detail.scoring.period.")
-                },
-            ).assertCountEquals(1)
-        // Oldest extra period first, then its own largest time remaining first: the game's last goal is the bottom
-        // row, not the top one.
-        assertTrue(mergedLabelOf("detail.scoring.row.00").contains("02:22"))
-        assertTrue(mergedLabelOf("detail.scoring.row.01").contains("01:15"))
+        assertEquals("OT", labelOf("detail.scoring.period.4.label"))
+        // Oldest extra period first, then its own earliest elapsed first: the game's last goal is the bottom row.
+        assertEquals("02:22", rowTime(0))
+        assertEquals("01:15", rowTime(1))
     }
 
     @Test
-    fun `strength and modifier tags print in strength then modifier order`() {
+    fun `the row reads crest, then time over the sentence, then the score columns`() {
         show(
             withGoals(
                 listOf(
-                    goal(
-                        period = 1,
-                        time = "05:00",
-                        isHome = false,
-                        strength = GoalStrength.ShortHanded,
-                        modifier = GoalModifier.EmptyNet,
-                    ),
-                    goal(period = 1, time = "10:00", isHome = true, strength = GoalStrength.PowerPlay),
-                    goal(
-                        period = 1,
-                        time = "15:00",
-                        isHome = false,
-                        strength = GoalStrength.EvenStrength,
-                        modifier = GoalModifier.PenaltyShot,
-                    ),
+                    goal(period = 1, time = "10:00", isHome = false, scorer = "Kirill Marchenko", awayScore = 1, homeScore = 0),
+                    goal(period = 1, time = "15:00", isHome = true, scorer = "Adam Fantilli", awayScore = 1, homeScore = 1),
                 ),
             ),
         )
 
-        val both = mergedLabelOf("detail.scoring.row.00")
-        assertTrue(both.contains("SH"))
-        assertTrue(both.contains("EN"))
-        assertTrue(both.indexOf("SH") < both.indexOf("EN"))
-        assertTrue(mergedLabelOf("detail.scoring.row.01").contains("PP"))
-        assertTrue(mergedLabelOf("detail.scoring.row.02").contains("PS"))
-        assertTrue(!mergedLabelOf("detail.scoring.row.02").contains("EV"))
+        val row = compose.onNodeWithTag("detail.scoring.row.00").getUnclippedBoundsInRoot()
+        val crest =
+            compose.onNodeWithTag("detail.scoring.row.00.crest.CBJ", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val time = compose.onNodeWithTag("detail.scoring.row.00.time", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val sentence =
+            compose.onNodeWithTag("detail.scoring.row.00.sentence", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val awayScore =
+            compose.onNodeWithTag("detail.scoring.row.00.away", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val homeScore =
+            compose.onNodeWithTag("detail.scoring.row.00.home", useUnmergedTree = true).getUnclippedBoundsInRoot()
+
+        assertEquals(row.left.value, crest.left.value, 1f)
+        assertEquals(44f, crest.bottom.value - crest.top.value, 1f)
+        assertTrue(time.top.value < sentence.top.value)
+        assertTrue(time.left.value >= crest.right.value)
+        assertTrue(sentence.left.value >= crest.right.value)
+        assertTrue(sentence.right.value <= awayScore.left.value + 1f)
+        assertEquals(time.top.value, awayScore.top.value, 1f)
+        assertTrue(awayScore.right.value <= homeScore.left.value)
+    }
+
+    @Test
+    fun `the side that just scored is the emphasised score`() {
+        show(
+            withGoals(
+                listOf(
+                    goal(period = 1, time = "10:00", isHome = false, awayScore = 1, homeScore = 0),
+                    goal(period = 1, time = "15:00", isHome = true, awayScore = 1, homeScore = 1),
+                ),
+            ),
+        )
+
+        compose
+            .onNodeWithTag("detail.scoring.row.00.away.emphasised", useUnmergedTree = true)
+            .assertExists()
+        compose
+            .onNodeWithTag("detail.scoring.row.00.home.emphasised", useUnmergedTree = true)
+            .assertDoesNotExist()
+        compose
+            .onNodeWithTag("detail.scoring.row.01.home.emphasised", useUnmergedTree = true)
+            .assertExists()
+        compose
+            .onNodeWithTag("detail.scoring.row.01.away.emphasised", useUnmergedTree = true)
+            .assertDoesNotExist()
     }
 
     @Test
@@ -1020,19 +1117,11 @@ class GameDetailScreenTest {
         return if (minutes < 0 || seconds !in 0..59) null else minutes * 60 + seconds
     }
 
-    /** The leading clock on a scoring row, read from the merged text that starts with it. */
-    private fun rowTime(index: Int): String {
-        val text = mergedLabelOf("detail.scoring.row." + index.toString().padStart(2, '0'))
-        return requireNotNull(Regex("""^\d{1,2}:\d{2}""").find(text)) { "no clock at the start of row $index: $text" }.value
-    }
+    /** The clock cell on a scoring row, read from its own tag rather than the row's merged text. */
+    private fun rowTime(index: Int): String = labelOf("detail.scoring.row.${index.padded()}.time")
 
-    /** A scoring row merges its two lines, so the merged tree is where its whole text lives. */
-    private fun mergedLabelOf(tag: String): String =
-        compose
-            .onNodeWithTag(tag)
-            .fetchSemanticsNode()
-            .config[SemanticsProperties.Text]
-            .joinToString("") { it.text }
+    /** The one-sentence name/strength/assists block on a scoring row. */
+    private fun rowSentence(index: Int): String = labelOf("detail.scoring.row.${index.padded()}.sentence")
 
     private fun textLayout(tag: String): TextLayoutResult {
         val node = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode()

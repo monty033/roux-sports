@@ -289,6 +289,24 @@ class LandingAdapterTest {
     }
 
     @Test
+    fun goalAndAssistNamesAreComposedFromFirstAndLast() {
+        val landing =
+            successOf(
+                """{"id":1,"summary":{"scoring":[{"periodDescriptor":{"number":1},"goals":[{
+                "isHome":true,"name":{"default":"M. Michkov"},
+                "firstName":{"default":"Matvei"},"lastName":{"default":"Michkov"},
+                "timeInPeriod":"12:49","assists":[
+                  {"name":{"default":"N. Cates"},"firstName":{"default":"Noah"},"lastName":{"default":"Cates"},
+                   "assistsToDate":3},
+                  {"name":{"default":"P. Martone"},"firstName":{"default":"Porter"},"lastName":{"default":"Martone"},
+                   "assistsToDate":4}]}]}]}}""",
+            )
+        val goal = landing.goals.single()
+        assertEquals("Matvei Michkov", goal.scorer)
+        assertEquals(listOf("Noah Cates", "Porter Martone"), goal.assists.map { it.name })
+    }
+
+    @Test
     fun shortHandedEmptyNetGoalKeepsBothFacts() {
         val landing =
             successOf(
@@ -335,7 +353,7 @@ class LandingAdapterTest {
     fun capturedFinalGoalsKeepTheirOwnRunningScoresAndSeasonTotals() {
         val landing = successOf(Fixtures.text(FIXTURE))
         assertEquals(7, landing.goals.size)
-        assertEquals("A. Fantilli", landing.goals.first().scorer)
+        assertEquals("Adam Fantilli", landing.goals.first().scorer)
         assertEquals(1, landing.goals.first().awayScore)
         assertEquals(0, landing.goals.first().homeScore)
         assertEquals(4, landing.goals.first().goalsToDate)

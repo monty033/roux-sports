@@ -77,6 +77,8 @@ internal data class LandingGoalDto(
 @Serializable
 internal data class LandingGoalAssistDto(
     val name: LocalizedNameDto? = null,
+    val firstName: LocalizedNameDto? = null,
+    val lastName: LocalizedNameDto? = null,
     val assistsToDate: Int? = null,
     val playerId: Long? = null,
     val sweaterNumber: Int? = null,
