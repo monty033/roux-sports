@@ -24,31 +24,53 @@ import net.montycasa.roux.domain.model.GoalieLine
 import net.montycasa.roux.domain.model.SkaterLine
 import net.montycasa.roux.ui.theme.LocalRouxAccents
 
+/**
+ * The club's three player tables, in the order the feed groups them: forwards, defencemen, goalies.
+ *
+ * Each block is drawn only when its own list has something in it, so an absent group takes its heading and its spacing
+ * with it. The first block that exists carries no top spacer, and every later one keeps the same 14 dp gap the old
+ * single skater table used before the goalies.
+ */
 @Composable
 internal fun PlayerTables(
     goalies: List<GoalieLine>,
-    skaters: List<SkaterLine>,
+    forwards: List<SkaterLine>,
+    defense: List<SkaterLine>,
 ) {
-    Column {
-        if (skaters.isNotEmpty()) {
-            SubHeading("Skaters")
-            RosterTable(
-                tag = "detail.section.skaters",
-                headers = SKATER_COLUMNS,
-                rows = skaters.map { skaterRow(it) },
-            )
+    val blocks =
+        buildList {
+            if (forwards.isNotEmpty()) {
+                add(RosterBlock("Forwards", "detail.section.forwards", SKATER_COLUMNS, forwards.map { skaterRow(it) }))
+            }
+            if (defense.isNotEmpty()) {
+                add(RosterBlock("Defensemen", "detail.section.defense", SKATER_COLUMNS, defense.map { skaterRow(it) }))
+            }
+            if (goalies.isNotEmpty()) {
+                add(RosterBlock("Goalies", "detail.section.goalies", GOALIE_COLUMNS, goalies.map { goalieRow(it) }))
+            }
         }
-        if (goalies.isNotEmpty()) {
-            Spacer(Modifier.height(if (skaters.isEmpty()) 0.dp else 14.dp))
-            SubHeading("Goalies")
-            RosterTable(
-                tag = "detail.section.goalies",
-                headers = GOALIE_COLUMNS,
-                rows = goalies.map { goalieRow(it) },
-            )
+
+    Column {
+        blocks.forEachIndexed { index, block ->
+            if (index > 0) Spacer(Modifier.height(14.dp))
+            Column(Modifier.testTag("${block.tag}.block")) {
+                SubHeading(block.heading)
+                RosterTable(
+                    tag = block.tag,
+                    headers = block.headers,
+                    rows = block.rows,
+                )
+            }
         }
     }
 }
+
+private data class RosterBlock(
+    val heading: String,
+    val tag: String,
+    val headers: List<String>,
+    val rows: List<Pair<String, List<String>>>,
+)
 
 @Composable
 private fun SubHeading(text: String) {

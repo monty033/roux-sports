@@ -118,15 +118,18 @@ data class PlayerRef(
 )
 
 /**
- * The boxscore payload: both clubs' skaters, and the goalie lines.
+ * The boxscore payload: both clubs' skaters, split the way the feed lists them, and the goalie lines.
  *
- * It carries no scoring at all, which is worth stating because it is the natural place to look for it. Skaters arrive
- * in feed order - forwards first, then defencemen, as the league lists them - and that order is kept rather than sorted,
- * so the page reads the same as the source. Goalies who did not play are excluded by the adapter, not here.
+ * It carries no scoring at all, which is worth stating because it is the natural place to look for it. The feed sends
+ * skaters as two lists - forwards then defencemen - and they stay in those two lists here: the grouping is the payload's
+ * own structure, not a position code the page has to re-derive. Each list keeps feed order (away side first, then lines
+ * and pairs as the league wrote them) rather than being sorted, so the page reads the same as the source. Goalies who
+ * did not play are excluded by the adapter, not here.
  */
 data class GameBoxscore(
     val goalies: List<GoalieLine> = emptyList(),
-    val skaters: List<SkaterLine> = emptyList(),
+    val forwards: List<SkaterLine> = emptyList(),
+    val defense: List<SkaterLine> = emptyList(),
 )
 
 /** Goals by period, for both clubs. */
