@@ -147,6 +147,109 @@ class GameDetailRepositoryImplTest {
             assertEquals(6, harness.requests.size)
         }
 
+    /**
+     * The bug this change exists for: a pre-game body is not a cheap version of a final one, it is missing the summary
+     * and the player tables. A cached scheduled body is fresh by the clock, but it must not satisfy a final read.
+     */
+    @Test
+    fun aBodyCachedBeforeTheGameIsNotServedOnceItIsFinal() =
+        runBlocking {
+            var pregame = true
+            val harness =
+                harness { request ->
+                    val endpoint = request.url.encodedPath.substringAfterLast('/')
+                    val body = Fixtures.bytes("gc-${if (pregame) "fut" else "final"}-$endpoint.json")
+                    respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+                }
+
+            val before = harness.repository.load(gameId, GameState.Scheduled)
+            assertTrue(
+                "the fixture must really be the pre-game shape",
+                before.landing.data
+                    ?.periodScoring
+                    ?.isEmpty() == true,
+            )
+            assertEquals(3, harness.requests.size)
+            pregame = false
+
+            val after = harness.repository.load(gameId, GameState.Final)
+
+            assertEquals("a state boundary must refetch even a fresh entry", 6, harness.requests.size)
+            assertTrue(
+                "the final response must be the one returned",
+                after.landing.data
+                    ?.periodScoring
+                    ?.isNotEmpty() == true,
+            )
+            assertEquals(Freshness.Fresh, after.landing.freshness)
+        }
+
+    @Test
+    fun aBodyCachedWhileLiveIsNotServedOnceItIsFinal() =
+        runBlocking {
+            val harness = harness()
+            harness.repository.load(gameId, GameState.Live())
+            assertEquals(3, harness.requests.size)
+
+            harness.repository.load(gameId, GameState.Final)
+
+            assertEquals("the state boundary wins over the live lifetime", 6, harness.requests.size)
+        }
+
+    /** An entry written before states were recorded carries no evidence of what it describes, so it is a miss. */
+    @Test
+    fun aCacheEntryWithNoRecordedStateIsNotServed() =
+        runBlocking {
+            val harness = harness()
+            val kinds =
+                mapOf(
+                    "landing" to CacheKind.DetailLanding,
+                    "boxscore" to CacheKind.DetailBoxscore,
+                    "right-rail" to CacheKind.DetailRightRail,
+                )
+            for ((endpoint, kind) in kinds) {
+                harness.cache.put(
+                    CacheKey(kind, gameId.value),
+                    endpointBodies.getValue(endpoint),
+                    harness.clock.now(),
+                )
+            }
+
+            val detail = harness.repository.load(gameId, GameState.Final)
+
+            assertEquals("an entry with no recorded state must be refetched", 3, harness.requests.size)
+            assertEquals(Freshness.Fresh, detail.landing.freshness)
+        }
+
+    /**
+     * The other half of the rule: a body from another state is not a fallback either. Showing the pre-game skeleton as
+     * "the last saved version" is the same lie as serving it as current, so the read reports the failure instead.
+     */
+    @Test
+    fun aBodyFromAnotherStateIsNotTheFallbackWhenTheNetworkFails() =
+        runBlocking {
+            var fail = false
+            val harness =
+                harness { request ->
+                    if (fail) {
+                        respond("", HttpStatusCode.ServiceUnavailable)
+                    } else {
+                        val endpoint = request.url.encodedPath.substringAfterLast('/')
+                        respond(endpointBodies.getValue(endpoint), HttpStatusCode.OK)
+                    }
+                }
+            harness.repository.load(gameId, GameState.Scheduled)
+            fail = true
+
+            val detail = harness.repository.load(gameId, GameState.Final)
+
+            assertEquals(LoadError.Http(503), detail.landing.error)
+            assertEquals(Freshness.Missing, detail.landing.freshness)
+            assertNull("the pre-game body must not be passed off as saved data", detail.landing.data)
+            assertNull(detail.boxscore.data)
+            assertNull(detail.rightRail.data)
+        }
+
     @Test
     fun refreshIgnoresAFreshCopy() =
         runBlocking {

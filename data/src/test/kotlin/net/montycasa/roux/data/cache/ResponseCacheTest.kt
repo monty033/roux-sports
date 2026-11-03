@@ -33,7 +33,23 @@ class ResponseCacheTest {
             assertArrayEquals(RAW, response.bytes)
             assertEquals(FETCHED_AT, response.fetchedAt)
             val envelope = fs.read(entry(KEY)) { readByteArray() }
-            assertArrayEquals("ROUXCACHE1\n${FETCHED_AT.toEpochMilliseconds()}\n".encodeToByteArray() + RAW, envelope)
+            assertArrayEquals("ROUXCACHE2\n${FETCHED_AT.toEpochMilliseconds()}\n0\n".encodeToByteArray() + RAW, envelope)
+        }
+
+    @Test
+    fun roundTripPreservesTheRecordedState() =
+        withCache { _, cache, _ ->
+            cache.put(KEY, RAW, FETCHED_AT, state = "live")
+
+            assertEquals("live", cache.get(KEY)!!.state)
+        }
+
+    @Test
+    fun anEntryWithoutAStateReportsNull() =
+        withCache { _, cache, _ ->
+            cache.put(KEY, RAW, FETCHED_AT)
+
+            assertNull(cache.get(KEY)!!.state)
         }
 
     @Test
@@ -328,16 +344,26 @@ class ResponseCacheTest {
     fun emptyFileIsAMissAndDeleted() = assertCorruption(byteArrayOf())
 
     @Test
-    fun wrongMagicIsAMissAndDeleted() = assertCorruption("ROUXCACHE2\n123\nbody".encodeToByteArray())
+    fun wrongMagicIsAMissAndDeleted() = assertCorruption("ROUXCACHE9\n123\n0\nbody".encodeToByteArray())
+
+    /** The previous envelope had no state field. It must be refetched, not reinterpreted. */
+    @Test
+    fun previousEnvelopeVersionIsAMissAndDeleted() = assertCorruption("ROUXCACHE1\n123\nbody".encodeToByteArray())
 
     @Test
-    fun truncatedHeaderIsAMissAndDeleted() = assertCorruption("ROUXCACHE1\n123".encodeToByteArray())
+    fun truncatedHeaderIsAMissAndDeleted() = assertCorruption("ROUXCACHE2\n123".encodeToByteArray())
 
     @Test
-    fun nonNumericTimestampIsAMissAndDeleted() = assertCorruption("ROUXCACHE1\nnot-a-number\nbody".encodeToByteArray())
+    fun nonNumericTimestampIsAMissAndDeleted() = assertCorruption("ROUXCACHE2\nnot-a-number\n0\nbody".encodeToByteArray())
 
     @Test
-    fun overflowingTimestampIsAMissAndDeleted() = assertCorruption("ROUXCACHE1\n9223372036854775808\nbody".encodeToByteArray())
+    fun overflowingTimestampIsAMissAndDeleted() = assertCorruption("ROUXCACHE2\n9223372036854775808\n0\nbody".encodeToByteArray())
+
+    @Test
+    fun nonNumericStateLengthIsAMissAndDeleted() = assertCorruption("ROUXCACHE2\n123\nnot-a-length\nbody".encodeToByteArray())
+
+    @Test
+    fun stateLengthBeyondTheBodyIsAMissAndDeleted() = assertCorruption("ROUXCACHE2\n123\n99\nbody".encodeToByteArray())
 
     @Test
     fun extremeEpochMillisRoundTrip() =
@@ -350,7 +376,7 @@ class ResponseCacheTest {
         }
 
     @Test
-    fun carriageReturnInHeaderIsAMissAndDeleted() = assertCorruption("ROUXCACHE1\r\n123\nbody".encodeToByteArray())
+    fun carriageReturnInHeaderIsAMissAndDeleted() = assertCorruption("ROUXCACHE2\r\n123\n0\nbody".encodeToByteArray())
 
     @Test
     fun emptyBodyIsValid() =
@@ -575,8 +601,9 @@ class ResponseCacheTest {
             path: Path,
         ): ByteArray =
             fs.read(path) {
-                readUtf8LineStrict()
-                readUtf8LineStrict()
+                readUtf8LineStrict() // magic
+                readUtf8LineStrict() // fetched-at millis
+                readUtf8LineStrict() // state length
                 readByteArray()
             }
     }
