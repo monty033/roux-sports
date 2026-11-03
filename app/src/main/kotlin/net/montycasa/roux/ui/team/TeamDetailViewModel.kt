@@ -81,6 +81,12 @@ class TeamDetailViewModel(
     /** Re-reads only the statistics, leaving the schedule, header and roster untouched. */
     fun retryStats() = loadStats()
 
+    /** Re-reads both sources behind the Players tab, leaving the header and schedule untouched. */
+    fun retryPlayers() {
+        loadRoster()
+        loadStats()
+    }
+
     private fun loadTableAndSchedule() {
         mutableState.update { it.copy(isLoading = true, error = null, schedule = null) }
         viewModelScope.launch { apply(readTable()) }

@@ -4,8 +4,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
@@ -272,20 +275,25 @@ class TeamScheduleListTest {
     }
 
     @Test
-    fun theTabsShowScheduleSelectedAndAllThreeTabsAvailable() {
+    fun theTabsShowScheduleSelectedPlayersAvailableAndTeamStatsUnavailable() {
         showScreen(schedule = Loadable(listOf(game("next", "2026-11-05T20:00:00Z", GameState.Scheduled)), Freshness.Fresh, null))
 
         rule.onNodeWithTag("team.tab.Schedule").assertIsSelected().assertIsEnabled()
         rule
-            .onNodeWithTag("team.tab.Roster")
+            .onNodeWithTag("team.tab.Players")
             .assertIsDisplayed()
             .assertIsEnabled()
             .assertIsNotSelected()
-        rule
-            .onNodeWithTag("team.tab.Stats")
+        val teamStats = rule.onNodeWithTag("team.tab.TeamStats")
+        teamStats
             .assertIsDisplayed()
-            .assertIsEnabled()
+            .assertIsNotEnabled()
             .assertIsNotSelected()
+            .assertHasNoClickAction()
+        assertEquals(
+            "Unavailable",
+            teamStats.fetchSemanticsNode().config[SemanticsProperties.StateDescription],
+        )
     }
 
     @Test

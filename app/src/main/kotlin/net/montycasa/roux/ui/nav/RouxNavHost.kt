@@ -881,8 +881,7 @@ private fun TeamDetailDestination(
         state = state,
         onBack = onBack,
         onRetry = detail::retry,
-        onRosterRetry = detail::retryRoster,
-        onStatsRetry = detail::retryStats,
+        onPlayersRetry = detail::retryPlayers,
         onGameClick = onGameClick,
     )
 }

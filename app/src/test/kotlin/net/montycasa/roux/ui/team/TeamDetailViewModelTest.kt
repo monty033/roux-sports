@@ -183,6 +183,37 @@ class TeamDetailViewModelTest {
             }
         }
 
+    @Test
+    fun retryPlayersReloadsBothSourcesWithoutAskingTheSchedule() =
+        runTest {
+            val standings = FakeStandings()
+            val schedule = FakeSchedule()
+            val roster = FakeRoster()
+            val stats = FakeStats()
+            val viewModel =
+                TeamDetailViewModel(
+                    teamKey = tor,
+                    standings = standings,
+                    schedule = schedule,
+                    roster = roster,
+                    stats = stats,
+                ).also { stores += ViewModelStore().apply { put("team", it) } }
+
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                expectMostRecentItem()
+
+                viewModel.retryPlayers()
+                runCurrent()
+                expectMostRecentItem()
+
+                assertEquals("players retry must not re-read the season", 1, schedule.calls)
+                assertEquals(2, roster.calls)
+                assertEquals(2, stats.calls)
+            }
+        }
+
     private fun viewModel(repository: StandingsRepository): TeamDetailViewModel =
         TeamDetailViewModel(teamKey = tor, standings = repository).also { model ->
             stores += ViewModelStore().apply { put("team", model) }
