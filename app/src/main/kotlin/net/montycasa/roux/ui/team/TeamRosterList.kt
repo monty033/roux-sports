@@ -99,9 +99,9 @@ private fun RosterGroups(
 ) {
     val sections =
         listOf(
-            RosterSection(stringResource(R.string.team_roster_forwards), "forwards", roster.forwards.bySweater()),
-            RosterSection(stringResource(R.string.team_roster_defense), "defense", roster.defense.bySweater()),
-            RosterSection(stringResource(R.string.team_roster_goalies), "goalies", roster.goalies.bySweater()),
+            RosterSection(stringResource(R.string.team_roster_forwards), "forwards", roster.forwards),
+            RosterSection(stringResource(R.string.team_roster_defense), "defense", roster.defense),
+            RosterSection(stringResource(R.string.team_roster_goalies), "goalies", roster.goalies),
         )
     LazyColumn(
         modifier = modifier.testTag("team.roster.list"),
@@ -130,9 +130,6 @@ private data class RosterSection(
     val tag: String,
     val players: List<RosterPlayer>,
 )
-
-/** The feed's order is not meaningful; a roster is read by number, with unnamed numbers last. */
-private fun List<RosterPlayer>.bySweater(): List<RosterPlayer> = sortedWith(compareBy({ it.sweaterNumber ?: Int.MAX_VALUE }, { it.name }))
 
 @Composable
 private fun RosterGroupHeader(section: RosterSection) {

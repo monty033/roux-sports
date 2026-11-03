@@ -42,6 +42,11 @@ data class TeamDetailUiState(
     val schedule: Loadable<List<ClubGame>>? = null,
     /** The current roster, with its own cache entry and failure. */
     val roster: Loadable<ClubRoster>? = null,
+    /**
+     * True while a roster request is in flight. Deliberately not the header's [isLoading]: a header refresh must
+     * not put the roster's retry into a spinner, and a failed roster is not "still loading" by default.
+     */
+    val isRosterLoading: Boolean = false,
 )
 
 class TeamDetailViewModel(
@@ -77,8 +82,11 @@ class TeamDetailViewModel(
 
     private fun loadRoster() {
         if (roster == null) return
-        mutableState.update { it.copy(roster = null) }
-        viewModelScope.launch { mutableState.update { it.copy(roster = readRoster()) } }
+        mutableState.update { it.copy(roster = null, isRosterLoading = true) }
+        viewModelScope.launch {
+            val read = readRoster()
+            mutableState.update { it.copy(roster = read, isRosterLoading = false) }
+        }
     }
 
     private fun apply(loaded: TableResult) {

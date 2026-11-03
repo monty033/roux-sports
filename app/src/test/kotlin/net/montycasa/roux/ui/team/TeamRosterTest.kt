@@ -119,8 +119,27 @@ class TeamRosterTest {
         assertEquals(1, retries)
     }
 
+    @Test
+    fun aHeaderRefreshDoesNotPutTheRostersRetryIntoASpinner() {
+        var retries = 0
+        showScreen(
+            roster = Loadable(data = null, freshness = Freshness.Missing, error = LoadError.Network),
+            headerLoading = true,
+            onRosterRetry = { retries++ },
+        )
+        rule.onNodeWithTag("team.tab.Roster").performClick()
+        rule.waitForIdle()
+
+        // The header's own refresh flag must not reach the roster's retry: a spinner there would be a lie, and the
+        // button would swallow the tap.
+        rule.onNodeWithTag("team.roster.retry").performClick()
+        assertEquals(1, retries)
+    }
+
     private fun showScreen(
         roster: Loadable<ClubRoster> = Loadable(sampleRoster, Freshness.Fresh, null),
+        headerLoading: Boolean = false,
+        rosterLoading: Boolean = false,
         onRosterRetry: () -> Unit = {},
     ) {
         rule.setContent {
@@ -130,9 +149,10 @@ class TeamRosterTest {
                         TeamDetailUiState(
                             teamKey = TeamKey("TOR"),
                             row = toronto,
-                            isLoading = false,
+                            isLoading = headerLoading,
                             schedule = Loadable(listOf(game), Freshness.Fresh, null),
                             roster = roster,
+                            isRosterLoading = rosterLoading,
                         ),
                     onBack = {},
                     onRosterRetry = onRosterRetry,

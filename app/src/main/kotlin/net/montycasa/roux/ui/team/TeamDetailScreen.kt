@@ -122,7 +122,7 @@ fun TeamDetailScreen(
                     TeamTab.Roster -> {
                         TeamRosterList(
                             roster = state.roster,
-                            isRefreshing = state.isLoading,
+                            isRefreshing = state.isRosterLoading,
                             onRetry = onRosterRetry,
                             modifier = Modifier.fillMaxSize(),
                         )
