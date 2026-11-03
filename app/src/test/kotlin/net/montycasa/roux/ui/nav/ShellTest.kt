@@ -29,6 +29,7 @@ import net.montycasa.roux.ui.reach.findReachViolations
 import net.montycasa.roux.ui.reach.reachTargets
 import net.montycasa.roux.ui.scores.ScoresIntegrationApp
 import net.montycasa.roux.ui.scores.waitForFixtureScores
+import net.montycasa.roux.ui.teams.waitForTeamsRows
 import net.montycasa.roux.ui.theme.RouxTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -466,6 +467,9 @@ class ShellTest {
     fun teamsTabLight() {
         launchShell()
         barItem("Teams").performClick()
+        // The rows come from a repository flow outside the composition, so idle alone can still be the
+        // loading frame. Wait for the list, then settle the page transition before measuring pixels.
+        rule.waitForTeamsRows()
         rule.waitForIdle()
         rule.onRoot().captureRoboImage("src/test/screenshots/shell/teams-tab-light.png")
     }
@@ -474,6 +478,9 @@ class ShellTest {
     fun teamsTabDark() {
         launchShell(dark = true)
         barItem("Teams").performClick()
+        // Same load gate as the light capture: the bounds below would otherwise throw on a missing tag if
+        // they ran while the tab was still showing "Loading teams…".
+        rule.waitForTeamsRows()
         rule.waitForIdle()
         rule.onRoot().captureRoboImage("src/test/screenshots/shell/teams-tab-dark.png")
         // The list runs to the bar, less the page's own 16 dp margin: a one-row band of empty page under the
