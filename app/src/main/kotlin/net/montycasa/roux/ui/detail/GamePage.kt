@@ -73,6 +73,17 @@ internal fun GameDestination(
     }
 
     SectionCard(
+        title = "Penalties",
+        tag = "detail.section.penalties-summary",
+        loadable = detail.landing,
+        failureLabel = "Penalties could not be loaded",
+        onRetry = onRetry,
+        hideWhenEmpty = { it.penalties.isEmpty() },
+    ) { landing ->
+        PenaltiesSummary(game = game, landing = landing)
+    }
+
+    SectionCard(
         title = "Three stars",
         hideWhenEmpty = { it.threeStars.isEmpty() },
         tag = "detail.section.stars",
