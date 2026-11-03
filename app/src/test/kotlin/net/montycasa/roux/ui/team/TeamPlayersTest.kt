@@ -46,7 +46,7 @@ class TeamPlayersTest {
     val rule = createComposeRule()
 
     private val now = Instant.parse("2026-11-03T12:00:00Z")
-    private val longName = "Alexandre Texier-Deslauriers"
+    private val longName = "Jean-Sebastien DeLaurentis-Whitmore MacAllister-Fitzgerald"
 
     @Test
     fun scheduleIsSelectedFirstAndPlayersReplacesItWhenTapped() {
@@ -132,9 +132,9 @@ class TeamPlayersTest {
         val name = rule.onNodeWithTag("team.players.player.13.name", useUnmergedTree = true)
         name.assertTextEquals(longName)
 
-        val layouts = mutableListOf<TextLayoutResult>()
-        name.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
-        assertFalse("the long name must not be visually truncated", layouts.single().hasVisualOverflow)
+        // Whether it wraps is answered in TeamPlayersNameWrapTest, where the harness width and type are a phone's.
+        // This harness cannot see it: at its scale a long name lays out on one line, so a wrapping assertion here
+        // would pass against a clipped name as well.
     }
 
     @Test
@@ -271,6 +271,39 @@ class TeamPlayersTest {
         openPlayers()
 
         assertEquals(0, scheduleRetries)
+    }
+
+    @Test
+    fun theHeaderLabelsScrollWithTheirNumbers() {
+        showPlayers()
+
+        fun headerLeft() =
+            rule
+                .onNodeWithTag("team.players.group.forwards.header.PTS", useUnmergedTree = true)
+                .fetchSemanticsNode()
+                .boundsInRoot.left
+
+        fun cellLeft() =
+            rule
+                .onNodeWithTag("team.players.player.91.pts", useUnmergedTree = true)
+                .fetchSemanticsNode()
+                .boundsInRoot.left
+
+        val headerBefore = headerLeft()
+        val cellBefore = cellLeft()
+        rule.onNodeWithTag("team.players.player.91.numbers").performTouchInput { swipeLeft() }
+        rule.waitForIdle()
+
+        assertTrue(
+            "the drag must move the labels too: $headerBefore -> ${headerLeft()}",
+            headerLeft() < headerBefore - 1f,
+        )
+        assertEquals(
+            "a label must stay above its own column",
+            headerBefore - cellBefore,
+            headerLeft() - cellLeft(),
+            1f,
+        )
     }
 
     private fun openPlayers() {
