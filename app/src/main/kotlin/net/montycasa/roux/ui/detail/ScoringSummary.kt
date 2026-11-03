@@ -2,13 +2,11 @@
 
 package net.montycasa.roux.ui.detail
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,7 +19,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
@@ -30,7 +27,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameLanding
@@ -38,7 +34,6 @@ import net.montycasa.roux.domain.model.GoalEvent
 import net.montycasa.roux.domain.model.GoalModifier
 import net.montycasa.roux.domain.model.GoalStrength
 import net.montycasa.roux.ui.theme.LocalRouxAccents
-import kotlin.math.roundToInt
 
 /**
  * Every goal, grouped the way a period is read: periods ascending, the period's first goal first inside each.
@@ -56,42 +51,17 @@ internal fun ScoringSummary(
     val groups = scoringGroups(landing.goals)
     Column {
         groups.forEachIndexed { groupIndex, group ->
-            if (groupIndex > 0) PeriodDivider()
-            PeriodHeading(game = game, group = group)
+            if (groupIndex > 0) PeriodDivider(tag = "detail.scoring.divider")
+            PeriodHeading(
+                label = group.label,
+                tag = "detail.scoring.period.${group.key}",
+                topPadding = if (group.key == 1) 0.dp else 2.dp,
+            ) {
+                ColumnAbbreviation(teamAbbrev = game.away.abbrev, side = "away", group = group)
+                ColumnAbbreviation(teamAbbrev = game.home.abbrev, side = "home", group = group)
+            }
             group.goals.forEach { indexed -> ScoringRow(game = game, indexed = indexed) }
         }
-    }
-}
-
-/**
- * A period heading names the clubs it belongs to.
- *
- * The ordinal sits at the left in the primary colour and the two abbreviations sit over the score columns, which
- * replaces the single header above the first period. Headings never become row indices.
- */
-@Composable
-private fun PeriodHeading(
-    game: Game,
-    group: ScoringGroup,
-) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(top = if (group.key == 1) 0.dp else 2.dp, bottom = 4.dp)
-                .testTag("detail.scoring.period.${group.key}"),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            group.label,
-            modifier = Modifier.testTag("detail.scoring.period.${group.key}.label"),
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary,
-        )
-        Spacer(Modifier.weight(1f))
-        ColumnAbbreviation(teamAbbrev = game.away.abbrev, side = "away", group = group)
-        ColumnAbbreviation(teamAbbrev = game.home.abbrev, side = "home", group = group)
     }
 }
 
@@ -115,19 +85,6 @@ private fun ColumnAbbreviation(
     )
 }
 
-/** One rule between consecutive period blocks, inset from the card edges and never above the first block. */
-@Composable
-private fun PeriodDivider() {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = DIVIDER_INSET, vertical = 8.dp)
-            .height(1.dp)
-            .background(LocalRouxAccents.current.muted.copy(alpha = DIVIDER_ALPHA))
-            .testTag("detail.scoring.divider"),
-    )
-}
-
 /**
  * A goal row: a tight text column (time, name, assists) exactly as before, with the crest in the row's gutter.
  *
@@ -146,14 +103,14 @@ private fun ScoringRow(
     var rowTopPx by remember { mutableFloatStateOf(0f) }
     var nameTopPx by remember { mutableFloatStateOf(0f) }
     var nameLineHeightPx by remember { mutableFloatStateOf(0f) }
-    val density = LocalDensity.current
-    val crestSizePx = with(density) { ROW_CREST.toPx() }
-    val crestOffsetPx =
-        if (nameLineHeightPx > 0f) {
-            (nameTopPx - rowTopPx + (nameLineHeightPx - crestSizePx) / 2f).coerceAtLeast(0f)
-        } else {
-            0f
-        }
+    val crestSizePx = with(LocalDensity.current) { ROW_CREST.toPx() }
+    val offsetPx =
+        crestOffsetPx(
+            rowTopPx = rowTopPx,
+            nameTopPx = nameTopPx,
+            nameLineHeightPx = nameLineHeightPx,
+            crestSizePx = crestSizePx,
+        )
     Row(
         Modifier
             .fillMaxWidth()
@@ -164,17 +121,10 @@ private fun ScoringRow(
         verticalAlignment = Alignment.Top,
     ) {
         // Zero height: the crest is measured at full size, placed at the measured offset, and reports no row height.
-        Box(
-            Modifier
-                .testTag("detail.scoring.row.$padded.crestGutter")
-                .width(ROW_CREST)
-                .layout { measurable, _ ->
-                    val crestPx = crestSizePx.roundToInt()
-                    val placeable = measurable.measure(Constraints.fixed(crestPx, crestPx))
-                    layout(placeable.width, 0) {
-                        placeable.place(0, crestOffsetPx.roundToInt())
-                    }
-                },
+        CrestGutter(
+            tag = "detail.scoring.row.$padded.crestGutter",
+            crestSize = ROW_CREST,
+            offsetPx = offsetPx,
         ) {
             Box(
                 Modifier
@@ -213,7 +163,7 @@ private fun ScoringRow(
                 color = MaterialTheme.colorScheme.onSurface,
                 onTextLayout = { layout ->
                     if (layout.lineCount > 0) {
-                        nameLineHeightPx = (layout.getLineBottom(0) - layout.getLineTop(0)).toFloat()
+                        nameLineHeightPx = layout.getLineBottom(0) - layout.getLineTop(0)
                     }
                 },
             )
@@ -349,24 +299,6 @@ internal fun scoringGroups(goals: List<GoalEvent>): List<ScoringGroup> {
         }
 }
 
-/** `"MM:SS"` or `"M:SS"` as elapsed seconds; null when the feed sent something the card cannot place on a clock. */
-private fun elapsedSeconds(time: String): Int? {
-    val parts = time.trim().split(":")
-    if (parts.size != 2) return null
-    val minutes = parts[0].toIntOrNull() ?: return null
-    val seconds = parts[1].toIntOrNull() ?: return null
-    if (minutes < 0 || seconds !in 0..59) return null
-    return minutes * 60 + seconds
-}
-
-private fun periodLabel(key: Int): String =
-    when (key) {
-        1 -> "1st"
-        2 -> "2nd"
-        3 -> "3rd"
-        else -> "OT"
-    }
-
 internal data class ScoringGroup(
     val key: Int,
     val label: String,
@@ -378,15 +310,6 @@ internal data class IndexedGoal(
     val goal: GoalEvent,
 )
 
-private val ROW_CREST = 44.dp
-private val CREST_GAP = 10.dp
-private val NAME_TOP_GAP = 2.dp
 private val ASSIST_TOP_GAP = 1.dp
 private val SCORE_COLUMN = 34.dp
-private val DIVIDER_INSET = 8.dp
-private const val DIVIDER_ALPHA = 0.35f
-private const val OVERTIME_KEY = 4
 private const val MISSING_SCORE = "—"
-
-/** Sorts an unparseable elapsed time after every real goal, never before the opening faceoff. */
-private const val UNPARSED_ELAPSED = Int.MAX_VALUE
