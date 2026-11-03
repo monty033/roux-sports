@@ -90,6 +90,8 @@ data class GameLanding(
     val broadcasts: List<Broadcast> = emptyList(),
     /** Every goal the feed named, in the order it arrived. The period table is counted separately. */
     val goals: List<GoalEvent> = emptyList(),
+    /** Every penalty the feed named, in arrival order. Empty blocks contribute nothing. */
+    val penalties: List<PenaltyEvent> = emptyList(),
 )
 
 data class Venue(
@@ -171,6 +173,30 @@ data class GoalEvent(
     val modifier: GoalModifier,
     val awayScore: Int?,
     val homeScore: Int?,
+)
+
+/**
+ * One penalty call, with the wording already turned from the feed's key into prose.
+ *
+ * [timeInPeriod] is elapsed time into the period, exactly as the feed writes it; the card prints it verbatim and never
+ * derives a remaining clock. [call] is prose (`"unsportsmanlike conduct"`), not the wire's `descKey`, so neither the
+ * composable nor a test has to know the feed's spelling rules. [teamAbbrev] identifies the offender's club; the page
+ * uses the game's own [TeamRef] for the crest rather than inventing a team.
+ *
+ * [servedBy] is kept exactly as the feed spells it. It is often an initialled name (`"M. Carcone"`), so nothing may
+ * expand it into a full name. [drawnBy] is a full name when the payload sends one.
+ */
+data class PenaltyEvent(
+    val period: Int,
+    /** The feed's `REG`, `OT` or `SO` token, kept raw so the heading can say which extra period this was. */
+    val periodType: String?,
+    val timeInPeriod: String,
+    val teamAbbrev: String,
+    val player: String,
+    val call: String,
+    val durationMinutes: Int?,
+    val drawnBy: String?,
+    val servedBy: String?,
 )
 
 /** Shots on goal, both clubs. */

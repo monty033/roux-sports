@@ -25,6 +25,7 @@ import net.montycasa.roux.domain.model.GoalEvent
 import net.montycasa.roux.domain.model.GoalModifier
 import net.montycasa.roux.domain.model.GoalStrength
 import net.montycasa.roux.domain.model.GoalieLine
+import net.montycasa.roux.domain.model.PenaltyEvent
 import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.PeriodScoring
 import net.montycasa.roux.domain.model.PeriodShots
@@ -229,6 +230,50 @@ internal object AuditStates {
     // The live state is the same game after period 1, 1-1: the real two goals, not invented clocks.
     internal val liveGoals = fullGoals.take(2)
 
+    // Real penalty calls for the same UTA @ PHI game: three blocks, thirteen calls, 2 / 5 / 6. The four calls at 08:43
+    // and the fighting majors at 11:55 are deliberate: equal clocks must keep feed order.
+    internal val fullPenalties =
+        listOf(
+            penalty(1, "05:15", "PHI", "Jamie Drysdale", "holding", 2, "Liam O'Brien"),
+            penalty(1, "15:28", "PHI", "Porter Martone", "hooking", 2, "Kevin Stenlund"),
+            penalty(2, "08:43", "UTA", "Logan Cooley", "roughing", 2, "Trevor Zegras"),
+            penalty(2, "08:43", "PHI", "Trevor Zegras", "roughing", 2, "Logan Cooley"),
+            penalty(2, "08:43", "UTA", "Mikhail Sergachev", "roughing", 2, "Travis Konecny"),
+            penalty(2, "08:43", "PHI", "Travis Konecny", "unsportsmanlike conduct", 2, "Mikhail Sergachev"),
+            penalty(2, "10:53", "UTA", "Andrew Peeke", "interference", 2, "Cole Knuble"),
+            penalty(3, "08:22", "PHI", "Simon Benoit", "tripping", 2, "Jack McBain"),
+            penalty(3, "11:55", "UTA", "Lawson Crouse", "roughing", 2, "Simon Benoit", servedBy = "M. Carcone"),
+            penalty(3, "11:55", "UTA", "Lawson Crouse", "fighting", 5, "Simon Benoit"),
+            penalty(3, "11:55", "PHI", "Simon Benoit", "fighting", 5, "Lawson Crouse"),
+            penalty(3, "14:59", "PHI", "Sean Couturier", "hooking", 2, "Clayton Keller"),
+            penalty(3, "16:26", "PHI", "Noah Cates", "tripping", 2, "Barrett Hayton"),
+        )
+
+    // After one period the page has only the first block: the same two real calls, not invented ones.
+    internal val livePenalties = fullPenalties.take(2)
+
+    @Suppress("LongParameterList")
+    private fun penalty(
+        period: Int,
+        elapsed: String,
+        team: String,
+        player: String,
+        call: String,
+        duration: Int,
+        drawnBy: String?,
+        servedBy: String? = null,
+    ) = PenaltyEvent(
+        period = period,
+        periodType = "REG",
+        timeInPeriod = elapsed,
+        teamAbbrev = team,
+        player = player,
+        call = call,
+        durationMinutes = duration,
+        drawnBy = drawnBy,
+        servedBy = servedBy,
+    )
+
     @Suppress("LongParameterList")
     private fun auditGoal(
         period: Int,
@@ -266,6 +311,7 @@ internal object AuditStates {
                                 PeriodScoring(3, 2, 3),
                             ),
                         goals = fullGoals,
+                        penalties = fullPenalties,
                         venue =
                             net.montycasa.roux.domain.model
                                 .Venue("Xfinity Mobile Arena", "Philadelphia"),
@@ -358,6 +404,7 @@ internal object AuditStates {
                                             fullDetail.landing.data!!.copy(
                                                 periodScoring = listOf(PeriodScoring(1, 1, 1), PeriodScoring(2, 0, 0)),
                                                 goals = liveGoals,
+                                                penalties = livePenalties,
                                             ),
                                     ),
                                 // The game is in the second period, so the shots card stops at the second: a
@@ -401,6 +448,7 @@ internal object AuditStates {
                                                 periodScoring = emptyList(),
                                                 threeStars = emptyList(),
                                                 goals = emptyList(),
+                                                penalties = emptyList(),
                                             ),
                                     ),
                                 rightRail = Loadable(GameRightRail(), Freshness.Fresh, null),
