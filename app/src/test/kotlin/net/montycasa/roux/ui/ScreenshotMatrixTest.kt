@@ -39,6 +39,9 @@ class ScreenshotMatrixTest {
     /** States with a scoring summary: it too sits between two cards, so it needs its own capture. */
     private val scoringStates = listOf("detail.full", "detail.live")
 
+    /** States with a penalties summary: the same between-cards problem, directly below the scoring summary. */
+    private val penaltyStates = listOf("detail.full", "detail.live")
+
     @Test
     fun everyAuditStateInBothThemes() {
         val screens = AuditStates.screens()
@@ -98,6 +101,18 @@ class ScreenshotMatrixTest {
                     rule.waitForIdle()
                     try {
                         rule.onRoot().captureRoboImage("src/test/screenshots/matrix/$file-scoring.png")
+                    } catch (failure: AssertionError) {
+                        failures += failure
+                    }
+                }
+                if (screen.name in penaltyStates) {
+                    // Like the scoring card, the penalties card is taller than the viewport; the page-level capture
+                    // anchors on it and shows rows, while PenaltiesCardScreenshotTest records the whole card.
+                    val anchor = "detail.section.penalties-summary"
+                    rule.onNodeWithTag(anchor).performScrollTo()
+                    rule.waitForIdle()
+                    try {
+                        rule.onRoot().captureRoboImage("src/test/screenshots/matrix/$file-penalties.png")
                     } catch (failure: AssertionError) {
                         failures += failure
                     }
