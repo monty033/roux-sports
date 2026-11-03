@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="open_leagues">Open leagues</string>
     <string name="live_count">%1$d LIVE</string>
     <string name="drawer_favourites">FAVORITES</string>
     <string name="drawer_my_teams">My Teams</string>

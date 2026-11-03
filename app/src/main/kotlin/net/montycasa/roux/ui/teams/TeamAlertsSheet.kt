@@ -79,6 +79,7 @@ private const val SCRIM_ALPHA = 0.55f
 fun TeamAlertsSheet(
     alerts: TeamAlerts,
     canNotify: Boolean,
+    modifier: Modifier = Modifier,
     /** True while a switch write is in flight, so a second tap cannot race the first. */
     busy: Boolean = false,
     onDismiss: () -> Unit,
@@ -89,7 +90,6 @@ fun TeamAlertsSheet(
     showPrompt: Boolean = false,
     onEnableNotifications: () -> Unit = {},
     onDismissPrompt: () -> Unit = {},
-    modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(modifier.fillMaxSize().testTag("teams.alerts.host")) {
         Box(

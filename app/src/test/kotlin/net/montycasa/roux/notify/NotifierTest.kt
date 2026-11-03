@@ -6,6 +6,8 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.ContextWrapper
+import android.content.pm.PackageManager
 import androidx.test.core.app.ApplicationProvider
 import net.montycasa.roux.MainActivity
 import net.montycasa.roux.domain.model.Game
@@ -151,6 +153,28 @@ class NotifierTest {
 
         assertEquals(NotificationOutcome.NotPosted(NotificationOutcome.Reason.PermissionMissing), outcome)
         assertEquals(emptyList<Notification>(), posted())
+    }
+
+    @Test
+    fun aPermissionRevokedBetweenThePreflightAndThePostPostsNothingAndDoesNotThrow() {
+        // Simulate the race denyPermissions cannot: the preflight check sees the grant, then the check
+        // immediately before notify sees it revoked. The second call is the one this guard exists for.
+        var permissionChecks = 0
+        val revokingContext =
+            object : ContextWrapper(application) {
+                override fun checkSelfPermission(permission: String): Int {
+                    if (permission == Manifest.permission.POST_NOTIFICATIONS && ++permissionChecks > 1) {
+                        return PackageManager.PERMISSION_DENIED
+                    }
+                    return super.checkSelfPermission(permission)
+                }
+            }
+        val racingNotifier = Notifier(revokingContext)
+
+        val outcome = racingNotifier.post(goal(), game)
+
+        assertEquals(NotificationOutcome.NotPosted(NotificationOutcome.Reason.PermissionMissing), outcome)
+        assertEquals("a revoked grant must not be claimed as a post", emptyList<Notification>(), posted())
     }
 
     @Test

@@ -143,7 +143,19 @@ class Notifier(
                 }
             }
 
-        NotificationManagerCompat.from(context).notify(id, notification)
+        // The decision above already read the permission, but it can be revoked before this call. Check once
+        // more where the platform requires it, and treat a SecurityException from a revocation in the gap as
+        // the same answer: nothing was posted, so nothing may be claimed.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return NotificationOutcome.NotPosted(NotificationOutcome.Reason.PermissionMissing)
+        }
+        try {
+            NotificationManagerCompat.from(context).notify(id, notification)
+        } catch (_: SecurityException) {
+            return NotificationOutcome.NotPosted(NotificationOutcome.Reason.PermissionMissing)
+        }
         return NotificationOutcome.Posted(id)
     }
 

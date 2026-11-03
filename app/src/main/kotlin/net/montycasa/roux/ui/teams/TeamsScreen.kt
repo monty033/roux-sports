@@ -73,6 +73,7 @@ fun TeamsScreen(
     state: TeamsUiState,
     onToggle: (TeamKey) -> Unit,
     onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
     /** Opens the club's page. Only the crest-and-name body calls this; the star and bell keep their own taps. */
     onTeamClick: (TeamKey) -> Unit = {},
     onOpenAlerts: (TeamRef) -> Unit = {},
@@ -88,7 +89,6 @@ fun TeamsScreen(
     onDismissPrompt: () -> Unit = {},
     /** The prompt is shown once per visit: a dialog that reappears on every recomposition is a dialog to escape. */
     promptDismissed: Boolean = false,
-    modifier: Modifier = Modifier,
 ) {
     Box(modifier.fillMaxSize()) {
         Column(
