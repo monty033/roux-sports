@@ -12,6 +12,7 @@
     <string name="team_players_goalies">Goalies</string>
     <string name="team_players_empty">No players available.</string>
     <string name="team_players_error">Players could not be loaded.</string>
+    <string name="team_players_open_player">%1$s, open player details</string>
     <string name="team_schedule_empty">No games scheduled.</string>
     <string name="team_schedule_error">Schedule could not be loaded.</string>
     <string name="team_schedule_next">Next</string>

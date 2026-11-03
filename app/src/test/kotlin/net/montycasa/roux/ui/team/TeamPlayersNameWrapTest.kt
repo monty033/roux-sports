@@ -57,8 +57,8 @@ class TeamPlayersNameWrapTest {
         rule.onNodeWithTag("team.tab.Players").performClick()
         rule.waitForIdle()
 
-        val long = rule.onNodeWithTag("team.players.player.13.name").fetchSemanticsNode().boundsInRoot
-        val short = rule.onNodeWithTag("team.players.player.91.name").fetchSemanticsNode().boundsInRoot
+        val long = rule.onNodeWithTag("team.players.player.13.name", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val short = rule.onNodeWithTag("team.players.player.91.name", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
 
         assertTrue(
             "a name this long must occupy more than one line: ${long.height} against ${short.height}",

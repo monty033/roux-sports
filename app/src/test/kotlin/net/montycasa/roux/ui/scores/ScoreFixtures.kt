@@ -122,6 +122,18 @@ class ScoresIntegrationApp : RouxApp() {
                                         ScoreFixture.bytes("standings-season.json")
                                     }
 
+                                    request.url.encodedPath == "/v1/roster/ANA/current" -> {
+                                        ScoreFixture.capture("roster-ana-current.json")
+                                    }
+
+                                    request.url.encodedPath == "/v1/club-stats/ANA/20262027/2" -> {
+                                        ScoreFixture.capture("club-stats-ana-20262027.json")
+                                    }
+
+                                    request.url.encodedPath == "/v1/player/8476316/landing" -> {
+                                        ScoreFixture.capture("player-8476316-landing.json")
+                                    }
+
                                     else -> {
                                         error("Unexpected API path: ${request.url.encodedPath}")
                                     }
@@ -165,6 +177,12 @@ class ScoresIntegrationApp : RouxApp() {
 internal object ScoreFixture {
     fun bytes(name: String): ByteArray =
         requireNotNull(javaClass.getResourceAsStream("/fx/2026-10-26/$name")) {
+            "Missing captured fixture: $name"
+        }.use { it.readBytes() }
+
+    /** A club-page or player capture, which the data module's test corpus shares with :app. */
+    fun capture(name: String): ByteArray =
+        requireNotNull(javaClass.getResourceAsStream("/fx/2026-11-03/$name")) {
             "Missing captured fixture: $name"
         }.use { it.readBytes() }
 

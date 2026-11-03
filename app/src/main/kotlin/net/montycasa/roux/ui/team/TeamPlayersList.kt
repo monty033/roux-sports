@@ -3,6 +3,7 @@
 package net.montycasa.roux.ui.team
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +32,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -45,6 +48,7 @@ import net.montycasa.roux.domain.model.RosterPlayer
 import net.montycasa.roux.domain.model.SkaterStat
 import net.montycasa.roux.ui.common.RetryButton
 import net.montycasa.roux.ui.detail.PeriodDivider
+import net.montycasa.roux.ui.reach.listRow
 import net.montycasa.roux.ui.theme.Roux
 
 private val IDENTITY_WIDTH = 168.dp
@@ -70,6 +74,7 @@ internal fun TeamPlayersList(
     isStatsRefreshing: Boolean,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
+    onPlayerClick: (Long) -> Unit = {},
 ) {
     val rosterData = roster?.data
     val statsData = stats?.data
@@ -112,7 +117,7 @@ internal fun TeamPlayersList(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } else {
-                    PlayersTables(groups, Modifier.weight(1f).fillMaxWidth())
+                    PlayersTables(groups, onPlayerClick, Modifier.weight(1f).fillMaxWidth())
                 }
             }
         }
@@ -122,6 +127,7 @@ internal fun TeamPlayersList(
 @Composable
 private fun PlayersTables(
     groups: List<PlayerGroupRows>,
+    onPlayerClick: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -130,7 +136,7 @@ private fun PlayersTables(
     ) {
         groups.forEachIndexed { index, group ->
             item(key = "players-${group.group.tag}") {
-                PlayersGroup(group)
+                PlayersGroup(group, onPlayerClick)
             }
             if (index < groups.lastIndex) {
                 item(key = "players-divider-${group.group.tag}") {
@@ -142,7 +148,10 @@ private fun PlayersTables(
 }
 
 @Composable
-private fun PlayersGroup(group: PlayerGroupRows) {
+private fun PlayersGroup(
+    group: PlayerGroupRows,
+    onPlayerClick: (Long) -> Unit,
+) {
     val scroll = rememberScrollState()
     val primaryTag = "team.players.group.${group.group.tag}"
     val alias = if (group.group == PlayerGroup.Defensemen) "team.players.group.defensemen" else null
@@ -150,6 +159,7 @@ private fun PlayersGroup(group: PlayerGroupRows) {
         PlayersGroupContent(
             group = group,
             scroll = scroll,
+            onPlayerClick = onPlayerClick,
             modifier = Modifier.fillMaxWidth().testTag(primaryTag),
         )
     } else {
@@ -157,6 +167,7 @@ private fun PlayersGroup(group: PlayerGroupRows) {
             PlayersGroupContent(
                 group = group,
                 scroll = scroll,
+                onPlayerClick = onPlayerClick,
                 modifier = Modifier.fillMaxWidth().testTag(primaryTag),
             )
         }
@@ -167,6 +178,7 @@ private fun PlayersGroup(group: PlayerGroupRows) {
 private fun PlayersGroupContent(
     group: PlayerGroupRows,
     scroll: androidx.compose.foundation.ScrollState,
+    onPlayerClick: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val label = stringResource(group.group.labelRes())
@@ -203,7 +215,13 @@ private fun PlayersGroupContent(
             }
         }
         group.rows.forEach { row ->
-            PlayersRow(row = row, group = group.group, columns = columns, scroll = scroll)
+            PlayersRow(
+                row = row,
+                group = group.group,
+                columns = columns,
+                scroll = scroll,
+                onPlayerClick = onPlayerClick,
+            )
         }
     }
 }
@@ -214,9 +232,24 @@ private fun PlayersRow(
     group: PlayerGroup,
     columns: List<String>,
     scroll: androidx.compose.foundation.ScrollState,
+    onPlayerClick: (Long) -> Unit,
 ) {
     val tag = row.tag()
-    Row(Modifier.fillMaxWidth().testTag(tag), verticalAlignment = Alignment.CenterVertically) {
+    val playerId = row.playerId
+    val openLabel = stringResource(R.string.team_players_open_player, row.name)
+    // A row with no id has no player page to open, so it stays a plain row rather than a control that does nothing.
+    // The label replaces the row's text for a screen reader: the name, then the action, instead of every stat in turn.
+    val rowModifier = Modifier.fillMaxWidth().testTag(tag)
+    val tappable =
+        if (playerId == null) {
+            rowModifier
+        } else {
+            rowModifier
+                .listRow()
+                .clickable { onPlayerClick(playerId) }
+                .semantics { contentDescription = openLabel }
+        }
+    Row(tappable, verticalAlignment = Alignment.CenterVertically) {
         Row(
             Modifier
                 .width(IDENTITY_WIDTH)

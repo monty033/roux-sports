@@ -69,6 +69,7 @@ fun TeamDetailScreen(
     onRosterRetry: (() -> Unit)? = null,
     onStatsRetry: (() -> Unit)? = null,
     onGameClick: (ClubGame) -> Unit = {},
+    onPlayerClick: (Long) -> Unit = {},
     now: Instant = Clock.System.now(),
 ) {
     val row = state.row
@@ -134,6 +135,7 @@ fun TeamDetailScreen(
                             isRosterRefreshing = state.isRosterLoading,
                             isStatsRefreshing = state.isStatsLoading,
                             onRetry = retryPlayers,
+                            onPlayerClick = onPlayerClick,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
