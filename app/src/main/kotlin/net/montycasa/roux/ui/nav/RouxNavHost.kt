@@ -109,6 +109,8 @@ import net.montycasa.roux.ui.drawer.BottomLeaguesSheet
 import net.montycasa.roux.ui.drawer.LeaguesPanel
 import net.montycasa.roux.ui.drawer.LeaguesSheetState
 import net.montycasa.roux.ui.drawer.rememberLeaguesSheetSettler
+import net.montycasa.roux.ui.player.PlayerDetailScreen
+import net.montycasa.roux.ui.player.PlayerDetailViewModel
 import net.montycasa.roux.ui.reach.Reach
 import net.montycasa.roux.ui.reach.primaryControl
 import net.montycasa.roux.ui.scores.CalendarMonthSheet
@@ -432,6 +434,23 @@ fun RouxNavHost(
                     }
 
                     composable(
+                        route = PLAYER_ROUTE,
+                        arguments = playerArguments(),
+                    ) { entry ->
+                        val playerId = playerIdFromRoute(entry)
+                        if (playerId == null) {
+                            // A link that names no player is not a crash; it goes back to where it came from.
+                            LaunchedEffect(Unit) { navController.popBackStack() }
+                        } else {
+                            PlayerDetailDestination(
+                                container = container,
+                                playerId = playerId,
+                                onBack = { navController.popBackStack() },
+                            )
+                        }
+                    }
+
+                    composable(
                         route = TEAM_ROUTE,
                         arguments = teamArguments(),
                     ) { entry ->
@@ -445,6 +464,7 @@ fun RouxNavHost(
                                 teamKey = teamKey,
                                 onBack = { navController.popBackStack() },
                                 onGameClick = { game -> navController.navigate(detailRoute(game)) },
+                                onPlayerClick = { playerId -> navController.navigate(playerRoute(playerId)) },
                             )
                         }
                     }
@@ -664,6 +684,20 @@ internal fun teamKeyFromRoute(entry: NavBackStackEntry): TeamKey? {
  * The game page's route
  * ------------------------------------------------------------------------------------------------------------ */
 
+/**
+ * A player's page as a URL.
+ *
+ * The id is the only identity a Players row has, and it is enough: the page loads its own profile from the id.
+ */
+internal const val PLAYER_ROUTE = "player/{playerId}"
+
+internal fun playerRoute(playerId: Long): String = "player/$playerId"
+
+private fun playerArguments(): List<NamedNavArgument> = listOf(navArgument("playerId") { type = NavType.LongType })
+
+/** Null when the route carries no usable id, so the caller backs out rather than opening a page with no player. */
+internal fun playerIdFromRoute(entry: NavBackStackEntry): Long? = entry.arguments?.getLong("playerId")?.takeIf { it > 0 }
+
 /** The three destinations share one route: they are pages of a single surface, not separate destinations. */
 internal const val HOME_ROUTE = "home"
 
@@ -857,6 +891,7 @@ private fun TeamDetailDestination(
     teamKey: TeamKey,
     onBack: () -> Unit,
     onGameClick: (ClubGame) -> Unit,
+    onPlayerClick: (Long) -> Unit,
 ) {
     // Keyed by club so a second club cannot inherit the first one's loaded row.
     val detail: TeamDetailViewModel =
@@ -883,5 +918,36 @@ private fun TeamDetailDestination(
         onRetry = detail::retry,
         onPlayersRetry = detail::retryPlayers,
         onGameClick = onGameClick,
+        onPlayerClick = onPlayerClick,
+    )
+}
+
+@Composable
+private fun PlayerDetailDestination(
+    container: AppContainer,
+    playerId: Long,
+    onBack: () -> Unit,
+) {
+    // Keyed by player so a second player cannot inherit the first one's loaded profile.
+    val detail: PlayerDetailViewModel =
+        viewModel(
+            key = "player:$playerId",
+            factory =
+                viewModelFactory {
+                    initializer {
+                        PlayerDetailViewModel(
+                            playerId = playerId,
+                            repository = container.playerProfile,
+                            clock = container.clock,
+                        )
+                    }
+                },
+        )
+    val state by detail.uiState.collectAsStateWithLifecycle()
+    PlayerDetailScreen(
+        state = state,
+        currentSeason = detail.currentSeason,
+        onBack = onBack,
+        onRetry = detail::retry,
     )
 }

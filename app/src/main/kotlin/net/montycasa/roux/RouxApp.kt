@@ -27,12 +27,14 @@ import net.montycasa.roux.data.repo.clubRosterRepository
 import net.montycasa.roux.data.repo.clubScheduleRepository
 import net.montycasa.roux.data.repo.clubStatsRepository
 import net.montycasa.roux.data.repo.gameDetailRepository
+import net.montycasa.roux.data.repo.playerProfileRepository
 import net.montycasa.roux.data.repo.scoresRepository
 import net.montycasa.roux.data.repo.standingsRepository
 import net.montycasa.roux.domain.repo.ClubRosterRepository
 import net.montycasa.roux.domain.repo.ClubScheduleRepository
 import net.montycasa.roux.domain.repo.ClubStatsRepository
 import net.montycasa.roux.domain.repo.GameDetailRepository
+import net.montycasa.roux.domain.repo.PlayerProfileRepository
 import net.montycasa.roux.domain.repo.PreferencesRepository
 import net.montycasa.roux.domain.repo.ScoresRepository
 import net.montycasa.roux.domain.repo.StandingsRepository
@@ -217,6 +219,10 @@ class AppContainer(
 
     /** Alias for [clubStats], for callers that read more naturally without the club prefix. */
     val stats: ClubStatsRepository get() = clubStats
+
+    /** One player's landing page, cached per player for six hours. */
+    val playerProfile: PlayerProfileRepository =
+        playerProfileRepository(api = api, cache = cache, clock = clock)
 
     /** The game page's three endpoints, each cached on its own so a landing-page burst cannot evict them. */
     val gameDetail: GameDetailRepository =

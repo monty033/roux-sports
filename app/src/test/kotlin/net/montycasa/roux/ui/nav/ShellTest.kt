@@ -19,6 +19,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.swipeRight
@@ -482,6 +483,72 @@ class ShellTest {
         rule.waitUntil(timeoutMillis = 10_000) {
             rule.onAllNodesWithTag("teams.row.ANA").fetchSemanticsNodes().isNotEmpty()
         }
+    }
+
+    @Test
+    fun switchingTabsAndComingBackKeepsThePlayersScrollPosition() {
+        // The nav back stack restores a page; this is the other half — the tab state holder that keeps each tab's own
+        // list state while you move between tabs. Without it the Players list is rebuilt at the top.
+        launchShell()
+        barItem("Teams").performClick()
+        rule.waitForTeamsRows()
+
+        rule.onNodeWithTag("teams.row.body.ANA").performClick()
+        waitForTeamPage("ANA")
+        rule.onNodeWithTag("team.tab.Players").performClick()
+        rule.waitUntil(timeoutMillis = 10_000) {
+            rule.onAllNodesWithTag("team.players.list").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithTag("team.players.list").performScrollToIndex(4)
+        rule.waitUntil(timeoutMillis = 10_000) {
+            rule.onAllNodesWithTag("team.players.player.8476316").fetchSemanticsNodes().isNotEmpty()
+        }
+        val rowBefore = rule.onNodeWithTag("team.players.player.8476316").fetchSemanticsNode().boundsInRoot
+
+        rule.onNodeWithTag("team.tab.Schedule").performClick()
+        rule.onNodeWithTag("team.tab.Schedule").assertIsSelected()
+
+        rule.onNodeWithTag("team.tab.Players").performClick()
+        rule.waitUntil(timeoutMillis = 10_000) {
+            rule.onAllNodesWithTag("team.players.list").fetchSemanticsNodes().isNotEmpty()
+        }
+        assertEquals(
+            "the Players tab must come back where it was left",
+            rowBefore,
+            rule.onNodeWithTag("team.players.player.8476316").fetchSemanticsNode().boundsInRoot,
+        )
+    }
+
+    @Test
+    fun aPlayerOpensFromThePlayersTabAndBackReturnsToThatTabAtTheSameScroll() {
+        launchShell()
+        barItem("Teams").performClick()
+        rule.waitForTeamsRows()
+
+        rule.onNodeWithTag("teams.row.body.ANA").performClick()
+        waitForTeamPage("ANA")
+        rule.onNodeWithTag("team.tab.Players").performClick()
+        rule.waitUntil(timeoutMillis = 10_000) {
+            rule.onAllNodesWithTag("team.players.list").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithTag("team.players.list").performScrollToIndex(4)
+        rule.waitUntil(timeoutMillis = 10_000) {
+            rule.onAllNodesWithTag("team.players.player.8476316").fetchSemanticsNodes().isNotEmpty()
+        }
+        val rowBefore = rule.onNodeWithTag("team.players.player.8476316").fetchSemanticsNode().boundsInRoot
+
+        rule.onNodeWithTag("team.players.player.8476316").performClick()
+        rule.waitUntil(timeoutMillis = 10_000) {
+            rule.onAllNodesWithTag("player.name").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithTag("player.name").assertTextEquals("Laurent Brossoit")
+
+        rule.onNodeWithTag("player.back").performClick()
+        rule.waitUntil(timeoutMillis = 10_000) {
+            rule.onAllNodesWithTag("team.players.list").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithTag("team.tab.Players").assertIsSelected()
+        assertEquals(rowBefore, rule.onNodeWithTag("team.players.player.8476316").fetchSemanticsNode().boundsInRoot)
     }
 
     @Test

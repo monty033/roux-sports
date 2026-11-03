@@ -1,6 +1,7 @@
 package net.montycasa.roux.ui.team
 
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
@@ -169,7 +170,7 @@ class TeamPlayersTest {
         val nameBefore = rule.onNodeWithTag("team.players.player.91.name", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         val pointsBefore = rule.onNodeWithTag("team.players.player.91.pts", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
 
-        rule.onNodeWithTag("team.players.player.91.numbers").performTouchInput { swipeLeft() }
+        rule.onNodeWithTag("team.players.player.91.numbers", useUnmergedTree = true).performTouchInput { swipeLeft() }
         rule.waitForIdle()
 
         val nameAfter = rule.onNodeWithTag("team.players.player.91.name", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
@@ -237,7 +238,7 @@ class TeamPlayersTest {
 
         rule.onNodeWithTag("team.players.player.31.gaa", useUnmergedTree = true).assertTextEquals("3.00")
         rule.onNodeWithTag("team.players.player.31.sv%", useUnmergedTree = true).assertTextEquals(".870")
-        rule.onNodeWithTag("team.players.player.91.gaa").assertDoesNotExist()
+        rule.onNodeWithTag("team.players.player.91.gaa", useUnmergedTree = true).assertDoesNotExist()
     }
 
     @Test
@@ -316,7 +317,7 @@ class TeamPlayersTest {
 
         val headerBefore = headerLeft()
         val cellBefore = cellLeft()
-        rule.onNodeWithTag("team.players.player.91.numbers").performTouchInput { swipeLeft() }
+        rule.onNodeWithTag("team.players.player.91.numbers", useUnmergedTree = true).performTouchInput { swipeLeft() }
         rule.waitForIdle()
 
         assertTrue(
@@ -329,6 +330,27 @@ class TeamPlayersTest {
             headerLeft() - cellLeft(),
             1f,
         )
+    }
+
+    @Test
+    fun tappingAPlayerRowEmitsThatPlayersId() {
+        val opened = mutableListOf<Long>()
+        showScreen(onPlayerClick = { opened += it })
+        openPlayers()
+
+        rule.onNodeWithTag("team.players.player.91").performClick()
+
+        assertEquals(listOf(91L), opened)
+    }
+
+    @Test
+    fun aPlayerRowSpeaksTheNameAndThatItOpensTheDetails() {
+        showScreen()
+        openPlayers()
+
+        rule
+            .onNodeWithTag("team.players.player.91")
+            .assertContentDescriptionEquals("Leo Carlsson, open player details")
     }
 
     private fun openPlayers() {
@@ -346,6 +368,7 @@ class TeamPlayersTest {
         stats: Loadable<ClubStats> = Loadable(sampleStats, Freshness.Fresh, null),
         onPlayersRetry: () -> Unit = {},
         onScheduleRetry: () -> Unit = {},
+        onPlayerClick: (Long) -> Unit = {},
     ) {
         rule.setContent {
             RouxTheme {
@@ -362,6 +385,7 @@ class TeamPlayersTest {
                     onBack = {},
                     onRetry = onScheduleRetry,
                     onPlayersRetry = onPlayersRetry,
+                    onPlayerClick = onPlayerClick,
                     now = now,
                 )
             }

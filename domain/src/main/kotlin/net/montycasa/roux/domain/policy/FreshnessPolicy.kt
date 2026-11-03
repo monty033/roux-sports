@@ -80,6 +80,12 @@ object FreshnessPolicy {
     val clubStatsAge: Duration = 6.hours
 
     /**
+     * A player's profile changes after a game, not during one, and the feed compiles its totals overnight. Six hours
+     * matches the club pages, so opening the same player twice in a session does not ask twice.
+     */
+    val playerProfileAge: Duration = 6.hours
+
+    /**
      * A finished day does not change; polling it would be pure cost.
      *
      * `startTimeUtc` is the *scheduled* start, which for the NHL precedes the actual puck drop by
@@ -123,6 +129,8 @@ object FreshnessPolicy {
 
     /** The stats tab's own six-hour window, independent of the roster and the schedule. */
     fun clubStatsMaxAge(): Duration = clubStatsAge
+
+    fun playerProfileMaxAge(): Duration = playerProfileAge
 
     /**
      * A final boxscore never changes, so only a live detail needs the short lifetime.

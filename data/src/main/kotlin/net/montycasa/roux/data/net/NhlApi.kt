@@ -107,6 +107,16 @@ class NhlApi(
     ): ApiResult = clubStats(abbrev, season, gameType)
 
     /**
+     * A player's landing page: identity, career and season totals, and the last five games.
+     *
+     * The id is checked before a request is built, so only a positive whole number can become part of the path.
+     */
+    suspend fun playerLanding(playerId: Long): ApiResult {
+        require(playerId > 0) { "Player id must be positive, was '$playerId'" }
+        return get("/v1/player/$playerId/landing")
+    }
+
+    /**
      * Path verified against the live API by hand. A captured corpus for these payloads is G1 work and is not in
      * this tree yet, so nothing here claims a fixture exists.
      */

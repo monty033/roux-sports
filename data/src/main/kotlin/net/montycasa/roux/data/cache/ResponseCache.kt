@@ -29,6 +29,10 @@ enum class CacheKind(
     // sharing (or evicting) the roster or schedule entry.
     ClubStats(32, "club-stats"),
 
+    // One entry per player. A club's roster has at most a few dozen players, and a fan who opens several profiles in a
+    // session should not evict another club's stats, so the player kind gets its own cap.
+    PlayerProfile(32, "player-profile"),
+
     // One kind per detail endpoint, so a burst of landing pages for a busy night cannot evict the boxscore a
     // fan is reading. The caps are per kind; a shared Detail kind would have made the busiest endpoint the
     // one that decides what survives.
