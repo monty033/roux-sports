@@ -53,9 +53,9 @@ fun GameDetailScreen(
     state: DetailUiState,
     onBack: () -> Unit,
     onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
     /** A tap on either club in the hero opens that club's page. */
     onTeamClick: (TeamRef) -> Unit = {},
-    modifier: Modifier = Modifier,
     zone: ZoneId = ZoneId.systemDefault(),
 ) {
     // 0 is Game; 1 and 2 are the away and home clubs, in that order. The three are pages, so a swipe moves
