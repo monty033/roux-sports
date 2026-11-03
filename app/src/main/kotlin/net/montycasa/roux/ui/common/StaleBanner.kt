@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import net.montycasa.roux.R
@@ -69,7 +70,8 @@ internal fun RetryButton(
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = Reach.PRIMARY_MIN_HEIGHT_DP.dp)
-                .primaryControl(retryTag),
+                .primaryControl(retryTag)
+                .testTag(retryTag),
     ) {
         Text(stringResource(if (isRefreshing) R.string.common_refreshing else R.string.common_retry))
     }

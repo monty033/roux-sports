@@ -91,6 +91,7 @@ import kotlinx.coroutines.launch
 import net.montycasa.roux.AppContainer
 import net.montycasa.roux.R
 import net.montycasa.roux.RouxApp
+import net.montycasa.roux.domain.model.ClubGame
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
@@ -443,6 +444,7 @@ fun RouxNavHost(
                                 container = container,
                                 teamKey = teamKey,
                                 onBack = { navController.popBackStack() },
+                                onGameClick = { game -> navController.navigate(detailRoute(game)) },
                             )
                         }
                     }
@@ -718,6 +720,25 @@ internal fun detailRoute(game: Game): String =
         "&state=${Uri.encode(encodeState(game.state))}" +
         "&start=${game.startTimeUtc?.epochSeconds ?: MISSING_SCORE}"
 
+/**
+ * A schedule row opens the same page as a scores row. Finished schedule games carry their scores on
+ * the team objects, so the route can pass them through; an absent score stays absent rather than
+ * becoming zero.
+ */
+internal fun detailRoute(game: ClubGame): String = detailRoute(game.toGame())
+
+internal fun ClubGame.toGame(): Game =
+    Game(
+        id = id,
+        date = date,
+        state = state,
+        home = home,
+        away = away,
+        startTimeUtc = startTimeUtc,
+        homeScore = homeScore,
+        awayScore = awayScore,
+    )
+
 private const val MISSING_SCORE = "-1"
 
 private fun encodeState(state: GameState): String =
@@ -835,6 +856,7 @@ private fun TeamDetailDestination(
     container: AppContainer,
     teamKey: TeamKey,
     onBack: () -> Unit,
+    onGameClick: (ClubGame) -> Unit,
 ) {
     // Keyed by club so a second club cannot inherit the first one's loaded row.
     val detail: TeamDetailViewModel =
@@ -843,10 +865,22 @@ private fun TeamDetailDestination(
             factory =
                 viewModelFactory {
                     initializer {
-                        TeamDetailViewModel(teamKey = teamKey, standings = container.standings)
+                        TeamDetailViewModel(
+                            teamKey = teamKey,
+                            standings = container.standings,
+                            schedule = container.clubSchedule,
+                            roster = container.clubRoster,
+                            clock = container.clock,
+                        )
                     }
                 },
         )
     val state by detail.uiState.collectAsStateWithLifecycle()
-    TeamDetailScreen(state = state, onBack = onBack)
+    TeamDetailScreen(
+        state = state,
+        onBack = onBack,
+        onRetry = detail::retry,
+        onRosterRetry = detail::retryRoster,
+        onGameClick = onGameClick,
+    )
 }

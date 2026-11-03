@@ -23,9 +23,13 @@ import net.montycasa.roux.data.cache.ResponseCache
 import net.montycasa.roux.data.net.NhlApi
 import net.montycasa.roux.data.net.NhlHttpClientFactory
 import net.montycasa.roux.data.prefs.DataStorePreferencesRepository
+import net.montycasa.roux.data.repo.clubRosterRepository
+import net.montycasa.roux.data.repo.clubScheduleRepository
 import net.montycasa.roux.data.repo.gameDetailRepository
 import net.montycasa.roux.data.repo.scoresRepository
 import net.montycasa.roux.data.repo.standingsRepository
+import net.montycasa.roux.domain.repo.ClubRosterRepository
+import net.montycasa.roux.domain.repo.ClubScheduleRepository
 import net.montycasa.roux.domain.repo.GameDetailRepository
 import net.montycasa.roux.domain.repo.PreferencesRepository
 import net.montycasa.roux.domain.repo.ScoresRepository
@@ -193,6 +197,17 @@ class AppContainer(
     val scores: ScoresRepository = scoresRepository(api = api, cache = cache, clock = clock)
 
     val standings: StandingsRepository = standingsRepository(api = api, cache = cache, clock = clock)
+
+    /** A club's whole-season schedule, cached per club and season for six hours. */
+    val clubSchedule: ClubScheduleRepository =
+        clubScheduleRepository(api = api, cache = cache, clock = clock)
+
+    /** Alias for [clubSchedule], for callers that read more naturally without the club prefix. */
+    val schedule: ClubScheduleRepository get() = clubSchedule
+
+    /** A club's current roster, with its own six-hour entry. */
+    val clubRoster: ClubRosterRepository =
+        clubRosterRepository(api = api, cache = cache, clock = clock)
 
     /** The game page's three endpoints, each cached on its own so a landing-page burst cannot evict them. */
     val gameDetail: GameDetailRepository =

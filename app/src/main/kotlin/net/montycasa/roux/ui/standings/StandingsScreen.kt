@@ -49,6 +49,7 @@ import net.montycasa.roux.domain.policy.StandingsMode
 import net.montycasa.roux.domain.policy.StandingsView
 import net.montycasa.roux.ui.common.RetryButton
 import net.montycasa.roux.ui.common.StaleBanner
+import net.montycasa.roux.ui.common.SubNavigationRow
 import net.montycasa.roux.ui.nav.NavSwipe
 import net.montycasa.roux.ui.reach.primaryControl
 import net.montycasa.roux.ui.reach.reachTarget
@@ -266,12 +267,21 @@ fun StandingsScreen(
         // The ranking control is chrome, not page content: it stays put while the table slides under it. It speaks
         // for whichever conference is selected, and it is absent on the league page, where no ranking applies.
         if (state.view != StandingsView.League) {
-            StandingsModeRow(
-                // Selection and destination come from the page being shown, so a tap during a transition acts on
-                // what is on screen rather than on the page the last settle left behind.
-                mode = shown.second,
-                onSetMode = { entry -> onSelect(shown.first, entry) },
+            SubNavigationRow(
+                entries = StandingsMode.entries,
+                selected = shown.second,
+                onSelect = { entry -> onSelect(shown.first, entry) },
+                tagPrefix = "standings.mode",
                 modifier = Modifier.padding(horizontal = 16.dp).heightIn(min = 48.dp),
+                label = { entry ->
+                    stringResource(
+                        when (entry) {
+                            StandingsMode.Playoffs -> R.string.standings_playoffs
+                            StandingsMode.Division -> R.string.standings_division
+                            StandingsMode.Conference -> R.string.standings_conference
+                        },
+                    )
+                },
             )
         }
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -349,67 +359,6 @@ fun StandingsScreen(
                             maxLines = 1,
                         )
                     }
-                }
-            }
-        }
-    }
-}
-
-/**
- * The second level: which ranking inside the conference you are already on.
- *
- * Deliberately not a second tab row. The tabs are filled, 56 dp and carry the page; these are outlined, 48 dp and
- * read as a choice *within* the page, so the hierarchy is legible without a label explaining it. A selected segment
- * takes the accent - the same signal the date strip uses for the chosen day.
- */
-@Composable
-private fun StandingsModeRow(
-    mode: StandingsMode,
-    onSetMode: (StandingsMode) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier
-            .fillMaxWidth()
-            .selectableGroup()
-            .reachTarget("standings.mode"),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        StandingsMode.entries.forEach { entry ->
-            val selected = entry == mode
-            Surface(
-                color = MaterialTheme.colorScheme.surface,
-                contentColor = if (selected) Roux.accents.signature else MaterialTheme.colorScheme.onSurfaceVariant,
-                shape = CHIP_SHAPE,
-                border =
-                    BorderStroke(
-                        1.dp,
-                        if (selected) Roux.accents.signature else MaterialTheme.colorScheme.outline,
-                    ),
-                modifier =
-                    Modifier
-                        .weight(1f)
-                        .heightIn(min = 48.dp)
-                        .selectable(selected, role = Role.RadioButton, onClick = { onSetMode(entry) })
-                        .testTag("standings.mode.$entry"),
-            ) {
-                Column(
-                    Modifier.padding(vertical = 6.dp),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Text(
-                        stringResource(
-                            when (entry) {
-                                StandingsMode.Playoffs -> R.string.standings_playoffs
-                                StandingsMode.Division -> R.string.standings_division
-                                StandingsMode.Conference -> R.string.standings_conference
-                            },
-                        ),
-                        textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.labelMedium,
-                        maxLines = 1,
-                    )
                 }
             }
         }
