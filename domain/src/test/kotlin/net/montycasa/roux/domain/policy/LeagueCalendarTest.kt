@@ -46,4 +46,31 @@ class LeagueCalendarTest {
         assertEquals("2026-10-27", LeagueCalendar.leagueDay(Instant.parse("2026-10-27T07:00:00Z"), vancouver))
         assertEquals("2026-10-26", LeagueCalendar.leagueDay(Instant.parse("2026-10-27T06:59:59Z"), vancouver))
     }
+
+    @Test
+    fun theSeasonChangesAtJulyFirst() {
+        // Both sides of the boundary, plus a mid-season date that must stay in the season that began
+        // the previous July.
+        assertEquals(
+            "20252026",
+            LeagueCalendar.seasonId(Instant.parse("2026-06-30T12:00:00Z"), TimeZone.UTC),
+        )
+        assertEquals(
+            "20262027",
+            LeagueCalendar.seasonId(Instant.parse("2026-07-01T12:00:00Z"), TimeZone.UTC),
+        )
+        assertEquals(
+            "20252026",
+            LeagueCalendar.seasonId(Instant.parse("2026-01-15T12:00:00Z"), TimeZone.UTC),
+        )
+    }
+
+    @Test
+    fun theSeasonFollowsTheDevicesCivilDayRatherThanUtc() {
+        // Late on 30 June in Vancouver is already 1 July in UTC, and the club page must still ask for
+        // the season the device is actually in.
+        val instant = Instant.parse("2026-07-01T06:30:00Z")
+        assertEquals("20252026", LeagueCalendar.seasonId(instant, vancouver))
+        assertEquals("20262027", LeagueCalendar.seasonId(instant, toronto))
+    }
 }

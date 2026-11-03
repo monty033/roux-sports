@@ -11,9 +11,12 @@ import kotlinx.coroutines.launch
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
+import net.montycasa.roux.domain.model.ClubGame
 import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.model.TeamKey
+import net.montycasa.roux.domain.repo.ClubScheduleRepository
 import net.montycasa.roux.domain.repo.StandingsRepository
+import kotlin.time.Clock
 
 /**
  * One club's page, filled from the league table the rest of the app already reads.
@@ -28,11 +31,20 @@ data class TeamDetailUiState(
     val row: StandingRow? = null,
     val isLoading: Boolean = true,
     val error: LoadError? = null,
+    /**
+     * The club's schedule, or null before the schedule has answered.
+     *
+     * Kept separate from [row] on purpose: the header reads the standings row and the section reads
+     * this, so one request failing cannot take the other's content away.
+     */
+    val schedule: Loadable<List<ClubGame>>? = null,
 )
 
 class TeamDetailViewModel(
     private val teamKey: TeamKey,
     private val standings: StandingsRepository,
+    private val schedule: ClubScheduleRepository? = null,
+    private val clock: Clock = Clock.System,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(TeamDetailUiState(teamKey))
     val uiState: StateFlow<TeamDetailUiState> = mutableState.asStateFlow()
@@ -41,12 +53,17 @@ class TeamDetailViewModel(
         load()
     }
 
-    /** Re-reads the table after a failure; the page has no other way back. */
+    /** Re-reads both requests after a failure; the page has no other way back. */
     fun retry() = load()
 
     private fun load() {
-        mutableState.update { it.copy(isLoading = true, error = null) }
+        mutableState.update { it.copy(isLoading = true, error = null, schedule = null) }
         viewModelScope.launch { apply(readTable()) }
+        // Two independent requests: a failed schedule must not blank the header, and a failed
+        // header must not hide a schedule the feed did return.
+        if (schedule != null) {
+            viewModelScope.launch { mutableState.update { it.copy(schedule = readSchedule()) } }
+        }
     }
 
     private fun apply(loaded: TableResult) {
@@ -68,6 +85,16 @@ class TeamDetailViewModel(
         } catch (_: Exception) {
             // A repository that throws is the same answer as one that failed: the header has no record to show.
             TableResult(Loadable(null, Freshness.Missing, LoadError.Local), null)
+        }
+
+    private suspend fun readSchedule(): Loadable<List<ClubGame>> =
+        try {
+            schedule?.schedule(teamKey) ?: Loadable(null, Freshness.Missing, null)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // The header is already on screen; the section reports the failure and offers retry.
+            Loadable(null, Freshness.Missing, LoadError.Local)
         }
 
     private data class TableResult(

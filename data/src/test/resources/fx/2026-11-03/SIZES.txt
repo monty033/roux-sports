@@ -1,0 +1,2 @@
+Capture label: 2026-11-03
+club-schedule-ana-20262027.json stored_bytes=186225 url=https://api-web.nhle.com/v1/club-schedule-season/ANA/20262027

@@ -52,6 +52,28 @@ class NhlApi(
     suspend fun seasons(): ApiResult = get("/v1/standings-season")
 
     /**
+     * A club's whole-season schedule.
+     *
+     * Both path segments are validated before a request is built: a club is a three-letter
+     * abbreviation and a season is the feed's eight-digit `20262027` form. Nothing else should be
+     * able to turn a malformed club or season into a URL.
+     */
+    suspend fun clubSchedule(
+        abbrev: String,
+        season: String,
+    ): ApiResult {
+        require(CLUB_ABBREV.matches(abbrev)) { "Club abbreviation must be three uppercase letters, was '$abbrev'" }
+        require(SEASON_ID.matches(season)) { "Season must be eight digits, was '$season'" }
+        return get("/v1/club-schedule-season/$abbrev/$season")
+    }
+
+    /** The endpoint's own name, for callers that prefer to say exactly which feed is read. */
+    suspend fun clubScheduleSeason(
+        abbrev: String,
+        season: String,
+    ): ApiResult = clubSchedule(abbrev, season)
+
+    /**
      * Path verified against the live API by hand. A captured corpus for these payloads is G1 work and is not in
      * this tree yet, so nothing here claims a fixture exists.
      */
@@ -135,5 +157,7 @@ class NhlApi(
     private companion object {
         val ISO_DATE = Regex("""\d{4}-\d{2}-\d{2}""")
         val GAME_ID = Regex("""[0-9]{10}""")
+        val CLUB_ABBREV = Regex("""[A-Z]{3}""")
+        val SEASON_ID = Regex("""[0-9]{8}""")
     }
 }

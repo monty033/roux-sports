@@ -5,11 +5,15 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.intOrNull
+import net.montycasa.roux.data.nhl.dto.ClubScheduleDto
+import net.montycasa.roux.data.nhl.dto.ClubScheduleGameDto
 import net.montycasa.roux.data.nhl.dto.GameDto
+import net.montycasa.roux.data.nhl.dto.ScheduleTeamDto
 import net.montycasa.roux.data.nhl.dto.ScoreDto
 import net.montycasa.roux.data.nhl.dto.SeasonsDto
 import net.montycasa.roux.data.nhl.dto.StandingsDto
 import net.montycasa.roux.data.nhl.dto.TeamDto
+import net.montycasa.roux.domain.model.ClubGame
 import net.montycasa.roux.domain.model.Conference
 import net.montycasa.roux.domain.model.DateIndexEntry
 import net.montycasa.roux.domain.model.Division
@@ -89,6 +93,42 @@ internal object NhlAdapter {
                 droppedCount = wireGames.size - games.size,
             ),
         )
+    }
+
+    /**
+     * A club's season schedule.
+     *
+     * An empty games array is a failure here, unlike a score day where an off day is a legitimate
+     * empty slate: every club has a season schedule, so zero games means the response is not the
+     * one that was asked for. Individual unusable rows are dropped, but if none survive that is the
+     * same failure.
+     */
+    fun parseClubSchedule(json: String): ParseResult<List<ClubGame>> {
+        val schedule =
+            try {
+                feedJson.decodeFromString<ClubScheduleDto>(json)
+            } catch (exception: SerializationException) {
+                return ParseResult.Failure("NHL club schedule decoding failed: ${exception.message}")
+            }
+        val wireGames =
+            schedule.games ?: return ParseResult.Failure("NHL club schedule mapping failed: missing games field")
+        if (wireGames.isEmpty()) {
+            return ParseResult.Failure("NHL club schedule mapping failed: empty games list")
+        }
+        val games =
+            wireGames.mapNotNull { element ->
+                try {
+                    element?.let { feedJson.decodeFromJsonElement<ClubScheduleGameDto>(it).toClubGame() }
+                } catch (_: SerializationException) {
+                    null
+                } catch (_: IllegalArgumentException) {
+                    null
+                }
+            }
+        if (games.isEmpty()) {
+            return ParseResult.Failure("NHL club schedule mapping failed: no usable games")
+        }
+        return ParseResult.Success(games)
     }
 
     /** Reject incomplete league tables so repositories can serve cached or stale data. */
@@ -201,6 +241,51 @@ internal object NhlAdapter {
                 Season(id, start = season.standingsStart, end = season.standingsEnd)
             }
         return ParseResult.Success(seasons)
+    }
+
+    /** A schedule row needs an id, a date and both clubs; optional details stay optional. */
+    private fun ClubScheduleGameDto.toClubGame(): ClubGame? {
+        val gameId = id ?: return null
+        val gameDate = gameDate?.takeIf { it.isNotBlank() } ?: return null
+        val home = homeTeam?.toScheduleTeamRef() ?: return null
+        val away = awayTeam?.toScheduleTeamRef() ?: return null
+        val rawState = gameState ?: ""
+        val state = GameState.fromFeed(rawState)
+        val scheduleState = gameScheduleState?.takeIf { it.isNotBlank() }
+        // `OFF` is the feed's other finished token; gameOutcome alone also marks a completed game.
+        val finished =
+            state == GameState.Final ||
+                gameOutcome != null ||
+                rawState.trim().equals("OFF", ignoreCase = true)
+        return ClubGame(
+            id = GameId(gameId.toString()),
+            date = gameDate,
+            startTimeUtc = startTimeUTC?.let { Instant.parseOrNull(it) },
+            venue = venue?.default?.takeIf { it.isNotBlank() },
+            home = home,
+            away = away,
+            state = state,
+            finished = finished,
+            gameScheduleState = scheduleState,
+        )
+    }
+
+    /** A club's full schedule name is its place followed by its common name. */
+    private fun ScheduleTeamDto.toScheduleTeamRef(): TeamRef? {
+        val abbreviation = abbrev?.takeIf { it.isNotBlank() } ?: return null
+        val common = commonName?.default?.takeIf { it.isNotBlank() }
+        val place = placeName?.default?.takeIf { it.isNotBlank() }
+        val fullName =
+            listOfNotNull(place, common)
+                .joinToString(" ")
+                .takeIf { it.isNotBlank() }
+        return TeamRef(
+            key = TeamKey(abbreviation),
+            name = fullName,
+            shortName = common,
+            logoUrl = logo,
+            darkLogoUrl = darkLogo,
+        )
     }
 
     /** Missing required identity or date drops a row rather than fabricating domain data. */

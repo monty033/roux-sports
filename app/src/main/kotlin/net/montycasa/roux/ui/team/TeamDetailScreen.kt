@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import net.montycasa.roux.R
+import net.montycasa.roux.domain.model.ClubGame
 import net.montycasa.roux.domain.model.Conference
 import net.montycasa.roux.domain.model.Division
 import net.montycasa.roux.domain.model.StandingRow
@@ -41,20 +42,28 @@ import net.montycasa.roux.ui.common.TeamNames
 import net.montycasa.roux.ui.detail.TeamLogo
 import net.montycasa.roux.ui.reach.reachTarget
 import net.montycasa.roux.ui.theme.Roux
+import kotlin.time.Clock
+import kotlin.time.Instant
 
 /** The same crest size the Teams picker uses, so a club looks like itself on both screens. */
 private val CREST_SIZE = 56.dp
 
 /**
- * A club's page, as far as part 1 goes: who the club is and what the cached standings row says about its season.
+ * A club's page: who the club is, what the cached standings row says about its season, and the
+ * season schedule underneath it.
  *
- * Nothing here is derived from the schedule or a roster, and no numeric value is shown unless the row supplied one.
+ * The schedule is a second request, so its success or failure is kept separate from the header. A
+ * club in the off-season still has a page worth reading, which is why an empty group keeps its plain
+ * line instead of disappearing.
  */
 @Composable
 fun TeamDetailScreen(
     state: TeamDetailUiState,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    onRetry: () -> Unit = {},
+    onGameClick: (ClubGame) -> Unit = {},
+    now: Instant = Clock.System.now(),
 ) {
     val row = state.row
     val team = row?.team ?: TeamRef(state.teamKey)
@@ -86,6 +95,14 @@ fun TeamDetailScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            TeamScheduleSection(
+                teamKey = state.teamKey,
+                schedule = state.schedule,
+                isRefreshing = state.isLoading,
+                onRetry = onRetry,
+                onGameClick = onGameClick,
+                now = now,
+            )
             Spacer(Modifier.height(16.dp))
         }
     }

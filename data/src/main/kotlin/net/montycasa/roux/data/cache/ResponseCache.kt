@@ -16,6 +16,11 @@ enum class CacheKind(
     Standings(3, "standings"),
     Seasons(1, "seasons"),
 
+    // One entry per club and season. The payload covers a whole season in one response, so a club
+    // fan is unlikely to move between many of them; 32 covers every club's current season without
+    // letting an old season crowd out the one being read.
+    ClubSchedule(32, "club-schedule"),
+
     // One kind per detail endpoint, so a burst of landing pages for a busy night cannot evict the boxscore a
     // fan is reading. The caps are per kind; a shared Detail kind would have made the busiest endpoint the
     // one that decides what survives.
