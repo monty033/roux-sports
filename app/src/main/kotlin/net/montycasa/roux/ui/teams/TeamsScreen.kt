@@ -147,9 +147,9 @@ fun TeamsScreen(
                         // looks the same wherever it appears.
                         TeamLogo(team, TEAM_CREST_SIZE)
                         Text(
-                            // The club without its place, the form the standings table uses: a list of teams is
-                            // scanned by club, and "Maple Leafs" fits where "Toronto Maple Leafs" ellipsises.
-                            team.shortName ?: team.name?.takeIf { it.isNotBlank() } ?: team.abbrev,
+                            // The club's full name, city included: "Toronto Maple Leafs", not "Maple Leafs".
+                            // The row is scanned by club, but dropping the city made several rows ambiguous.
+                            team.name?.takeIf { it.isNotBlank() } ?: team.abbrev,
                             Modifier.weight(1f),
                             style = MaterialTheme.typography.bodyMedium,
                             maxLines = 1,

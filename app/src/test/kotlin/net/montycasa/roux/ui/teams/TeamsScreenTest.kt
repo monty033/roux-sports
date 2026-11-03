@@ -8,6 +8,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PixelMap
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
@@ -33,6 +35,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -133,6 +136,52 @@ class TeamsScreenTest {
         rule.onAllNodesWithText("TOR").onFirst().assertIsDisplayed()
         toggle(team).assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("TOR")))
         assertReach()
+    }
+
+    @Test
+    fun aRowShowsTheFullClubNameIncludingTheCity() {
+        val toronto = TeamRef(TeamKey("TOR"), name = "Toronto Maple Leafs", shortName = "Maple Leafs")
+        launchScreen(fresh.copy(rows = listOf(toronto)))
+
+        rule.onNodeWithText("Toronto Maple Leafs").assertIsDisplayed()
+        rule.onNodeWithText("Maple Leafs").assertDoesNotExist()
+    }
+
+    @Test
+    fun fullNamesKeepOneLineAndControlsAt360dpAndBothFontScales() = assertFullNameLayout()
+
+    @Test
+    @Config(qualifiers = "en-rUS-w412dp-h915dp-420dpi")
+    fun fullNamesKeepOneLineAndControlsAt412dpAndBothFontScales() = assertFullNameLayout()
+
+    private fun assertFullNameLayout() {
+        val long = TeamRef(TeamKey("CBJ"), name = "Columbus Blue Jackets", shortName = "Blue Jackets")
+        val toronto = TeamRef(TeamKey("TOR"), name = "Toronto Maple Leafs", shortName = "Maple Leafs")
+        launchScreen(fresh.copy(rows = listOf(long, toronto)))
+
+        listOf(1f, 2f).forEach { scale ->
+            rule.runOnIdle { fontScale.value = scale }
+            listOf(long, toronto).forEach { team ->
+                val label = rule.onNodeWithText(team.name!!).performScrollTo().assertIsDisplayed()
+                // One line is the row contract: a wider name may ellipsise, but it may not wrap the row taller.
+                assertEquals("a full name must stay on one line", 1, textLayout(label.fetchSemanticsNode()).lineCount)
+                bell(team).assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+                toggle(team).assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+            }
+        }
+
+        rule.runOnIdle { fontScale.value = 2f }
+        assertTrue(
+            "a long full name must ellipsise rather than wrap",
+            textLayout(rule.onNodeWithText(long.name!!).fetchSemanticsNode()).hasVisualOverflow,
+        )
+    }
+
+    private fun textLayout(node: SemanticsNode): TextLayoutResult {
+        val layouts = mutableListOf<TextLayoutResult>()
+        node.config[SemanticsActions.GetTextLayoutResult].action?.invoke(layouts)
+        assertTrue("the label must expose its text layout", layouts.isNotEmpty())
+        return layouts.first()
     }
 
     /**
