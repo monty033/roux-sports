@@ -39,7 +39,7 @@ class GameWatchPlanTest {
 
     private fun day(vararg games: Game) = ScoreDay("2025-02-01", games.toList(), listOf(DateIndexEntry("2025-02-01", games.size)), 0)
 
-    private fun on() = { _: TeamKey -> TeamAlertPreferences() }
+    private fun on() = { _: TeamKey -> TeamAlertPreferences(start = true, goals = true) }
 
     private fun off() = { _: TeamKey -> TeamAlertPreferences(start = false, goals = false) }
 

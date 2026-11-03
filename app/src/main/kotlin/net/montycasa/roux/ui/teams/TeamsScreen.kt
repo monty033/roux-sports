@@ -49,6 +49,7 @@ import net.montycasa.roux.ui.reach.listRow
 import net.montycasa.roux.ui.reach.primaryControl
 import net.montycasa.roux.ui.reach.reachTarget
 import net.montycasa.roux.ui.scores.TeamLogo
+import net.montycasa.roux.ui.theme.Roux
 import androidx.compose.material.icons.filled.Star as StarFilled
 
 /** Matches the standings table's badge, so a team looks the same on every screen. */
@@ -128,7 +129,9 @@ fun TeamsScreen(
                     val label = stringResource(R.string.teams_toggle_label, team.name ?: team.abbrev)
                     val description = stringResource(if (selected) R.string.teams_favourite else R.string.teams_not_favourite)
                     val unknown = stringResource(R.string.teams_unknown_state)
-                    val openLabel = stringResource(R.string.teams_alerts_open, team.name ?: team.abbrev)
+                    val alertsOn = team.key in state.alerting
+                    val alertState = stringResource(if (alertsOn) R.string.teams_alerts_on else R.string.teams_alerts_off)
+                    val openLabel = stringResource(R.string.teams_alerts_open, team.name ?: team.abbrev, alertState)
                     Row(
                         Modifier
                             .fillMaxWidth()
@@ -167,10 +170,15 @@ fun TeamsScreen(
                             contentAlignment = Alignment.Center,
                         ) {
                             Icon(
-                                Icons.Filled.Notifications,
+                                alertBellIcon(alertsOn),
                                 contentDescription = null,
                                 Modifier.size(24.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint =
+                                    if (alertsOn) {
+                                        Roux.accents.signature
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
                             )
                         }
                         // The star is the same favourite toggle the checkbox was, in the same slot and
@@ -276,3 +284,27 @@ private val starOutline =
             strokeLineWidth = 1.8f,
             strokeLineJoin = StrokeJoin.Round,
         ).build()
+
+/**
+ * Material's ringing bell at the size and path the core icon set uses.
+ *
+ * `material-icons-core` ships the ordinary bell but not [NotificationsActive]. The alternative was the extended
+ * icon set for one glyph; this is the same 24 dp path, drawn here so the dependency stays small.
+ */
+private val notificationsActive =
+    ImageVector
+        .Builder("NotificationsActive", 24.dp, 24.dp, 24f, 24f)
+        .addPath(
+            addPathNodes(
+                "M7.58,4.08 L6.15,2.65 C3.75,4.48 2.17,7.3 2.03,10.5 H4.03 C4.18,7.85 5.54,5.53 7.58,4.08 Z " +
+                    "M19.97,10.5 H21.97 C21.82,7.3 20.24,4.48 17.85,2.65 L16.43,4.08 C18.45,5.53 19.82,7.85 19.97,10.5 Z " +
+                    "M18,11 C18,7.93 16.36,5.36 13.5,4.68 V4 C13.5,3.17 12.83,2.5 12,2.5 C11.17,2.5 10.5,3.17 10.5,4 V4.68 " +
+                    "C7.63,5.36 6,7.92 6,11 V16 L4,18 V19 H20 V18 L18,16 V11 Z " +
+                    "M12,22 C12.14,22 12.27,21.99 12.4,21.96 C13.05,21.82 13.58,21.38 13.84,20.78 C13.94,20.54 13.99,20.28 " +
+                    "13.99,20 H9.99 C10,21.1 10.9,22 12,22 Z",
+            ),
+            fill = SolidColor(Color.Black),
+        ).build()
+
+/** The ringing glyph when a team alerts, the ordinary bell when it does not. */
+internal fun alertBellIcon(alerting: Boolean): ImageVector = if (alerting) notificationsActive else Icons.Filled.Notifications

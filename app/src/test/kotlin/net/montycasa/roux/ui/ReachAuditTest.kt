@@ -252,7 +252,16 @@ class ReachAuditTest {
             AuditCase(
                 "teams.favourites",
                 emptyList(),
-                { TeamsScreen(teamsList.copy(favourites = setOf(teams.first().key)), {}, {}) },
+                {
+                    TeamsScreen(
+                        teamsList.copy(
+                            favourites = setOf(teams.first().key),
+                            alerting = setOf(teams[1].key),
+                        ),
+                        {},
+                        {},
+                    )
+                },
             ),
             AuditCase(
                 "teams.alerts",

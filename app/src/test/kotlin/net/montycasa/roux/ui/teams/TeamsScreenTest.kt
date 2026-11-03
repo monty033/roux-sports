@@ -1,12 +1,18 @@
 package net.montycasa.roux.ui.teams
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PixelMap
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
@@ -16,6 +22,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertWidthIsAtLeast
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
@@ -36,8 +43,10 @@ import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.ui.reach.ReachTargetTag
 import net.montycasa.roux.ui.reach.assertPrimaryControlsReachable
 import net.montycasa.roux.ui.reach.reachTargets
+import net.montycasa.roux.ui.theme.RouxLightAccents
 import net.montycasa.roux.ui.theme.RouxTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -309,6 +318,75 @@ class TeamsScreenTest {
         // The switch changed, not the list: the row a thumb is on must not move out from under it.
         assertEquals(before, after)
     }
+
+    @Test
+    fun alertingBellIsRingingAndAccentWhileQuietBellIsMuted() {
+        val alerting = teams.first()
+        val quiet = teams[1]
+        launchScreen(fresh.copy(alerting = setOf(alerting.key)))
+
+        val on = bell(alerting).performScrollTo().assertIsDisplayed()
+        on.assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+        val off = bell(quiet).performScrollTo().assertIsDisplayed()
+        off.assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+
+        assertTrue(
+            "an alerting bell must be tinted with the signature accent",
+            contains(on.captureToImage().toPixelMap(), RouxLightAccents.signature),
+        )
+        assertFalse(
+            "a quiet bell must not carry the accent",
+            contains(off.captureToImage().toPixelMap(), RouxLightAccents.signature),
+        )
+        assertEquals("NotificationsActive", alertBellIcon(true).name)
+        assertEquals(Icons.Filled.Notifications.name, alertBellIcon(false).name)
+    }
+
+    @Test
+    fun theBellsSpokenNameCarriesItsState() {
+        launchScreen(fresh.copy(alerting = setOf(teams.first().key)))
+
+        bell(teams.first())
+            .performScrollTo()
+            .assertContentDescriptionEquals("Alerts for ${teams.first().name}, on")
+        bell(teams[1])
+            .performScrollTo()
+            .assertContentDescriptionEquals("Alerts for ${teams[1].name}, off")
+    }
+
+    @Test
+    fun bellStateAndTargetsHoldAtBothFontScales() = assertBellAtBothFontScales()
+
+    @Test
+    @Config(qualifiers = "en-rUS-w360dp-h780dp-420dpi")
+    fun bellStateAndTargetsHoldAt360dpAndBothFontScales() = assertBellAtBothFontScales()
+
+    private fun assertBellAtBothFontScales() {
+        val alerting = teams.first()
+        val quiet = teams[1]
+        launchScreen(fresh.copy(alerting = setOf(alerting.key)))
+        listOf(1f, 2f).forEach { scale ->
+            rule.runOnIdle { fontScale.value = scale }
+            listOf(alerting, quiet).forEach { team ->
+                bell(team)
+                    .performScrollTo()
+                    .assertIsDisplayed()
+                    .assertWidthIsAtLeast(48.dp)
+                    .assertHeightIsAtLeast(48.dp)
+            }
+            assertReach()
+        }
+    }
+
+    private fun bell(team: TeamRef) = rule.onNodeWithTag("teams.alerts.open.${team.abbrev}")
+
+    private fun contains(
+        pixels: PixelMap,
+        colour: Color,
+    ): Boolean =
+        (0 until pixels.width).any { x ->
+            (0 until pixels.height).any { y -> pixels[x, y] == colour }
+        }
 
     @Test
     fun listLight() {

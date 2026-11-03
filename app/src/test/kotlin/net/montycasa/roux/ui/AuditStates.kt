@@ -384,13 +384,27 @@ internal object AuditStates {
                 )
             },
             ContentCase("teams.list") { TeamsScreen(teamsList, {}, {}) },
-            // One favorited and the rest not: the star's two states are different shapes, so a golden where
-            // every row was unfavorited would never show the filled one.
+            // One favorited and one alerting, on different rows: both controls' state changes are visible beside
+            // their off state, so the star's fill and the bell's accent can be compared in one capture.
             ContentCase("teams.favourites") {
-                TeamsScreen(teamsList.copy(favourites = setOf(teams.first().key)), {}, {})
+                TeamsScreen(
+                    teamsList.copy(
+                        favourites = setOf(teams.first().key),
+                        alerting = setOf(teams[1].key),
+                    ),
+                    {},
+                    {},
+                )
             },
             ContentCase("teams.alerts") {
-                TeamsScreen(teamsList.copy(alerts = TeamAlerts(teams.first(), start = true, goals = false)), {}, {})
+                TeamsScreen(
+                    teamsList.copy(
+                        alerts = TeamAlerts(teams.first(), start = true, goals = false),
+                        alerting = setOf(teams.first().key),
+                    ),
+                    {},
+                    {},
+                )
             },
             ContentCase("detail.full") {
                 GameDetailScreen(detailGame, DetailUiState(detail = fullDetail, refreshing = false, unexpectedFailure = false), {}, {})

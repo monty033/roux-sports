@@ -29,6 +29,7 @@ import net.montycasa.roux.domain.repo.TeamAlertPreferences
 import okio.Path
 import okio.Path.Companion.toOkioPath
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -326,6 +327,22 @@ class DataStorePreferencesRepositoryTest {
                     assertEquals("a newer file must answer defaults, not its contents", emptySet<TeamKey>(), awaitItem())
                     cancelAndIgnoreRemainingEvents()
                 }
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun anUnconfiguredTeamStartsWithBothAlertsOff() =
+        runTest {
+            val directory = newDirectory()
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(directory, scope)
+                val preferences = repository.getTeamAlertPreferences(TeamKey("TOR"))
+
+                assertFalse("game-start alerts must not arrive without an opt-in", preferences.start)
+                assertFalse("goal alerts must not arrive without an opt-in", preferences.goals)
             } finally {
                 closeScope(scope)
             }

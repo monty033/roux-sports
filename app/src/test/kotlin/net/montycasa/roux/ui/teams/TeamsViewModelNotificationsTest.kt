@@ -1,5 +1,6 @@
 package net.montycasa.roux.ui.teams
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -7,6 +8,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import net.montycasa.roux.domain.Freshness
@@ -60,6 +62,7 @@ class TeamsViewModelNotificationsTest {
         private var start: Boolean = false,
         private var goals: Boolean = false,
         private val writable: Boolean = true,
+        private val readGate: CompletableDeferred<Unit>? = null,
     ) : PreferencesRepository {
         override suspend fun getThemeMode() = ThemeMode.System
 
@@ -81,8 +84,10 @@ class TeamsViewModelNotificationsTest {
 
         override suspend fun isWritable(): Boolean = writable
 
-        override suspend fun getTeamAlertPreferences(team: TeamKey): TeamAlertPreferences =
-            TeamAlertPreferences(start = start, goals = goals)
+        override suspend fun getTeamAlertPreferences(team: TeamKey): TeamAlertPreferences {
+            readGate?.await()
+            return TeamAlertPreferences(start = start, goals = goals)
+        }
 
         override suspend fun setTeamAlertPreferences(
             team: TeamKey,
@@ -151,6 +156,55 @@ class TeamsViewModelNotificationsTest {
             assertEquals("Toronto Maple Leafs", sheet?.team?.name)
             assertTrue("a saved start alert is on when the sheet opens", sheet?.start == true)
             assertFalse("and the unsaved goal alert is off", sheet?.goals == true)
+        }
+
+    @Test
+    fun anUnconfiguredTeamsSheetOpensWithBothSwitchesOff() =
+        runTest {
+            val readGate = CompletableDeferred<Unit>()
+            val viewModel = viewModel(FakePreferences(readGate = readGate))
+            observe(viewModel)
+            advanceUntilIdle()
+
+            viewModel.openAlerts(toronto)
+            runCurrent()
+
+            // Before the saved answer arrives, the sheet must already be off. Starting it on and then flipping it
+            // off would be a visible lie for however long the read takes.
+            val opening = viewModel.uiState.value.alerts
+            assertFalse("the sheet must not open with game-start alerts on", opening?.start == true)
+            assertFalse("the sheet must not open with goal alerts on", opening?.goals == true)
+
+            readGate.complete(Unit)
+            advanceUntilIdle()
+
+            val loaded = viewModel.uiState.value.alerts
+            assertFalse("a team nobody configured must not have game-start alerts on", loaded?.start == true)
+            assertFalse("a team nobody configured must not have goal alerts on", loaded?.goals == true)
+        }
+
+    @Test
+    fun closingTheSheetRefreshesThatRowsAlertingState() =
+        runTest {
+            val viewModel = viewModel(FakePreferences())
+            observe(viewModel)
+
+            viewModel.openAlerts(toronto)
+            advanceUntilIdle()
+            viewModel.setAlert(goals = true)
+            advanceUntilIdle()
+            assertTrue(
+                "the row is stale until the sheet closes; that is the refresh this test exercises",
+                TeamKey("TOR") !in viewModel.uiState.value.alerting,
+            )
+
+            viewModel.closeAlerts()
+            advanceUntilIdle()
+
+            assertTrue(
+                "the bell must follow the switch without a restart",
+                TeamKey("TOR") in viewModel.uiState.value.alerting,
+            )
         }
 
     @Test
