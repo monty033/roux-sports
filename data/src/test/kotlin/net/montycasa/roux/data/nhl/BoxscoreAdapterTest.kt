@@ -124,6 +124,39 @@ class BoxscoreAdapterTest {
         )
     }
 
+    /**
+     * The disagreement between the feed's lists and its position codes is deliberate: a forward arrives in `forwards`
+     * labelled D, and a defenceman arrives in `defense` labelled C. A position filter looks equivalent on real
+     * payloads because their codes usually agree with their lists, but it is not equivalent - and this test exists so
+     * that shortcut cannot come back. The lists, their order and each player's place in them are the assertion.
+     */
+    @Test
+    fun positionCodesCannotRegroupTheFeedLists() {
+        val boxscore = successOf(payloadWherePositionCodesDisagree())
+
+        assertEquals(
+            listOf("A. Forward One", "A. Forward Two", "H. Forward One"),
+            boxscore.forwards.map { it.skater.name },
+        )
+        assertEquals(
+            listOf("A. Defense One", "A. Defense Two", "H. Defense One"),
+            boxscore.defense.map { it.skater.name },
+        )
+        assertEquals(listOf("D", "L", "C"), boxscore.forwards.map { it.position })
+        assertEquals(listOf("C", "D", "D"), boxscore.defense.map { it.position })
+
+        // The two players whose codes disagree with their lists stay exactly where the feed put them.
+        val forwardLabelledD = boxscore.forwards.first { it.skater.name == "A. Forward One" }
+        assertEquals("D", forwardLabelledD.position)
+        assertTrue("A. Forward One was regrouped by its position code", forwardLabelledD in boxscore.forwards)
+        assertTrue("A. Forward One escaped into defense", boxscore.defense.none { it.skater.name == "A. Forward One" })
+
+        val defenseLabelledC = boxscore.defense.first { it.skater.name == "A. Defense One" }
+        assertEquals("C", defenseLabelledC.position)
+        assertTrue("A. Defense One was regrouped by its position code", defenseLabelledC in boxscore.defense)
+        assertTrue("A. Defense One escaped into forwards", boxscore.forwards.none { it.skater.name == "A. Defense One" })
+    }
+
     /** An absent list is empty; it must not swallow the other list along with it. */
     @Test
     fun anAbsentDefenseListLeavesTheForwardsStanding() {
@@ -228,6 +261,36 @@ class BoxscoreAdapterTest {
             )
         return JsonObject(root + ("playerByGameStats" to rewritten)).toString()
     }
+
+    /** A payload whose `forwards` and `defense` lists deliberately disagree with their position codes. */
+    private fun payloadWherePositionCodesDisagree(): String =
+        """
+        {
+          "id": 2026020229,
+          "awayTeam": { "abbrev": "AAA" },
+          "homeTeam": { "abbrev": "HHH" },
+          "playerByGameStats": {
+            "awayTeam": {
+              "forwards": [
+                { "name": { "default": "A. Forward One" }, "position": "D" },
+                { "name": { "default": "A. Forward Two" }, "position": "L" }
+              ],
+              "defense": [
+                { "name": { "default": "A. Defense One" }, "position": "C" },
+                { "name": { "default": "A. Defense Two" }, "position": "D" }
+              ]
+            },
+            "homeTeam": {
+              "forwards": [
+                { "name": { "default": "H. Forward One" }, "position": "C" }
+              ],
+              "defense": [
+                { "name": { "default": "H. Defense One" }, "position": "D" }
+              ]
+            }
+          }
+        }
+        """.trimIndent()
 
     /** Rebuilds the fixture with all four goalies transformed, leaving every other node untouched. */
     private fun rewriteGoalies(transform: (JsonObject) -> JsonObject): String {
