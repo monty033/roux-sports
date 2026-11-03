@@ -384,6 +384,11 @@ internal object AuditStates {
                 )
             },
             ContentCase("teams.list") { TeamsScreen(teamsList, {}, {}) },
+            // One favorited and the rest not: the star's two states are different shapes, so a golden where
+            // every row was unfavorited would never show the filled one.
+            ContentCase("teams.favourites") {
+                TeamsScreen(teamsList.copy(favourites = setOf(teams.first().key)), {}, {})
+            },
             ContentCase("teams.alerts") {
                 TeamsScreen(teamsList.copy(alerts = TeamAlerts(teams.first(), start = true, goals = false)), {}, {})
             },

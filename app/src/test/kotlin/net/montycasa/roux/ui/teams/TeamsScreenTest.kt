@@ -288,6 +288,14 @@ class TeamsScreenTest {
     }
 
     @Test
+    fun theRowItselfIsNotClickable() {
+        launchScreen()
+        // B1 makes the crest/name area tappable; this stage deliberately does not. A clickable row would
+        // merge the star and bell into it and swallow both accessibility nodes.
+        rule.onNodeWithTag("teams.row.${teams.first().abbrev}").assertHasNoClickAction()
+    }
+
+    @Test
     fun togglingAFavouriteLeavesTheRowWhereItWas() {
         launchScreen()
         val tor = teams.first { it.key == TeamKey("TOR") }

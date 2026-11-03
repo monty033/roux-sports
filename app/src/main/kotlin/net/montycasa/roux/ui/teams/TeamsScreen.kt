@@ -15,21 +15,29 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TriStateCheckbox
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import net.montycasa.roux.R
@@ -41,6 +49,7 @@ import net.montycasa.roux.ui.reach.listRow
 import net.montycasa.roux.ui.reach.primaryControl
 import net.montycasa.roux.ui.reach.reachTarget
 import net.montycasa.roux.ui.scores.TeamLogo
+import androidx.compose.material.icons.filled.Star as StarFilled
 
 /** Matches the standings table's badge, so a team looks the same on every screen. */
 private val TEAM_CREST_SIZE = 48.dp
@@ -143,28 +152,30 @@ fun TeamsScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        // A separate target rather than a clickable row: a clickable row merges the favourite
-                        // checkbox into one node, so the checkbox stops existing as its own control. Sized and
-                        // spaced like the checkbox, because it is the same kind of thing - a control in a list.
+                        // The bell replaces the "Alerts" text button in the same slot. It is still a
+                        // separate target rather than part of a clickable row: a clickable row merges the
+                        // controls into one node, and the whole point of B1 is to make only the crest and
+                        // name tappable. Its spoken name comes from the same string the button used.
                         Box(
                             Modifier
                                 .size(ROW_HEIGHT)
                                 .listRow()
                                 .reachTarget("teams.alerts.open.${team.abbrev}")
                                 .testTag("teams.alerts.open.${team.abbrev}")
-                                .clickable(onClickLabel = openLabel) { onOpenAlerts(team) },
+                                .clickable { onOpenAlerts(team) }
+                                .semantics { contentDescription = openLabel },
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text(
-                                stringResource(R.string.teams_alerts_button),
-                                style = MaterialTheme.typography.labelMedium,
+                            Icon(
+                                Icons.Filled.Notifications,
+                                contentDescription = null,
+                                Modifier.size(24.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        // A row in a thirty-two item list is not a primary control. R1 puts primary controls in
-                        // the bottom half of the screen, which for a scrolling collection would squeeze the list
-                        // into that half - five teams visible instead of ten. The toggles are reached by
-                        // scrolling, so they declare size and spacing and leave the vertical zone to the one fixed
-                        // action on this screen.
+                        // The star is the same favourite toggle the checkbox was, in the same slot and
+                        // with the same tag. Filled means saved, outlined means not; the announcement is
+                        // the checkbox's own wording, so a screen reader hears the same state either way.
                         val toggle =
                             Modifier
                                 // The row height, not the 56 a primary control wants: the list gap supplies the
@@ -173,36 +184,36 @@ fun TeamsScreen(
                                 .size(ROW_HEIGHT)
                                 .listRow()
                                 .reachTarget("teams.toggle.${team.abbrev}")
-                        if (state.selectionKnown) {
-                            Checkbox(
-                                checked = selected,
-                                // Null disables the checkbox: Compose renders that as non-interactive, and a
-                                // read-only store has nothing useful to do with the tap.
-                                onCheckedChange =
-                                    if (state.canEdit) {
-                                        { onToggle(team.key) }
-                                    } else {
-                                        null
-                                    },
-                                modifier =
-                                    toggle.semantics {
+                        val star =
+                            if (state.selectionKnown && state.canEdit) {
+                                toggle
+                                    .toggleable(value = selected, role = Role.Checkbox) { onToggle(team.key) }
+                                    .semantics {
                                         // The name is the team, not its state. "Favourite team: X" spoken over a team
                                         // that is not a favourite reads as a lie, and saying whether it is one is
                                         // what stateDescription is for.
                                         contentDescription = label
                                         stateDescription = description
-                                    },
-                            )
-                        } else {
-                            // Nothing was read, so an unchecked box would assert "not a favourite" about teams
-                            // this process never looked up. Indeterminate states what is actually true.
-                            TriStateCheckbox(
-                                state = ToggleableState.Indeterminate,
-                                onClick = null,
-                                modifier =
-                                    toggle.semantics {
-                                        contentDescription = label
-                                        stateDescription = unknown
+                                    }
+                            } else {
+                                // A null toggle removes the click action instead of setting a Disabled flag, so
+                                // a read-only store cannot be pressed and an unknown selection cannot claim a state.
+                                toggle.semantics {
+                                    contentDescription = label
+                                    stateDescription = if (state.selectionKnown) description else unknown
+                                    disabled()
+                                }
+                            }
+                        Box(star, contentAlignment = Alignment.Center) {
+                            Icon(
+                                if (selected) Icons.Filled.StarFilled else starOutline,
+                                contentDescription = null,
+                                Modifier.size(24.dp),
+                                tint =
+                                    if (selected) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
                                     },
                             )
                         }
@@ -247,3 +258,21 @@ fun TeamsScreen(
         }
     }
 }
+
+/**
+ * The empty star, drawn as a stroke rather than a filled silhouette.
+ *
+ * Material's core icon set has only the filled "star" shape: its outlined theme is the same solid star, so using
+ * it for "not favorite" would leave filled and empty identical. This is the drawer's own star path with a stroke
+ * and no fill, which is the smallest way to show the state without pulling in the extended icon set for one glyph.
+ */
+private val starOutline =
+    ImageVector
+        .Builder("Star outline", 24.dp, 24.dp, 24f, 24f)
+        .addPath(
+            addPathNodes("M12,3.6 L14.6,8.9 L20.5,9.8 L16.2,13.9 L17.2,19.7 L12,16.9 L6.8,19.7 L7.8,13.9 L3.5,9.8 L9.4,8.9 Z"),
+            fill = null,
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 1.8f,
+            strokeLineJoin = StrokeJoin.Round,
+        ).build()
