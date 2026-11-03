@@ -4,12 +4,12 @@
     <string name="team_rank_conference">%1$s in conference</string>
     <string name="team_rank_league">%1$s in league</string>
     <string name="team_division_line">%1$s Conference · %2$s Division</string>
-    <string name="team_schedule_title">Schedule</string>
-    <string name="team_schedule_upcoming">Upcoming</string>
-    <string name="team_schedule_results">Results</string>
-    <string name="team_schedule_no_upcoming">No upcoming games.</string>
-    <string name="team_schedule_no_results">No results yet.</string>
+    <string name="team_tab_schedule">Schedule</string>
+    <string name="team_tab_roster">Roster</string>
+    <string name="team_tab_stats">Stats</string>
+    <string name="team_schedule_empty">No games scheduled.</string>
     <string name="team_schedule_error">Schedule could not be loaded.</string>
+    <string name="team_schedule_next">Next</string>
     <string name="team_schedule_home">Home</string>
     <string name="team_schedule_away">Away</string>
     <string name="team_schedule_final">Final</string>
@@ -17,6 +17,7 @@
     <string name="team_schedule_suspended">Suspended</string>
     <string name="team_schedule_live">Live</string>
     <string name="team_schedule_pregame">Pregame</string>
+    <string name="team_schedule_scheduled">Scheduled</string>
     <plurals name="team_points">
         <item quantity="one">%1$d point</item>
         <item quantity="other">%1$d points</item>

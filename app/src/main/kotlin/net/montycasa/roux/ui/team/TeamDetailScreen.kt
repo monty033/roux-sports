@@ -16,10 +16,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,21 +36,22 @@ import net.montycasa.roux.domain.model.Conference
 import net.montycasa.roux.domain.model.Division
 import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.model.TeamRef
+import net.montycasa.roux.ui.common.SubNavigationRow
 import net.montycasa.roux.ui.common.TeamNames
 import net.montycasa.roux.ui.detail.TeamLogo
 import net.montycasa.roux.ui.reach.reachTarget
 import net.montycasa.roux.ui.theme.Roux
+import kotlin.time.Clock
+import kotlin.time.Instant
 
 /** The same crest size the Teams picker uses, so a club looks like itself on both screens. */
 private val CREST_SIZE = 56.dp
 
 /**
- * A club's page: who the club is, what the cached standings row says about its season, and the
- * season schedule underneath it.
+ * A club's page: who the club is, its record, and a sub-navigation that opens on the season schedule.
  *
- * The schedule is a second request, so its success or failure is kept separate from the header. A
- * club in the off-season still has a page worth reading, which is why an empty group keeps its plain
- * line instead of disappearing.
+ * Only the schedule list scrolls: the back row, club card and tab row stay put. The schedule is a
+ * second request, so its failure is reported in the list area without taking the header or tabs away.
  */
 @Composable
 fun TeamDetailScreen(
@@ -61,6 +60,7 @@ fun TeamDetailScreen(
     modifier: Modifier = Modifier,
     onRetry: () -> Unit = {},
     onGameClick: (ClubGame) -> Unit = {},
+    now: Instant = Clock.System.now(),
 ) {
     val row = state.row
     val team = row?.team ?: TeamRef(state.teamKey)
@@ -74,8 +74,7 @@ fun TeamDetailScreen(
         TeamDetailHeader(fullName = fullName, onBack = onBack)
         Column(
             Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+                .fillMaxWidth()
                 .padding(horizontal = 16.dp),
         ) {
             TeamCard(
@@ -92,16 +91,46 @@ fun TeamDetailScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            TeamScheduleSection(
-                teamKey = state.teamKey,
-                schedule = state.schedule,
-                isRefreshing = state.isLoading,
-                onRetry = onRetry,
-                onGameClick = onGameClick,
-            )
-            Spacer(Modifier.height(16.dp))
+            TeamTabRow(Modifier.padding(top = 12.dp, bottom = 8.dp))
         }
+        TeamScheduleList(
+            teamKey = state.teamKey,
+            schedule = state.schedule,
+            isRefreshing = state.isLoading,
+            onRetry = onRetry,
+            onGameClick = onGameClick,
+            now = now,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+        )
     }
+}
+
+/** The club page's own second level. Only Schedule is live; the other two are coming-soon peers. */
+internal enum class TeamTab {
+    Schedule,
+    Roster,
+    Stats,
+}
+
+@Composable
+private fun TeamTabRow(modifier: Modifier = Modifier) {
+    SubNavigationRow(
+        entries = TeamTab.entries,
+        selected = TeamTab.Schedule,
+        onSelect = {},
+        tagPrefix = "team.tab",
+        modifier = modifier,
+        enabled = { it == TeamTab.Schedule },
+        label = { tab ->
+            stringResource(
+                when (tab) {
+                    TeamTab.Schedule -> R.string.team_tab_schedule
+                    TeamTab.Roster -> R.string.team_tab_roster
+                    TeamTab.Stats -> R.string.team_tab_stats
+                },
+            )
+        },
+    )
 }
 
 @Composable
