@@ -43,9 +43,10 @@ import net.montycasa.roux.R
 import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.ClubGame
 import net.montycasa.roux.domain.model.GameId
-import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
+import net.montycasa.roux.domain.policy.ClubGameStatus
+import net.montycasa.roux.domain.policy.ClubGameStatusPolicy
 import net.montycasa.roux.ui.common.RetryButton
 import net.montycasa.roux.ui.common.rememberClockLabel
 import net.montycasa.roux.ui.detail.TeamLogo
@@ -60,13 +61,14 @@ import kotlin.time.Instant
 import androidx.compose.foundation.layout.height as heightModifier
 
 private val CREST_SIZE = 32.dp
+private val DATE_WIDTH = 72.dp
 
 /**
  * The club's whole season in one chronological list, with the next game centred on first layout.
  *
- * The header and tab row above this list stay put; only the season scrolls. Results carry no
- * scoreline because the endpoint has none, and the next game gets a text marker rather than a colour
- * cue alone.
+ * The header and tab row above this list stay put; only the season scrolls. A finished row carries
+ * the result from this club's side, and the next game gets a text marker rather than a colour cue
+ * alone.
  */
 @Composable
 internal fun TeamScheduleList(
@@ -236,6 +238,7 @@ private fun ScheduleGameRow(
     val tag = "team.schedule.row.${game.id.value}"
     val opponent = opponentOf(game, teamKey)
     val atHome = game.home.key == teamKey
+    val status = ClubGameStatusPolicy.status(game, teamKey, now)
     Row(
         modifier =
             Modifier
@@ -247,39 +250,32 @@ private fun ScheduleGameRow(
                 .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Text(
+            scheduleDayLabel(game),
+            modifier = Modifier.width(DATE_WIDTH).testTag("$tag.day"),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.width(8.dp))
         Box(Modifier.testTag("$tag.crest")) {
             TeamLogo(team = opponent, crestSize = CREST_SIZE, imageTag = "$tag.logo")
         }
         Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                fullTeamName(opponent),
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.testTag("$tag.name"),
-            )
-            Text(
-                stringResource(if (atHome) R.string.team_schedule_home else R.string.team_schedule_away),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.testTag("$tag.venue"),
-            )
-        }
+        Text(
+            stringResource(
+                R.string.team_schedule_matchup,
+                stringResource(if (atHome) R.string.team_schedule_vs else R.string.team_schedule_at),
+                opponentNickname(opponent),
+            ),
+            modifier = Modifier.weight(1f).testTag("$tag.name"),
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                scheduleDayLabel(game),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.testTag("$tag.day"),
-            )
-            Text(
-                scheduleStateLabel(game, now),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.testTag("$tag.state"),
-            )
             if (isNext) {
                 Text(
                     stringResource(R.string.team_schedule_next),
@@ -289,9 +285,58 @@ private fun ScheduleGameRow(
                     color = Roux.accents.signature,
                 )
             }
+            Text(
+                scheduleStatusLabel(status),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.testTag("$tag.state"),
+            )
         }
     }
 }
+
+/** The feed's common name, with the full name only as the fallback for a payload that omits it. */
+private fun opponentNickname(opponent: TeamRef): String = opponent.shortName?.takeIf { it.isNotBlank() } ?: fullTeamName(opponent)
+
+@Composable
+private fun scheduleStatusLabel(status: ClubGameStatus): String =
+    when (status) {
+        is ClubGameStatus.Upcoming -> {
+            rememberClockLabel(status.start)
+        }
+
+        ClubGameStatus.Live -> {
+            stringResource(R.string.team_schedule_live)
+        }
+
+        is ClubGameStatus.Result -> {
+            stringResource(
+                if (status.won) R.string.team_schedule_win else R.string.team_schedule_loss,
+                status.clubScore,
+                status.opponentScore,
+            )
+        }
+
+        ClubGameStatus.Final -> {
+            stringResource(R.string.team_schedule_final)
+        }
+
+        ClubGameStatus.Postponed -> {
+            stringResource(R.string.team_schedule_postponed)
+        }
+
+        ClubGameStatus.Suspended -> {
+            stringResource(R.string.team_schedule_suspended)
+        }
+
+        ClubGameStatus.Pregame -> {
+            stringResource(R.string.team_schedule_pregame)
+        }
+
+        is ClubGameStatus.Other -> {
+            status.raw.ifBlank { stringResource(R.string.game_row_time_tbd) }
+        }
+    }
 
 @Composable
 private fun scheduleDayLabel(game: ClubGame): String {
@@ -314,34 +359,6 @@ private fun opponentOf(
     game: ClubGame,
     teamKey: TeamKey,
 ): TeamRef = if (game.home.key == teamKey) game.away else game.home
-
-/**
- * Future games show the puck-drop time in the device's zone. A game that has started (or is not
- * otherwise in the future) says what it is in one word, so a live, postponed or suspended fixture
- * never reads as a normal upcoming one.
- */
-@Composable
-private fun scheduleStateLabel(
-    game: ClubGame,
-    now: Instant,
-): String {
-    val scheduleState = game.gameScheduleState?.trim()?.uppercase()
-    val feedState = (game.state as? GameState.Unknown)?.raw?.trim()?.uppercase()
-    if (scheduleState in POSTPONED || feedState in POSTPONED) return stringResource(R.string.team_schedule_postponed)
-    if (scheduleState in SUSPENDED || feedState in SUSPENDED) return stringResource(R.string.team_schedule_suspended)
-
-    val start = game.startTimeUtc
-    if (!game.isFinished && start != null && start > now) {
-        return rememberClockLabel(start)
-    }
-    return when {
-        game.isFinished || game.state == GameState.Final -> stringResource(R.string.team_schedule_final)
-        game.state is GameState.Live -> stringResource(R.string.team_schedule_live)
-        game.state is GameState.Pre -> stringResource(R.string.team_schedule_pregame)
-        game.state is GameState.Unknown -> feedState?.takeIf { it.isNotBlank() } ?: stringResource(R.string.team_schedule_scheduled)
-        else -> stringResource(R.string.team_schedule_scheduled)
-    }
-}
 
 /** One month header or one game, in the exact order the lazy list renders them. */
 internal sealed interface ScheduleListEntry {
@@ -404,6 +421,3 @@ private val chronological =
             else -> firstStart.compareTo(secondStart)
         }
     }
-
-private val POSTPONED = setOf("PPD", "POSTPONED")
-private val SUSPENDED = setOf("SUSP", "SUSPENDED")

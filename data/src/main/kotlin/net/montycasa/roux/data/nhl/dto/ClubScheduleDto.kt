@@ -13,8 +13,8 @@ internal data class ClubScheduleDto(
 )
 
 /**
- * One schedule fixture. There is deliberately no score, goals or shots field: the endpoint does
- * not carry any, so mapping one would invent data.
+ * One schedule fixture. Scores live on the team objects, not here: finished games carry them, and
+ * future games carry neither.
  */
 @Serializable
 internal data class ClubScheduleGameDto(
@@ -43,4 +43,6 @@ internal data class ScheduleTeamDto(
     val placeName: NameDto? = null,
     val logo: String? = null,
     val darkLogo: String? = null,
+    /** Present on finished `FINAL`/`OFF` games; absent on future fixtures. */
+    val score: Int? = null,
 )

@@ -721,8 +721,9 @@ internal fun detailRoute(game: Game): String =
         "&start=${game.startTimeUtc?.epochSeconds ?: MISSING_SCORE}"
 
 /**
- * A schedule row opens the same page as a scores row. The schedule endpoint has no score, so the
- * route carries none; the detail page already treats an absent score as absent, not as zero.
+ * A schedule row opens the same page as a scores row. Finished schedule games carry their scores on
+ * the team objects, so the route can pass them through; an absent score stays absent rather than
+ * becoming zero.
  */
 internal fun detailRoute(game: ClubGame): String = detailRoute(game.toGame())
 
@@ -734,6 +735,8 @@ internal fun ClubGame.toGame(): Game =
         home = home,
         away = away,
         startTimeUtc = startTimeUtc,
+        homeScore = homeScore,
+        awayScore = awayScore,
     )
 
 private const val MISSING_SCORE = "-1"

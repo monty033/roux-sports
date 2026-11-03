@@ -267,6 +267,8 @@ internal object NhlAdapter {
             state = state,
             finished = finished,
             gameScheduleState = scheduleState,
+            homeScore = homeTeam.score,
+            awayScore = awayTeam.score,
         )
     }
 

@@ -16,8 +16,7 @@ import kotlin.time.Instant
 
 /**
  * The captured payload is Anaheim's 20262027 club schedule, taken from the live API on 3 November
- * 2026. It carries no score fields at all, on finished games or otherwise, which is why the adapter
- * has nowhere to put one.
+ * 2026. Scores live on the team objects for finished games; the game object itself carries none.
  */
 class ClubScheduleAdapterTest {
     @Test
@@ -42,19 +41,53 @@ class ClubScheduleAdapterTest {
         assertEquals("Anaheim Ducks", first.home.name)
         assertEquals("San Jose Sharks", first.away.name)
         assertEquals("Ducks", first.home.shortName)
+        assertEquals("Sharks", first.away.shortName)
+        assertEquals(6, first.homeScore)
+        assertEquals(2, first.awayScore)
         assertEquals(GameState.Final, first.state)
         assertTrue(first.finished)
         assertEquals("OK", first.gameScheduleState)
     }
 
     @Test
-    fun futureGamesRemainScheduledAndUnfinished() {
+    fun anOffGameAlsoKeepsBothScores() {
+        val games = (NhlAdapter.parseClubSchedule(fixture) as ParseResult.Success).value
+        val off = games.first { it.id.value == "2026020021" }
+
+        assertEquals(GameState.Final, off.state)
+        assertTrue(off.finished)
+        assertEquals(3, off.homeScore)
+        assertEquals(4, off.awayScore)
+    }
+
+    @Test
+    fun futureGamesRemainScheduledAndCarryNoScores() {
         val games = (NhlAdapter.parseClubSchedule(fixture) as ParseResult.Success).value
         val future = games.first { it.id.value == "2026020246" }
 
         assertEquals(GameState.Scheduled, future.state)
         assertTrue(!future.finished)
         assertEquals("2026-11-03", future.date)
+        assertEquals(null, future.homeScore)
+        assertEquals(null, future.awayScore)
+    }
+
+    @Test
+    fun aFinishedGameWithAMissingScoreKeepsItNullRatherThanInventingZero() {
+        val json =
+            mutate { root ->
+                val games = root.getValue("games").jsonArray
+                val first = games.first().jsonObject
+                val home = JsonObject(first.getValue("homeTeam").jsonObject - "score")
+                val rewritten = JsonObject(first + ("homeTeam" to home))
+                JsonObject(root + ("games" to JsonArray(listOf(rewritten) + games.drop(1))))
+            }
+
+        val first = (NhlAdapter.parseClubSchedule(json) as ParseResult.Success).value.first()
+
+        assertEquals(null, first.homeScore)
+        assertEquals(2, first.awayScore)
+        assertTrue(first.finished)
     }
 
     @Test

@@ -12,8 +12,8 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
-import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -47,8 +47,10 @@ import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.ui.nav.detailRoute
 import net.montycasa.roux.ui.theme.RouxTheme
 import okio.Path.Companion.toPath
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -59,6 +61,7 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.time.Clock
 import kotlin.time.Instant
+import java.util.TimeZone as JavaTimeZone
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "en-rUS-w411dp-h923dp-420dpi")
@@ -71,6 +74,19 @@ class TeamScheduleListTest {
         object : Clock {
             override fun now(): Instant = this@TeamScheduleListTest.now
         }
+    private lateinit var originalTimeZone: JavaTimeZone
+
+    @Before
+    fun setTorontoTimeZone() {
+        originalTimeZone = JavaTimeZone.getDefault()
+        // The right-hand time and the date text have to be fixed for the row assertions.
+        JavaTimeZone.setDefault(JavaTimeZone.getTimeZone("America/Toronto"))
+    }
+
+    @After
+    fun restoreTimeZone() {
+        JavaTimeZone.setDefault(originalTimeZone)
+    }
 
     @Test
     fun theCapturedSeasonHasEveryGameInAscendingStartOrder() {
@@ -188,6 +204,74 @@ class TeamScheduleListTest {
         }
 
         rule.onNodeWithTag("team.schedule.row.next.next", useUnmergedTree = true).assertTextEquals("Next")
+    }
+
+    @Test
+    fun aHomeGameReadsDateCrestThenVersusTheNicknameOnly() {
+        val home = game("home", "2026-11-05T20:00:00Z", GameState.Scheduled, home = TeamKey("TOR"), away = TeamKey("BOS"))
+        showList(listOf(home))
+        rule.waitForIdle()
+
+        val tag = "team.schedule.row.home"
+        rule.onNodeWithTag("$tag.name", useUnmergedTree = true).assertTextEquals("vs Bruins")
+        rule.onNodeWithTag("$tag.day", useUnmergedTree = true).assertTextEquals("Thu, Nov 5")
+        val date = rule.onNodeWithTag("$tag.day", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val crest = rule.onNodeWithTag("$tag.crest", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertTrue("the date must sit left of the crest", date.right <= crest.left)
+        assertTrue(
+            "the city must not appear in the row",
+            rule.onAllNodesWithText("Boston", substring = true, useUnmergedTree = true).fetchSemanticsNodes().isEmpty(),
+        )
+    }
+
+    @Test
+    fun anAwayGameReadsAtTheNickname() {
+        val away = game("away", "2026-11-05T20:00:00Z", GameState.Scheduled, home = TeamKey("BOS"), away = TeamKey("TOR"))
+        showList(listOf(away))
+        rule.waitForIdle()
+
+        rule.onNodeWithTag("team.schedule.row.away.name", useUnmergedTree = true).assertTextEquals("at Bruins")
+    }
+
+    @Test
+    fun theRightCellShowsTimeLiveOrTheResultFromThisClubsSide() {
+        val future = game("future", "2026-11-05T20:00:00Z", GameState.Scheduled)
+        val live = game("live", "2026-11-03T11:00:00Z", GameState.Live())
+        val win = game("win", "2026-11-01T20:00:00Z", GameState.Final, finished = true, homeScore = 5, awayScore = 3)
+        showList(listOf(future, live, win))
+        rule.waitForIdle()
+
+        rule.onNodeWithTag("team.schedule.row.future.state", useUnmergedTree = true).assertTextEquals("3:00 PM")
+        rule.onNodeWithTag("team.schedule.row.live.state", useUnmergedTree = true).assertTextEquals("Live")
+        rule.onNodeWithTag("team.schedule.row.win.state", useUnmergedTree = true).assertTextEquals("W 5-3")
+    }
+
+    @Test
+    fun anAwayWinStillPrintsTheClubsScoreFirstInTheRow() {
+        val awayWin =
+            game(
+                "away-win",
+                "2026-11-01T20:00:00Z",
+                GameState.Final,
+                finished = true,
+                home = TeamKey("BOS"),
+                away = TeamKey("TOR"),
+                homeScore = 3,
+                awayScore = 5,
+            )
+        showList(listOf(awayWin))
+        rule.waitForIdle()
+
+        rule.onNodeWithTag("team.schedule.row.away-win.state", useUnmergedTree = true).assertTextEquals("W 5-3")
+    }
+
+    @Test
+    fun aFinishedGameWithNoScoreStillSaysFinal() {
+        val noScore = game("no-score", "2026-11-01T20:00:00Z", GameState.Final, finished = true)
+        showList(listOf(noScore))
+        rule.waitForIdle()
+
+        rule.onNodeWithTag("team.schedule.row.no-score.state", useUnmergedTree = true).assertTextEquals("Final")
     }
 
     @Test
@@ -323,18 +407,31 @@ class TeamScheduleListTest {
         start: String,
         state: GameState,
         finished: Boolean = false,
+        home: TeamKey = TeamKey("TOR"),
+        away: TeamKey = TeamKey("BOS"),
+        homeScore: Int? = null,
+        awayScore: Int? = null,
     ): ClubGame {
         val instant = Instant.parse(start)
         return ClubGame(
             id = GameId(id),
             date = start.substring(0, 10),
             startTimeUtc = instant,
-            home = TeamRef(TeamKey("TOR")),
-            away = TeamRef(TeamKey("BOS")),
+            home = teamRef(home),
+            away = teamRef(away),
             state = state,
             finished = finished,
+            homeScore = homeScore,
+            awayScore = awayScore,
         )
     }
+
+    private fun teamRef(team: TeamKey): TeamRef =
+        when (team.abbrev) {
+            "TOR" -> TeamRef(team, name = "Toronto Maple Leafs", shortName = "Maple Leafs")
+            "BOS" -> TeamRef(team, name = "Boston Bruins", shortName = "Bruins")
+            else -> TeamRef(team)
+        }
 
     private val toronto =
         StandingRow(
