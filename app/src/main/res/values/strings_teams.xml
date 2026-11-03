@@ -15,7 +15,9 @@
 
     <string name="teams_alerts_title">%1$s alerts</string>
     <string name="teams_alerts_button">Alerts</string>
-    <string name="teams_alerts_open">Alerts for %1$s</string>
+    <string name="teams_alerts_open">Alerts for %1$s, %2$s</string>
+    <string name="teams_alerts_on">on</string>
+    <string name="teams_alerts_off">off</string>
     <string name="teams_alerts_start">Game start</string>
     <string name="teams_alerts_goals">Goals</string>
     <string name="teams_alerts_disclosure">Starting a game and every goal, built on your phone from the score feed. No account, no tracking, and nothing sent anywhere.</string>

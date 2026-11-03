@@ -1,12 +1,20 @@
 package net.montycasa.roux.ui.teams
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PixelMap
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
@@ -16,6 +24,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertWidthIsAtLeast
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
@@ -26,6 +35,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -36,8 +46,10 @@ import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.ui.reach.ReachTargetTag
 import net.montycasa.roux.ui.reach.assertPrimaryControlsReachable
 import net.montycasa.roux.ui.reach.reachTargets
+import net.montycasa.roux.ui.theme.RouxLightAccents
 import net.montycasa.roux.ui.theme.RouxTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -124,6 +136,52 @@ class TeamsScreenTest {
         rule.onAllNodesWithText("TOR").onFirst().assertIsDisplayed()
         toggle(team).assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("TOR")))
         assertReach()
+    }
+
+    @Test
+    fun aRowShowsTheFullClubNameIncludingTheCity() {
+        val toronto = TeamRef(TeamKey("TOR"), name = "Toronto Maple Leafs", shortName = "Maple Leafs")
+        launchScreen(fresh.copy(rows = listOf(toronto)))
+
+        rule.onNodeWithText("Toronto Maple Leafs").assertIsDisplayed()
+        rule.onNodeWithText("Maple Leafs").assertDoesNotExist()
+    }
+
+    @Test
+    fun fullNamesKeepOneLineAndControlsAt360dpAndBothFontScales() = assertFullNameLayout()
+
+    @Test
+    @Config(qualifiers = "en-rUS-w412dp-h915dp-420dpi")
+    fun fullNamesKeepOneLineAndControlsAt412dpAndBothFontScales() = assertFullNameLayout()
+
+    private fun assertFullNameLayout() {
+        val long = TeamRef(TeamKey("CBJ"), name = "Columbus Blue Jackets", shortName = "Blue Jackets")
+        val toronto = TeamRef(TeamKey("TOR"), name = "Toronto Maple Leafs", shortName = "Maple Leafs")
+        launchScreen(fresh.copy(rows = listOf(long, toronto)))
+
+        listOf(1f, 2f).forEach { scale ->
+            rule.runOnIdle { fontScale.value = scale }
+            listOf(long, toronto).forEach { team ->
+                val label = rule.onNodeWithText(team.name!!).performScrollTo().assertIsDisplayed()
+                // One line is the row contract: a wider name may ellipsise, but it may not wrap the row taller.
+                assertEquals("a full name must stay on one line", 1, textLayout(label.fetchSemanticsNode()).lineCount)
+                bell(team).assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+                toggle(team).assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+            }
+        }
+
+        rule.runOnIdle { fontScale.value = 2f }
+        assertTrue(
+            "a long full name must ellipsise rather than wrap",
+            textLayout(rule.onNodeWithText(long.name!!).fetchSemanticsNode()).hasVisualOverflow,
+        )
+    }
+
+    private fun textLayout(node: SemanticsNode): TextLayoutResult {
+        val layouts = mutableListOf<TextLayoutResult>()
+        node.config[SemanticsActions.GetTextLayoutResult].action?.invoke(layouts)
+        assertTrue("the label must expose its text layout", layouts.isNotEmpty())
+        return layouts.first()
     }
 
     /**
@@ -288,6 +346,14 @@ class TeamsScreenTest {
     }
 
     @Test
+    fun theRowItselfIsNotClickable() {
+        launchScreen()
+        // B1 makes the crest/name area tappable; this stage deliberately does not. A clickable row would
+        // merge the star and bell into it and swallow both accessibility nodes.
+        rule.onNodeWithTag("teams.row.${teams.first().abbrev}").assertHasNoClickAction()
+    }
+
+    @Test
     fun togglingAFavouriteLeavesTheRowWhereItWas() {
         launchScreen()
         val tor = teams.first { it.key == TeamKey("TOR") }
@@ -301,6 +367,75 @@ class TeamsScreenTest {
         // The switch changed, not the list: the row a thumb is on must not move out from under it.
         assertEquals(before, after)
     }
+
+    @Test
+    fun alertingBellIsRingingAndAccentWhileQuietBellIsMuted() {
+        val alerting = teams.first()
+        val quiet = teams[1]
+        launchScreen(fresh.copy(alerting = setOf(alerting.key)))
+
+        val on = bell(alerting).performScrollTo().assertIsDisplayed()
+        on.assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+        val off = bell(quiet).performScrollTo().assertIsDisplayed()
+        off.assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+
+        assertTrue(
+            "an alerting bell must be tinted with the signature accent",
+            contains(on.captureToImage().toPixelMap(), RouxLightAccents.signature),
+        )
+        assertFalse(
+            "a quiet bell must not carry the accent",
+            contains(off.captureToImage().toPixelMap(), RouxLightAccents.signature),
+        )
+        assertEquals("NotificationsActive", alertBellIcon(true).name)
+        assertEquals(Icons.Filled.Notifications.name, alertBellIcon(false).name)
+    }
+
+    @Test
+    fun theBellsSpokenNameCarriesItsState() {
+        launchScreen(fresh.copy(alerting = setOf(teams.first().key)))
+
+        bell(teams.first())
+            .performScrollTo()
+            .assertContentDescriptionEquals("Alerts for ${teams.first().name}, on")
+        bell(teams[1])
+            .performScrollTo()
+            .assertContentDescriptionEquals("Alerts for ${teams[1].name}, off")
+    }
+
+    @Test
+    fun bellStateAndTargetsHoldAtBothFontScales() = assertBellAtBothFontScales()
+
+    @Test
+    @Config(qualifiers = "en-rUS-w360dp-h780dp-420dpi")
+    fun bellStateAndTargetsHoldAt360dpAndBothFontScales() = assertBellAtBothFontScales()
+
+    private fun assertBellAtBothFontScales() {
+        val alerting = teams.first()
+        val quiet = teams[1]
+        launchScreen(fresh.copy(alerting = setOf(alerting.key)))
+        listOf(1f, 2f).forEach { scale ->
+            rule.runOnIdle { fontScale.value = scale }
+            listOf(alerting, quiet).forEach { team ->
+                bell(team)
+                    .performScrollTo()
+                    .assertIsDisplayed()
+                    .assertWidthIsAtLeast(48.dp)
+                    .assertHeightIsAtLeast(48.dp)
+            }
+            assertReach()
+        }
+    }
+
+    private fun bell(team: TeamRef) = rule.onNodeWithTag("teams.alerts.open.${team.abbrev}")
+
+    private fun contains(
+        pixels: PixelMap,
+        colour: Color,
+    ): Boolean =
+        (0 until pixels.width).any { x ->
+            (0 until pixels.height).any { y -> pixels[x, y] == colour }
+        }
 
     @Test
     fun listLight() {

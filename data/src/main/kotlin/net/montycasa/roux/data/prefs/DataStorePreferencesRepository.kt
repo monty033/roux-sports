@@ -116,10 +116,11 @@ class DataStorePreferencesRepository(
     }
 
     override suspend fun getTeamAlertPreferences(team: TeamKey): TeamAlertPreferences {
-        val preferences = readablePreferences() ?: return TeamAlertPreferences()
+        val defaults = TeamAlertPreferences()
+        val preferences = readablePreferences() ?: return defaults
         return TeamAlertPreferences(
-            start = preferences[startKey(team)] ?: true,
-            goals = preferences[goalsKey(team)] ?: true,
+            start = preferences[startKey(team)] ?: defaults.start,
+            goals = preferences[goalsKey(team)] ?: defaults.goals,
         )
     }
 

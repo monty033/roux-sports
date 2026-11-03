@@ -71,16 +71,21 @@ class NotificationDeciderTest {
         // Nothing is said about a game that has not started.
         assertEquals(
             emptyList<Alert>(),
-            decider.decide(game(GameState.Scheduled), ledger(), TeamAlertPreferences(), isFavourite = true),
+            decider.decide(game(GameState.Scheduled), ledger(), TeamAlertPreferences(start = true, goals = true), isFavourite = true),
         )
 
-        val first = decider.decide(game(GameState.Live()), ledger(), TeamAlertPreferences(), isFavourite = true)
+        val first = decider.decide(game(GameState.Live()), ledger(), TeamAlertPreferences(start = true, goals = true), isFavourite = true)
         assertEquals(listOf<Alert>(Alert.GameStart(gameId, goalBaseline = 0)), first)
 
         // Second pass, reading what the first pass's claim wrote: silence.
         assertEquals(
             emptyList<Alert>(),
-            decider.decide(game(GameState.Live()), applyClaims(first, ledger()), TeamAlertPreferences(), isFavourite = true),
+            decider.decide(
+                game(GameState.Live()),
+                applyClaims(first, ledger()),
+                TeamAlertPreferences(start = true, goals = true),
+                isFavourite = true,
+            ),
         )
     }
 
@@ -88,19 +93,35 @@ class NotificationDeciderTest {
     fun aGoalIsAnnouncedOnceAndThenOnlyWhenTheTotalMoves() {
         val started = ledger(goalCount = 0, startNotified = true)
 
-        val first = decider.decide(game(awayScore = 1, homeScore = 0), started, TeamAlertPreferences(), isFavourite = true)
+        val first =
+            decider.decide(
+                game(awayScore = 1, homeScore = 0),
+                started,
+                TeamAlertPreferences(start = true, goals = true),
+                isFavourite = true,
+            )
         assertEquals(listOf<Alert>(Alert.Goal(gameId, goalCount = 1, awayScore = 1, homeScore = 0)), first)
 
         val claimed = applyClaims(first, started)
         assertEquals(
             "the same score must not be announced twice",
             emptyList<Alert>(),
-            decider.decide(game(awayScore = 1, homeScore = 0), claimed, TeamAlertPreferences(), isFavourite = true),
+            decider.decide(
+                game(awayScore = 1, homeScore = 0),
+                claimed,
+                TeamAlertPreferences(start = true, goals = true),
+                isFavourite = true,
+            ),
         )
 
         assertEquals(
             listOf<Alert>(Alert.Goal(gameId, goalCount = 2, awayScore = 1, homeScore = 1)),
-            decider.decide(game(awayScore = 1, homeScore = 1), claimed, TeamAlertPreferences(), isFavourite = true),
+            decider.decide(
+                game(awayScore = 1, homeScore = 1),
+                claimed,
+                TeamAlertPreferences(start = true, goals = true),
+                isFavourite = true,
+            ),
         )
     }
 
@@ -110,12 +131,22 @@ class NotificationDeciderTest {
         val corrected = ledger(goalCount = 3, startNotified = true)
         assertEquals(
             emptyList<Alert>(),
-            decider.decide(game(awayScore = 1, homeScore = 1), corrected, TeamAlertPreferences(), isFavourite = true),
+            decider.decide(
+                game(awayScore = 1, homeScore = 1),
+                corrected,
+                TeamAlertPreferences(start = true, goals = true),
+                isFavourite = true,
+            ),
         )
         assertEquals(
             "the corrected total is re-reached, which is still the goal already announced",
             emptyList<Alert>(),
-            decider.decide(game(awayScore = 1, homeScore = 2), corrected, TeamAlertPreferences(), isFavourite = true),
+            decider.decide(
+                game(awayScore = 1, homeScore = 2),
+                corrected,
+                TeamAlertPreferences(start = true, goals = true),
+                isFavourite = true,
+            ),
         )
     }
 
@@ -126,7 +157,12 @@ class NotificationDeciderTest {
         assertEquals(
             "the 2-1 on the board becomes the baseline, so it is not announced as a goal",
             listOf<Alert>(Alert.GameStart(gameId, goalBaseline = 3)),
-            decider.decide(game(awayScore = 2, homeScore = 1), ledger = null, TeamAlertPreferences(), isFavourite = true),
+            decider.decide(
+                game(awayScore = 2, homeScore = 1),
+                ledger = null,
+                TeamAlertPreferences(start = true, goals = true),
+                isFavourite = true,
+            ),
         )
     }
 
@@ -134,7 +170,12 @@ class NotificationDeciderTest {
     fun aTeamThatIsNotAFavouriteGetsNothing() {
         assertEquals(
             emptyList<Alert>(),
-            decider.decide(game(awayScore = 2, homeScore = 1), ledger(), TeamAlertPreferences(), isFavourite = false),
+            decider.decide(
+                game(awayScore = 2, homeScore = 1),
+                ledger(),
+                TeamAlertPreferences(start = true, goals = true),
+                isFavourite = false,
+            ),
         )
     }
 
@@ -180,7 +221,7 @@ class NotificationDeciderTest {
             decider.decide(
                 game(awayScore = null, homeScore = null),
                 ledger(goalCount = 0, startNotified = true),
-                TeamAlertPreferences(),
+                TeamAlertPreferences(start = true, goals = true),
                 isFavourite = true,
             ),
         )
@@ -191,7 +232,12 @@ class NotificationDeciderTest {
         val final = game(GameState.Final, awayScore = 3, homeScore = 2)
         assertEquals(
             emptyList<Alert>(),
-            decider.decide(final, ledger(goalCount = 5, startNotified = true), TeamAlertPreferences(), isFavourite = true),
+            decider.decide(
+                final,
+                ledger(goalCount = 5, startNotified = true),
+                TeamAlertPreferences(start = true, goals = true),
+                isFavourite = true,
+            ),
         )
 
         val entry = ledger(goalCount = 5, startNotified = true, updatedAt = now)
@@ -207,7 +253,13 @@ class NotificationDeciderTest {
         // already announced (0), not the current total (1) - otherwise the start claim records 1 and the goal claim
         // for 1 is then refused as a duplicate, and the goal is never announced.
         val pendingStart = ledger(goalCount = 0, startNotified = false)
-        val alerts = decider.decide(game(awayScore = 1, homeScore = 0), pendingStart, TeamAlertPreferences(), isFavourite = true)
+        val alerts =
+            decider.decide(
+                game(awayScore = 1, homeScore = 0),
+                pendingStart,
+                TeamAlertPreferences(start = true, goals = true),
+                isFavourite = true,
+            )
         assertEquals(
             listOf<Alert>(
                 Alert.GameStart(gameId, goalBaseline = 0),
@@ -226,7 +278,12 @@ class NotificationDeciderTest {
                 Alert.GameStart(gameId, goalBaseline = 1),
                 Alert.Goal(gameId, goalCount = 3, awayScore = 2, homeScore = 1),
             ),
-            decider.decide(game(awayScore = 2, homeScore = 1), lateStart, TeamAlertPreferences(), isFavourite = true),
+            decider.decide(
+                game(awayScore = 2, homeScore = 1),
+                lateStart,
+                TeamAlertPreferences(start = true, goals = true),
+                isFavourite = true,
+            ),
         )
     }
 
@@ -255,14 +312,24 @@ class NotificationDeciderTest {
         val unknown = NotificationLedgerEntry.UNKNOWN_GOAL_COUNT
         assertEquals(
             listOf<Alert>(Alert.GameStart(gameId, goalBaseline = unknown)),
-            decider.decide(game(awayScore = null, homeScore = null), ledger = null, TeamAlertPreferences(), isFavourite = true),
+            decider.decide(
+                game(awayScore = null, homeScore = null),
+                ledger = null,
+                TeamAlertPreferences(start = true, goals = true),
+                isFavourite = true,
+            ),
         )
 
         val recordedUnknown = ledger(goalCount = unknown, startNotified = true)
         assertEquals(
             "the score that arrives becomes the baseline, silently",
             listOf<Alert>(Alert.Baseline(gameId, goalCount = 3)),
-            decider.decide(game(awayScore = 2, homeScore = 1), recordedUnknown, TeamAlertPreferences(), isFavourite = true),
+            decider.decide(
+                game(awayScore = 2, homeScore = 1),
+                recordedUnknown,
+                TeamAlertPreferences(start = true, goals = true),
+                isFavourite = true,
+            ),
         )
 
         // From a real baseline onwards, goals behave normally.
@@ -271,7 +338,7 @@ class NotificationDeciderTest {
             decider.decide(
                 game(awayScore = 2, homeScore = 2),
                 ledger(goalCount = 3, startNotified = true),
-                TeamAlertPreferences(),
+                TeamAlertPreferences(start = true, goals = true),
                 isFavourite = true,
             ),
         )

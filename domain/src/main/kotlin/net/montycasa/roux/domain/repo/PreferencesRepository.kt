@@ -6,10 +6,15 @@ import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.ThemeMode
 import kotlin.time.Instant
 
-/** Per-team controls for game-start and goal alerts. Both are enabled by default. */
+/**
+ * Per-team controls for game-start and goal alerts.
+ *
+ * Both start disabled. An alert nobody asked for is worse than one they have to switch on, and the old
+ * defaults were on for teams that could not alert at all.
+ */
 data class TeamAlertPreferences(
-    val start: Boolean = true,
-    val goals: Boolean = true,
+    val start: Boolean = false,
+    val goals: Boolean = false,
 )
 
 /**
@@ -67,7 +72,7 @@ interface PreferencesRepository {
     /** Replace the saved league order. */
     suspend fun setLeagueOrder(order: List<String>)
 
-    /** Read alert controls for a team, returning enabled defaults when unset. */
+    /** Read alert controls for a team, returning disabled defaults when unset. */
     suspend fun getTeamAlertPreferences(team: TeamKey): TeamAlertPreferences
 
     /** Save alert controls for one team. */

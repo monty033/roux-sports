@@ -133,6 +133,14 @@ class GameWatchRunTest {
             scope = CoroutineScope(Dispatchers.IO),
         )
 
+    /**
+     * Alerts are opt-in now, so a test that expects one has to ask for it. Until this helper existed these fixtures
+     * relied on the old default being on, which made "nothing posted" and "the alert was off" look identical.
+     */
+    private suspend fun DataStorePreferencesRepository.enableAlerts(team: TeamKey = TeamKey("TOR")) {
+        setTeamAlertPreferences(team, TeamAlertPreferences(start = true, goals = true))
+    }
+
     private fun run(
         scores: ScoresRepository,
         scheduler: GameWatchScheduler,
@@ -155,6 +163,7 @@ class GameWatchRunTest {
         runBlocking {
             val preferences = preferences()
             preferences.setFavourites(setOf(TeamKey("TOR")))
+            preferences.enableAlerts()
             val poster = RecordingPoster()
             val scheduler = RecordingScheduler()
             val pass = run(FakeScores { Loadable(day(game()), Freshness.Fresh, null) }, scheduler, poster, preferences)
@@ -174,6 +183,7 @@ class GameWatchRunTest {
         runBlocking {
             val preferences = preferences()
             preferences.setFavourites(setOf(TeamKey("TOR")))
+            preferences.enableAlerts()
             val poster = RecordingPoster()
             val scheduler = RecordingScheduler()
             var current = game(away = 1, home = 0)
@@ -214,6 +224,7 @@ class GameWatchRunTest {
         runBlocking {
             val preferences = preferences()
             preferences.setFavourites(setOf(TeamKey("TOR")))
+            preferences.enableAlerts()
             val poster = RecordingPoster()
             val scheduler = RecordingScheduler()
 
@@ -234,6 +245,7 @@ class GameWatchRunTest {
         runBlocking {
             val preferences = preferences()
             preferences.setFavourites(setOf(TeamKey("TOR")))
+            preferences.enableAlerts()
             val scheduler = RecordingScheduler()
 
             run(FakeScores { Loadable(day(game()), Freshness.Fresh, null) }, scheduler, RecordingPoster(), preferences)
@@ -250,6 +262,7 @@ class GameWatchRunTest {
         runBlocking {
             val preferences = preferences()
             preferences.setFavourites(setOf(TeamKey("TOR")))
+            preferences.enableAlerts()
             val scheduler = RecordingScheduler()
             val pause =
                 Loadable<ScoreDay>(
@@ -272,6 +285,7 @@ class GameWatchRunTest {
         runBlocking {
             val preferences = preferences()
             preferences.setFavourites(setOf(TeamKey("TOR")))
+            preferences.enableAlerts()
             val failed = Loadable<ScoreDay>(null, Freshness.Missing, LoadError.Network)
 
             val outcome =
@@ -286,6 +300,7 @@ class GameWatchRunTest {
         runBlocking {
             val preferences = preferences()
             preferences.setFavourites(setOf(TeamKey("TOR")))
+            preferences.enableAlerts()
             val poster = RecordingPoster()
             val scheduler = RecordingScheduler()
             // A watch fires at the scheduled start; the feed lags and still says Scheduled. Re-chaining only on
@@ -304,6 +319,7 @@ class GameWatchRunTest {
         runBlocking {
             val preferences = preferences()
             preferences.setFavourites(setOf(TeamKey("TOR")))
+            preferences.enableAlerts()
             val poster = RecordingPoster()
             // 02:00Z on the 2nd is still the evening of the 1st in New York; the slate it belongs to is the 1st.
             // The watch fires at 00:30 local on the 2nd, when "today" is already the 2nd.
@@ -347,6 +363,7 @@ class GameWatchRunTest {
         runBlocking {
             val preferences = preferences()
             preferences.setFavourites(setOf(TeamKey("TOR")))
+            preferences.enableAlerts()
             val blocked = RecordingPoster { false }
             val scheduler = RecordingScheduler()
             val pass = run(FakeScores { Loadable(day(game()), Freshness.Fresh, null) }, scheduler, blocked, preferences)
@@ -372,6 +389,7 @@ class GameWatchRunTest {
         runBlocking {
             val preferences = preferences()
             preferences.setFavourites(setOf(TeamKey("TOR")))
+            preferences.enableAlerts()
             val scheduler = RecordingScheduler()
             var current = game(away = 1, home = 0)
             // Starts are allowed, goals are silenced: the two channels are separate promises.

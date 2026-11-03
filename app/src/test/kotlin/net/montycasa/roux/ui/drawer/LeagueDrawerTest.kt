@@ -15,10 +15,13 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertHasNoClickAction
+import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.click
@@ -78,6 +81,7 @@ class LeagueDrawerTest {
     private var openToCap: () -> Unit = {}
     private val stores = mutableListOf<ViewModelStore>()
     private val navigations = mutableListOf<String>()
+    private var settingsOpened = 0
 
     @After fun clearViewModels() {
         stores.forEach { it.clear() }
@@ -160,6 +164,7 @@ class LeagueDrawerTest {
                                     state.value = state.value.copy(favouritesOnly = only)
                                     closeSheet()
                                 },
+                                onSettings = { settingsOpened++ },
                             )
                         }
                     }
@@ -269,9 +274,38 @@ class LeagueDrawerTest {
     }
 
     @Test
-    fun settingsIsAvailableInTheFooter() {
+    fun settingsGearSitsInTheBottomRightOpensSettingsAndMeetsTheTargetFloor() {
+        settingsOpened = 0
         launch()
-        rule.onNodeWithText("Settings", ignoreCase = true).assertExists()
+        val sheet = rule.onNodeWithTag("leagues.sheet").getUnclippedBoundsInRoot()
+        val gear = rule.onNodeWithTag("leagues.settings")
+        gear.assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+        val bounds = gear.getUnclippedBoundsInRoot()
+        assertTrue(
+            "gear left ${bounds.left} is not in the right half of the drawer",
+            bounds.left > sheet.left + (sheet.right - sheet.left) / 2,
+        )
+        assertTrue(
+            "gear top ${bounds.top} is not in the bottom half of the drawer",
+            bounds.top > sheet.top + (sheet.bottom - sheet.top) / 2,
+        )
+        gear.performClick()
+        assertEquals("the gear opens the Settings screen", 1, settingsOpened)
+    }
+
+    @Test
+    fun settingsGearSpeaksTheSettingsTitle() {
+        launch()
+        rule.onNodeWithTag("leagues.settings").assertContentDescriptionEquals("Settings")
+    }
+
+    @Test
+    fun theOldSettingsTextRowIsGone() {
+        launch()
+        // The footer text is still there, but the row that drew the word Settings is not: a gear with a
+        // content description is not a Text node.
+        rule.onNodeWithText("Settings").assertDoesNotExist()
+        rule.onNodeWithText("NO ADS · NO TRACKERS · GPL–3.0").assertExists()
     }
 
     @Test

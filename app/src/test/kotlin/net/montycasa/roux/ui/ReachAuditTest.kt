@@ -250,6 +250,20 @@ class ReachAuditTest {
             ),
             AuditCase("teams.list", emptyList(), { TeamsScreen(teamsList, {}, {}) }),
             AuditCase(
+                "teams.favourites",
+                emptyList(),
+                {
+                    TeamsScreen(
+                        teamsList.copy(
+                            favourites = setOf(teams.first().key),
+                            alerting = setOf(teams[1].key),
+                        ),
+                        {},
+                        {},
+                    )
+                },
+            ),
+            AuditCase(
                 "teams.alerts",
                 listOf("teams.alerts.done"),
                 {
@@ -340,9 +354,9 @@ class ReachAuditTest {
 
     @Test
     @Config(qualifiers = "en-rUS-w411dp-h923dp-420dpi")
-    fun assertPrimaryControlsReachableAt411x923() = audit(size = "w411dp-h923dp-420dpi", expectedCombinations = 52)
+    fun assertPrimaryControlsReachableAt411x923() = audit(size = "w411dp-h923dp-420dpi", expectedCombinations = 56)
 
     @Test
     @Config(qualifiers = "en-rUS-w360dp-h780dp")
-    fun assertPrimaryControlsReachableAt360x780() = audit(size = "w360dp-h780dp", expectedCombinations = 52)
+    fun assertPrimaryControlsReachableAt360x780() = audit(size = "w360dp-h780dp", expectedCombinations = 56)
 }

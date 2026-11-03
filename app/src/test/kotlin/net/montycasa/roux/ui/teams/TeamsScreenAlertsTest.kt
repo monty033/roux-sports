@@ -54,6 +54,29 @@ class TeamsScreenAlertsTest {
     }
 
     @Test
+    fun tappingASecondRowsBellOpensThatTeamsSheet() {
+        val other =
+            net.montycasa.roux.domain.model.TeamRef(
+                net.montycasa.roux.domain.model
+                    .TeamKey("MTL"),
+                name = "Montréal Canadiens",
+            )
+        var opened: net.montycasa.roux.domain.model.TeamRef? = null
+        compose.setContent {
+            TeamsScreen(
+                state = state().copy(rows = listOf(row, other)),
+                onToggle = {},
+                onRetry = {},
+                onOpenAlerts = { opened = it },
+            )
+        }
+
+        compose.onNodeWithTag("teams.alerts.open.MTL").performClick()
+
+        assertEquals("the bell belongs to its own row", other, opened)
+    }
+
+    @Test
     fun theSheetShowsBothSwitchesAndThePromiseTheyMake() {
         compose.setContent {
             TeamsScreen(

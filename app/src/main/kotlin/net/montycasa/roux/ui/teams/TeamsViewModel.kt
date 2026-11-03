@@ -30,6 +30,8 @@ import net.montycasa.roux.domain.repo.TeamAlertPreferences
 data class TeamsUiState(
     val rows: List<TeamRef> = emptyList(),
     val favourites: Set<TeamKey> = emptySet(),
+    /** Teams whose saved alert controls have at least one switch on. Drives the row's bell and its spoken state. */
+    val alerting: Set<TeamKey> = emptySet(),
     val isRefreshing: Boolean = true,
     val freshness: Freshness = Freshness.Missing,
     val error: LoadError? = null,
@@ -79,10 +81,12 @@ class TeamsViewModel(
     private val alertsChanged: suspend () -> Unit = {},
 ) : ViewModel() {
     private val favourites = MutableStateFlow<Set<TeamKey>>(emptySet())
+    private val alerting = MutableStateFlow<Set<TeamKey>>(emptySet())
     private val editable = MutableStateFlow(true)
     private val saveFailed = MutableStateFlow(false)
     private val known = MutableStateFlow(true)
     private val preferenceWrites = Mutex()
+    private val alertWrites = Mutex()
     private val refreshTrigger = MutableStateFlow(0L)
     private var retained = Loadable<List<StandingRow>>(null, Freshness.Missing, null)
 
@@ -152,7 +156,9 @@ class TeamsViewModel(
                     retained.data?.let { rows ->
                         // Decided here, once per load, for the reason in [order]'s comment.
                         favouritesReady.await()
-                        order.value = ordered(rows.map { it.team }, favourites.value)
+                        val teams = rows.map { it.team }
+                        order.value = ordered(teams, favourites.value)
+                        alerting.value = readAlerting(teams)
                     }
                     emit(TeamsLoad(retained, isRefreshing = false))
                 }
@@ -162,11 +168,13 @@ class TeamsViewModel(
                 emitAll(favourites)
             },
             order,
+            alerting,
             extras,
-        ) { load, selected, rowOrder, extra ->
+        ) { load, selected, rowOrder, alertingTeams, extra ->
             TeamsUiState(
                 rows = rowOrder,
                 favourites = selected,
+                alerting = alertingTeams,
                 isRefreshing = load.isRefreshing,
                 freshness = load.value.freshness,
                 error = load.value.error,
@@ -196,7 +204,22 @@ class TeamsViewModel(
     }
 
     fun closeAlerts() {
+        val team = alertSheet.value?.team?.team
         alertSheet.value = null
+        if (team == null) return
+        // Re-read after closing rather than trusting the sheet's last shown value. A write may have just landed, and
+        // the row behind the sheet must show the stored answer as soon as the sheet is out of the way. The mutex lets
+        // this wait for an in-flight write instead of racing it and reading the old value.
+        viewModelScope.launch {
+            alertWrites.withLock {
+                val saved =
+                    runCatching { preferences.getTeamAlertPreferences(team.key) }
+                        .getOrDefault(TeamAlertPreferences())
+                alerting.update { current ->
+                    if (saved.start || saved.goals) current + team.key else current - team.key
+                }
+            }
+        }
     }
 
     /**
@@ -219,20 +242,22 @@ class TeamsViewModel(
             )
         alertSheet.value = current.copy(team = next, busy = true)
         viewModelScope.launch {
-            val saved =
-                runCatching {
-                    preferences.setTeamAlertPreferences(
-                        current.team.team.key,
-                        TeamAlertPreferences(start = next.start, goals = next.goals),
-                    )
-                }.isSuccess
-            if (saved) {
-                alertSheet.update { it?.copy(team = next.copy(saveFailed = false), busy = false) }
-                // The watches are only as good as the setting they were built from.
-                runCatching { alertsChanged() }
-            } else {
-                // Put the switch back rather than leaving it showing a setting that was never stored.
-                alertSheet.update { it?.copy(team = current.team.copy(saveFailed = true), busy = false) }
+            alertWrites.withLock {
+                val saved =
+                    runCatching {
+                        preferences.setTeamAlertPreferences(
+                            current.team.team.key,
+                            TeamAlertPreferences(start = next.start, goals = next.goals),
+                        )
+                    }.isSuccess
+                if (saved) {
+                    alertSheet.update { it?.copy(team = next.copy(saveFailed = false), busy = false) }
+                    // The watches are only as good as the setting they were built from.
+                    runCatching { alertsChanged() }
+                } else {
+                    // Put the switch back rather than leaving it showing a setting that was never stored.
+                    alertSheet.update { it?.copy(team = current.team.copy(saveFailed = true), busy = false) }
+                }
             }
         }
     }
@@ -263,6 +288,15 @@ class TeamsViewModel(
     fun retry() {
         refreshTrigger.update { it + 1 }
     }
+
+    /** Which of [teams] have at least one alert switch on. Read once per load, never per row in composition. */
+    private suspend fun readAlerting(teams: List<TeamRef>): Set<TeamKey> =
+        teams
+            .filter { team ->
+                val saved = runCatching { preferences.getTeamAlertPreferences(team.key) }.getOrNull()
+                saved != null && (saved.start || saved.goals)
+            }.map { it.key }
+            .toSet()
 
     /** Favourites first, then by club name: the order the list uses whenever it is allowed to re-sort. */
     private fun ordered(
