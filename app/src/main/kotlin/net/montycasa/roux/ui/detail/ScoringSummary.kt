@@ -1,0 +1,392 @@
+@file:Suppress("ktlint:standard:function-naming")
+
+package net.montycasa.roux.ui.detail
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.dp
+import net.montycasa.roux.domain.model.Game
+import net.montycasa.roux.domain.model.GameLanding
+import net.montycasa.roux.domain.model.GoalEvent
+import net.montycasa.roux.domain.model.GoalModifier
+import net.montycasa.roux.domain.model.GoalStrength
+import net.montycasa.roux.ui.theme.LocalRouxAccents
+import kotlin.math.roundToInt
+
+/**
+ * Every goal, grouped the way a period is read: periods ascending, the period's first goal first inside each.
+ *
+ * The feed's clock is elapsed time, so it climbs down the card as the period goes on, and the running score climbs with
+ * it. All overtime periods share one `OT` group, the same way the period tables share one `OT` column - there is no
+ * useful distinction between the fourth and fifth extra period on a scoring summary, and two headers would pretend
+ * there was.
+ */
+@Composable
+internal fun ScoringSummary(
+    game: Game,
+    landing: GameLanding,
+) {
+    val groups = scoringGroups(landing.goals)
+    Column {
+        groups.forEachIndexed { groupIndex, group ->
+            if (groupIndex > 0) PeriodDivider()
+            PeriodHeading(game = game, group = group)
+            group.goals.forEach { indexed -> ScoringRow(game = game, indexed = indexed) }
+        }
+    }
+}
+
+/**
+ * A period heading names the clubs it belongs to.
+ *
+ * The ordinal sits at the left in the primary colour and the two abbreviations sit over the score columns, which
+ * replaces the single header above the first period. Headings never become row indices.
+ */
+@Composable
+private fun PeriodHeading(
+    game: Game,
+    group: ScoringGroup,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(top = if (group.key == 1) 0.dp else 2.dp, bottom = 4.dp)
+                .testTag("detail.scoring.period.${group.key}"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            group.label,
+            modifier = Modifier.testTag("detail.scoring.period.${group.key}.label"),
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Spacer(Modifier.weight(1f))
+        ColumnAbbreviation(teamAbbrev = game.away.abbrev, side = "away", group = group)
+        ColumnAbbreviation(teamAbbrev = game.home.abbrev, side = "home", group = group)
+    }
+}
+
+@Composable
+private fun ColumnAbbreviation(
+    teamAbbrev: String,
+    side: String,
+    group: ScoringGroup,
+) {
+    Text(
+        teamAbbrev,
+        modifier =
+            Modifier
+                .width(SCORE_COLUMN)
+                .testTag("detail.scoring.period.${group.key}.$side.abbrev"),
+        style = MaterialTheme.typography.labelMedium,
+        color = LocalRouxAccents.current.muted,
+        textAlign = TextAlign.End,
+        maxLines = 1,
+        overflow = TextOverflow.Clip,
+    )
+}
+
+/** One rule between consecutive period blocks, inset from the card edges and never above the first block. */
+@Composable
+private fun PeriodDivider() {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = DIVIDER_INSET, vertical = 8.dp)
+            .height(1.dp)
+            .background(LocalRouxAccents.current.muted.copy(alpha = DIVIDER_ALPHA))
+            .testTag("detail.scoring.divider"),
+    )
+}
+
+/**
+ * A goal row: a tight text column (time, name, assists) exactly as before, with the crest in the row's gutter.
+ *
+ * The crest is taken out of the row's height: a zero-height gutter holds it and an offset translates it down. The
+ * offset is measured from the time line's height and the name's first-line height, so the crest's centre lands on the
+ * name line at every font scale, and a wrapped name keeps it centred on the first line rather than the whole block.
+ */
+@Composable
+private fun ScoringRow(
+    game: Game,
+    indexed: IndexedGoal,
+) {
+    val goal = indexed.goal
+    val padded = indexed.index.toString().padStart(2, '0')
+    val scoringTeam = if (goal.isHome) game.home else game.away
+    var rowTopPx by remember { mutableFloatStateOf(0f) }
+    var nameTopPx by remember { mutableFloatStateOf(0f) }
+    var nameLineHeightPx by remember { mutableFloatStateOf(0f) }
+    val density = LocalDensity.current
+    val crestSizePx = with(density) { ROW_CREST.toPx() }
+    val crestOffsetPx =
+        if (nameLineHeightPx > 0f) {
+            (nameTopPx - rowTopPx + (nameLineHeightPx - crestSizePx) / 2f).coerceAtLeast(0f)
+        } else {
+            0f
+        }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp)
+            .testTag("detail.scoring.row.$padded")
+            .semantics(mergeDescendants = true) {}
+            .onGloballyPositioned { coordinates -> rowTopPx = coordinates.positionInRoot().y },
+        verticalAlignment = Alignment.Top,
+    ) {
+        // Zero height: the crest is measured at full size, placed at the measured offset, and reports no row height.
+        Box(
+            Modifier
+                .testTag("detail.scoring.row.$padded.crestGutter")
+                .width(ROW_CREST)
+                .layout { measurable, _ ->
+                    val crestPx = crestSizePx.roundToInt()
+                    val placeable = measurable.measure(Constraints.fixed(crestPx, crestPx))
+                    layout(placeable.width, 0) {
+                        placeable.place(0, crestOffsetPx.roundToInt())
+                    }
+                },
+        ) {
+            Box(
+                Modifier
+                    .size(ROW_CREST)
+                    .testTag("detail.scoring.row.$padded.crest.${scoringTeam.abbrev}"),
+            ) {
+                TeamLogo(
+                    team = scoringTeam,
+                    crestSize = ROW_CREST,
+                    imageTag = "detail.logo.scoring.row.$padded.${scoringTeam.abbrev}",
+                )
+            }
+        }
+        Spacer(Modifier.width(CREST_GAP))
+        Column(Modifier.weight(1f).testTag("detail.scoring.row.$padded.text")) {
+            Text(
+                goal.timeInPeriod,
+                modifier = Modifier.fillMaxWidth().testTag("detail.scoring.row.$padded.time"),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                overflow = TextOverflow.Clip,
+            )
+            Text(
+                nameLine(goal),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = NAME_TOP_GAP)
+                        .onGloballyPositioned { coordinates -> nameTopPx = coordinates.positionInRoot().y }
+                        .testTag("detail.scoring.row.$padded.sentence"),
+                // The name line is prose, so it stays at 14 sp or above even when it wraps.
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                onTextLayout = { layout ->
+                    if (layout.lineCount > 0) {
+                        nameLineHeightPx = (layout.getLineBottom(0) - layout.getLineTop(0)).toFloat()
+                    }
+                },
+            )
+            if (goal.assists.isNotEmpty()) {
+                Text(
+                    assistLine(goal),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = ASSIST_TOP_GAP)
+                            .testTag("detail.scoring.row.$padded.assists"),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Normal,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
+        ScoreCell(
+            value = goal.awayScore?.toString() ?: MISSING_SCORE,
+            emphasised = !goal.isHome,
+            tag = "detail.scoring.row.$padded.away",
+        )
+        ScoreCell(
+            value = goal.homeScore?.toString() ?: MISSING_SCORE,
+            emphasised = goal.isHome,
+            tag = "detail.scoring.row.$padded.home",
+        )
+    }
+}
+
+/** One fixed score column; the side that just changed is bold in the primary colour. */
+@Composable
+private fun ScoreCell(
+    value: String,
+    emphasised: Boolean,
+    tag: String,
+) {
+    Box(
+        modifier = Modifier.width(SCORE_COLUMN).then(if (emphasised) Modifier.testTag("$tag.emphasised") else Modifier),
+        contentAlignment = Alignment.TopEnd,
+    ) {
+        Text(
+            value,
+            modifier = Modifier.fillMaxWidth().testTag(tag),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (emphasised) FontWeight.Bold else FontWeight.Normal,
+            color = if (emphasised) MaterialTheme.colorScheme.primary else LocalRouxAccents.current.muted,
+            textAlign = TextAlign.End,
+            maxLines = 1,
+            overflow = TextOverflow.Clip,
+        )
+    }
+}
+
+/**
+ * The name line: full name, the season goal count in parentheses, then strength and modifier in prose.
+ *
+ * The feed already carries full first and last names; the adapter composes them, so this only lays the line out. A
+ * missing season count leaves no empty parentheses.
+ */
+private fun nameLine(goal: GoalEvent): String =
+    buildString {
+        append(goal.scorer)
+        goal.goalsToDate?.let { seasonGoals -> append(" (").append(seasonGoals).append(')') }
+        strengthPhrases(goal).forEach { phrase -> append(' ').append(phrase) }
+    }
+
+/**
+ * The assist line, printed only when there is at least one assist.
+ *
+ * Each assist carries its own season count in parentheses; a missing count leaves the name bare. The fragment has no
+ * outer parentheses because it owns its line.
+ *
+ * The space inside `name (count)` is non-breaking: the line wraps on the phone at 411 dp, and a plain space let the
+ * count fall onto the next line by itself, so `Porter Martone` ended one line and `(4)` began the next — a name read
+ * as though it were unassisted and a stray parenthetical under it.
+ */
+private fun assistLine(goal: GoalEvent): String =
+    buildString {
+        append("Assists: ")
+        goal.assists.forEachIndexed { index, assist ->
+            if (index > 0) append(", ")
+            append(assist.name)
+            assist.assistsToDate?.let { count -> append('\u00A0').append('(').append(count).append(')') }
+        }
+    }
+
+/** Strength and modifier in words, in that order; even strength and unknown carry no phrase. */
+private fun strengthPhrases(goal: GoalEvent): List<String> =
+    buildList {
+        when (goal.strength) {
+            GoalStrength.PowerPlay -> add("power play")
+            GoalStrength.ShortHanded -> add("short-handed")
+            GoalStrength.EvenStrength, GoalStrength.Unknown -> Unit
+        }
+        when (goal.modifier) {
+            GoalModifier.EmptyNet -> add("empty net")
+            GoalModifier.PenaltyShot -> add("penalty shot")
+            GoalModifier.None, GoalModifier.Other -> Unit
+        }
+    }
+
+/**
+ * Periods ascending, goals inside a period in the order they happened: elapsed seconds ascending.
+ *
+ * The feed writes elapsed time, so the first goal of a period has the smallest value and the last has the largest; the
+ * times climb down the card. Ordering parses [GoalEvent.timeInPeriod] numerically, never comparing the raw string:
+ * `"9:30"` is 570 seconds and belongs before `"14:22"`.
+ *
+ * Overtime is folded into one group keyed 4. Its goals run oldest extra period first, then elapsed ascending, so the
+ * last goal of the game is the bottom row of the card.
+ */
+internal fun scoringGroups(goals: List<GoalEvent>): List<ScoringGroup> {
+    var rowIndex = 0
+    return goals
+        .groupBy { goal -> minOf(goal.period, OVERTIME_KEY) }
+        .toSortedMap()
+        .map { (key, periodGoals) ->
+            val ordered =
+                if (key == OVERTIME_KEY) {
+                    periodGoals.sortedWith(
+                        compareBy<GoalEvent> { it.period }
+                            .thenBy { elapsedSeconds(it.timeInPeriod) ?: UNPARSED_ELAPSED },
+                    )
+                } else {
+                    periodGoals.sortedBy { elapsedSeconds(it.timeInPeriod) ?: UNPARSED_ELAPSED }
+                }
+            ScoringGroup(
+                key = key,
+                label = periodLabel(key),
+                goals = ordered.map { IndexedGoal(index = rowIndex++, goal = it) },
+            )
+        }
+}
+
+/** `"MM:SS"` or `"M:SS"` as elapsed seconds; null when the feed sent something the card cannot place on a clock. */
+private fun elapsedSeconds(time: String): Int? {
+    val parts = time.trim().split(":")
+    if (parts.size != 2) return null
+    val minutes = parts[0].toIntOrNull() ?: return null
+    val seconds = parts[1].toIntOrNull() ?: return null
+    if (minutes < 0 || seconds !in 0..59) return null
+    return minutes * 60 + seconds
+}
+
+private fun periodLabel(key: Int): String =
+    when (key) {
+        1 -> "1st"
+        2 -> "2nd"
+        3 -> "3rd"
+        else -> "OT"
+    }
+
+internal data class ScoringGroup(
+    val key: Int,
+    val label: String,
+    val goals: List<IndexedGoal>,
+)
+
+internal data class IndexedGoal(
+    val index: Int,
+    val goal: GoalEvent,
+)
+
+private val ROW_CREST = 44.dp
+private val CREST_GAP = 10.dp
+private val NAME_TOP_GAP = 2.dp
+private val ASSIST_TOP_GAP = 1.dp
+private val SCORE_COLUMN = 34.dp
+private val DIVIDER_INSET = 8.dp
+private const val DIVIDER_ALPHA = 0.35f
+private const val OVERTIME_KEY = 4
+private const val MISSING_SCORE = "—"
+
+/** Sorts an unparseable elapsed time after every real goal, never before the opening faceoff. */
+private const val UNPARSED_ELAPSED = Int.MAX_VALUE

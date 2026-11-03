@@ -88,6 +88,8 @@ data class GameLanding(
     val state: GameState? = null,
     val venue: Venue? = null,
     val broadcasts: List<Broadcast> = emptyList(),
+    /** Every goal the feed named, in the order it arrived. The period table is counted separately. */
+    val goals: List<GoalEvent> = emptyList(),
 )
 
 data class Venue(
@@ -130,6 +132,45 @@ data class PeriodScoring(
     val period: Int,
     val awayGoals: Int,
     val homeGoals: Int,
+)
+
+/**
+ * How a goal was scored, as far as the page can label it.
+ *
+ * [Unknown] keeps the goal rather than the label: an unfamiliar strength token is a feed change, not evidence that a
+ * goal did not happen, so the event is still listed and simply carries no tag.
+ */
+enum class GoalStrength { EvenStrength, PowerPlay, ShortHanded, Unknown }
+
+/** A goal's modifier, the second tag beside its strength. [Other] is recognised-but-unlabelled, like [GoalStrength.Unknown]. */
+enum class GoalModifier { None, EmptyNet, PenaltyShot, Other }
+
+/** An assist as of that goal. [assistsToDate] is the season total the feed published, never a count of this page's rows. */
+data class GoalAssist(
+    val name: String,
+    val assistsToDate: Int?,
+)
+
+/**
+ * One goal, with everything the feed already sends and the page used to throw away.
+ *
+ * [timeInPeriod] is the feed's own elapsed clock (`"12:49"`), kept verbatim: it is both the value the card prints and
+ * the value it orders by, parsed numerically. There is no second clock on the model, so the two cannot drift.
+ *
+ * [awayScore] and [homeScore] are the running score immediately after this goal, as published - never replayed from
+ * the goals before it. [goalsToDate] is likewise the scorer's season total as of this goal, not a count of this game.
+ */
+data class GoalEvent(
+    val period: Int,
+    val timeInPeriod: String,
+    val isHome: Boolean,
+    val scorer: String,
+    val goalsToDate: Int?,
+    val assists: List<GoalAssist>,
+    val strength: GoalStrength,
+    val modifier: GoalModifier,
+    val awayScore: Int?,
+    val homeScore: Int?,
 )
 
 /** Shots on goal, both clubs. */

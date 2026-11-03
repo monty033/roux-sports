@@ -4,7 +4,10 @@ package net.montycasa.roux.ui.detail
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
@@ -15,6 +18,7 @@ import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -23,6 +27,8 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -37,6 +43,10 @@ import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameLanding
 import net.montycasa.roux.domain.model.GameRightRail
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.GoalAssist
+import net.montycasa.roux.domain.model.GoalEvent
+import net.montycasa.roux.domain.model.GoalModifier
+import net.montycasa.roux.domain.model.GoalStrength
 import net.montycasa.roux.domain.model.GoalieLine
 import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.PeriodScoring
@@ -48,6 +58,7 @@ import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.domain.model.TeamStat
 import net.montycasa.roux.domain.model.ThreeStar
+import net.montycasa.roux.ui.AuditStates
 import net.montycasa.roux.ui.theme.RouxTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -224,13 +235,43 @@ class GameDetailScreenTest {
             ),
     )
 
+    private fun withGoals(goals: List<GoalEvent>) =
+        fullDetail.copy(landing = fullDetail.landing.copy(data = fullDetail.landing.data!!.copy(goals = goals)))
+
+    @Suppress("LongParameterList")
+    private fun goal(
+        period: Int,
+        time: String,
+        isHome: Boolean,
+        scorer: String = "A. Scorer",
+        goalsToDate: Int? = null,
+        assists: List<GoalAssist> = emptyList(),
+        strength: GoalStrength = GoalStrength.EvenStrength,
+        modifier: GoalModifier = GoalModifier.None,
+        awayScore: Int? = null,
+        homeScore: Int? = null,
+    ) = GoalEvent(
+        period = period,
+        timeInPeriod = time,
+        isHome = isHome,
+        scorer = scorer,
+        goalsToDate = goalsToDate,
+        assists = assists,
+        strength = strength,
+        modifier = modifier,
+        awayScore = awayScore,
+        homeScore = homeScore,
+    )
+
+    private val testDensity = 2.75f
+
     private fun show(
         detail: GameDetail,
         fontScale: Float = 1f,
         shownGame: Game = game,
     ) {
         compose.setContent {
-            CompositionLocalProvider(LocalDensity provides Density(2.75f, fontScale)) {
+            CompositionLocalProvider(LocalDensity provides Density(testDensity, fontScale)) {
                 RouxTheme(dark = true) {
                     GameDetailScreen(
                         game = shownGame,
@@ -541,6 +582,662 @@ class GameDetailScreenTest {
     }
 
     @Test
+    fun `period three of the real game shows its literal elapsed clocks in order`() {
+        show(
+            withGoals(AuditStates.fullGoals.filter { it.period == 3 }),
+            shownGame =
+                game.copy(
+                    away = TeamRef(TeamKey("UTA"), name = "Mammoth"),
+                    awayScore = 3,
+                    homeScore = 6,
+                ),
+        )
+
+        assertEquals("3rd", labelOf("detail.scoring.period.3.label"))
+        // The feed's own elapsed clocks for period 3, printed verbatim, first goal first.
+        val expected = listOf("01:02", "05:35", "16:00", "17:07", "18:26")
+        val actual = expected.indices.map { index -> rowTime(index) }
+        assertEquals(expected, actual)
+    }
+
+    @Test
+    fun `the card prints the feed's elapsed string verbatim`() {
+        show(withGoals(listOf(goal(period = 1, time = "9:30", isHome = false, awayScore = 1, homeScore = 0))))
+
+        // Not 09:30 and not a derived remaining value: exactly the string the payload sent.
+        assertEquals("9:30", rowTime(0))
+    }
+
+    @Test
+    fun `the full audit fixture rises in score as its elapsed clock climbs`() {
+        assertClockAndScoreInvariant(name = "detail.full", goals = AuditStates.fullGoals)
+    }
+
+    @Test
+    fun `the live audit fixture rises in score as its elapsed clock climbs`() {
+        assertClockAndScoreInvariant(name = "detail.live", goals = AuditStates.liveGoals)
+    }
+
+    @Test
+    fun `non-padded elapsed values sort numerically and climb down the card`() {
+        val nonPadded =
+            listOf(
+                goal(period = 1, time = "9:30", isHome = false, awayScore = 1, homeScore = 0),
+                goal(period = 1, time = "14:22", isHome = true, awayScore = 1, homeScore = 1),
+                goal(period = 1, time = "16:00", isHome = false, awayScore = 2, homeScore = 1),
+            )
+
+        assertClockAndScoreInvariant(name = "non-padded", goals = nonPadded)
+    }
+
+    private fun assertClockAndScoreInvariant(
+        name: String,
+        goals: List<GoalEvent>,
+    ) {
+        show(withGoals(goals))
+        scoringGroups(goals).forEach { group ->
+            group.goals.zipWithNext().forEach { (first, next) ->
+                val firstClock = requireNotNull(clockSeconds(rowTime(first.index)))
+                val nextClock = requireNotNull(clockSeconds(rowTime(next.index)))
+                assertTrue(
+                    "$name ${group.label}: elapsed clock fell from ${first.goal.timeInPeriod} " +
+                        "to ${next.goal.timeInPeriod}",
+                    nextClock >= firstClock,
+                )
+                val firstAway = labelOf("detail.scoring.row.${first.index.padded()}.away").toInt()
+                val nextAway = labelOf("detail.scoring.row.${next.index.padded()}.away").toInt()
+                val firstHome = labelOf("detail.scoring.row.${first.index.padded()}.home").toInt()
+                val nextHome = labelOf("detail.scoring.row.${next.index.padded()}.home").toInt()
+                assertTrue("$name ${group.label}: away score fell", nextAway >= firstAway)
+                assertTrue("$name ${group.label}: home score fell", nextHome >= firstHome)
+            }
+        }
+    }
+
+    @Test
+    fun `a scoring row carries its own running score not the final score`() {
+        show(
+            withGoals(
+                listOf(
+                    goal(period = 1, time = "10:00", isHome = false, awayScore = 1, homeScore = 0),
+                    goal(period = 1, time = "15:00", isHome = false, awayScore = 2, homeScore = 0),
+                    goal(period = 2, time = "05:00", isHome = true, awayScore = 2, homeScore = 1),
+                ),
+            ),
+            shownGame = game.copy(awayScore = 3, homeScore = 1),
+        )
+
+        // First goal first, so the 10:00 goal owns the first row and its own 1-0, not the 3-1 on the board.
+        assertEquals("1", labelOf("detail.scoring.row.00.away"))
+        assertEquals("0", labelOf("detail.scoring.row.00.home"))
+        assertEquals("2", labelOf("detail.scoring.row.02.away"))
+        assertEquals("1", labelOf("detail.scoring.row.02.home"))
+    }
+
+    @Test
+    fun `each goal row carries only its scorer's crest`() {
+        show(
+            withGoals(
+                listOf(
+                    goal(period = 1, time = "10:00", isHome = false, awayScore = 1, homeScore = 0),
+                    goal(period = 1, time = "15:00", isHome = true, awayScore = 1, homeScore = 1),
+                ),
+            ),
+        )
+
+        val awayCrest =
+            compose.onNodeWithTag("detail.scoring.row.00.crest.CBJ", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        assertEquals(44f, awayCrest.bottom.value - awayCrest.top.value, 1f)
+        compose.onNodeWithTag("detail.scoring.row.00.crest.PHI", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithTag("detail.scoring.row.01.crest.PHI", useUnmergedTree = true).assertExists()
+        compose.onNodeWithTag("detail.scoring.row.01.crest.CBJ", useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun `the away and home score columns hold the numbers under their own club`() {
+        show(
+            withGoals(
+                listOf(
+                    goal(period = 1, time = "10:00", isHome = false, awayScore = 3, homeScore = 1),
+                    goal(period = 1, time = "15:00", isHome = true, awayScore = 3, homeScore = 2),
+                ),
+            ),
+        )
+
+        assertEquals("3", labelOf("detail.scoring.row.00.away"))
+        assertEquals("1", labelOf("detail.scoring.row.00.home"))
+        assertEquals("3", labelOf("detail.scoring.row.01.away"))
+        assertEquals("2", labelOf("detail.scoring.row.01.home"))
+
+        val awayHeader = compose.onNodeWithTag("detail.scoring.period.1.away.abbrev").getUnclippedBoundsInRoot()
+        val homeHeader = compose.onNodeWithTag("detail.scoring.period.1.home.abbrev").getUnclippedBoundsInRoot()
+        val awayScore =
+            compose.onNodeWithTag("detail.scoring.row.01.away", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val homeScore =
+            compose.onNodeWithTag("detail.scoring.row.01.home", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        assertTrue(awayHeader.right.value <= homeHeader.left.value)
+        assertEquals(awayHeader.left.value, awayScore.left.value, 1f)
+        assertEquals(awayHeader.right.value, awayScore.right.value, 1f)
+        assertEquals(homeHeader.left.value, homeScore.left.value, 1f)
+        assertEquals(homeHeader.right.value, homeScore.right.value, 1f)
+    }
+
+    @Test
+    fun `no global header remains and each period heading names both clubs`() {
+        show(withGoals(listOf(goal(period = 1, time = "15:00", isHome = false))))
+
+        assertEquals("1st", labelOf("detail.scoring.period.1.label"))
+        assertEquals("CBJ", labelOf("detail.scoring.period.1.away.abbrev"))
+        assertEquals("PHI", labelOf("detail.scoring.period.1.home.abbrev"))
+        compose.onNodeWithTag("detail.scoring.header.away").assertDoesNotExist()
+        compose.onNodeWithTag("detail.scoring.header.home").assertDoesNotExist()
+
+        val heading = compose.onNodeWithTag("detail.scoring.period.1").getUnclippedBoundsInRoot()
+        val firstRow = compose.onNodeWithTag("detail.scoring.row.00").getUnclippedBoundsInRoot()
+        assertTrue(heading.bottom.value <= firstRow.top.value + 1f)
+        // The heading is not a goal: the only row is 00 and there is no 01 for it to occupy.
+        compose.onNodeWithTag("detail.scoring.row.00").assertExists()
+        compose.onNodeWithTag("detail.scoring.row.01").assertDoesNotExist()
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w360dp-h780dp-xhdpi")
+    fun `score columns and heading abbreviations fit at 360 dp font scale two`() {
+        show(
+            withGoals(listOf(goal(period = 1, time = "15:00", isHome = false, awayScore = 3, homeScore = 1))),
+            fontScale = 2f,
+        )
+        assertScoreColumnsFit()
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w360dp-h780dp-xhdpi")
+    fun `score columns and heading abbreviations fit at 360 dp font scale one point three`() {
+        show(
+            withGoals(listOf(goal(period = 1, time = "15:00", isHome = false, awayScore = 3, homeScore = 1))),
+            fontScale = 1.3f,
+        )
+        assertScoreColumnsFit()
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w360dp-h780dp-xhdpi")
+    fun `score columns and heading abbreviations fit at 360 dp font scale one`() {
+        show(
+            withGoals(listOf(goal(period = 1, time = "15:00", isHome = false, awayScore = 3, homeScore = 1))),
+            fontScale = 1f,
+        )
+        assertScoreColumnsFit()
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w411dp-h923dp-xhdpi")
+    fun `score columns and heading abbreviations fit at 411 dp font scale two`() {
+        show(
+            withGoals(listOf(goal(period = 1, time = "15:00", isHome = false, awayScore = 3, homeScore = 1))),
+            fontScale = 2f,
+        )
+        assertScoreColumnsFit()
+    }
+
+    private fun assertScoreColumnsFit() {
+        listOf(
+            "detail.scoring.period.1.away.abbrev",
+            "detail.scoring.period.1.home.abbrev",
+            "detail.scoring.row.00.time",
+            "detail.scoring.row.00.away",
+            "detail.scoring.row.00.home",
+        ).forEach { tag ->
+            val layout = textLayout(tag)
+            assertTrue(
+                "$tag overflowed its column: size=${layout.size} lines=${layout.lineCount} " +
+                    "text=${layout.layoutInput.text.text} constraints=${layout.layoutInput.constraints}",
+                !layout.hasVisualOverflow,
+            )
+        }
+        val time = textLayout("detail.scoring.row.00.time")
+        assertTrue("the time is below 12 sp", time.layoutInput.style.fontSize.value >= 12f)
+    }
+
+    @Test
+    fun `the name line parenthesises the season count and the assist line owns its own text`() {
+        show(
+            withGoals(
+                listOf(
+                    goal(
+                        period = 1,
+                        time = "10:00",
+                        isHome = false,
+                        scorer = "Kirill Marchenko",
+                        goalsToDate = 12,
+                        assists = listOf(GoalAssist("Jakub Voracek", 4), GoalAssist("Zach Werenski", null)),
+                        awayScore = 1,
+                        homeScore = 0,
+                    ),
+                    goal(period = 1, time = "15:00", isHome = true, scorer = "Adam Fantilli", awayScore = 1, homeScore = 1),
+                ),
+            ),
+        )
+
+        val nameLine = rowSentence(0)
+        assertTrue(nameLine.startsWith("Kirill Marchenko (12)"))
+        assertTrue(!nameLine.contains("Kirill Marchenko 12"))
+        assertTrue(!nameLine.contains("Assists:"))
+
+        val assists = labelOf("detail.scoring.row.00.assists")
+        assertEquals("Assists: Jakub Voracek\u00A0(4), Zach Werenski", assists)
+        assertTrue(!assists.startsWith("("))
+        assertTrue(!assists.contains("(Assists:"))
+
+        // A null count on an assist leaves that name bare rather than printing (null) or (0).
+        assertTrue(!assists.contains("Zach Werenski ("))
+    }
+
+    @Test
+    fun `assist names are regular while the scorer's line keeps its emphasis`() {
+        show(
+            withGoals(
+                listOf(
+                    goal(
+                        period = 1,
+                        time = "10:00",
+                        isHome = false,
+                        scorer = "Kirill Marchenko",
+                        goalsToDate = 12,
+                        assists = listOf(GoalAssist("Jakub Voracek", 4)),
+                        awayScore = 1,
+                        homeScore = 0,
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(FontWeight.SemiBold, textLayout("detail.scoring.row.00.sentence").layoutInput.style.fontWeight)
+        assertEquals(FontWeight.Normal, textLayout("detail.scoring.row.00.assists").layoutInput.style.fontWeight)
+    }
+
+    @Test
+    fun `an unassisted goal has no assist line and a missing season count prints no parentheses`() {
+        show(
+            withGoals(
+                listOf(goal(period = 1, time = "10:00", isHome = true, scorer = "Matvei Michkov", awayScore = 0, homeScore = 1)),
+            ),
+        )
+
+        assertEquals("Matvei Michkov", rowSentence(0))
+        assertTrue(!rowSentence(0).contains("("))
+        assertTrue(!rowSentence(0).contains("()"))
+        compose.onNodeWithTag("detail.scoring.row.00.assists").assertDoesNotExist()
+    }
+
+    @Test
+    fun `the row prints full first and last names`() {
+        show(withGoals(AuditStates.fullGoals))
+
+        assertTrue(rowSentence(0).startsWith("Matvei Michkov (10)"))
+        assertTrue(!rowSentence(0).contains("M. Michkov"))
+        assertTrue(!rowSentence(0).contains("Matvei Michkov 10"))
+    }
+
+    @Test
+    fun `strength is prose and the abbreviation codes are gone`() {
+        show(
+            withGoals(
+                listOf(
+                    goal(
+                        period = 1,
+                        time = "05:00",
+                        isHome = false,
+                        strength = GoalStrength.ShortHanded,
+                        modifier = GoalModifier.EmptyNet,
+                    ),
+                    goal(period = 1, time = "10:00", isHome = true, strength = GoalStrength.PowerPlay),
+                    goal(
+                        period = 1,
+                        time = "15:00",
+                        isHome = false,
+                        strength = GoalStrength.EvenStrength,
+                        modifier = GoalModifier.PenaltyShot,
+                    ),
+                ),
+            ),
+        )
+
+        val both = rowSentence(0)
+        assertTrue(both.contains("short-handed empty net"))
+        assertTrue(!both.contains("(short-handed)"))
+        assertTrue(!both.contains("SH"))
+        assertTrue(!both.contains("EN"))
+        assertTrue(rowSentence(1).contains("power play"))
+        assertTrue(!rowSentence(1).contains("(power play)"))
+        assertTrue(!rowSentence(1).contains("PP"))
+        assertTrue(rowSentence(2).contains("penalty shot"))
+        assertTrue(!rowSentence(2).contains("(penalty shot)"))
+        assertTrue(!rowSentence(2).contains("PS"))
+    }
+
+    @Test
+    fun `one divider separates each pair of period blocks`() {
+        show(withGoals(AuditStates.fullGoals))
+
+        compose.onAllNodesWithTag("detail.scoring.divider").assertCountEquals(2)
+    }
+
+    @Test
+    fun `empty goal list draws no scoring summary card`() {
+        show(fullDetail)
+
+        compose.onNodeWithTag("detail.section.scoring-summary").assertDoesNotExist()
+        compose.onNodeWithText("SCORING SUMMARY").assertDoesNotExist()
+    }
+
+    @Test
+    fun `all overtime periods share one OT header`() {
+        show(
+            withGoals(
+                listOf(
+                    goal(period = 4, time = "02:22", isHome = false),
+                    goal(period = 5, time = "01:15", isHome = true),
+                ),
+            ),
+        )
+
+        compose.onNodeWithTag("detail.scoring.period.4").assertExists()
+        compose.onNodeWithTag("detail.scoring.period.5").assertDoesNotExist()
+        assertEquals("OT", labelOf("detail.scoring.period.4.label"))
+        // Oldest extra period first, then its own earliest elapsed first: the game's last goal is the bottom row.
+        assertEquals("02:22", rowTime(0))
+        assertEquals("01:15", rowTime(1))
+    }
+
+    @Test
+    fun `the row's height is the text column's height`() {
+        // Even the shortest text column (time + name, no assists) is taller than the 44 dp crest at the tested
+        // scales, so a crest-taller-than-text fixture cannot be built. The gutter test is the direct guard; this
+        // still checks the normal case does not acquire extra height from the crest.
+        show(
+            withGoals(
+                listOf(
+                    goal(
+                        period = 1,
+                        time = "10:00",
+                        isHome = false,
+                        scorer = "Matvei Michkov",
+                        goalsToDate = 10,
+                        awayScore = 1,
+                        homeScore = 0,
+                    ),
+                ),
+            ),
+        )
+
+        val row = compose.onNodeWithTag("detail.scoring.row.00").getUnclippedBoundsInRoot()
+        val text = compose.onNodeWithTag("detail.scoring.row.00.text", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        assertEquals(text.bottom.value - text.top.value, row.bottom.value - row.top.value, 1f)
+    }
+
+    @Test
+    fun `the crest gutter reports zero height at font scale one`() {
+        show(withGoals(gutterGoals()), fontScale = 1f)
+        assertCrestGutterZeroHeight()
+    }
+
+    @Test
+    fun `the crest gutter reports zero height at font scale two`() {
+        show(withGoals(gutterGoals()), fontScale = 2f)
+        assertCrestGutterZeroHeight()
+    }
+
+    private fun gutterGoals() =
+        listOf(
+            goal(
+                period = 1,
+                time = "10:00",
+                isHome = false,
+                scorer = "Matvei Michkov",
+                goalsToDate = 10,
+                assists = listOf(GoalAssist("Noah Cates", 3)),
+                awayScore = 1,
+                homeScore = 0,
+            ),
+            goal(
+                period = 1,
+                time = "11:00",
+                isHome = true,
+                scorer = "Alexandre Texier-Delorme\nWilliamson",
+                goalsToDate = 10,
+                assists = listOf(GoalAssist("Noah Cates", 3)),
+                awayScore = 1,
+                homeScore = 1,
+            ),
+            goal(
+                period = 1,
+                time = "12:00",
+                isHome = false,
+                scorer = "Cole Knuble",
+                goalsToDate = 3,
+                awayScore = 2,
+                homeScore = 1,
+            ),
+        )
+
+    private fun assertCrestGutterZeroHeight() {
+        listOf(0 to "CBJ", 1 to "PHI", 2 to "CBJ").forEach { (index, abbrev) ->
+            val padded = index.padded()
+            val gutter =
+                compose
+                    .onNodeWithTag("detail.scoring.row.$padded.crestGutter", useUnmergedTree = true)
+                    .getUnclippedBoundsInRoot()
+            assertEquals("gutter $index must report zero height", 0f, (gutter.bottom - gutter.top).value, 0.01f)
+            val crest =
+                compose
+                    .onNodeWithTag("detail.scoring.row.$padded.crest.$abbrev", useUnmergedTree = true)
+                    .getUnclippedBoundsInRoot()
+            assertEquals("crest $index width", 44f, (crest.right - crest.left).value, 1f)
+            assertEquals("crest $index height", 44f, (crest.bottom - crest.top).value, 1f)
+        }
+        assertTrue(
+            "the long name must wrap for the gutter fixture",
+            textLayout("detail.scoring.row.01.sentence").lineCount > 1,
+        )
+        compose.onNodeWithTag("detail.scoring.row.02.assists", useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun `the time-to-name gap stays at two dp`() {
+        show(withGoals(listOf(crestGoal())))
+
+        val time = compose.onNodeWithTag("detail.scoring.row.00.time", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val name = compose.onNodeWithTag("detail.scoring.row.00.sentence", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val gapDp = (name.top.value - time.bottom.value) / testDensity
+        assertEquals("time-to-name gap must stay the 42aecb5 2 dp", 2f, gapDp, 1.5f)
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w411dp-h923dp-xhdpi")
+    fun `a wrapped name keeps the crest on its first line at font scale two`() {
+        show(
+            withGoals(
+                listOf(
+                    goal(
+                        period = 1,
+                        time = "10:00",
+                        isHome = false,
+                        scorer = "Alexandre Texier-Delorme\nWilliamson",
+                        goalsToDate = 10,
+                        strength = GoalStrength.PowerPlay,
+                        assists = listOf(GoalAssist("Noah Cates", 3)),
+                        awayScore = 1,
+                        homeScore = 0,
+                    ),
+                ),
+            ),
+            fontScale = 2f,
+        )
+
+        val name = compose.onNodeWithTag("detail.scoring.row.00.sentence", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val crest =
+            compose.onNodeWithTag("detail.scoring.row.00.crest.CBJ", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val layout = textLayout("detail.scoring.row.00.sentence")
+        assertTrue(
+            "the name must wrap for this test: text=${layout.layoutInput.text.text} " +
+                "size=${layout.size} constraints=${layout.layoutInput.constraints} lines=${layout.lineCount}",
+            layout.lineCount > 1,
+        )
+        val firstLineCentre = name.top.value + (layout.getLineTop(0) + layout.getLineBottom(0)) / (2f * testDensity)
+        val crestCentre = (crest.top.value + crest.bottom.value) / 2f
+        assertEquals(firstLineCentre, crestCentre, 2f)
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w411dp-h923dp-xhdpi")
+    fun `the crest centres on the name at 411 dp font scale one`() {
+        show(withGoals(listOf(crestGoal())), fontScale = 1f)
+        assertCrestCentresOnName()
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w411dp-h923dp-xhdpi")
+    fun `the crest centres on the name at 411 dp font scale one point three`() {
+        show(withGoals(listOf(crestGoal())), fontScale = 1.3f)
+        assertCrestCentresOnName()
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w411dp-h923dp-xhdpi")
+    fun `the crest centres on the name at 411 dp font scale two`() {
+        show(withGoals(listOf(crestGoal())), fontScale = 2f)
+        assertCrestCentresOnName()
+    }
+
+    private fun crestGoal() =
+        goal(
+            period = 1,
+            time = "10:00",
+            isHome = false,
+            scorer = "Matvei Michkov",
+            goalsToDate = 10,
+            assists = listOf(GoalAssist("Noah Cates", 3)),
+            awayScore = 1,
+            homeScore = 0,
+        )
+
+    private fun assertCrestCentresOnName() {
+        val row = compose.onNodeWithTag("detail.scoring.row.00").getUnclippedBoundsInRoot()
+        val text = compose.onNodeWithTag("detail.scoring.row.00.text", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val crest =
+            compose.onNodeWithTag("detail.scoring.row.00.crest.CBJ", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val time = compose.onNodeWithTag("detail.scoring.row.00.time", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val name = compose.onNodeWithTag("detail.scoring.row.00.sentence", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val assist =
+            compose.onNodeWithTag("detail.scoring.row.00.assists", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val awayScore =
+            compose.onNodeWithTag("detail.scoring.row.00.away", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val homeScore =
+            compose.onNodeWithTag("detail.scoring.row.00.home", useUnmergedTree = true).getUnclippedBoundsInRoot()
+
+        assertEquals("the crest must not add row height", text.bottom.value - text.top.value, row.bottom.value - row.top.value, 1f)
+        assertEquals(row.left.value, crest.left.value, 1f)
+        assertEquals(44f, crest.bottom.value - crest.top.value, 1f)
+        val nameLayout = textLayout("detail.scoring.row.00.sentence")
+        val firstLineTop = name.top.value + nameLayout.getLineTop(0) / testDensity
+        val firstLineBottom = name.top.value + nameLayout.getLineBottom(0) / testDensity
+        val crestCentre = (crest.top.value + crest.bottom.value) / 2f
+        val nameCentre = (firstLineTop + firstLineBottom) / 2f
+        assertEquals(
+            "crest centre $crestCentre vs name centre $nameCentre; rowTop=${row.top} nameTop=${name.top} " +
+                "timeTop=${time.top} timeBottom=${time.bottom} crestTop=${crest.top} crestBottom=${crest.bottom} " +
+                "firstLine=$firstLineTop..$firstLineBottom",
+            nameCentre,
+            crestCentre,
+            2f,
+        )
+        assertEquals("the scores align to the time line", time.top.value, awayScore.top.value, 1f)
+        assertEquals("the scores align to the time line", time.top.value, homeScore.top.value, 1f)
+        assertTrue("the crest must stay in its gutter", crest.right.value <= assist.left.value + 0.5f)
+        assertTrue("the crest must not touch the row above", crest.top.value >= row.top.value - 0.5f)
+        assertTrue(awayScore.right.value <= homeScore.left.value)
+    }
+
+    @Test
+    fun `the side that just scored is the emphasised score`() {
+        show(
+            withGoals(
+                listOf(
+                    goal(period = 1, time = "10:00", isHome = false, awayScore = 1, homeScore = 0),
+                    goal(period = 1, time = "15:00", isHome = true, awayScore = 1, homeScore = 1),
+                ),
+            ),
+        )
+
+        compose
+            .onNodeWithTag("detail.scoring.row.00.away.emphasised", useUnmergedTree = true)
+            .assertExists()
+        compose
+            .onNodeWithTag("detail.scoring.row.00.home.emphasised", useUnmergedTree = true)
+            .assertDoesNotExist()
+        compose
+            .onNodeWithTag("detail.scoring.row.01.home.emphasised", useUnmergedTree = true)
+            .assertExists()
+        compose
+            .onNodeWithTag("detail.scoring.row.01.away.emphasised", useUnmergedTree = true)
+            .assertDoesNotExist()
+    }
+
+    @Test
+    fun `the scoring summary sits below game stats and above three stars`() {
+        show(
+            withGoals(listOf(goal(period = 1, time = "15:00", isHome = false))).let { detail ->
+                detail.copy(
+                    rightRail =
+                        Loadable(
+                            GameRightRail(
+                                shots = ShotTotals(awayShots = 15, homeShots = 32),
+                                shotsByPeriod = listOf(PeriodShots(1, "REG", away = 7, home = 8)),
+                            ),
+                            Freshness.Fresh,
+                            null,
+                        ),
+                )
+            },
+        )
+
+        val tops =
+            listOf("scoring", "shots", "stats", "scoring-summary", "stars").map {
+                compose
+                    .onNodeWithTag("detail.section.$it")
+                    .getUnclippedBoundsInRoot()
+                    .top.value
+            }
+        assertTrue(tops.zipWithNext().all { (a, b) -> a < b })
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w360dp-h780dp-xhdpi")
+    fun `scoring summary text stays at or above twelve sp at font scale two`() {
+        show(
+            withGoals(
+                listOf(
+                    goal(
+                        period = 1,
+                        time = "15:00",
+                        isHome = false,
+                        goalsToDate = 12,
+                        assists = listOf(GoalAssist("J. Voracek", 4)),
+                        strength = GoalStrength.PowerPlay,
+                    ),
+                ),
+            ),
+            fontScale = 2f,
+        )
+
+        val card = compose.onNodeWithTag("detail.section.scoring-summary", useUnmergedTree = true).fetchSemanticsNode()
+        val sizes = textSizes(card)
+        assertTrue("no text nodes found in the scoring summary", sizes.isNotEmpty())
+        sizes.forEach { size -> assertTrue("text at $size sp is under the 12 sp floor", size >= 12f) }
+    }
+
+    @Test
     fun `first tab is Game and Summary is absent`() {
         show(fullDetail)
         assertEquals("Game", labelOf("detail.tab.Game.label"))
@@ -635,6 +1332,53 @@ class GameDetailScreenTest {
             .fetchSemanticsNode()
             .config[SemanticsProperties.Text]
             .joinToString("") { it.text }
+
+    private fun Int.padded(): String = toString().padStart(2, '0')
+
+    private fun clockSeconds(clock: String): Int? {
+        val parts = clock.split(":")
+        if (parts.size != 2) return null
+        val minutes = parts[0].toIntOrNull() ?: return null
+        val seconds = parts[1].toIntOrNull() ?: return null
+        return if (minutes < 0 || seconds !in 0..59) null else minutes * 60 + seconds
+    }
+
+    /** The clock cell on a scoring row, read from its own tag rather than the row's merged text. */
+    private fun rowTime(index: Int): String = labelOf("detail.scoring.row.${index.padded()}.time")
+
+    /** The one-sentence name/strength/assists block on a scoring row. */
+    private fun rowSentence(index: Int): String = labelOf("detail.scoring.row.${index.padded()}.sentence")
+
+    private fun textLayout(tag: String): TextLayoutResult {
+        val node = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode()
+        val layouts = mutableListOf<TextLayoutResult>()
+        node.config
+            .getOrNull(SemanticsActions.GetTextLayoutResult)
+            ?.action
+            ?.invoke(layouts)
+        return requireNotNull(layouts.firstOrNull()) { "$tag has no text layout" }
+    }
+
+    /** Every resolvable font size under a node, from the unmerged tree, so a label style cannot hide under a parent. */
+    private fun textSizes(node: SemanticsNode): List<Float> {
+        val sizes = mutableListOf<Float>()
+        node.config.getOrNull(SemanticsProperties.Text)?.let {
+            val layouts = mutableListOf<TextLayoutResult>()
+            node.config
+                .getOrNull(SemanticsActions.GetTextLayoutResult)
+                ?.action
+                ?.invoke(layouts)
+            layouts
+                .firstOrNull()
+                ?.layoutInput
+                ?.style
+                ?.fontSize
+                ?.value
+                ?.let(sizes::add)
+        }
+        node.children.forEach { sizes += textSizes(it) }
+        return sizes
+    }
 
     @Test
     fun `the club pills carry a crest and the club's name, not its abbreviation`() {

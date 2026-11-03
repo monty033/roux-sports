@@ -17,10 +17,15 @@ import net.montycasa.roux.data.nhl.dto.LandingGoalDto
 import net.montycasa.roux.data.nhl.dto.LandingPeriodDescriptorDto
 import net.montycasa.roux.data.nhl.dto.LandingScoringPeriodDto
 import net.montycasa.roux.data.nhl.dto.LandingStarDto
+import net.montycasa.roux.data.nhl.dto.LocalizedNameDto
 import net.montycasa.roux.domain.model.Broadcast
 import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.GameLanding
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.GoalAssist
+import net.montycasa.roux.domain.model.GoalEvent
+import net.montycasa.roux.domain.model.GoalModifier
+import net.montycasa.roux.domain.model.GoalStrength
 import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.PeriodScoring
 import net.montycasa.roux.domain.model.PlayerRef
@@ -104,6 +109,17 @@ internal object LandingAdapter {
                 .orEmpty()
                 .mapNotNull { it?.toThreeStar() }
                 .sortedBy { it.rank }
+        val goals =
+            summary
+                ?.scoring
+                .orEmpty()
+                .flatMap { rawPeriod ->
+                    val period = rawPeriod ?: return@flatMap emptyList()
+                    // A goal with no period cannot be placed, and one with no scorer cannot be attributed. Both are
+                    // dropped alone: unlike a period count, a goal list stays honest when it is short.
+                    val number = period.periodDescriptor?.number?.takeIf { it > 0 } ?: return@flatMap emptyList()
+                    period.goals.orEmpty().mapNotNull { it?.toGoalEvent(number, away, home) }
+                }
 
         return ParseResult.Success(
             GameLanding(
@@ -118,6 +134,7 @@ internal object LandingAdapter {
                     },
                 periodScoring = periods,
                 threeStars = stars,
+                goals = goals,
                 state = state,
                 period =
                     landing.periodDescriptor?.number?.let {
@@ -168,6 +185,73 @@ internal object LandingAdapter {
         }
         return PeriodScoring(period = number, awayGoals = awayGoals, homeGoals = homeGoals)
     }
+
+    /**
+     * The feed's full first and last name, which is what the card prints.
+     *
+     * Returns null when either half is absent, letting the caller fall back to the payload's abbreviated `name.default`
+     * rather than inventing a surname.
+     */
+    private fun fullName(
+        first: LocalizedNameDto?,
+        last: LocalizedNameDto?,
+    ): String? {
+        val firstPart = first?.default.clean() ?: return null
+        val lastPart = last?.default.clean() ?: return null
+        return "$firstPart $lastPart"
+    }
+
+    /**
+     * One goal, with its own season totals and running score.
+     *
+     * Returns null when the goal cannot be placed (no side) or attributed (no name). Everything else is kept even when
+     * it is unfamiliar: an unknown strength becomes [GoalStrength.Unknown] so the goal still appears, and a missing
+     * score stays null rather than being guessed from the goal before it.
+     */
+    private fun LandingGoalDto.toGoalEvent(
+        period: Int,
+        awayAbbrev: String?,
+        homeAbbrev: String?,
+    ): GoalEvent? {
+        val side = side(awayAbbrev, homeAbbrev) ?: return null
+        val scorer = fullName(firstName, lastName) ?: name?.default.clean() ?: return null
+        val mappedAssists =
+            assists.orEmpty().mapNotNull { assist ->
+                val entry = assist ?: return@mapNotNull null
+                val assistName =
+                    fullName(entry.firstName, entry.lastName) ?: entry.name?.default.clean()
+                        ?: return@mapNotNull null
+                GoalAssist(name = assistName, assistsToDate = entry.assistsToDate)
+            }
+        return GoalEvent(
+            period = period,
+            timeInPeriod = timeInPeriod.clean().orEmpty(),
+            isHome = side == Side.Home,
+            scorer = scorer,
+            goalsToDate = goalsToDate,
+            assists = mappedAssists,
+            strength = strength.toStrength(),
+            modifier = goalModifier.toModifier(),
+            awayScore = awayScore,
+            homeScore = homeScore,
+        )
+    }
+
+    private fun String?.toStrength(): GoalStrength =
+        when (this?.trim()?.lowercase()) {
+            "ev" -> GoalStrength.EvenStrength
+            "pp" -> GoalStrength.PowerPlay
+            "sh" -> GoalStrength.ShortHanded
+            else -> GoalStrength.Unknown
+        }
+
+    private fun String?.toModifier(): GoalModifier =
+        when (this?.trim()?.lowercase()) {
+            null, "", "none" -> GoalModifier.None
+            "empty-net" -> GoalModifier.EmptyNet
+            "penalty-shot" -> GoalModifier.PenaltyShot
+            else -> GoalModifier.Other
+        }
 
     /** [isHome] first, because it is unambiguous; the abbreviation is a fallback for a payload that omits it. */
     private fun LandingGoalDto.side(

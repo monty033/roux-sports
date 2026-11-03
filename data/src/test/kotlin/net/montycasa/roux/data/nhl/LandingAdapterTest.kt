@@ -14,6 +14,10 @@ import net.montycasa.roux.data.Fixtures
 import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.GameLanding
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.GoalAssist
+import net.montycasa.roux.domain.model.GoalEvent
+import net.montycasa.roux.domain.model.GoalModifier
+import net.montycasa.roux.domain.model.GoalStrength
 import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.PeriodScoring
 import org.junit.Assert.assertEquals
@@ -254,6 +258,115 @@ class LandingAdapterTest {
     fun periodsComeBackSortedByNumber() {
         val landing = successOf(reversingScoringOrder())
         assertEquals(listOf(1, 2, 3, 4), landing.periodScoring.map { it.period })
+    }
+
+    @Test
+    fun powerPlayGoalKeepsEveryPublishedField() {
+        val landing =
+            successOf(
+                """{"id":1,"summary":{"scoring":[{"periodDescriptor":{"number":1},"goals":[{
+                "isHome":false,"teamAbbrev":{"default":"CBJ"},"name":{"default":"K. Marchenko"},
+                "timeInPeriod":"10:58","strength":"pp","goalModifier":"none","goalsToDate":12,
+                "awayScore":2,"homeScore":1,"assists":[
+                  {"name":{"default":"J. Voracek"},"assistsToDate":4,"playerId":8478460,"sweaterNumber":93},
+                  {"name":{"default":"Z. Werenski"},"assistsToDate":9,"playerId":8478461,"sweaterNumber":8}]}]}]}}""",
+            )
+        assertEquals(
+            GoalEvent(
+                period = 1,
+                timeInPeriod = "10:58",
+                isHome = false,
+                scorer = "K. Marchenko",
+                goalsToDate = 12,
+                assists = listOf(GoalAssist("J. Voracek", 4), GoalAssist("Z. Werenski", 9)),
+                strength = GoalStrength.PowerPlay,
+                modifier = GoalModifier.None,
+                awayScore = 2,
+                homeScore = 1,
+            ),
+            landing.goals.single(),
+        )
+    }
+
+    @Test
+    fun goalAndAssistNamesAreComposedFromFirstAndLast() {
+        val landing =
+            successOf(
+                """{"id":1,"summary":{"scoring":[{"periodDescriptor":{"number":1},"goals":[{
+                "isHome":true,"name":{"default":"M. Michkov"},
+                "firstName":{"default":"Matvei"},"lastName":{"default":"Michkov"},
+                "timeInPeriod":"12:49","assists":[
+                  {"name":{"default":"N. Cates"},"firstName":{"default":"Noah"},"lastName":{"default":"Cates"},
+                   "assistsToDate":3},
+                  {"name":{"default":"P. Martone"},"firstName":{"default":"Porter"},"lastName":{"default":"Martone"},
+                   "assistsToDate":4}]}]}]}}""",
+            )
+        val goal = landing.goals.single()
+        assertEquals("Matvei Michkov", goal.scorer)
+        assertEquals(listOf("Noah Cates", "Porter Martone"), goal.assists.map { it.name })
+    }
+
+    @Test
+    fun shortHandedEmptyNetGoalKeepsBothFacts() {
+        val landing =
+            successOf(
+                """{"id":1,"summary":{"scoring":[{"periodDescriptor":{"number":2},"goals":[{
+                "isHome":true,"name":{"default":"N. Cates"},"strength":"sh","goalModifier":"empty-net",
+                "timeInPeriod":"18:01","awayScore":3,"homeScore":2}]}]}}""",
+            )
+        val goal = landing.goals.single()
+        assertEquals(GoalStrength.ShortHanded, goal.strength)
+        assertEquals(GoalModifier.EmptyNet, goal.modifier)
+    }
+
+    @Test
+    fun unrecognisedStrengthKeepsTheGoalAsUnknown() {
+        val landing =
+            successOf(
+                """{"id":1,"summary":{"scoring":[{"periodDescriptor":{"number":1},"goals":[{
+                "isHome":false,"name":{"default":"A. Fantilli"},"strength":"five-on-three",
+                "timeInPeriod":"07:00"}]}]}}""",
+            )
+        assertEquals(GoalStrength.Unknown, landing.goals.single().strength)
+        assertEquals("A. Fantilli", landing.goals.single().scorer)
+    }
+
+    @Test
+    fun goalWithoutPeriodOrScorerIsDroppedWhileItsNeighboursSurvive() {
+        val landing =
+            successOf(
+                """{"id":1,"summary":{"scoring":[
+                {"periodDescriptor":{"number":1},"goals":[
+                  {"isHome":false,"name":{"default":"Good One"},"timeInPeriod":"10:00"},
+                  {"isHome":false,"timeInPeriod":"09:00"},
+                  {"isHome":false,"name":{"default":"  "},"timeInPeriod":"08:00"},
+                  null,
+                  {"isHome":false,"name":{"default":"Good Two"},"timeInPeriod":"07:00"}]},
+                {"periodDescriptor":{},"goals":[{"isHome":true,"name":{"default":"No Period"}}]},
+                {"periodDescriptor":{"number":2},"goals":[{"isHome":true,"name":{"default":"Good Three"},"timeInPeriod":"11:00"}]}]}}""",
+            )
+        assertEquals(listOf("Good One", "Good Two", "Good Three"), landing.goals.map { it.scorer })
+        assertEquals(listOf(1, 1, 2), landing.goals.map { it.period })
+    }
+
+    @Test
+    fun capturedFinalGoalsKeepTheirOwnRunningScoresAndSeasonTotals() {
+        val landing = successOf(Fixtures.text(FIXTURE))
+        assertEquals(7, landing.goals.size)
+        assertEquals("Adam Fantilli", landing.goals.first().scorer)
+        assertEquals(1, landing.goals.first().awayScore)
+        assertEquals(0, landing.goals.first().homeScore)
+        assertEquals(4, landing.goals.first().goalsToDate)
+        assertEquals(1, landing.goals.first().period)
+        assertEquals(
+            2,
+            landing.goals
+                .first()
+                .assists.size,
+        )
+        // The last goal's running score is the final score, but it is that goal's own fields, not the game's.
+        assertEquals(4, landing.goals.last().awayScore)
+        assertEquals(3, landing.goals.last().homeScore)
     }
 
     private fun successOf(json: String): GameLanding {

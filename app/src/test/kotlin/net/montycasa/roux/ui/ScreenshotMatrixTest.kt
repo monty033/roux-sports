@@ -36,6 +36,9 @@ class ScreenshotMatrixTest {
     /** States with a shots card: it sits between two cards, so neither the top nor the info image can show it. */
     private val shotsStates = listOf("detail.full", "detail.live")
 
+    /** States with a scoring summary: it too sits between two cards, so it needs its own capture. */
+    private val scoringStates = listOf("detail.full", "detail.live")
+
     @Test
     fun everyAuditStateInBothThemes() {
         val screens = AuditStates.screens()
@@ -82,6 +85,19 @@ class ScreenshotMatrixTest {
                     rule.waitForIdle()
                     try {
                         rule.onRoot().captureRoboImage("src/test/screenshots/matrix/$file-shots.png")
+                    } catch (failure: AssertionError) {
+                        failures += failure
+                    }
+                }
+                if (screen.name in scoringStates) {
+                    // The page-level scoring image cannot show the whole card — it is taller than the viewport and
+                    // Compose only scrolls an anchor just into view — so it anchors on the card and shows rows. The
+                    // complete card, heading included, is recorded by ScoringCardScreenshotTest.
+                    val anchor = "detail.section.scoring-summary"
+                    rule.onNodeWithTag(anchor).performScrollTo()
+                    rule.waitForIdle()
+                    try {
+                        rule.onRoot().captureRoboImage("src/test/screenshots/matrix/$file-scoring.png")
                     } catch (failure: AssertionError) {
                         failures += failure
                     }
