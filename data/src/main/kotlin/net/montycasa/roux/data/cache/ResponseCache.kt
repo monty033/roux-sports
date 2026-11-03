@@ -21,6 +21,10 @@ enum class CacheKind(
     // letting an old season crowd out the one being read.
     ClubSchedule(32, "club-schedule"),
 
+    // One current roster per club. A roster is small and addressed by club alone, so 32 entries
+    // covers every club without letting an old capture displace the one being read.
+    ClubRoster(32, "club-roster"),
+
     // One kind per detail endpoint, so a burst of landing pages for a busy night cannot evict the boxscore a
     // fan is reading. The caps are per kind; a shared Detail kind would have made the busiest endpoint the
     // one that decides what survives.

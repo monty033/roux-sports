@@ -74,6 +74,15 @@ class NhlApi(
     ): ApiResult = clubSchedule(abbrev, season)
 
     /**
+     * A club's current roster. The live endpoint answers with a 307 to the dated roster; the shared
+     * client sets `followRedirects = true`, so this path relies on that and must not opt out.
+     */
+    suspend fun roster(abbrev: String): ApiResult {
+        require(CLUB_ABBREV.matches(abbrev)) { "Club abbreviation must be three uppercase letters, was '$abbrev'" }
+        return get("/v1/roster/$abbrev/current")
+    }
+
+    /**
      * Path verified against the live API by hand. A captured corpus for these payloads is G1 work and is not in
      * this tree yet, so nothing here claims a fixture exists.
      */

@@ -53,7 +53,7 @@ class ScoresIntegrationApp : RouxApp() {
     private var activeContainer: AppContainer? = null
 
     override val container: AppContainer
-        get() = activeContainer ?: newContainer().also { activeContainer = it }
+        @Synchronized get() = activeContainer ?: newContainer().also { activeContainer = it }
 
     /** A restart keeps only disk state; callers dispose the old host before using the new container. */
     suspend fun restart(scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)) {

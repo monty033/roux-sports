@@ -68,6 +68,12 @@ object FreshnessPolicy {
     val clubScheduleAge: Duration = 6.hours
 
     /**
+     * A roster changes rarely, but a call-up or trade can land mid-day. Six hours mirrors the
+     * schedule's window and keeps a tab switch off the network.
+     */
+    val clubRosterAge: Duration = 6.hours
+
+    /**
      * A finished day does not change; polling it would be pure cost.
      *
      * `startTimeUtc` is the *scheduled* start, which for the NHL precedes the actual puck drop by
@@ -105,6 +111,9 @@ object FreshnessPolicy {
 
     /** Start times and broadcasts move; final results do not. Six hours is the schedule's starting point. */
     fun clubScheduleMaxAge(): Duration = clubScheduleAge
+
+    /** The roster's six-hour window, matching the club schedule. */
+    fun clubRosterMaxAge(): Duration = clubRosterAge
 
     /**
      * A final boxscore never changes, so only a live detail needs the short lifetime.

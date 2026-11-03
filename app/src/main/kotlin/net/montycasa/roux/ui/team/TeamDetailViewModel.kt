@@ -12,8 +12,10 @@ import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.ClubGame
+import net.montycasa.roux.domain.model.ClubRoster
 import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.model.TeamKey
+import net.montycasa.roux.domain.repo.ClubRosterRepository
 import net.montycasa.roux.domain.repo.ClubScheduleRepository
 import net.montycasa.roux.domain.repo.StandingsRepository
 import kotlin.time.Clock
@@ -38,32 +40,45 @@ data class TeamDetailUiState(
      * this, so one request failing cannot take the other's content away.
      */
     val schedule: Loadable<List<ClubGame>>? = null,
+    /** The current roster, with its own cache entry and failure. */
+    val roster: Loadable<ClubRoster>? = null,
 )
 
 class TeamDetailViewModel(
     private val teamKey: TeamKey,
     private val standings: StandingsRepository,
     private val schedule: ClubScheduleRepository? = null,
+    private val roster: ClubRosterRepository? = null,
     private val clock: Clock = Clock.System,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(TeamDetailUiState(teamKey))
     val uiState: StateFlow<TeamDetailUiState> = mutableState.asStateFlow()
 
     init {
-        load()
+        loadTableAndSchedule()
+        loadRoster()
     }
 
-    /** Re-reads both requests after a failure; the page has no other way back. */
-    fun retry() = load()
+    /** Re-reads the header and schedule after a failure; roster retry is [retryRoster]. */
+    fun retry() = loadTableAndSchedule()
 
-    private fun load() {
+    /** Re-reads only the roster, leaving the schedule and header untouched. */
+    fun retryRoster() = loadRoster()
+
+    private fun loadTableAndSchedule() {
         mutableState.update { it.copy(isLoading = true, error = null, schedule = null) }
         viewModelScope.launch { apply(readTable()) }
-        // Two independent requests: a failed schedule must not blank the header, and a failed
-        // header must not hide a schedule the feed did return.
+        // Independent requests: a failed schedule must not blank the header, and a failed header
+        // must not hide a schedule the feed did return.
         if (schedule != null) {
             viewModelScope.launch { mutableState.update { it.copy(schedule = readSchedule()) } }
         }
+    }
+
+    private fun loadRoster() {
+        if (roster == null) return
+        mutableState.update { it.copy(roster = null) }
+        viewModelScope.launch { mutableState.update { it.copy(roster = readRoster()) } }
     }
 
     private fun apply(loaded: TableResult) {
@@ -94,6 +109,15 @@ class TeamDetailViewModel(
             throw cancelled
         } catch (_: Exception) {
             // The header is already on screen; the section reports the failure and offers retry.
+            Loadable(null, Freshness.Missing, LoadError.Local)
+        }
+
+    private suspend fun readRoster(): Loadable<ClubRoster> =
+        try {
+            roster?.roster(teamKey) ?: Loadable(null, Freshness.Missing, null)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
             Loadable(null, Freshness.Missing, LoadError.Local)
         }
 

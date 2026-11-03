@@ -21,6 +21,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,8 +55,8 @@ private val CREST_SIZE = 56.dp
 /**
  * A club's page: who the club is, its record, and a sub-navigation that opens on the season schedule.
  *
- * Only the schedule list scrolls: the back row, club card and tab row stay put. The schedule is a
- * second request, so its failure is reported in the list area without taking the header or tabs away.
+ * Only the tab's content list scrolls: the back row, club card and tab row stay put. Each tab owns
+ * its own request, so one failing does not take the header or the other tab away.
  */
 @Composable
 fun TeamDetailScreen(
@@ -59,12 +64,19 @@ fun TeamDetailScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     onRetry: () -> Unit = {},
+    onRosterRetry: () -> Unit = {},
     onGameClick: (ClubGame) -> Unit = {},
     now: Instant = Clock.System.now(),
 ) {
     val row = state.row
     val team = row?.team ?: TeamRef(state.teamKey)
     val fullName = fullTeamName(team)
+    // Tab selection is local view state. It is not a route, so Back leaves the club page rather than
+    // walking through tabs the reader visited.
+    var selectedTab by rememberSaveable { mutableStateOf(TeamTab.Schedule) }
+    // Each tab keeps its own saved list state: switching to Roster and back restores the schedule's
+    // scroll position instead of re-anchoring or scrolling to the top.
+    val tabState = rememberSaveableStateHolder()
     Column(
         modifier
             .fillMaxSize()
@@ -92,26 +104,50 @@ fun TeamDetailScreen(
                 )
             }
         }
-        TeamScheduleList(
-            teamKey = state.teamKey,
-            schedule = state.schedule,
-            isRefreshing = state.isLoading,
-            onRetry = onRetry,
-            onGameClick = onGameClick,
-            now = now,
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-        )
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            tabState.SaveableStateProvider(selectedTab) {
+                when (selectedTab) {
+                    TeamTab.Schedule -> {
+                        TeamScheduleList(
+                            teamKey = state.teamKey,
+                            schedule = state.schedule,
+                            isRefreshing = state.isLoading,
+                            onRetry = onRetry,
+                            onGameClick = onGameClick,
+                            now = now,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+
+                    TeamTab.Roster -> {
+                        TeamRosterList(
+                            roster = state.roster,
+                            isRefreshing = state.isLoading,
+                            onRetry = onRosterRetry,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+
+                    TeamTab.Stats -> {
+                        // Stats is disabled; this branch exists only to keep the switch exhaustive.
+                    }
+                }
+            }
+        }
         // The page's own second level sits at the bottom, where the app's other navigation lives, so the thumb
         // reaches it without crossing the list and the header keeps the height the card needs.
         TeamTabRow(
-            Modifier
-                .fillMaxWidth()
-                .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp),
+            selected = selectedTab,
+            onSelect = { selectedTab = it },
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp),
         )
     }
 }
 
-/** The club page's own second level. Only Schedule is live; the other two are coming-soon peers. */
+/** The club page's own second level. Schedule and Roster are live; Stats remains a coming-soon peer. */
 internal enum class TeamTab {
     Schedule,
     Roster,
@@ -119,14 +155,18 @@ internal enum class TeamTab {
 }
 
 @Composable
-private fun TeamTabRow(modifier: Modifier = Modifier) {
+private fun TeamTabRow(
+    selected: TeamTab,
+    onSelect: (TeamTab) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     SubNavigationRow(
         entries = TeamTab.entries,
-        selected = TeamTab.Schedule,
-        onSelect = {},
+        selected = selected,
+        onSelect = onSelect,
         tagPrefix = "team.tab",
         modifier = modifier,
-        enabled = { it == TeamTab.Schedule },
+        enabled = { it != TeamTab.Stats },
         label = { tab ->
             stringResource(
                 when (tab) {

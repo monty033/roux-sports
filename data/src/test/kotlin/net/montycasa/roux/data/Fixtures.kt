@@ -29,4 +29,7 @@ object Fixtures {
 
     /** A club schedule captured 3 November 2026 from the live API. */
     fun clubSchedule(name: String): String = text(CLUB_SCHEDULE_CAPTURE, name)
+
+    /** A current roster captured 3 November 2026 from the live API. */
+    fun roster(name: String): String = text(CLUB_SCHEDULE_CAPTURE, name)
 }

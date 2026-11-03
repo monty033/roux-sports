@@ -275,16 +275,15 @@ class TeamScheduleListTest {
     }
 
     @Test
-    fun theTabsShowScheduleSelectedAndTheComingSoonPeersUnavailable() {
+    fun theTabsShowScheduleSelectedAndOnlyStatsUnavailable() {
         showScreen(schedule = Loadable(listOf(game("next", "2026-11-05T20:00:00Z", GameState.Scheduled)), Freshness.Fresh, null))
 
         rule.onNodeWithTag("team.tab.Schedule").assertIsSelected().assertIsEnabled()
-        val roster = rule.onNodeWithTag("team.tab.Roster")
-        roster
+        rule
+            .onNodeWithTag("team.tab.Roster")
             .assertIsDisplayed()
-            .assertIsNotEnabled()
+            .assertIsEnabled()
             .assertIsNotSelected()
-            .assertHasNoClickAction()
         val stats = rule.onNodeWithTag("team.tab.Stats")
         stats
             .assertIsDisplayed()
@@ -294,17 +293,13 @@ class TeamScheduleListTest {
 
         assertEquals(
             "Unavailable",
-            roster.fetchSemanticsNode().config[SemanticsProperties.StateDescription],
-        )
-        assertEquals(
-            "Unavailable",
             stats.fetchSemanticsNode().config[SemanticsProperties.StateDescription],
         )
         assertEquals(
             "disabled entries must keep their 48 dp cell",
             48.dp,
             with(rule.density) {
-                roster
+                stats
                     .fetchSemanticsNode()
                     .size.height
                     .toDp()

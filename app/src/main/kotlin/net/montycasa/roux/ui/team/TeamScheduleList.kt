@@ -221,9 +221,7 @@ private fun ScheduleFailure(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.heightModifier(8.dp))
-        Box(Modifier.fillMaxWidth().testTag("team.schedule.retry")) {
-            RetryButton(onRetry = onRetry, isRefreshing = isRefreshing, retryTag = "team.schedule.retry")
-        }
+        RetryButton(onRetry = onRetry, isRefreshing = isRefreshing, retryTag = "team.schedule.retry")
     }
 }
 

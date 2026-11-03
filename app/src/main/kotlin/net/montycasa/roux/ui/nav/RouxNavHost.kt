@@ -869,6 +869,7 @@ private fun TeamDetailDestination(
                             teamKey = teamKey,
                             standings = container.standings,
                             schedule = container.clubSchedule,
+                            roster = container.clubRoster,
                             clock = container.clock,
                         )
                     }
@@ -879,6 +880,7 @@ private fun TeamDetailDestination(
         state = state,
         onBack = onBack,
         onRetry = detail::retry,
+        onRosterRetry = detail::retryRoster,
         onGameClick = onGameClick,
     )
 }

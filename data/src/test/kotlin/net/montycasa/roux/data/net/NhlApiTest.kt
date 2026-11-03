@@ -28,6 +28,9 @@ class NhlApiTest {
     fun seasonsUsesExactPath() = assertPath("/v1/standings-season") { seasons() }
 
     @Test
+    fun rosterUsesExactCurrentPath() = assertPath("/v1/roster/ANA/current") { roster("ANA") }
+
+    @Test
     fun gamecenterLandingUsesExactPath() = assertPath("/v1/gamecenter/2026020123/landing") { gamecenterLanding(GameId("2026020123")) }
 
     @Test
@@ -101,12 +104,13 @@ class NhlApiTest {
             api.score("2026-10-25")
             api.standings("2026-10-25")
             api.seasons()
+            api.roster("ANA")
             api.gamecenterLanding(GameId("2026020123"))
             api.gamecenterBoxscore(GameId("2026020123"))
             api.gamecenterRightRail(GameId("2026020123"))
 
             val paths = engine.requestHistory.map { it.url.encodedPath }
-            assertEquals(6, paths.size)
+            assertEquals(7, paths.size)
             assertTrue(paths.toString(), paths.none { it.contains("now") })
         }
 

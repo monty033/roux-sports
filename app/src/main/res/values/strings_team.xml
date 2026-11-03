@@ -7,6 +7,12 @@
     <string name="team_tab_schedule">Schedule</string>
     <string name="team_tab_roster">Roster</string>
     <string name="team_tab_stats">Stats</string>
+    <string name="team_roster_forwards">Forwards</string>
+    <string name="team_roster_defense">Defense</string>
+    <string name="team_roster_goalies">Goalies</string>
+    <string name="team_roster_position">POS</string>
+    <string name="team_roster_empty">No roster available.</string>
+    <string name="team_roster_error">Roster could not be loaded.</string>
     <string name="team_schedule_empty">No games scheduled.</string>
     <string name="team_schedule_error">Schedule could not be loaded.</string>
     <string name="team_schedule_next">Next</string>
