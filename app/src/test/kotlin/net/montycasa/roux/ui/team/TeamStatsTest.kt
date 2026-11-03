@@ -120,6 +120,62 @@ class TeamStatsTest {
     }
 
     @Test
+    fun aRealZeroGoalieAverageAndSavePercentageAreNotDashes() {
+        showScreen(
+            stats =
+                Loadable(
+                    ClubStats(
+                        goalies =
+                            listOf(
+                                GoalieStat(
+                                    playerId = 99,
+                                    name = "Zero Goalie",
+                                    gamesPlayed = 1,
+                                    goalsAgainstAverage = 0.0,
+                                    savePercentage = 0.0,
+                                ),
+                            ),
+                    ),
+                    Freshness.Fresh,
+                    null,
+                ),
+        )
+        rule.onNodeWithTag("team.tab.Stats").performClick()
+        rule.waitForIdle()
+
+        rule.onNodeWithTag("team.stats.player.99.gaa", useUnmergedTree = true).assertTextEquals("0.00")
+        rule.onNodeWithTag("team.stats.player.99.sv%", useUnmergedTree = true).assertTextEquals(".000")
+    }
+
+    @Test
+    fun anAbsentNumberPrintsTheEmDash() {
+        showScreen(
+            stats =
+                Loadable(
+                    ClubStats(
+                        skaters =
+                            listOf(
+                                SkaterStat(
+                                    playerId = 7,
+                                    name = "Absent Points",
+                                    gamesPlayed = 1,
+                                    points = null,
+                                    plusMinus = null,
+                                ),
+                            ),
+                    ),
+                    Freshness.Fresh,
+                    null,
+                ),
+        )
+        rule.onNodeWithTag("team.tab.Stats").performClick()
+        rule.waitForIdle()
+
+        rule.onNodeWithTag("team.stats.player.7.pts", useUnmergedTree = true).assertTextEquals("—")
+        rule.onNodeWithTag("team.stats.player.7.+/-", useUnmergedTree = true).assertTextEquals("—")
+    }
+
+    @Test
     fun plusMinusKeepsItsSignButZeroIsNotPlusZero() {
         assertEquals("+5", formatPlusMinus(5))
         assertEquals("-3", formatPlusMinus(-3))
@@ -165,7 +221,7 @@ class TeamStatsTest {
             skaters =
                 listOf(
                     SkaterStat(
-                        id = 1,
+                        playerId = 1,
                         name = "Leo Carlsson",
                         positionCode = "C",
                         gamesPlayed = 14,
@@ -177,7 +233,7 @@ class TeamStatsTest {
                         avgTimeOnIcePerGame = 958.7857,
                     ),
                     SkaterStat(
-                        id = 2,
+                        playerId = 2,
                         name = "Sam Colangelo",
                         positionCode = "R",
                         gamesPlayed = 20,
@@ -191,7 +247,7 @@ class TeamStatsTest {
             goalies =
                 listOf(
                     GoalieStat(
-                        id = 31,
+                        playerId = 31,
                         name = "Lukas Dostal",
                         gamesPlayed = 9,
                         wins = 4,
@@ -202,7 +258,7 @@ class TeamStatsTest {
                         shutouts = 0,
                     ),
                     GoalieStat(
-                        id = 35,
+                        playerId = 35,
                         name = "Ville Husso",
                         gamesPlayed = 5,
                         wins = 1,

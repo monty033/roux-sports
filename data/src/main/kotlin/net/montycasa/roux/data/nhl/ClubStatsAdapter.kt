@@ -51,56 +51,57 @@ internal object ClubStatsAdapter {
     fun parseClubStats(json: String): ParseResult<ClubStats> = parse(json)
 
     /**
-     * A missing name is the only reason to drop a row: every other number has a defensible zero,
-     * but a row with no name cannot be labelled.
+     * A missing name is the only reason to drop a row. Every number stays exactly as the feed sent
+     * it, including absence: a missing number becomes null rather than zero, because zero is a real
+     * value and the table must not print it for a number the feed did not publish.
      */
     private fun ClubStatsSkaterDto.toStat(): SkaterStat? {
         val name = fullName() ?: return null
         return SkaterStat(
-            id = playerId,
+            playerId = playerId,
             name = name,
             positionCode = positionCode?.trim()?.takeIf { it.isNotEmpty() },
             headshotUrl = headshot?.trim()?.takeIf { it.isNotEmpty() },
-            gamesPlayed = gamesPlayed ?: 0,
-            goals = goals ?: 0,
-            assists = assists ?: 0,
-            points = points ?: 0,
-            plusMinus = plusMinus ?: 0,
-            penaltyMinutes = penaltyMinutes ?: 0,
-            shots = shots ?: 0,
-            shootingPctg = shootingPctg ?: 0.0,
-            powerPlayGoals = powerPlayGoals ?: 0,
-            shorthandedGoals = shorthandedGoals ?: 0,
-            gameWinningGoals = gameWinningGoals ?: 0,
-            overtimeGoals = overtimeGoals ?: 0,
-            faceoffWinPctg = faceoffWinPctg ?: 0.0,
-            avgTimeOnIcePerGame = avgTimeOnIcePerGame ?: 0.0,
-            avgShiftsPerGame = avgShiftsPerGame ?: 0.0,
+            gamesPlayed = gamesPlayed,
+            goals = goals,
+            assists = assists,
+            points = points,
+            plusMinus = plusMinus,
+            penaltyMinutes = penaltyMinutes,
+            shots = shots,
+            shootingPctg = shootingPctg,
+            powerPlayGoals = powerPlayGoals,
+            shorthandedGoals = shorthandedGoals,
+            gameWinningGoals = gameWinningGoals,
+            overtimeGoals = overtimeGoals,
+            faceoffWinPctg = faceoffWinPctg,
+            avgTimeOnIcePerGame = avgTimeOnIcePerGame,
+            avgShiftsPerGame = avgShiftsPerGame,
         )
     }
 
     private fun ClubStatsGoalieDto.toStat(): GoalieStat? {
         val name = fullName() ?: return null
         return GoalieStat(
-            id = playerId,
+            playerId = playerId,
             name = name,
             headshotUrl = headshot?.trim()?.takeIf { it.isNotEmpty() },
-            gamesPlayed = gamesPlayed ?: 0,
-            gamesStarted = gamesStarted ?: 0,
-            wins = wins ?: 0,
-            losses = losses ?: 0,
-            overtimeLosses = overtimeLosses ?: 0,
-            goalsAgainst = goalsAgainst ?: 0,
-            goalsAgainstAverage = goalsAgainstAverage ?: 0.0,
-            shotsAgainst = shotsAgainst ?: 0,
-            saves = saves ?: 0,
-            savePercentage = savePercentage ?: 0.0,
-            shutouts = shutouts ?: 0,
-            timeOnIce = timeOnIce ?: 0,
-            assists = assists ?: 0,
-            goals = goals ?: 0,
-            points = points ?: 0,
-            penaltyMinutes = penaltyMinutes ?: 0,
+            gamesPlayed = gamesPlayed,
+            gamesStarted = gamesStarted,
+            wins = wins,
+            losses = losses,
+            overtimeLosses = overtimeLosses,
+            goalsAgainst = goalsAgainst,
+            goalsAgainstAverage = goalsAgainstAverage,
+            shotsAgainst = shotsAgainst,
+            saves = saves,
+            savePercentage = savePercentage,
+            shutouts = shutouts,
+            timeOnIce = timeOnIce,
+            assists = assists,
+            goals = goals,
+            points = points,
+            penaltyMinutes = penaltyMinutes,
         )
     }
 
@@ -129,7 +130,7 @@ internal object ClubStatsAdapter {
     private fun List<GoalieStat>.goalieLeaderboard(): List<GoalieStat> =
         sortedWith(
             compareByDescending<GoalieStat> { it.gamesPlayed }
-                .thenBy { it.goalsAgainstAverage }
+                .thenBy { it.goalsAgainstAverage ?: Double.MAX_VALUE }
                 .thenBy { it.name },
         )
 }

@@ -23,6 +23,3 @@ interface ClubStatsRepository {
     /** The endpoint's own name, for callers that prefer to say exactly which feed is read. */
     suspend fun clubStats(teamKey: TeamKey): Loadable<ClubStats> = stats(teamKey)
 }
-
-/** A shorter name for the same contract, matching the other club-page repositories. */
-typealias StatsRepository = ClubStatsRepository

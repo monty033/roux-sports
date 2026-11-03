@@ -27,7 +27,7 @@ class ClubStatsAdapterTest {
 
     @Test
     fun theSkatersCarryTheFieldsTheTableShows() {
-        val skater = parsed().skaters.first { it.id == 8473986L }
+        val skater = parsed().skaters.first { it.playerId == 8473986L }
 
         assertEquals("Alex Killorn", skater.name)
         assertEquals("L", skater.positionCode)
@@ -38,21 +38,21 @@ class ClubStatsAdapterTest {
         assertEquals(5, skater.points)
         assertEquals(-3, skater.plusMinus)
         assertEquals(8, skater.penaltyMinutes)
-        assertEquals(0.1, skater.shootingPctg, 0.0000001)
-        assertEquals(958.7857, skater.avgTimeOnIcePerGame, 0.0000001)
+        assertEquals(0.1, requireNotNull(skater.shootingPctg), 0.0000001)
+        assertEquals(958.7857, requireNotNull(skater.avgTimeOnIcePerGame), 0.0000001)
     }
 
     @Test
     fun theGoaliesCarryTheirSeasonLineVerbatim() {
-        val goalie = parsed().goalies.first { it.id == 8476316L }
+        val goalie = parsed().goalies.first { it.playerId == 8476316L }
 
         assertEquals("Laurent Brossoit", goalie.name)
         assertEquals(1, goalie.gamesPlayed)
         assertEquals(1, goalie.wins)
         assertEquals(0, goalie.losses)
         assertEquals(0, goalie.overtimeLosses)
-        assertEquals(3.0, goalie.goalsAgainstAverage, 0.0000001)
-        assertEquals(0.869565, goalie.savePercentage, 0.0000001)
+        assertEquals(3.0, requireNotNull(goalie.goalsAgainstAverage), 0.0000001)
+        assertEquals(0.869565, requireNotNull(goalie.savePercentage), 0.0000001)
         assertEquals(0, goalie.shutouts)
         assertEquals(3600L, goalie.timeOnIce)
     }
@@ -68,10 +68,15 @@ class ClubStatsAdapterTest {
             "points must be the first key",
             skaters.indexOfFirst { it.points == 12 } < skaters.indexOfFirst { it.points == 10 },
         )
+        val order =
+            compareByDescending<net.montycasa.roux.domain.model.SkaterStat> { it.points }
+                .thenByDescending { it.goals }
+                .thenByDescending { it.gamesPlayed }
+                .thenBy { it.name }
         skaters.zipWithNext().forEach { (above, below) ->
             assertTrue(
                 "${above.name} must not outrank ${below.name}",
-                compareSkaters(above, below) <= 0,
+                order.compare(above, below) <= 0,
             )
         }
     }
@@ -82,11 +87,14 @@ class ClubStatsAdapterTest {
 
         assertEquals("Lukas Dostal", goalies.first().name)
         assertEquals(9, goalies.first().gamesPlayed)
+        val order =
+            compareByDescending<net.montycasa.roux.domain.model.GoalieStat> { it.gamesPlayed }
+                .thenBy { it.goalsAgainstAverage ?: Double.MAX_VALUE }
+                .thenBy { it.name }
         goalies.zipWithNext().forEach { (above, below) ->
             assertTrue(
                 "${above.name} must not outrank ${below.name}",
-                above.gamesPlayed > below.gamesPlayed ||
-                    (above.gamesPlayed == below.gamesPlayed && above.goalsAgainstAverage <= below.goalsAgainstAverage),
+                order.compare(above, below) <= 0,
             )
         }
     }
@@ -105,7 +113,24 @@ class ClubStatsAdapterTest {
         assertTrue("A missing number must not discard the payload: $result", result is ParseResult.Success)
         val stats = (result as ParseResult.Success).value
         assertEquals(23, stats.skaters.size)
-        assertEquals(0, stats.skaters.first { it.id == 8473986L }.points)
+        assertNull("an absent number must stay absent, not become zero", stats.skaters.first { it.playerId == 8473986L }.points)
+    }
+
+    @Test
+    fun anAbsentGoalieNumberIsNullRatherThanZero() {
+        val json =
+            mutate { root ->
+                val goalies = root.getValue("goalies").jsonArray
+                val first = JsonObject(goalies.first().jsonObject - "goalsAgainstAverage" - "savePercentage")
+                JsonObject(root + ("goalies" to JsonArray(listOf(first) + goalies.drop(1))))
+            }
+
+        val result = ClubStatsAdapter.parse(json)
+
+        assertTrue("An absent number must not discard the payload: $result", result is ParseResult.Success)
+        val goalie = (result as ParseResult.Success).value.goalies.first { it.playerId == 8476316L }
+        assertNull(goalie.goalsAgainstAverage)
+        assertNull(goalie.savePercentage)
     }
 
     @Test
@@ -149,25 +174,12 @@ class ClubStatsAdapterTest {
         val stats = (ClubStatsAdapter.parse(json) as ParseResult.Success).value
 
         assertEquals(22, stats.skaters.size)
-        assertNull(stats.skaters.firstOrNull { it.id == 8473986L })
+        assertNull(stats.skaters.firstOrNull { it.playerId == 8473986L })
     }
 
     private fun parsed() = (ClubStatsAdapter.parse(fixture) as ParseResult.Success).value
 
     private fun mutate(transform: (JsonObject) -> JsonObject): String = transform(Json.parseToJsonElement(fixture).jsonObject).toString()
-
-    private fun compareSkaters(
-        first: net.montycasa.roux.domain.model.SkaterStat,
-        second: net.montycasa.roux.domain.model.SkaterStat,
-    ): Int {
-        val byPoints = second.points.compareTo(first.points)
-        if (byPoints != 0) return byPoints
-        val byGoals = second.goals.compareTo(first.goals)
-        if (byGoals != 0) return byGoals
-        val byGames = second.gamesPlayed.compareTo(first.gamesPlayed)
-        if (byGames != 0) return byGames
-        return first.name.compareTo(second.name)
-    }
 
     private companion object {
         val fixture = Fixtures.clubStats("club-stats-ana-20262027.json")

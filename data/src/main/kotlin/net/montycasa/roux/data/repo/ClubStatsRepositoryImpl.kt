@@ -150,6 +150,3 @@ fun statsRepository(
     zone: TimeZone = TimeZone.currentSystemDefault(),
     ioDispatcher: CoroutineContext = Dispatchers.IO,
 ): ClubStatsRepository = clubStatsRepository(api, cache, clock, zone, ioDispatcher)
-
-/** The implementation under the shorter name, for tests that name the contract rather than the club. */
-internal typealias StatsRepositoryImpl = ClubStatsRepositoryImpl

@@ -142,7 +142,7 @@ private fun StatsTables(
                         .sortedWith(
                             // Leaderboard order, not the feed's.
                             compareByDescending<GoalieStat> { it.gamesPlayed }
-                                .thenBy { it.goalsAgainstAverage }
+                                .thenBy { it.goalsAgainstAverage ?: Double.MAX_VALUE }
                                 .thenBy { it.name },
                         ).map { it.tableRow() },
             )
@@ -160,36 +160,36 @@ private data class StatsRow(
 
 private fun SkaterStat.tableRow(): StatsRow =
     StatsRow(
-        id = id ?: playerId,
+        id = playerId,
         name = name,
-        position = positionCode ?: position ?: "—",
-        headshotUrl = headshotUrl ?: headshot,
+        position = positionCode ?: "—",
+        headshotUrl = headshotUrl,
         values =
             listOf(
-                gamesPlayed.toString(),
-                goals.toString(),
-                assists.toString(),
-                points.toString(),
+                formatStatNumber(gamesPlayed),
+                formatStatNumber(goals),
+                formatStatNumber(assists),
+                formatStatNumber(points),
                 formatPlusMinus(plusMinus),
-                penaltyMinutes.toString(),
+                formatStatNumber(penaltyMinutes),
             ),
     )
 
 private fun GoalieStat.tableRow(): StatsRow =
     StatsRow(
-        id = id ?: playerId,
+        id = playerId,
         name = name,
-        position = positionCode ?: position ?: "G",
-        headshotUrl = headshotUrl ?: headshot,
+        position = positionCode ?: "—",
+        headshotUrl = headshotUrl,
         values =
             listOf(
-                gamesPlayed.toString(),
-                wins.toString(),
-                losses.toString(),
-                overtimeLosses.toString(),
-                formatGoalsAgainstAverage(if (goalsAgainstAverage != 0.0) goalsAgainstAverage else gaa),
-                formatSavePercentage(if (savePercentage != 0.0) savePercentage else savePctg),
-                shutouts.toString(),
+                formatStatNumber(gamesPlayed),
+                formatStatNumber(wins),
+                formatStatNumber(losses),
+                formatStatNumber(overtimeLosses),
+                formatGoalsAgainstAverage(goalsAgainstAverage),
+                formatSavePercentage(savePercentage),
+                formatStatNumber(shutouts),
             ),
     )
 
@@ -392,58 +392,67 @@ private fun StatsFailure(
     }
 }
 
-/** Seconds as `M:SS`; 958.7857 prints `15:58`, the feed's unit kept intact. */
-internal fun formatStatsIceTime(seconds: Double): String = formatStatsIceTime(seconds.toLong())
+/** An absent number prints as the em dash; a real number prints as itself. */
+internal fun formatStatNumber(value: Int?): String = value?.toString() ?: "—"
+
+/** Seconds as `M:SS`; 958.7857 prints `15:58`, and a real 0 prints `0:00`. */
+internal fun formatStatsIceTime(seconds: Double?): String = seconds?.let { formatStatsIceTime(it.toLong()) } ?: "—"
 
 /** The same value as a whole number of seconds. */
-internal fun formatStatsIceTime(seconds: Long): String {
-    if (seconds <= 0) return "—"
+internal fun formatStatsIceTime(seconds: Long?): String {
+    if (seconds == null || seconds < 0) return "—"
     val minutes = seconds / 60
     val rest = seconds % 60
     return "$minutes:${rest.toString().padStart(2, '0')}"
 }
 
 /** An alias for callers that name the column rather than the unit. */
-internal fun formatTimeOnIce(seconds: Double): String = formatStatsIceTime(seconds)
+internal fun formatTimeOnIce(seconds: Double?): String = formatStatsIceTime(seconds)
 
 /** The same value as a whole number of seconds. */
-internal fun formatTimeOnIce(seconds: Long): String = formatStatsIceTime(seconds)
+internal fun formatTimeOnIce(seconds: Long?): String = formatStatsIceTime(seconds)
 
 /** An alias matching the game page's existing name for the same formatting. */
-internal fun formatIceTime(seconds: Double): String = formatStatsIceTime(seconds)
+internal fun formatIceTime(seconds: Double?): String = formatStatsIceTime(seconds)
 
 /** The same value as a whole number of seconds. */
-internal fun formatIceTime(seconds: Long): String = formatStatsIceTime(seconds)
+internal fun formatIceTime(seconds: Long?): String = formatStatsIceTime(seconds)
 
 /** A shooting fraction printed as a one-decimal percentage: 0.1 is `10.0%`. */
-internal fun formatShootingPercentage(fraction: Double): String = formatDecimal(fraction * 100.0, 1) + "%"
+internal fun formatShootingPercentage(fraction: Double?): String = fraction?.let { formatDecimal(it * 100.0, 1) + "%" } ?: "—"
 
 /** An alias using the feed's spelling. */
-internal fun formatShootingPctg(fraction: Double): String = formatShootingPercentage(fraction)
+internal fun formatShootingPctg(fraction: Double?): String = formatShootingPercentage(fraction)
 
 /** A generic name for the same one-decimal percentage. */
-internal fun formatPercentage(fraction: Double): String = formatShootingPercentage(fraction)
+internal fun formatPercentage(fraction: Double?): String = formatShootingPercentage(fraction)
 
-/** A save fraction printed the way hockey prints it: 0.869565 is `.870`. */
-internal fun formatSavePercentage(fraction: Double): String {
+/** A save fraction printed the way hockey prints it: 0.869565 is `.870`, and 0.0 is `.000`. */
+internal fun formatSavePercentage(fraction: Double?): String {
+    if (fraction == null) return "—"
     val text = formatDecimal(fraction, 3)
     return if (text.startsWith("0.")) text.substring(1) else text
 }
 
 /** An alias using the feed's spelling. */
-internal fun formatSavePctg(fraction: Double): String = formatSavePercentage(fraction)
+internal fun formatSavePctg(fraction: Double?): String = formatSavePercentage(fraction)
 
 /** An alias for the column label. */
-internal fun formatSvPercentage(fraction: Double): String = formatSavePercentage(fraction)
+internal fun formatSvPercentage(fraction: Double?): String = formatSavePercentage(fraction)
 
-/** A goals-against average with two decimals: 3.0 is `3.00`. */
-internal fun formatGoalsAgainstAverage(value: Double): String = formatDecimal(value, 2)
+/** A goals-against average with two decimals: 3.0 is `3.00`, a real 0.0 is `0.00`. */
+internal fun formatGoalsAgainstAverage(value: Double?): String = value?.let { formatDecimal(it, 2) } ?: "—"
 
 /** An alias for the column label. */
-internal fun formatGaa(value: Double): String = formatGoalsAgainstAverage(value)
+internal fun formatGaa(value: Double?): String = formatGoalsAgainstAverage(value)
 
-/** A signed plus/minus: `+5`, `-3`, and `0` rather than `+0`. */
-internal fun formatPlusMinus(value: Int): String = if (value > 0) "+$value" else value.toString()
+/** A signed plus/minus: `+5`, `-3`, and `0` rather than `+0`; absent prints the em dash. */
+internal fun formatPlusMinus(value: Int?): String =
+    when {
+        value == null -> "—"
+        value > 0 -> "+$value"
+        else -> value.toString()
+    }
 
 private fun formatDecimal(
     value: Double,
