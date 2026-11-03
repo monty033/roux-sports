@@ -14,6 +14,8 @@ import net.montycasa.roux.data.nhl.dto.LandingBroadcastDto
 import net.montycasa.roux.data.nhl.dto.LandingClockDto
 import net.montycasa.roux.data.nhl.dto.LandingDto
 import net.montycasa.roux.data.nhl.dto.LandingGoalDto
+import net.montycasa.roux.data.nhl.dto.LandingPenaltyDto
+import net.montycasa.roux.data.nhl.dto.LandingPenaltyPeriodDto
 import net.montycasa.roux.data.nhl.dto.LandingPeriodDescriptorDto
 import net.montycasa.roux.data.nhl.dto.LandingScoringPeriodDto
 import net.montycasa.roux.data.nhl.dto.LandingStarDto
@@ -26,6 +28,7 @@ import net.montycasa.roux.domain.model.GoalAssist
 import net.montycasa.roux.domain.model.GoalEvent
 import net.montycasa.roux.domain.model.GoalModifier
 import net.montycasa.roux.domain.model.GoalStrength
+import net.montycasa.roux.domain.model.PenaltyEvent
 import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.PeriodScoring
 import net.montycasa.roux.domain.model.PlayerRef
@@ -120,6 +123,18 @@ internal object LandingAdapter {
                     val number = period.periodDescriptor?.number?.takeIf { it > 0 } ?: return@flatMap emptyList()
                     period.goals.orEmpty().mapNotNull { it?.toGoalEvent(number, away, home) }
                 }
+        val penalties =
+            summary
+                ?.penalties
+                .orEmpty()
+                .flatMap { rawPeriod ->
+                    val period = rawPeriod ?: return@flatMap emptyList()
+                    // A penalty without a period has no heading to sit under, and one without an offender cannot be
+                    // attributed. Both are dropped alone: the rest of the calls are still true.
+                    val descriptor = period.periodDescriptor ?: return@flatMap emptyList()
+                    val number = descriptor.number?.takeIf { it > 0 } ?: return@flatMap emptyList()
+                    period.penalties.orEmpty().mapNotNull { it?.toPenaltyEvent(number, descriptor.periodType.clean()) }
+                }
 
         return ParseResult.Success(
             GameLanding(
@@ -135,6 +150,7 @@ internal object LandingAdapter {
                 periodScoring = periods,
                 threeStars = stars,
                 goals = goals,
+                penalties = penalties,
                 state = state,
                 period =
                     landing.periodDescriptor?.number?.let {
@@ -237,6 +253,53 @@ internal object LandingAdapter {
         )
     }
 
+    /**
+     * One penalty call, with the feed's `descKey` turned into the prose the card prints.
+     *
+     * The offender's full name is required: a row with no name cannot say who sat. The drawn and served names are
+     * optional and stay optional, which is what lets the card omit those lines rather than print an empty label.
+     */
+    private fun LandingPenaltyDto.toPenaltyEvent(
+        period: Int,
+        periodType: String?,
+    ): PenaltyEvent? {
+        val offender =
+            fullName(committedByPlayer?.firstName, committedByPlayer?.lastName)
+                ?: committedByPlayer?.name?.default.clean()
+                ?: return null
+        val drawn =
+            fullName(drawnBy?.firstName, drawnBy?.lastName)
+                ?: drawnBy?.name?.default.clean()
+        return PenaltyEvent(
+            period = period,
+            periodType = periodType,
+            timeInPeriod = timeInPeriod.clean().orEmpty(),
+            teamAbbrev = teamAbbrev?.abbrevText().orEmpty(),
+            player = offender,
+            call = penaltyCall(descKey),
+            durationMinutes = duration?.takeIf { it > 0 },
+            drawnBy = drawn,
+            servedBy = servedBy?.default.clean(),
+        )
+    }
+
+    /**
+     * The card's prose for a call.
+     *
+     * The observed keys are listed explicitly because the feed treats them as translation keys, not display text.
+     * An unfamiliar key is not dropped: hyphens become spaces, so a new call still reads as words instead of leaking
+     * a wire token into the sentence.
+     */
+    private fun penaltyCall(descKey: String?): String {
+        val key =
+            descKey
+                ?.trim()
+                ?.lowercase()
+                .orEmpty()
+                .ifEmpty { "penalty" }
+        return PENALTY_CALLS[key] ?: key.replace('-', ' ')
+    }
+
     private fun String?.toStrength(): GoalStrength =
         when (this?.trim()?.lowercase()) {
             "ev" -> GoalStrength.EvenStrength
@@ -285,4 +348,16 @@ internal object LandingAdapter {
     }
 
     private enum class Side { Away, Home }
+
+    /** The observed `descKey` values, spelled the way the card reads them. */
+    private val PENALTY_CALLS =
+        mapOf(
+            "fighting" to "fighting",
+            "holding" to "holding",
+            "hooking" to "hooking",
+            "interference" to "interference",
+            "roughing" to "roughing",
+            "tripping" to "tripping",
+            "unsportsmanlike-conduct" to "unsportsmanlike conduct",
+        )
 }

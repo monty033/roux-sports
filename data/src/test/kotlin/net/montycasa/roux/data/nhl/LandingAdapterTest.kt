@@ -18,6 +18,7 @@ import net.montycasa.roux.domain.model.GoalAssist
 import net.montycasa.roux.domain.model.GoalEvent
 import net.montycasa.roux.domain.model.GoalModifier
 import net.montycasa.roux.domain.model.GoalStrength
+import net.montycasa.roux.domain.model.PenaltyEvent
 import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.PeriodScoring
 import org.junit.Assert.assertEquals
@@ -369,6 +370,103 @@ class LandingAdapterTest {
         assertEquals(3, landing.goals.last().homeScore)
     }
 
+    @Test
+    fun capturedUtaPhiPenaltiesKeepTheirThreePeriodBlocksAndThirteenCalls() {
+        val landing = successOf(Fixtures.text(PENALTY_FIXTURE))
+
+        assertEquals(13, landing.penalties.size)
+        assertEquals(
+            mapOf(1 to 2, 2 to 5, 3 to 6),
+            landing.penalties
+                .groupBy { it.period }
+                .mapValues { it.value.size }
+                .toSortedMap(),
+        )
+        assertEquals(
+            PenaltyEvent(
+                period = 1,
+                periodType = "REG",
+                timeInPeriod = "05:15",
+                teamAbbrev = "PHI",
+                player = "Jamie Drysdale",
+                call = "holding",
+                durationMinutes = 2,
+                drawnBy = "Liam O'Brien",
+                servedBy = null,
+            ),
+            landing.penalties.first(),
+        )
+    }
+
+    @Test
+    fun capturedPenaltyCallsRenderDescKeysAsProseAndKeepDurationsSeparateFromType() {
+        val landing = successOf(Fixtures.text(PENALTY_FIXTURE))
+
+        assertTrue(landing.penalties.any { it.call == "unsportsmanlike conduct" })
+        assertTrue(!landing.penalties.any { it.call.contains('-') })
+        assertEquals(
+            listOf(5, 5),
+            landing.penalties.filter { it.period == 3 && it.call == "fighting" }.map { it.durationMinutes },
+        )
+        // Both fighting majors are at the same clock time; type is not part of the card's text.
+        assertEquals(
+            listOf("11:55", "11:55"),
+            landing.penalties.filter { it.period == 3 && it.call == "fighting" }.map { it.timeInPeriod },
+        )
+    }
+
+    @Test
+    fun capturedServedByKeepsTheInitialledNameVerbatim() {
+        val served = successOf(Fixtures.text(PENALTY_FIXTURE)).penalties.single { it.servedBy != null }
+
+        assertEquals("M. Carcone", served.servedBy)
+        assertEquals("Lawson Crouse", served.player)
+        assertEquals("roughing", served.call)
+    }
+
+    @Test
+    fun anUnfamiliarDescKeyFallsBackToHyphensAsSpaces() {
+        val landing =
+            successOf(
+                """{"id":1,"summary":{"penalties":[{"periodDescriptor":{"number":1,"periodType":"REG"},
+                "penalties":[{"timeInPeriod":"01:00","type":"MIN","duration":2,
+                "committedByPlayer":{"firstName":{"default":"Alex"},"lastName":{"default":"Player"}},
+                "teamAbbrev":{"default":"PHI"},"descKey":"too-many-men-on-the-ice"}]}]}}""",
+            )
+
+        assertEquals("too many men on the ice", landing.penalties.single().call)
+    }
+
+    @Test
+    fun drawnAndServedLinesStayAbsentWhenThePayloadOmitsThem() {
+        val landing =
+            successOf(
+                """{"id":1,"summary":{"penalties":[{"periodDescriptor":{"number":2,"periodType":"REG"},
+                "penalties":[{"timeInPeriod":"09:12","type":"MIN","duration":2,
+                "committedByPlayer":{"firstName":{"default":"Alex"},"lastName":{"default":"Player"}},
+                "teamAbbrev":{"default":"PHI"},"descKey":"holding"}]}]}}""",
+            )
+
+        val penalty = landing.penalties.single()
+        assertEquals(null, penalty.drawnBy)
+        assertEquals(null, penalty.servedBy)
+        assertEquals("Alex Player", penalty.player)
+        assertEquals(2, penalty.durationMinutes)
+    }
+
+    @Test
+    fun absentOrEmptyPenaltyBlocksMapToNoCalls() {
+        assertEquals(emptyList<PenaltyEvent>(), successOf("""{"id":1}""").penalties)
+        assertEquals(
+            emptyList<PenaltyEvent>(),
+            successOf(
+                """{"id":1,"summary":{"penalties":[
+                {"periodDescriptor":{"number":1,"periodType":"REG"},"penalties":[]},
+                {"periodDescriptor":{"number":2,"periodType":"REG"}}]}}""",
+            ).penalties,
+        )
+    }
+
     private fun successOf(json: String): GameLanding {
         val result = LandingAdapter.parse(json)
         assertTrue("expected Success, got $result", result is ParseResult.Success)
@@ -477,5 +575,6 @@ class LandingAdapterTest {
 
     private companion object {
         const val FIXTURE = "gc-final-landing.json"
+        const val PENALTY_FIXTURE = "gc-penalties-landing.json"
     }
 }

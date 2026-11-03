@@ -33,6 +33,7 @@ internal data class LandingTeamDto(
 internal data class LandingSummaryDto(
     val scoring: List<LandingScoringPeriodDto?>? = null,
     val threeStars: List<LandingStarDto?>? = null,
+    val penalties: List<LandingPenaltyPeriodDto?>? = null,
 )
 
 @Serializable
@@ -82,6 +83,35 @@ internal data class LandingGoalAssistDto(
     val assistsToDate: Int? = null,
     val playerId: Long? = null,
     val sweaterNumber: Int? = null,
+)
+
+@Serializable
+internal data class LandingPenaltyPeriodDto(
+    val periodDescriptor: LandingPeriodDescriptorDto? = null,
+    val penalties: List<LandingPenaltyDto?>? = null,
+)
+
+@Serializable
+internal data class LandingPenaltyDto(
+    val timeInPeriod: String? = null,
+    /** `MIN` or `MAJ`; kept raw, but the card prints the duration rather than this token. */
+    val type: String? = null,
+    val duration: Int? = null,
+    val committedByPlayer: LandingPenaltyPlayerDto? = null,
+    /** An object here (`{"default":"PHI"}`), like a goal's abbreviation rather than a star's. */
+    val teamAbbrev: JsonElement? = null,
+    val drawnBy: LandingPenaltyPlayerDto? = null,
+    /** The feed's lowercase key: `fighting`, `holding`, `unsportsmanlike-conduct`. */
+    val descKey: String? = null,
+    /** Often an initialled name, so it is kept as sent rather than composed with a first name. */
+    val servedBy: LocalizedNameDto? = null,
+)
+
+@Serializable
+internal data class LandingPenaltyPlayerDto(
+    val firstName: LocalizedNameDto? = null,
+    val lastName: LocalizedNameDto? = null,
+    val name: LocalizedNameDto? = null,
 )
 
 @Serializable
