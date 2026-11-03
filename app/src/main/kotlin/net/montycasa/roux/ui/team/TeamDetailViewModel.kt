@@ -18,10 +18,10 @@ import net.montycasa.roux.domain.repo.StandingsRepository
 /**
  * One club's page, filled from the league table the rest of the app already reads.
  *
- * There is no team endpoint: the standings cache is the source, and a cold start that arrives here before that cache
- * exists loads it once so the header cannot stay blank forever. The page state carries the matched row rather than a
- * flattened record, because "no row" and "a row that happens to say 0-0-0" are different answers and must not be
- * rendered as the same thing.
+ * There is no team endpoint: the standings cache is the source, and `standings()` already goes to the network when that
+ * cache is missing or stale, so a cold start that arrives here fetches the table once rather than asking twice for the
+ * same answer. The page state carries the matched row rather than a flattened record, because "no row" and "a row that
+ * happens to say 0-0-0" are different answers and must not be rendered as the same thing.
  */
 data class TeamDetailUiState(
     val teamKey: TeamKey,
@@ -37,30 +37,16 @@ class TeamDetailViewModel(
     private val mutableState = MutableStateFlow(TeamDetailUiState(teamKey))
     val uiState: StateFlow<TeamDetailUiState> = mutableState.asStateFlow()
 
-    /** One automatic second attempt, so a cold start cannot show an empty header for the life of the page. */
-    private var recovered = false
-
     init {
         load()
     }
 
-    /** Re-reads the table after a cold start that answered with nothing. */
-    fun retry() {
-        recovered = false
-        load()
-    }
+    /** Re-reads the table after a failure; the page has no other way back. */
+    fun retry() = load()
 
     private fun load() {
         mutableState.update { it.copy(isLoading = true, error = null) }
-        viewModelScope.launch {
-            val first = readTable()
-            if (first.row == null && first.table.data.isNullOrEmpty() && !recovered) {
-                recovered = true
-                apply(readTable())
-            } else {
-                apply(first)
-            }
-        }
+        viewModelScope.launch { apply(readTable()) }
     }
 
     private fun apply(loaded: TableResult) {

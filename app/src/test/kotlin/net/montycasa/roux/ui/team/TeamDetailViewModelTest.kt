@@ -81,21 +81,33 @@ class TeamDetailViewModelTest {
         }
 
     @Test
-    fun aColdStartWithAnEmptyCacheLoadsAgainAndThenRenders() =
+    fun aColdStartWithAnEmptyCacheAsksTheTableOnceAndRenders() =
         runTest {
-            val repository =
-                FakeStandings(
-                    result = Loadable(null, Freshness.Missing, null),
-                    next = Loadable(listOf(toronto), Freshness.Fresh, null),
-                )
+            val repository = FakeStandings(result = Loadable(listOf(toronto), Freshness.Fresh, null))
             val viewModel = viewModel(repository)
             viewModel.uiState.test {
-                assertTrue("the page starts before the cache has answered", awaitItem().isLoading)
+                assertTrue("the page starts before the table has answered", awaitItem().isLoading)
                 runCurrent()
                 val state = expectMostRecentItem()
                 assertFalse("the page must not stay on an empty header", state.isLoading)
                 assertEquals(toronto, state.row)
-                assertEquals("a cold start asks the table a second time", 2, repository.calls)
+                // `standings()` fetches when its cache is missing, so asking twice would be busywork against the same answer.
+                assertEquals("a cold start asks the table once", 1, repository.calls)
+            }
+        }
+
+    @Test
+    fun aRetryAsksTheTableAgain() =
+        runTest {
+            val repository = FakeStandings()
+            val viewModel = viewModel(repository)
+            viewModel.uiState.test {
+                runCurrent()
+                expectMostRecentItem()
+                viewModel.retry()
+                runCurrent()
+                expectMostRecentItem()
+                assertEquals("retry is the way back from a failure", 2, repository.calls)
             }
         }
 
@@ -107,18 +119,12 @@ class TeamDetailViewModelTest {
 
 private class FakeStandings(
     var result: Loadable<List<StandingRow>> = Loadable(listOf(toronto), Freshness.Fresh, null),
-    private var next: Loadable<List<StandingRow>>? = null,
 ) : StandingsRepository {
     var calls = 0
 
     override suspend fun standings(anyGameLive: Boolean): Loadable<List<StandingRow>> {
         calls++
-        val answer = result
-        next?.let {
-            result = it
-            next = null
-        }
-        return answer
+        return result
     }
 
     override suspend fun seasons(): Loadable<List<Season>> = error("Not used by the team page")
