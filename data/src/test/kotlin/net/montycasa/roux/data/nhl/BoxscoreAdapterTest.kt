@@ -79,8 +79,11 @@ class BoxscoreAdapterTest {
      */
     @Test
     fun capturedFinalHasEverySkaterFromBothSides() {
-        val skaters = successOf(Fixtures.text(FIXTURE)).skaters
+        val boxscore = successOf(Fixtures.text(FIXTURE))
+        val skaters = boxscore.forwards + boxscore.defense
         assertEquals(36, skaters.size)
+        assertEquals(24, boxscore.forwards.size)
+        assertEquals(12, boxscore.defense.size)
         assertEquals(18, skaters.count { it.skater.teamAbbrev == "CBJ" })
         assertEquals(18, skaters.count { it.skater.teamAbbrev == "PHI" })
         assertTrue(
@@ -89,9 +92,89 @@ class BoxscoreAdapterTest {
         )
     }
 
+    /**
+     * The feed's two lists are carried as two lists, each in the order the payload wrote them - away side first, then
+     * home, with lines and pairs untouched. The roles are not re-derived from `position`.
+     */
+    @Test
+    fun forwardsAndDefenseKeepTheirOwnFeedListsInFeedOrder() {
+        val boxscore = successOf(Fixtures.text(FIXTURE))
+
+        assertEquals(
+            listOf("C. Coyle", "C. Sillinger", "D. Voronkov", "A. Fantilli"),
+            boxscore.forwards.take(4).map { it.skater.name },
+        )
+        assertEquals(
+            listOf("J. Christiansen", "D. Mateychuk", "Z. Werenski", "D. Fabbro"),
+            boxscore.defense.take(4).map { it.skater.name },
+        )
+        assertEquals(
+            listOf("S. Couturier", "A. Bump", "C. Dvorak"),
+            boxscore.forwards
+                .drop(12)
+                .take(3)
+                .map { it.skater.name },
+        )
+        assertEquals(
+            listOf("T. Sanheim", "C. York", "J. Drysdale"),
+            boxscore.defense
+                .drop(6)
+                .take(3)
+                .map { it.skater.name },
+        )
+    }
+
+    /**
+     * The disagreement between the feed's lists and its position codes is deliberate: a forward arrives in `forwards`
+     * labelled D, and a defenceman arrives in `defense` labelled C. A position filter looks equivalent on real
+     * payloads because their codes usually agree with their lists, but it is not equivalent - and this test exists so
+     * that shortcut cannot come back. The lists, their order and each player's place in them are the assertion.
+     */
+    @Test
+    fun positionCodesCannotRegroupTheFeedLists() {
+        val boxscore = successOf(payloadWherePositionCodesDisagree())
+
+        assertEquals(
+            listOf("A. Forward One", "A. Forward Two", "H. Forward One"),
+            boxscore.forwards.map { it.skater.name },
+        )
+        assertEquals(
+            listOf("A. Defense One", "A. Defense Two", "H. Defense One"),
+            boxscore.defense.map { it.skater.name },
+        )
+        assertEquals(listOf("D", "L", "C"), boxscore.forwards.map { it.position })
+        assertEquals(listOf("C", "D", "D"), boxscore.defense.map { it.position })
+
+        // The two players whose codes disagree with their lists stay exactly where the feed put them.
+        val forwardLabelledD = boxscore.forwards.first { it.skater.name == "A. Forward One" }
+        assertEquals("D", forwardLabelledD.position)
+        assertTrue("A. Forward One was regrouped by its position code", forwardLabelledD in boxscore.forwards)
+        assertTrue("A. Forward One escaped into defense", boxscore.defense.none { it.skater.name == "A. Forward One" })
+
+        val defenseLabelledC = boxscore.defense.first { it.skater.name == "A. Defense One" }
+        assertEquals("C", defenseLabelledC.position)
+        assertTrue("A. Defense One was regrouped by its position code", defenseLabelledC in boxscore.defense)
+        assertTrue("A. Defense One escaped into forwards", boxscore.forwards.none { it.skater.name == "A. Defense One" })
+    }
+
+    /** An absent list is empty; it must not swallow the other list along with it. */
+    @Test
+    fun anAbsentDefenseListLeavesTheForwardsStanding() {
+        val boxscore = successOf(withoutSideLists("defense"))
+        assertEquals(24, boxscore.forwards.size)
+        assertEquals(emptyList<SkaterLine>(), boxscore.defense)
+    }
+
+    @Test
+    fun anAbsentForwardsListLeavesTheDefenseStanding() {
+        val boxscore = successOf(withoutSideLists("forwards"))
+        assertEquals(emptyList<SkaterLine>(), boxscore.forwards)
+        assertEquals(12, boxscore.defense.size)
+    }
+
     @Test
     fun skaterLineCarriesTheColumnsThePageDraws() {
-        val coyle = successOf(Fixtures.text(FIXTURE)).skaters.first { it.skater.name == "C. Coyle" }
+        val coyle = successOf(Fixtures.text(FIXTURE)).forwards.first { it.skater.name == "C. Coyle" }
         assertEquals("CBJ", coyle.skater.teamAbbrev)
         assertEquals("C", coyle.position)
         assertEquals(0, coyle.goals)
@@ -103,7 +186,7 @@ class BoxscoreAdapterTest {
     /** Ice time is "19:36" text and becomes seconds, because the page formats it and maths needs a number. */
     @Test
     fun iceTimeIsParsedFromMinutesAndSeconds() {
-        val johnson = successOf(Fixtures.text(FIXTURE)).skaters.first { it.skater.name == "K. Johnson" }
+        val johnson = successOf(Fixtures.text(FIXTURE)).forwards.first { it.skater.name == "K. Johnson" }
         assertEquals(2, johnson.goals)
         assertEquals(3, johnson.points)
         assertTrue("K. Johnson has no ice time", johnson.toiSeconds > 0)
@@ -115,7 +198,8 @@ class BoxscoreAdapterTest {
      */
     @Test
     fun capturedPayloadSendsAFaceoffFigureForEverySkater() {
-        val skaters = successOf(Fixtures.text(FIXTURE)).skaters
+        val boxscore = successOf(Fixtures.text(FIXTURE))
+        val skaters = boxscore.forwards + boxscore.defense
         assertTrue("a skater arrived with no faceoff figure", skaters.all { it.faceoffPercent() != null })
         assertTrue("nobody took a draw at all", skaters.any { it.faceoffPercent() == 0 })
     }
@@ -123,8 +207,7 @@ class BoxscoreAdapterTest {
     /** Older or partial payloads omit the key; that absence is preserved as null rather than turned into 0%. */
     @Test
     fun anAbsentFaceoffKeyStaysNull() {
-        val skaters = successOf(withoutOneFaceoffFigure()).skaters
-        val stripped = skaters.first { it.skater.name == "C. Coyle" }
+        val stripped = successOf(withoutOneFaceoffFigure()).forwards.first { it.skater.name == "C. Coyle" }
         assertNull(stripped.faceoffPercent())
     }
 
@@ -141,7 +224,9 @@ class BoxscoreAdapterTest {
 
     @Test
     fun startedGameReportsNoSkatersEither() {
-        assertEquals(emptyList<SkaterLine>(), successOf(Fixtures.text("gc-fut-boxscore.json")).skaters)
+        val boxscore = successOf(Fixtures.text("gc-fut-boxscore.json"))
+        assertEquals(emptyList<SkaterLine>(), boxscore.forwards)
+        assertEquals(emptyList<SkaterLine>(), boxscore.defense)
     }
 
     @Test
@@ -163,6 +248,49 @@ class BoxscoreAdapterTest {
     }
 
     private fun fixture(): JsonObject = Json.parseToJsonElement(Fixtures.text(FIXTURE)).jsonObject
+
+    /** Drops one of the two skater lists from both sides, the way a partial payload would. */
+    private fun withoutSideLists(key: String): String {
+        val root = fixture()
+        val players = root["playerByGameStats"]!!.jsonObject
+        val rewritten =
+            JsonObject(
+                players.mapValues { (_, side) ->
+                    JsonObject(side.jsonObject.filterKeys { it != key })
+                },
+            )
+        return JsonObject(root + ("playerByGameStats" to rewritten)).toString()
+    }
+
+    /** A payload whose `forwards` and `defense` lists deliberately disagree with their position codes. */
+    private fun payloadWherePositionCodesDisagree(): String =
+        """
+        {
+          "id": 2026020229,
+          "awayTeam": { "abbrev": "AAA" },
+          "homeTeam": { "abbrev": "HHH" },
+          "playerByGameStats": {
+            "awayTeam": {
+              "forwards": [
+                { "name": { "default": "A. Forward One" }, "position": "D" },
+                { "name": { "default": "A. Forward Two" }, "position": "L" }
+              ],
+              "defense": [
+                { "name": { "default": "A. Defense One" }, "position": "C" },
+                { "name": { "default": "A. Defense Two" }, "position": "D" }
+              ]
+            },
+            "homeTeam": {
+              "forwards": [
+                { "name": { "default": "H. Forward One" }, "position": "C" }
+              ],
+              "defense": [
+                { "name": { "default": "H. Defense One" }, "position": "D" }
+              ]
+            }
+          }
+        }
+        """.trimIndent()
 
     /** Rebuilds the fixture with all four goalies transformed, leaving every other node untouched. */
     private fun rewriteGoalies(transform: (JsonObject) -> JsonObject): String {

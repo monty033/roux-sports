@@ -1287,7 +1287,8 @@ class GameDetailScreenTest {
         // One card now carries the whole roster, so its failure is the failure of both lists.
         compose.onNodeWithText("Player stats could not be loaded").assertExists()
         compose.onNodeWithTag("detail.section.goalies").assertDoesNotExist()
-        compose.onNodeWithTag("detail.section.skaters").assertDoesNotExist()
+        compose.onNodeWithTag("detail.section.forwards").assertDoesNotExist()
+        compose.onNodeWithTag("detail.section.defense").assertDoesNotExist()
     }
 
     @Test

@@ -8,11 +8,12 @@ import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.ui.common.TeamNames
 
 /**
- * Both lists in one card, goalies first.
+ * All three player groups in one card, forwards first.
  *
- * A reader looking at one club's night wants the whole roster, not two cards that each carry half a heading. The stat
- * columns scroll sideways together with their headers because eight columns plus a name do not fit 360 dp, and shrinking
- * the type to make them fit is the answer that failed the last time it was tried.
+ * A reader looking at one club's night wants the whole roster, not three cards that each carry half a heading. The
+ * groups come from the boxscore's own lists, so a defenceman is grouped by the list the feed put him in rather than by
+ * his position code. The stat columns scroll sideways together with their headers because eight columns plus a name do
+ * not fit 360 dp, and shrinking the type to make them fit is the answer that failed the last time it was tried.
  */
 @Composable
 internal fun TeamDestination(
@@ -25,9 +26,14 @@ internal fun TeamDestination(
             ?.goalies
             ?.filter { it.goalie.teamAbbrev == team.abbrev }
             .orEmpty()
-    val skaters =
+    val forwards =
         boxscore.data
-            ?.skaters
+            ?.forwards
+            ?.filter { it.skater.teamAbbrev == team.abbrev }
+            .orEmpty()
+    val defense =
+        boxscore.data
+            ?.defense
             ?.filter { it.skater.teamAbbrev == team.abbrev }
             .orEmpty()
 
@@ -39,9 +45,9 @@ internal fun TeamDestination(
         emphasised = true,
         headerCrest = team,
         loadable = boxscore,
-        hideWhenEmpty = { goalies.isEmpty() && skaters.isEmpty() },
+        hideWhenEmpty = { goalies.isEmpty() && forwards.isEmpty() && defense.isEmpty() },
         failureLabel = "Player stats could not be loaded",
     ) { _ ->
-        PlayerTables(goalies = goalies, skaters = skaters)
+        PlayerTables(goalies = goalies, forwards = forwards, defense = defense)
     }
 }
