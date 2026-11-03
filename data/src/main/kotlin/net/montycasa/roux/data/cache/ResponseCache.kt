@@ -33,6 +33,11 @@ data class CacheKey(
 class CachedResponse(
     val bytes: ByteArray,
     val fetchedAt: Instant,
+    /**
+     * A caller-supplied label for the state the body was fetched under, or null when none was
+     * recorded. The cache treats it as opaque; a caller that needs a state boundary compares it.
+     */
+    val state: String? = null,
 )
 
 /**
@@ -80,16 +85,23 @@ class ResponseCache(
         key: CacheKey,
         bytes: ByteArray,
         fetchedAt: Instant,
+        state: String? = null,
     ) {
         val target = pathFor(key)
         fileSystem.createDirectories(directory)
         // A sibling is essential: atomicMove cannot guarantee atomicity across filesystems.
         val temp = directory / "${target.name}.${clock.now().toEpochMilliseconds()}.${Random.nextLong()}.tmp"
         try {
+            val stateBytes = state?.encodeUtf8()
             fileSystem.write(temp, mustCreate = true) {
                 write(MAGIC.toByteArray())
                 writeUtf8(fetchedAt.toEpochMilliseconds().toString())
                 writeByte('\n'.code)
+                // A length prefix rather than a newline-delimited field: the state is opaque to
+                // the cache and must not be able to make the envelope itself unparseable.
+                writeUtf8((stateBytes?.size ?: 0).toString())
+                writeByte('\n'.code)
+                if (stateBytes != null) write(stateBytes)
                 // Preserve the raw body without decoding or re-encoding: the whole point is
                 // that an adapter change never invalidates the cache.
                 write(bytes)
@@ -119,7 +131,8 @@ class ResponseCache(
      * Parses a complete envelope, returning null for anything malformed.
      *
      * The body is opaque: it may contain newlines, digits, even the magic string. Only the fixed
-     * magic, the newline-terminated timestamp, and whatever follows that newline are interpreted.
+     * magic, the newline-terminated timestamp, the newline-terminated state length, and the bytes
+     * that follow are interpreted.
      */
     private fun decode(raw: ByteArray): CachedResponse? {
         val magic = MAGIC.toByteArray()
@@ -140,9 +153,23 @@ class ResponseCache(
         if (!TIMESTAMP.matches(timestamp)) return null
         val epochMillis = timestamp.toLongOrNull() ?: return null
 
+        val stateStart = newline + 1
+        val stateLengthLimit = minOf(stateStart + STATE_LENGTH_MAX_CHARS + 1, raw.size)
+        var stateLengthEnd = stateStart
+        while (stateLengthEnd < stateLengthLimit && raw[stateLengthEnd] != NEWLINE) stateLengthEnd++
+        if (stateLengthEnd >= stateLengthLimit) return null
+
+        val stateLengthText = raw.decodeToString(stateStart, stateLengthEnd)
+        if (!STATE_LENGTH.matches(stateLengthText)) return null
+        val stateLength = stateLengthText.toIntOrNull() ?: return null
+        val stateStartOffset = stateLengthEnd + 1
+        val stateEnd = stateStartOffset + stateLength
+        if (stateEnd > raw.size) return null
+
         return CachedResponse(
-            bytes = raw.copyOfRange(newline + 1, raw.size),
+            bytes = raw.copyOfRange(stateEnd, raw.size),
             fetchedAt = Instant.fromEpochMilliseconds(epochMillis),
+            state = raw.decodeToString(stateStartOffset, stateEnd).ifEmpty { null },
         )
     }
 
@@ -223,9 +250,11 @@ class ResponseCache(
     private companion object {
         const val ENTRY_SUFFIX = ".roux"
         const val TIMESTAMP_MAX_CHARS = 20
+        const val STATE_LENGTH_MAX_CHARS = 10
         const val NEWLINE = '\n'.code.toByte()
-        val MAGIC = "ROUXCACHE1\n".encodeUtf8()
+        val MAGIC = "ROUXCACHE2\n".encodeUtf8()
         val ID = Regex("[A-Za-z0-9._-]{1,64}")
         val TIMESTAMP = Regex("-?[0-9]+")
+        val STATE_LENGTH = Regex("[0-9]{1,$STATE_LENGTH_MAX_CHARS}")
     }
 }

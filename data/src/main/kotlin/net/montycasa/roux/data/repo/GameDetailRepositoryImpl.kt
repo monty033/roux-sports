@@ -26,6 +26,7 @@ import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.policy.FreshnessPolicy
 import net.montycasa.roux.domain.repo.GameDetailRepository
+import okio.ByteString.Companion.encodeUtf8
 import okio.IOException
 import kotlin.coroutines.CoroutineContext
 import kotlin.time.Clock
@@ -72,15 +73,15 @@ internal class GameDetailRepositoryImpl(
             coroutineScope {
                 val landing =
                     async(start = CoroutineStart.DEFAULT) {
-                        fetch(CacheKind.DetailLanding, gameId, maxAge, force, api::gamecenterLanding, LandingAdapter::parse)
+                        fetch(CacheKind.DetailLanding, gameId, state, maxAge, force, api::gamecenterLanding, LandingAdapter::parse)
                     }
                 val boxscore =
                     async {
-                        fetch(CacheKind.DetailBoxscore, gameId, maxAge, force, api::gamecenterBoxscore, BoxscoreAdapter::parse)
+                        fetch(CacheKind.DetailBoxscore, gameId, state, maxAge, force, api::gamecenterBoxscore, BoxscoreAdapter::parse)
                     }
                 val rightRail =
                     async {
-                        fetch(CacheKind.DetailRightRail, gameId, maxAge, force, api::gamecenterRightRail, RightRailAdapter::parse)
+                        fetch(CacheKind.DetailRightRail, gameId, state, maxAge, force, api::gamecenterRightRail, RightRailAdapter::parse)
                     }
                 GameDetail(
                     landing = landing.await(),
@@ -99,13 +100,15 @@ internal class GameDetailRepositoryImpl(
     private suspend fun <T> fetch(
         kind: CacheKind,
         gameId: GameId,
+        state: GameState,
         maxAge: Duration?,
         force: Boolean,
         request: suspend (GameId) -> ApiResult,
         parse: (String) -> ParseResult<T>,
     ): Loadable<T> {
         val key = CacheKey(kind, gameId.value)
-        val cached = readCached(key, parse)
+        val stateToken = state.cacheToken()
+        val cached = readCached(key, stateToken, parse)
 
         if (!force && cached != null && !FreshnessPolicy.isStale(cached.fetchedAt, clock.now(), maxAge)) {
             return Loadable(cached.data, Freshness.Fresh, null)
@@ -130,7 +133,7 @@ internal class GameDetailRepositoryImpl(
                         try {
                             // The server's bytes, not a re-encoding of the parsed model, so an adapter change never
                             // invalidates the cache. Stamped on arrival, not on request start.
-                            cache.put(key, result.bytes, clock.now())
+                            cache.put(key, result.bytes, clock.now(), stateToken)
                             Loadable(parsed.value, Freshness.Fresh, null)
                         } catch (_: IOException) {
                             // The feed answered and the answer is good; the disk is what failed. Showing that as a fetch
@@ -158,6 +161,7 @@ internal class GameDetailRepositoryImpl(
 
     private suspend fun <T> readCached(
         key: CacheKey,
+        stateToken: String,
         parse: (String) -> ParseResult<T>,
     ): Cached<T>? {
         val entry =
@@ -168,11 +172,30 @@ internal class GameDetailRepositoryImpl(
                 // the same as empty. It must not stop the network attempt or crash the page.
                 return null
             } ?: return null
+        // A body belongs to the state it was captured in. Reading it after the game has moved on - or finding an entry
+        // written before states were recorded - is a miss, not a stale copy: the payload is missing whole cards that the
+        // current state has, so serving it would silently render a skeleton. The network must answer instead.
+        if (entry.state != stateToken) return null
         return when (val parsed = parse(entry.bytes.decodeToString())) {
             is ParseResult.Success -> Cached(parsed.value, entry.fetchedAt)
             is ParseResult.Failure -> null
         }
     }
+
+    /**
+     * A stable label for the lifecycle state, written beside the cached body.
+     *
+     * Critical counts as its own state: it is a different feed moment, and moving into it is exactly when the page is
+     * most likely to have new content. The unknown branch is encoded because the raw token is not ours to constrain.
+     */
+    private fun GameState.cacheToken(): String =
+        when (this) {
+            is GameState.Live -> if (critical) "live-critical" else "live"
+            GameState.Scheduled -> "scheduled"
+            GameState.Pre -> "pre"
+            GameState.Final -> "final"
+            is GameState.Unknown -> "unknown:" + raw.encodeUtf8().base64()
+        }
 
     private fun <T> fallBack(
         cached: Cached<T>?,
