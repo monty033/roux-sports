@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.dp
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
@@ -69,11 +70,36 @@ class TeamPlayersTest {
         showPlayers()
 
         rule.onNodeWithTag("team.players.player.91.name", useUnmergedTree = true).assertTextEquals("Leo Carlsson")
-        rule.onNodeWithTag("team.players.player.91.number", useUnmergedTree = true).assertTextEquals("91")
+        rule.onNodeWithTag("team.players.player.91.headshot", useUnmergedTree = true).assertExists()
         rule.onNodeWithTag("team.players.player.91.gp", useUnmergedTree = true).assertTextEquals("14")
         rule.onNodeWithTag("team.players.player.91.pts", useUnmergedTree = true).assertTextEquals("21")
         rule.onNodeWithTag("team.players.player.91.+/-", useUnmergedTree = true).assertTextEquals("+8")
         rule.onNodeWithTag("team.players.player.91.pim", useUnmergedTree = true).assertTextEquals("8")
+    }
+
+    @Test
+    fun theSweaterNumberIsGoneAndTheHeadshotTakesThatSpace() {
+        showPlayers()
+
+        rule.onNodeWithTag("team.players.player.91.number", useUnmergedTree = true).assertDoesNotExist()
+
+        val headshot =
+            rule
+                .onNodeWithTag("team.players.player.91.headshot", useUnmergedTree = true)
+                .fetchSemanticsNode()
+                .boundsInRoot
+        val name =
+            rule
+                .onNodeWithTag("team.players.player.91.name", useUnmergedTree = true)
+                .fetchSemanticsNode()
+                .boundsInRoot
+        val minimum = with(rule.density) { 40.dp.toPx() }
+
+        assertTrue("the headshot must be at least 40 dp: ${headshot.width} against $minimum", headshot.width >= minimum - 1f)
+        assertTrue(
+            "the headshot must sit left of the name: ${headshot.right} against ${name.left}",
+            headshot.right <= name.left + 1f,
+        )
     }
 
     @Test
@@ -87,11 +113,10 @@ class TeamPlayersTest {
     }
 
     @Test
-    fun aStatsOnlyDefensemanIsListedWithADashNumberInTheDefenseGroup() {
+    fun aStatsOnlyDefensemanIsListedInTheDefenseGroup() {
         showPlayers()
 
         rule.onNodeWithTag("team.players.player.3.name", useUnmergedTree = true).assertTextEquals("Stats Only D")
-        rule.onNodeWithTag("team.players.player.3.number", useUnmergedTree = true).assertTextEquals("—")
         rule.onNodeWithTag("team.players.player.3.pts", useUnmergedTree = true).assertTextEquals("4")
 
         val defenseTop =

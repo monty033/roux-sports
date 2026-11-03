@@ -31,7 +31,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -49,8 +48,7 @@ import net.montycasa.roux.ui.detail.PeriodDivider
 import net.montycasa.roux.ui.theme.Roux
 
 private val IDENTITY_WIDTH = 168.dp
-private val NUMBER_WIDTH = 28.dp
-private val HEADSHOT_SIZE = 32.dp
+private val HEADSHOT_SIZE = 40.dp
 private val STAT_COLUMN = 42.dp
 private val HEADER_HEIGHT = 26.dp
 private val ROW_MIN_HEIGHT = 48.dp
@@ -226,16 +224,6 @@ private fun PlayersRow(
                 .padding(horizontal = 4.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                row.sweaterNumber?.toString() ?: "—",
-                modifier = Modifier.width(NUMBER_WIDTH).testTag("$tag.number"),
-                style = MaterialTheme.typography.bodyMedium,
-                fontFamily = FontFamily.Monospace,
-                color = Roux.accents.muted,
-                textAlign = TextAlign.End,
-                maxLines = 1,
-            )
-            Spacer(Modifier.width(6.dp))
             PlayerHeadshot(row = row, tag = tag)
             Spacer(Modifier.width(6.dp))
             Text(
@@ -271,7 +259,11 @@ private fun PlayerHeadshot(
 ) {
     var loaded by remember(row.headshotUrl) { mutableStateOf(false) }
     Box(
-        Modifier.size(HEADSHOT_SIZE).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant),
+        Modifier
+            .size(HEADSHOT_SIZE)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .testTag("$tag.headshot"),
         contentAlignment = Alignment.Center,
     ) {
         if (!loaded) {
@@ -287,7 +279,7 @@ private fun PlayerHeadshot(
             AsyncImage(
                 model = url,
                 contentDescription = null,
-                modifier = Modifier.matchParentSize().testTag("$tag.headshot"),
+                modifier = Modifier.matchParentSize().testTag("$tag.headshot.image"),
                 contentScale = ContentScale.Crop,
                 onLoading = { loaded = false },
                 onError = { loaded = false },
