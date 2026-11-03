@@ -6,10 +6,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
@@ -27,9 +25,9 @@ import net.montycasa.roux.ui.theme.LocalRouxAccents
 /**
  * The club's three player tables, in the order the feed groups them: forwards, defencemen, goalies.
  *
- * Each block is drawn only when its own list has something in it, so an absent group takes its heading and its spacing
- * with it. The first block that exists carries no top spacer, and every later one keeps the same 14 dp gap the old
- * single skater table used before the goalies.
+ * Each block is drawn only when its own list has something in it, so an absent group takes its heading, table and
+ * divider with it. The group heading is the first cell of that table's header row, and consecutive groups are separated
+ * by the same rule the period summaries use rather than ad-hoc spacing.
  */
 @Composable
 internal fun PlayerTables(
@@ -52,11 +50,11 @@ internal fun PlayerTables(
 
     Column {
         blocks.forEachIndexed { index, block ->
-            if (index > 0) Spacer(Modifier.height(14.dp))
+            if (index > 0) PeriodDivider(tag = PLAYER_DIVIDER_TAG)
             Column(Modifier.testTag("${block.tag}.block")) {
-                SubHeading(block.heading)
                 RosterTable(
                     tag = block.tag,
+                    heading = block.heading,
                     headers = block.headers,
                     rows = block.rows,
                 )
@@ -72,21 +70,10 @@ private data class RosterBlock(
     val rows: List<Pair<String, List<String>>>,
 )
 
-@Composable
-private fun SubHeading(text: String) {
-    Text(
-        text.uppercase(),
-        modifier = Modifier.padding(bottom = 4.dp),
-        style = MaterialTheme.typography.labelSmall,
-        color = LocalRouxAccents.current.muted,
-    )
-}
-
 private fun skaterRow(line: SkaterLine): Pair<String, List<String>> =
-    // The name is the name; position is its own column so a column of surnames stays readable.
+    // The name is the name; position is no longer a column, so the stats start at goals.
     line.skater.name to
         listOf(
-            line.position,
             line.goals.toString(),
             line.assists.toString(),
             line.points.toString(),
@@ -107,18 +94,30 @@ private fun goalieRow(line: GoalieLine): Pair<String, List<String>> =
         )
 
 private val GOALIE_COLUMNS = listOf("SA", "SV", "SV%", "GAA")
-private val SKATER_COLUMNS = listOf("POS", "G", "A", "P", "+/-", "SOG", "PIM", "TOI", "FO%")
+private val SKATER_COLUMNS = listOf("G", "A", "P", "+/-", "SOG", "PIM", "TOI", "FO%")
 
 @Composable
 private fun RosterTable(
     tag: String,
+    heading: String,
     headers: List<String>,
     rows: List<Pair<String, List<String>>>,
 ) {
     Row(Modifier.fillMaxWidth()) {
         // The names stay put. The reason to scroll is to reach a column, never to lose track of whose row it is.
         Column {
-            Spacer(Modifier.height(ROW_HEADER_HEIGHT))
+            Box(
+                Modifier.width(NAME_COLUMN.dp).height(ROW_HEADER_HEIGHT),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                Text(
+                    heading.uppercase(),
+                    modifier = Modifier.testTag("$tag.heading"),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = LocalRouxAccents.current.muted,
+                    maxLines = 1,
+                )
+            }
             rows.forEach { (name, _) ->
                 Box(Modifier.width(NAME_COLUMN.dp).height(ROW_HEIGHT), contentAlignment = Alignment.CenterStart) {
                     Text(
@@ -167,15 +166,21 @@ private fun StatCell(text: String) {
 
 @Composable
 private fun StatHeader(text: String) {
-    Text(
-        text,
-        modifier = Modifier.width(STAT_COLUMN.dp),
-        textAlign = TextAlign.Center,
-        style = MaterialTheme.typography.labelSmall,
-        color = LocalRouxAccents.current.muted,
-        maxLines = 1,
-    )
+    Box(
+        Modifier.width(STAT_COLUMN.dp).height(ROW_HEADER_HEIGHT),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text,
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.labelSmall,
+            color = LocalRouxAccents.current.muted,
+            maxLines = 1,
+        )
+    }
 }
+
+internal const val PLAYER_DIVIDER_TAG = "detail.players.divider"
 
 private const val NAME_COLUMN = 136
 private const val STAT_COLUMN = 42
