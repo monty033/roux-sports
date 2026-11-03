@@ -30,6 +30,7 @@
 | 9 | Design & accessibility audit | A8/A10 sign-off across all screens: reach, light/dark, contrast, font scale, TalkBack labels | Reach tests pass on every screen at font scale 1.0 and 2.0. Roborazzi verify passes in both themes. Contrast assertions pass. Human signs off a one-thumb walkthrough. |
 | 10 | Release readiness | Signed release APK, F-Droid-compatible metadata, A9/D4 audits | `assembleRelease` succeeds with R8. Banned-dependency and network-host audits are clean. `dependenciesInfo` is disabled. Human installs the release build over the debug build's data and runs the smoke checklist. The human tags the release. |
 | 11 | CI (optional, off the critical path) | Forgejo Actions running the PR gate, only if the runner check passes | The probe job (see §6) passes, then the gate job goes green on a PR from the `openclaw` fork. |
+| 12 | Player detail (added after the club page landed) | Tapping a player in the club page's Players tab opens that player's own screen | Adapter tests on captured `player/{id}/landing` fixtures (one skater, one goalie): name, sweater number, position, height/weight, birth date and city, career totals, season totals, last-five-game rows. A player with no season rows still renders with dashes rather than an empty card. Navigation test: the Players row is the tap target, back returns to the club page with the same tab and scroll position. Reach test on the row at 48 dp and on the back control. Pixel 9 check. |
 
 **Changes from the brief's stage list, with reasons:**
 - **Data/domain is split into Stage 1 (parsing) and Stage 2 (I/O).** Parsing is the riskiest and most testable part, and it needs nothing but fixtures. Splitting keeps each gate small and lets drift be tested without a network.
@@ -37,6 +38,7 @@
 - **Favourites (5) comes right after Scores (4).** Scores defaults to favourites-only, so the picker should land next. Stage 4 handles an empty favourites list with a bottom-zone "Pick teams" prompt and falls back to the whole league.
 - **Offline behaviour (A11)** is built in Stage 2 (cache plus freshness) and shown in Stage 4, not given its own stage.
 - **Stages 6 and 7 are independent of each other** once Stage 4 exists.
+- **Stage 12 sits last because it was asked for after the club page shipped, not because it depends on the release work.** Its data source needs no new host: `api-web.nhle.com/v1/player/{id}/landing` answers 200 on the already-allowlisted host and carries the name, sweater number, position, height, weight, birth date and city, `careerTotals.regularSeason`, `seasonTotals[]` and `last5Games[]` for a skater and a goalie alike, so nothing about it is blocked on the Team Stats host decision.
 
 ---
 

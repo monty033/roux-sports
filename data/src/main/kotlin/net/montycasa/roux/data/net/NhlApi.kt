@@ -83,6 +83,30 @@ class NhlApi(
     }
 
     /**
+     * A club's skater and goalie statistics for one season and game type.
+     *
+     * Both path segments are validated before a request is built, so a malformed club or season
+     * cannot turn into a URL. The Stats tab always asks for game type 2 (the regular season).
+     */
+    suspend fun clubStats(
+        abbrev: String,
+        season: String,
+        gameType: Int = 2,
+    ): ApiResult {
+        require(CLUB_ABBREV.matches(abbrev)) { "Club abbreviation must be three uppercase letters, was '$abbrev'" }
+        require(SEASON_ID.matches(season)) { "Season must be eight digits, was '$season'" }
+        require(gameType in 1..3) { "Game type must be 1, 2 or 3, was '$gameType'" }
+        return get("/v1/club-stats/$abbrev/$season/$gameType")
+    }
+
+    /** The endpoint's own name, for callers that prefer to say exactly which feed is read. */
+    suspend fun clubStatsSeason(
+        abbrev: String,
+        season: String,
+        gameType: Int = 2,
+    ): ApiResult = clubStats(abbrev, season, gameType)
+
+    /**
      * Path verified against the live API by hand. A captured corpus for these payloads is G1 work and is not in
      * this tree yet, so nothing here claims a fixture exists.
      */

@@ -25,11 +25,13 @@ import net.montycasa.roux.data.net.NhlHttpClientFactory
 import net.montycasa.roux.data.prefs.DataStorePreferencesRepository
 import net.montycasa.roux.data.repo.clubRosterRepository
 import net.montycasa.roux.data.repo.clubScheduleRepository
+import net.montycasa.roux.data.repo.clubStatsRepository
 import net.montycasa.roux.data.repo.gameDetailRepository
 import net.montycasa.roux.data.repo.scoresRepository
 import net.montycasa.roux.data.repo.standingsRepository
 import net.montycasa.roux.domain.repo.ClubRosterRepository
 import net.montycasa.roux.domain.repo.ClubScheduleRepository
+import net.montycasa.roux.domain.repo.ClubStatsRepository
 import net.montycasa.roux.domain.repo.GameDetailRepository
 import net.montycasa.roux.domain.repo.PreferencesRepository
 import net.montycasa.roux.domain.repo.ScoresRepository
@@ -208,6 +210,13 @@ class AppContainer(
     /** A club's current roster, with its own six-hour entry. */
     val clubRoster: ClubRosterRepository =
         clubRosterRepository(api = api, cache = cache, clock = clock)
+
+    /** A club's season skater and goalie statistics, with its own six-hour entry. */
+    val clubStats: ClubStatsRepository =
+        clubStatsRepository(api = api, cache = cache, clock = clock)
+
+    /** Alias for [clubStats], for callers that read more naturally without the club prefix. */
+    val stats: ClubStatsRepository get() = clubStats
 
     /** The game page's three endpoints, each cached on its own so a landing-page burst cannot evict them. */
     val gameDetail: GameDetailRepository =

@@ -64,7 +64,10 @@ fun TeamDetailScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     onRetry: () -> Unit = {},
-    onRosterRetry: () -> Unit = {},
+    onPlayersRetry: () -> Unit = {},
+    /** Superseded callbacks kept for callers compiled against the two old tabs. */
+    onRosterRetry: (() -> Unit)? = null,
+    onStatsRetry: (() -> Unit)? = null,
     onGameClick: (ClubGame) -> Unit = {},
     now: Instant = Clock.System.now(),
 ) {
@@ -74,9 +77,14 @@ fun TeamDetailScreen(
     // Tab selection is local view state. It is not a route, so Back leaves the club page rather than
     // walking through tabs the reader visited.
     var selectedTab by rememberSaveable { mutableStateOf(TeamTab.Schedule) }
-    // Each tab keeps its own saved list state: switching to Roster and back restores the schedule's
+    // Each tab keeps its own saved list state: switching to Players and back restores the schedule's
     // scroll position instead of re-anchoring or scrolling to the top.
     val tabState = rememberSaveableStateHolder()
+    val retryPlayers: () -> Unit = {
+        onPlayersRetry()
+        onRosterRetry?.invoke()
+        onStatsRetry?.invoke()
+    }
     Column(
         modifier
             .fillMaxSize()
@@ -119,17 +127,19 @@ fun TeamDetailScreen(
                         )
                     }
 
-                    TeamTab.Roster -> {
-                        TeamRosterList(
+                    TeamTab.Players -> {
+                        TeamPlayersList(
                             roster = state.roster,
-                            isRefreshing = state.isRosterLoading,
-                            onRetry = onRosterRetry,
+                            stats = state.stats,
+                            isRosterRefreshing = state.isRosterLoading,
+                            isStatsRefreshing = state.isStatsLoading,
+                            onRetry = retryPlayers,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
 
-                    TeamTab.Stats -> {
-                        // Stats is disabled; this branch exists only to keep the switch exhaustive.
+                    TeamTab.TeamStats -> {
+                        // Team Stats is the next PR; this branch keeps the switch exhaustive.
                     }
                 }
             }
@@ -147,11 +157,11 @@ fun TeamDetailScreen(
     }
 }
 
-/** The club page's own second level. Schedule and Roster are live; Stats remains a coming-soon peer. */
+/** The club page's own second level. Players is live; Team Stats remains a coming-soon seat. */
 internal enum class TeamTab {
     Schedule,
-    Roster,
-    Stats,
+    Players,
+    TeamStats,
 }
 
 @Composable
@@ -166,13 +176,13 @@ private fun TeamTabRow(
         onSelect = onSelect,
         tagPrefix = "team.tab",
         modifier = modifier,
-        enabled = { it != TeamTab.Stats },
+        enabled = { it != TeamTab.TeamStats },
         label = { tab ->
             stringResource(
                 when (tab) {
                     TeamTab.Schedule -> R.string.team_tab_schedule
-                    TeamTab.Roster -> R.string.team_tab_roster
-                    TeamTab.Stats -> R.string.team_tab_stats
+                    TeamTab.Players -> R.string.team_tab_players
+                    TeamTab.TeamStats -> R.string.team_tab_team_stats
                 },
             )
         },

@@ -25,6 +25,10 @@ enum class CacheKind(
     // covers every club without letting an old capture displace the one being read.
     ClubRoster(32, "club-roster"),
 
+    // One club-stats entry per club and season, so the Stats tab has its own cache rather than
+    // sharing (or evicting) the roster or schedule entry.
+    ClubStats(32, "club-stats"),
+
     // One kind per detail endpoint, so a burst of landing pages for a busy night cannot evict the boxscore a
     // fan is reading. The caps are per kind; a shared Detail kind would have made the busiest endpoint the
     // one that decides what survives.

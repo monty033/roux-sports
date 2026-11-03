@@ -13,10 +13,12 @@ import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.ClubGame
 import net.montycasa.roux.domain.model.ClubRoster
+import net.montycasa.roux.domain.model.ClubStats
 import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.repo.ClubRosterRepository
 import net.montycasa.roux.domain.repo.ClubScheduleRepository
+import net.montycasa.roux.domain.repo.ClubStatsRepository
 import net.montycasa.roux.domain.repo.StandingsRepository
 import kotlin.time.Clock
 
@@ -47,6 +49,10 @@ data class TeamDetailUiState(
      * not put the roster's retry into a spinner, and a failed roster is not "still loading" by default.
      */
     val isRosterLoading: Boolean = false,
+    /** The club's season statistics, with the same independent cache and failure rules as the roster. */
+    val stats: Loadable<ClubStats>? = null,
+    /** True while a stats request is in flight; the header's flag must not drive this tab's retry. */
+    val isStatsLoading: Boolean = false,
 )
 
 class TeamDetailViewModel(
@@ -54,6 +60,7 @@ class TeamDetailViewModel(
     private val standings: StandingsRepository,
     private val schedule: ClubScheduleRepository? = null,
     private val roster: ClubRosterRepository? = null,
+    private val stats: ClubStatsRepository? = null,
     private val clock: Clock = Clock.System,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(TeamDetailUiState(teamKey))
@@ -62,6 +69,7 @@ class TeamDetailViewModel(
     init {
         loadTableAndSchedule()
         loadRoster()
+        loadStats()
     }
 
     /** Re-reads the header and schedule after a failure; roster retry is [retryRoster]. */
@@ -69,6 +77,15 @@ class TeamDetailViewModel(
 
     /** Re-reads only the roster, leaving the schedule and header untouched. */
     fun retryRoster() = loadRoster()
+
+    /** Re-reads only the statistics, leaving the schedule, header and roster untouched. */
+    fun retryStats() = loadStats()
+
+    /** Re-reads both sources behind the Players tab, leaving the header and schedule untouched. */
+    fun retryPlayers() {
+        loadRoster()
+        loadStats()
+    }
 
     private fun loadTableAndSchedule() {
         mutableState.update { it.copy(isLoading = true, error = null, schedule = null) }
@@ -86,6 +103,15 @@ class TeamDetailViewModel(
         viewModelScope.launch {
             val read = readRoster()
             mutableState.update { it.copy(roster = read, isRosterLoading = false) }
+        }
+    }
+
+    private fun loadStats() {
+        if (stats == null) return
+        mutableState.update { it.copy(stats = null, isStatsLoading = true) }
+        viewModelScope.launch {
+            val read = readStats()
+            mutableState.update { it.copy(stats = read, isStatsLoading = false) }
         }
     }
 
@@ -123,6 +149,15 @@ class TeamDetailViewModel(
     private suspend fun readRoster(): Loadable<ClubRoster> =
         try {
             roster?.roster(teamKey) ?: Loadable(null, Freshness.Missing, null)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            Loadable(null, Freshness.Missing, LoadError.Local)
+        }
+
+    private suspend fun readStats(): Loadable<ClubStats> =
+        try {
+            stats?.stats(teamKey) ?: Loadable(null, Freshness.Missing, null)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {

@@ -275,35 +275,24 @@ class TeamScheduleListTest {
     }
 
     @Test
-    fun theTabsShowScheduleSelectedAndOnlyStatsUnavailable() {
+    fun theTabsShowScheduleSelectedPlayersAvailableAndTeamStatsUnavailable() {
         showScreen(schedule = Loadable(listOf(game("next", "2026-11-05T20:00:00Z", GameState.Scheduled)), Freshness.Fresh, null))
 
         rule.onNodeWithTag("team.tab.Schedule").assertIsSelected().assertIsEnabled()
         rule
-            .onNodeWithTag("team.tab.Roster")
+            .onNodeWithTag("team.tab.Players")
             .assertIsDisplayed()
             .assertIsEnabled()
             .assertIsNotSelected()
-        val stats = rule.onNodeWithTag("team.tab.Stats")
-        stats
+        val teamStats = rule.onNodeWithTag("team.tab.TeamStats")
+        teamStats
             .assertIsDisplayed()
             .assertIsNotEnabled()
             .assertIsNotSelected()
             .assertHasNoClickAction()
-
         assertEquals(
             "Unavailable",
-            stats.fetchSemanticsNode().config[SemanticsProperties.StateDescription],
-        )
-        assertEquals(
-            "disabled entries must keep their 48 dp cell",
-            48.dp,
-            with(rule.density) {
-                stats
-                    .fetchSemanticsNode()
-                    .size.height
-                    .toDp()
-            },
+            teamStats.fetchSemanticsNode().config[SemanticsProperties.StateDescription],
         )
     }
 

@@ -74,6 +74,12 @@ object FreshnessPolicy {
     val clubRosterAge: Duration = 6.hours
 
     /**
+     * Season statistics move after every game, but the feed's own numbers are compiled overnight and
+     * a tab switch must not generate a request. Six hours matches the roster and the schedule.
+     */
+    val clubStatsAge: Duration = 6.hours
+
+    /**
      * A finished day does not change; polling it would be pure cost.
      *
      * `startTimeUtc` is the *scheduled* start, which for the NHL precedes the actual puck drop by
@@ -114,6 +120,9 @@ object FreshnessPolicy {
 
     /** The roster's six-hour window, matching the club schedule. */
     fun clubRosterMaxAge(): Duration = clubRosterAge
+
+    /** The stats tab's own six-hour window, independent of the roster and the schedule. */
+    fun clubStatsMaxAge(): Duration = clubStatsAge
 
     /**
      * A final boxscore never changes, so only a live detail needs the short lifetime.

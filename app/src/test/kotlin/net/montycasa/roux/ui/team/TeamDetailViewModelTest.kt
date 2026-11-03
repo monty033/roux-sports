@@ -14,6 +14,7 @@ import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.ClubGame
 import net.montycasa.roux.domain.model.ClubRoster
+import net.montycasa.roux.domain.model.ClubStats
 import net.montycasa.roux.domain.model.Conference
 import net.montycasa.roux.domain.model.Division
 import net.montycasa.roux.domain.model.Season
@@ -22,6 +23,7 @@ import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.domain.repo.ClubRosterRepository
 import net.montycasa.roux.domain.repo.ClubScheduleRepository
+import net.montycasa.roux.domain.repo.ClubStatsRepository
 import net.montycasa.roux.domain.repo.StandingsRepository
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -146,6 +148,72 @@ class TeamDetailViewModelTest {
             }
         }
 
+    @Test
+    fun theStatsLoadOnceAndStatsRetryDoesNotAskTheRosterOrTheScheduleAgain() =
+        runTest {
+            val standings = FakeStandings()
+            val schedule = FakeSchedule()
+            val roster = FakeRoster()
+            val stats = FakeStats()
+            val viewModel =
+                TeamDetailViewModel(
+                    teamKey = tor,
+                    standings = standings,
+                    schedule = schedule,
+                    roster = roster,
+                    stats = stats,
+                ).also { stores += ViewModelStore().apply { put("team", it) } }
+
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                val state = expectMostRecentItem()
+                assertEquals(1, schedule.calls)
+                assertEquals(1, roster.calls)
+                assertEquals(1, stats.calls)
+                assertTrue(state.stats?.data != null)
+
+                viewModel.retryStats()
+                runCurrent()
+                expectMostRecentItem()
+
+                assertEquals("stats retry must not re-read the season", 1, schedule.calls)
+                assertEquals("stats retry must not re-read the roster", 1, roster.calls)
+                assertEquals(2, stats.calls)
+            }
+        }
+
+    @Test
+    fun retryPlayersReloadsBothSourcesWithoutAskingTheSchedule() =
+        runTest {
+            val standings = FakeStandings()
+            val schedule = FakeSchedule()
+            val roster = FakeRoster()
+            val stats = FakeStats()
+            val viewModel =
+                TeamDetailViewModel(
+                    teamKey = tor,
+                    standings = standings,
+                    schedule = schedule,
+                    roster = roster,
+                    stats = stats,
+                ).also { stores += ViewModelStore().apply { put("team", it) } }
+
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                expectMostRecentItem()
+
+                viewModel.retryPlayers()
+                runCurrent()
+                expectMostRecentItem()
+
+                assertEquals("players retry must not re-read the season", 1, schedule.calls)
+                assertEquals(2, roster.calls)
+                assertEquals(2, stats.calls)
+            }
+        }
+
     private fun viewModel(repository: StandingsRepository): TeamDetailViewModel =
         TeamDetailViewModel(teamKey = tor, standings = repository).also { model ->
             stores += ViewModelStore().apply { put("team", model) }
@@ -180,6 +248,15 @@ private class FakeRoster : ClubRosterRepository {
     override suspend fun roster(teamKey: TeamKey): Loadable<ClubRoster> {
         calls++
         return Loadable(ClubRoster(), Freshness.Fresh, null)
+    }
+}
+
+private class FakeStats : ClubStatsRepository {
+    var calls = 0
+
+    override suspend fun stats(teamKey: TeamKey): Loadable<ClubStats> {
+        calls++
+        return Loadable(ClubStats(), Freshness.Fresh, null)
     }
 }
 

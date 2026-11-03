@@ -14,6 +14,7 @@ import net.montycasa.roux.data.nhl.dto.SeasonsDto
 import net.montycasa.roux.data.nhl.dto.StandingsDto
 import net.montycasa.roux.data.nhl.dto.TeamDto
 import net.montycasa.roux.domain.model.ClubGame
+import net.montycasa.roux.domain.model.ClubStats
 import net.montycasa.roux.domain.model.Conference
 import net.montycasa.roux.domain.model.DateIndexEntry
 import net.montycasa.roux.domain.model.Division
@@ -94,6 +95,14 @@ internal object NhlAdapter {
             ),
         )
     }
+
+    /**
+     * A club's season skater and goalie statistics.
+     *
+     * Kept on the single adapter entry point as well as on [ClubStatsAdapter] so callers that already
+     * use `NhlAdapter.parse…` do not need a second vocabulary.
+     */
+    fun parseClubStats(json: String): ParseResult<ClubStats> = ClubStatsAdapter.parse(json)
 
     /**
      * A club's season schedule.
