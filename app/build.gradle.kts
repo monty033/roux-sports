@@ -104,6 +104,9 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.material3)
+    // The drawer's gear and the Teams row's star and bell are Material's own glyphs. This is the core
+    // icon set, not the extended one: it ships all three and is a fraction of the size.
+    implementation(libs.androidx.compose.material.icons.core)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)

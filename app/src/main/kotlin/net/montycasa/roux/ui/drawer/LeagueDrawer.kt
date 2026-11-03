@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -201,20 +203,41 @@ fun LeaguesPanel(
                         .height(1.dp)
                         .background(rule),
                 )
-                DrawerRow(
-                    label = stringResource(R.string.settings_title),
-                    trailing = "",
-                    tag = "leagues.settings",
-                    onClick = onSettings,
-                )
-                Text(
-                    stringResource(R.string.drawer_footer),
-                    Modifier.padding(start = 10.dp, end = 10.dp, top = 12.dp),
-                    color = muted,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.1.em,
-                )
+                // The footer text stays where it was, with the gear on its line at the drawer's end. A text
+                // Settings row was a whole line of the menu for one destination; the gear is the same
+                // target with a spoken label, and the footer is the only line left that can hold it.
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .padding(start = 10.dp, end = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        stringResource(R.string.drawer_footer),
+                        Modifier.weight(1f),
+                        color = muted,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.1.em,
+                    )
+                    Box(
+                        Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .clickable(role = Role.Button) { onSettings() }
+                            .reachTarget("leagues.settings")
+                            .testTag("leagues.settings"),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Filled.Settings,
+                            contentDescription = stringResource(R.string.settings_title),
+                            Modifier.size(24.dp),
+                            tint = DrawerPalette.unselected,
+                        )
+                    }
+                }
             }
         }
     }

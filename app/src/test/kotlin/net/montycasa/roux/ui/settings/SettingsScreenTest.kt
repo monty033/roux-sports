@@ -4,7 +4,9 @@ import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
@@ -62,8 +64,9 @@ class SettingsScreenTest {
         var opened = false
         rule.setContent { RouxTheme { LeaguesPanel(DrawerUi(), false, {}, {}, {}, {}, onSettings = { opened = true }) } }
         rule
-            .onNodeWithText("Settings")
+            .onNodeWithContentDescription("Settings")
             .assertIsDisplayed()
+            .assertWidthIsAtLeast(48.dp)
             .assertHeightIsAtLeast(48.dp)
             .performClick()
         rule.runOnIdle { assertTrue(opened) }
