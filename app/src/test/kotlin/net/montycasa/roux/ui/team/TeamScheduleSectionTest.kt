@@ -134,7 +134,6 @@ class TeamScheduleSectionTest {
                     state = state,
                     onBack = {},
                     onGameClick = onGameClick,
-                    now = now,
                 )
             }
         }

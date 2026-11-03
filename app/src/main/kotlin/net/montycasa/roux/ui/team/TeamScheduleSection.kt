@@ -61,7 +61,6 @@ internal fun TeamScheduleSection(
     onRetry: () -> Unit,
     onGameClick: (ClubGame) -> Unit,
     modifier: Modifier = Modifier,
-    now: Instant = Clock.System.now(),
 ) {
     if (schedule == null) return
 
@@ -80,7 +79,7 @@ internal fun TeamScheduleSection(
             return@Column
         }
 
-        val sections = ClubScheduleSections.of(games, now)
+        val sections = ClubScheduleSections.of(games)
         if (schedule.error != null) {
             ScheduleFailure(isRefreshing = isRefreshing, onRetry = onRetry)
         }

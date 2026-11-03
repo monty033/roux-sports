@@ -12,14 +12,12 @@ import org.junit.Test
 import kotlin.time.Instant
 
 class ClubScheduleSectionsTest {
-    private val now = Instant.parse("2026-11-03T12:00:00Z")
-
     @Test
     fun aGameLaterTodayIsUpcomingAndAFinishedGameEarlierTodayIsAResult() {
         val later = game("later", "2026-11-03T20:00:00Z", GameState.Scheduled)
         val finished = game("finished", "2026-11-03T15:00:00Z", GameState.Final, finished = true)
 
-        val sections = ClubScheduleSections.of(listOf(finished, later), now)
+        val sections = ClubScheduleSections.of(listOf(finished, later))
 
         assertEquals(listOf(later), sections.upcoming)
         assertEquals(listOf(finished), sections.results)
@@ -36,7 +34,7 @@ class ClubScheduleSectionsTest {
         val earlierResult = game("earlier-result", "2026-11-03T13:00:00Z", GameState.Final, finished = true)
         val laterResult = game("later-result", "2026-11-03T16:00:00Z", GameState.Final, finished = true)
 
-        val sections = ClubScheduleSections.of(listOf(late, early, earlierResult, laterResult), now)
+        val sections = ClubScheduleSections.of(listOf(late, early, earlierResult, laterResult))
 
         assertEquals(listOf(early, late), sections.upcoming)
         assertEquals(listOf(laterResult, earlierResult), sections.results)
@@ -49,7 +47,7 @@ class ClubScheduleSectionsTest {
         val results =
             (1..7).map { game("result-$it", "2026-10-${20 + it}T12:00:00Z", GameState.Final, finished = true) }
 
-        val sections = ClubScheduleSections.of(upcoming + results, now)
+        val sections = ClubScheduleSections.of(upcoming + results)
 
         assertEquals(5, sections.upcoming.size)
         assertEquals(listOf("up-1", "up-2", "up-3", "up-4", "up-5"), sections.upcoming.map { it.id.value })
@@ -61,13 +59,24 @@ class ClubScheduleSectionsTest {
     }
 
     @Test
-    fun aGameWithNoStartInstantIsNotPresentedAsUpcoming() {
+    fun aGameInProgressIsUpcomingRatherThanFallingOutOfBothGroups() {
+        val live = game("live", "2026-11-02T23:00:00Z", GameState.Live())
+        val next = game("next", "2026-11-04T20:00:00Z", GameState.Scheduled)
+        val done = game("done", "2026-11-01T20:00:00Z", GameState.Final, finished = true)
+
+        val sections = ClubScheduleSections.of(listOf(next, done, live))
+
+        assertEquals(listOf(live, next), sections.upcoming)
+        assertEquals(listOf(done), sections.results)
+    }
+
+    @Test
+    fun aGameWithNoStartInstantIsUpcomingButSortsLast() {
         val noStart = game("no-start", null, GameState.Scheduled)
         val later = game("later", "2026-11-03T20:00:00Z", GameState.Scheduled)
-        val sections = ClubScheduleSections.of(listOf(noStart, later), now)
+        val sections = ClubScheduleSections.of(listOf(noStart, later))
 
-        assertEquals(listOf(later), sections.upcoming)
-        assertFalse(sections.upcoming.any { it.id.value == "no-start" })
+        assertEquals(listOf(later, noStart), sections.upcoming)
     }
 
     private fun game(

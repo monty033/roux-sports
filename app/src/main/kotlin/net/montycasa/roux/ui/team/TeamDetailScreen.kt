@@ -42,8 +42,6 @@ import net.montycasa.roux.ui.common.TeamNames
 import net.montycasa.roux.ui.detail.TeamLogo
 import net.montycasa.roux.ui.reach.reachTarget
 import net.montycasa.roux.ui.theme.Roux
-import kotlin.time.Clock
-import kotlin.time.Instant
 
 /** The same crest size the Teams picker uses, so a club looks like itself on both screens. */
 private val CREST_SIZE = 56.dp
@@ -63,7 +61,6 @@ fun TeamDetailScreen(
     modifier: Modifier = Modifier,
     onRetry: () -> Unit = {},
     onGameClick: (ClubGame) -> Unit = {},
-    now: Instant = Clock.System.now(),
 ) {
     val row = state.row
     val team = row?.team ?: TeamRef(state.teamKey)
@@ -101,7 +98,6 @@ fun TeamDetailScreen(
                 isRefreshing = state.isLoading,
                 onRetry = onRetry,
                 onGameClick = onGameClick,
-                now = now,
             )
             Spacer(Modifier.height(16.dp))
         }

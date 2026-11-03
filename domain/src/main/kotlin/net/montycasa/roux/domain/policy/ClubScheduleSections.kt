@@ -1,7 +1,6 @@
 package net.montycasa.roux.domain.policy
 
 import net.montycasa.roux.domain.model.ClubGame
-import kotlin.time.Instant
 
 /** The two groups a club page shows: the next games, then the most recently finished ones. */
 data class ScheduleSections(
@@ -12,23 +11,20 @@ data class ScheduleSections(
 /**
  * Splits a whole-season schedule at [now].
  *
- * Finished games are results even when they started earlier the same day; unfinished games that
- * have not started yet are upcoming. Ordering uses the start instant rather than the feed's
+ * Upcoming is every game the feed has not finished, ordered by start instant, so a game in progress
+ * heads the list instead of vanishing between the two groups; the row says how it stands. Results are
+ * the finished games, most recent first. Ordering uses the start instant rather than the feed's
  * `gameDate` string because several games share a date and only the instant can rank them within it.
  * Each group is capped at five, which is enough for a club page without turning it into the scores list.
  */
 object ClubScheduleSections {
     const val LIMIT = 5
 
-    fun of(
-        games: List<ClubGame>,
-        now: Instant,
-    ): ScheduleSections {
+    fun of(games: List<ClubGame>): ScheduleSections {
         val upcoming =
             games
                 .asSequence()
                 .filter { !it.isFinished }
-                .filter { game -> game.startTimeUtc?.let { it > now } == true }
                 .sortedWith(soonestFirst)
                 .take(LIMIT)
                 .toList()
@@ -62,9 +58,3 @@ object ClubScheduleSections {
             }
         }
 }
-
-/** Synonym kept short at call sites that already have "sections" in scope. */
-fun clubScheduleSections(
-    games: List<ClubGame>,
-    now: Instant,
-): ScheduleSections = ClubScheduleSections.of(games, now)
