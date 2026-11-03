@@ -3,6 +3,7 @@ package net.montycasa.roux.ui.nav
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
@@ -483,6 +484,24 @@ class ShellTest {
         rule.waitUntil(timeoutMillis = 10_000) {
             rule.onAllNodesWithTag("teams.row.ANA").fetchSemanticsNodes().isNotEmpty()
         }
+    }
+
+    @Test
+    fun theTeamStatsTabOpensTheLeagueTableForTheClubFromTheTeamsList() {
+        launchShell()
+        barItem("Teams").performClick()
+        rule.waitForTeamsRows()
+
+        rule.onNodeWithTag("teams.row.body.ANA").performClick()
+        waitForTeamPage("ANA")
+        rule.onNodeWithTag("team.tab.TeamStats").performClick()
+        rule.waitUntil(timeoutMillis = 10_000) {
+            rule.onAllNodesWithTag("team.stats.table", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
+
+        rule.onNodeWithTag("team.tab.TeamStats").assertIsSelected()
+        rule.onNodeWithTag("team.stats.header", useUnmergedTree = true).assertTextEquals("14 GP · 6-7-1 · 13 pts")
+        rule.onAllNodesWithTag("team.stats.label", useUnmergedTree = true).assertCountEquals(10)
     }
 
     @Test

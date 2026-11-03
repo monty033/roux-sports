@@ -64,7 +64,8 @@ internal fun formatPlusMinus(value: Int?): String =
         else -> value.toString()
     }
 
-private fun formatDecimal(
+/** A number rounded to [decimals] places and always written with that many, so 3.5 at two places is `3.50`. */
+internal fun formatDecimal(
     value: Double,
     decimals: Int,
 ): String {

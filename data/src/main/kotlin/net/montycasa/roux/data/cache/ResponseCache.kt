@@ -29,6 +29,10 @@ enum class CacheKind(
     // sharing (or evicting) the roster or schedule entry.
     ClubStats(32, "club-stats"),
 
+    // One entry per season and game type for the whole league. Two entries cover the season boundary:
+    // the one being read and the one before it, so a new season does not evict the table still shown.
+    LeagueStats(2, "league-stats"),
+
     // One entry per player. A club's roster has at most a few dozen players, and a fan who opens several profiles in a
     // session should not evict another club's stats, so the player kind gets its own cap.
     PlayerProfile(32, "player-profile"),

@@ -32,6 +32,8 @@
 | 11 | CI (optional, off the critical path) | Forgejo Actions running the PR gate, only if the runner check passes | The probe job (see §6) passes, then the gate job goes green on a PR from the `openclaw` fork. |
 | 12 | Player detail (added after the club page landed) | Tapping a player in the club page's Players tab opens that player's own screen | Adapter tests on captured `player/{id}/landing` fixtures (one skater, one goalie): name, sweater number, position, height/weight, birth date and city, career totals, season totals, last-five-game rows. A player with no season rows still renders with dashes rather than an empty card. Navigation test: the Players row is the tap target, back returns to the club page with the same tab and scroll position. Reach test on the row at 48 dp and on the back control. Pixel 9 check. |
 
+| 13 | Team Stats tab (the club page's third tab) | The club page's `TeamStats` seat stops being a coming-soon placeholder and shows the club's league-relative numbers | Adapter test on the captured league summary: 32 clubs, one row per club, the club's own ten values, and a null percentage staying null rather than becoming zero. Domain tests for the rank directions (a lower-is-better metric ranking its lowest value first) and for competition ties (`1, 2, 2, 4`). A club with no row shows "no league stats yet" rather than zeros. Navigation test: tapping the tab selects it and shows the table. TalkBack reads metric, value and `of 32` per row. Pixel 9 check. |
+
 **Changes from the brief's stage list, with reasons:**
 - **Data/domain is split into Stage 1 (parsing) and Stage 2 (I/O).** Parsing is the riskiest and most testable part, and it needs nothing but fixtures. Splitting keeps each gate small and lets drift be tested without a network.
 - **The one-handed design work moved to Stage 3, before any screen.** A8 is a hard requirement. Retrofitting reach onto finished screens is the most expensive way to get it. Stage 9 becomes an audit, not the first time reach is designed.
@@ -39,6 +41,7 @@
 - **Offline behaviour (A11)** is built in Stage 2 (cache plus freshness) and shown in Stage 4, not given its own stage.
 - **Stages 6 and 7 are independent of each other** once Stage 4 exists.
 - **Stage 12 sits last because it was asked for after the club page shipped, not because it depends on the release work.** Its data source needs no new host: `api-web.nhle.com/v1/player/{id}/landing` answers 200 on the already-allowlisted host and carries the name, sweater number, position, height, weight, birth date and city, `careerTotals.regularSeason`, `seasonTotals[]` and `last5Games[]` for a skater and a goalie alike, so nothing about it is blocked on the Team Stats host decision.
+- **Stage 13 is unblocked and sits beside stage 12 because both are club-page tabs.** The league summary is one request that returns all 32 clubs (`api.nhle.com/stats/rest/en/team/summary`, verified today: 200, 32 rows, 16 KB), which is why it needed the one host approval rather than a 32-request fan-out; `api-web.nhle.com` has no equivalent and answers 404 on `team-stats` and `club-stats-season`. It carries no club abbreviation, only `teamFullName` and `teamId`, and that name matches the standings' `teamName.default` for all 32 clubs, so the join is on the name the club page already holds.
 
 ---
 

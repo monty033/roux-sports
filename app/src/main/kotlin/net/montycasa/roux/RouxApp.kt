@@ -27,6 +27,7 @@ import net.montycasa.roux.data.repo.clubRosterRepository
 import net.montycasa.roux.data.repo.clubScheduleRepository
 import net.montycasa.roux.data.repo.clubStatsRepository
 import net.montycasa.roux.data.repo.gameDetailRepository
+import net.montycasa.roux.data.repo.leagueStatsRepository
 import net.montycasa.roux.data.repo.playerProfileRepository
 import net.montycasa.roux.data.repo.scoresRepository
 import net.montycasa.roux.data.repo.standingsRepository
@@ -34,6 +35,7 @@ import net.montycasa.roux.domain.repo.ClubRosterRepository
 import net.montycasa.roux.domain.repo.ClubScheduleRepository
 import net.montycasa.roux.domain.repo.ClubStatsRepository
 import net.montycasa.roux.domain.repo.GameDetailRepository
+import net.montycasa.roux.domain.repo.LeagueStatsRepository
 import net.montycasa.roux.domain.repo.PlayerProfileRepository
 import net.montycasa.roux.domain.repo.PreferencesRepository
 import net.montycasa.roux.domain.repo.ScoresRepository
@@ -219,6 +221,10 @@ class AppContainer(
 
     /** Alias for [clubStats], for callers that read more naturally without the club prefix. */
     val stats: ClubStatsRepository get() = clubStats
+
+    /** Every club's season totals in one league table, with its own six-hour entry and cache kind. */
+    val leagueStats: LeagueStatsRepository =
+        leagueStatsRepository(api = api, cache = cache, clock = clock)
 
     /** One player's landing page, cached per player for six hours. */
     val playerProfile: PlayerProfileRepository =

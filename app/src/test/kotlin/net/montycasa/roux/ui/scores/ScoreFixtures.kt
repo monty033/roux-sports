@@ -143,6 +143,18 @@ class ScoresIntegrationApp : RouxApp() {
                             )
                         }
 
+                        "api.nhle.com" -> {
+                            // The league table answers the same for any season here: the fixture is the one captured season.
+                            respond(
+                                when (request.url.encodedPath) {
+                                    "/stats/rest/en/team/summary" -> ScoreFixture.leagueSummary()
+                                    else -> error("Unexpected stats path: ${request.url.encodedPath}")
+                                },
+                                HttpStatusCode.OK,
+                                headersOf(HttpHeaders.ContentType, "application/json"),
+                            )
+                        }
+
                         "assets.nhle.com" -> {
                             respond(
                                 """<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><path fill="red" d="M0 0h32v32H0z"/></svg>""",
@@ -190,4 +202,10 @@ internal object ScoreFixture {
     private val body = Json.parseToJsonElement(bytes.decodeToString()).jsonObject
     val date = body.getValue("currentDate").jsonPrimitive.content
     val games = body.getValue("games").jsonArray.map { it.jsonObject }
+
+    /** The captured 32-club league table, from the 3 November 2026 capture that also carries the club stats. */
+    fun leagueSummary(): ByteArray =
+        requireNotNull(javaClass.getResourceAsStream("/fx/2026-11-03/league-team-summary-20262027.json")) {
+            "Missing captured league fixture"
+        }.use { it.readBytes() }
 }

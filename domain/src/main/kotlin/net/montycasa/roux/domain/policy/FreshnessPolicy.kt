@@ -80,6 +80,12 @@ object FreshnessPolicy {
     val clubStatsAge: Duration = 6.hours
 
     /**
+     * The league table moves once a day as games finish, so six hours keeps a club page from asking for
+     * the whole league on every open. The club's own roster and stats use the same window.
+     */
+    val leagueStatsAge: Duration = 6.hours
+
+    /**
      * A player's profile changes after a game, not during one, and the feed compiles its totals overnight. Six hours
      * matches the club pages, so opening the same player twice in a session does not ask twice.
      */
@@ -129,6 +135,9 @@ object FreshnessPolicy {
 
     /** The stats tab's own six-hour window, independent of the roster and the schedule. */
     fun clubStatsMaxAge(): Duration = clubStatsAge
+
+    /** The league table's own six-hour window, independent of any club's stats. */
+    fun leagueStatsMaxAge(): Duration = leagueStatsAge
 
     fun playerProfileMaxAge(): Duration = playerProfileAge
 
