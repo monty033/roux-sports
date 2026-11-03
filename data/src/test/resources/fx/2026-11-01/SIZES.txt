@@ -1,0 +1,3 @@
+Capture label: 2026-11-01
+
+gc-uta-phi-boxscore.json stored_bytes=13431 url=https://api-web.nhle.com/v1/gamecenter/2026020229/boxscore
