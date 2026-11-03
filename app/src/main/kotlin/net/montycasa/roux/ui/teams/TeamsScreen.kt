@@ -73,6 +73,8 @@ fun TeamsScreen(
     state: TeamsUiState,
     onToggle: (TeamKey) -> Unit,
     onRetry: () -> Unit,
+    /** Opens the club's page. Only the crest-and-name body calls this; the star and bell keep their own taps. */
+    onTeamClick: (TeamKey) -> Unit = {},
     onOpenAlerts: (TeamRef) -> Unit = {},
     onCloseAlerts: () -> Unit = {},
     onSetStartAlert: (Boolean) -> Unit = {},
@@ -143,18 +145,34 @@ fun TeamsScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(Reach.MIN_TARGET_GAP_DP.dp),
                     ) {
-                        // The crest, as the standings table has: the same badge drawn from the same feed, so a team
-                        // looks the same wherever it appears.
-                        TeamLogo(team, TEAM_CREST_SIZE)
-                        Text(
-                            // The club's full name, city included: "Toronto Maple Leafs", not "Maple Leafs".
-                            // The row is scanned by club, but dropping the city made several rows ambiguous.
-                            team.name?.takeIf { it.isNotBlank() } ?: team.abbrev,
-                            Modifier.weight(1f),
-                            style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        // The crest and the name are one body, and the body is the way into the club's page. It is
+                        // deliberately a sibling of the bell and star rather than the whole Row: a clickable Row
+                        // would merge those two controls into its own node and swallow their actions.
+                        val clubName = team.name?.takeIf { it.isNotBlank() } ?: team.abbrev
+                        Row(
+                            Modifier
+                                .weight(1f)
+                                .heightIn(min = ROW_HEIGHT)
+                                .listRow()
+                                .clickable(role = Role.Button) { onTeamClick(team.key) }
+                                .testTag("teams.row.body.${team.abbrev}")
+                                .semantics { contentDescription = clubName },
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(Reach.MIN_TARGET_GAP_DP.dp),
+                        ) {
+                            // The crest, as the standings table has: the same badge drawn from the same feed, so a
+                            // team looks the same wherever it appears.
+                            TeamLogo(team, TEAM_CREST_SIZE)
+                            Text(
+                                // The club's full name, city included: "Toronto Maple Leafs", not "Maple Leafs".
+                                // The row is scanned by club, but dropping the city made several rows ambiguous.
+                                clubName,
+                                Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                         // The bell replaces the "Alerts" text button in the same slot. It is still a
                         // separate target rather than part of a clickable row: a clickable row merges the
                         // controls into one node, and the whole point of B1 is to make only the crest and

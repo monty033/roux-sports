@@ -3,6 +3,7 @@
 package net.montycasa.roux.ui.detail
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,7 +23,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import net.montycasa.roux.R
@@ -32,6 +38,8 @@ import net.montycasa.roux.ui.common.LiveCapsule
 import net.montycasa.roux.ui.common.StateClock
 import net.montycasa.roux.ui.common.TeamNames
 import net.montycasa.roux.ui.common.periodLabel
+import net.montycasa.roux.ui.reach.Reach
+import net.montycasa.roux.ui.reach.listRow
 import net.montycasa.roux.ui.theme.LocalRouxAccents
 import java.time.ZoneId
 
@@ -39,6 +47,7 @@ import java.time.ZoneId
 internal fun GameHero(
     game: Game,
     zone: ZoneId,
+    onTeamClick: (TeamRef) -> Unit = {},
 ) {
     Column(
         Modifier
@@ -83,9 +92,9 @@ internal fun GameHero(
             )
         }
         Spacer(Modifier.height(10.dp))
-        TeamScoreLine(team = game.away, score = game.awayScore, side = "away")
+        TeamScoreLine(team = game.away, score = game.awayScore, side = "away", onTeamClick = onTeamClick)
         Spacer(Modifier.height(6.dp))
-        TeamScoreLine(team = game.home, score = game.homeScore, side = "home")
+        TeamScoreLine(team = game.home, score = game.homeScore, side = "home", onTeamClick = onTeamClick)
     }
 }
 
@@ -94,11 +103,18 @@ private fun TeamScoreLine(
     team: TeamRef,
     score: Int?,
     side: String,
+    onTeamClick: (TeamRef) -> Unit,
 ) {
     val (city, name) = TeamNames.cityAndName(team)
+    val clubName = if (city != null) "$city $name" else name
     Column(
         Modifier
             .fillMaxWidth()
+            .heightIn(min = Reach.MIN_TARGET_DP.dp)
+            .listRow()
+            .clickable(role = Role.Button) { onTeamClick(team) }
+            .testTag("detail.hero.$side.club")
+            .semantics { contentDescription = clubName }
             .padding(vertical = 4.dp),
     ) {
         if (city != null) {
@@ -124,6 +140,7 @@ private fun TeamScoreLine(
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             if (score != null) {
                 Text(

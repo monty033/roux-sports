@@ -285,7 +285,8 @@ class FavoritesPersistenceTest {
 
     private val teamRowMatcher =
         SemanticsMatcher("team row") {
-            it.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("teams.row.") == true
+            val tag = it.config.getOrNull(SemanticsProperties.TestTag)
+            tag?.startsWith("teams.row.") == true && tag.startsWith("teams.row.body.").not()
         }
 }
 

@@ -273,7 +273,7 @@ class ReachAuditTest {
                         {},
                     )
                 },
-                covered = listOf("teams.toggle.", "teams.alerts.open."),
+                covered = listOf("teams.row.body.", "teams.toggle.", "teams.alerts.open."),
             ),
             AuditCase(
                 "detail.full",

@@ -54,6 +54,8 @@ fun GameDetailScreen(
     onBack: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
+    /** A tap on either club in the hero opens that club's page. */
+    onTeamClick: (TeamRef) -> Unit = {},
     zone: ZoneId = ZoneId.systemDefault(),
 ) {
     // 0 is Game; 1 and 2 are the away and home clubs, in that order. The three are pages, so a swipe moves
@@ -89,7 +91,7 @@ fun GameDetailScreen(
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp),
             ) {
-                GameHero(game = heroGame, zone = zone)
+                GameHero(game = heroGame, zone = zone, onTeamClick = onTeamClick)
 
                 when (page) {
                     0 -> {
