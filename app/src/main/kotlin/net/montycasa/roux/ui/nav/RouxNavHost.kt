@@ -6,6 +6,7 @@ package net.montycasa.roux.ui.nav
 
 import android.Manifest
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -546,7 +547,9 @@ private fun TeamsDestination(onTeamClick: (TeamKey) -> Unit) {
             action()
         } else {
             pendingEnable = action
-            permission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                permission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
         }
     }
 
@@ -567,7 +570,9 @@ private fun TeamsDestination(onTeamClick: (TeamKey) -> Unit) {
             // and the system screen is the only place that can fix it.
             if (!permissionGranted) {
                 pendingEnable = null
-                permission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    permission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
             } else {
                 openNotificationSettings(appContext)
             }

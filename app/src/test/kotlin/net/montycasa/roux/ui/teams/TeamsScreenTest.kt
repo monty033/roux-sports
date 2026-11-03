@@ -88,7 +88,15 @@ class TeamsScreenTest {
         rule.setContent {
             val base = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(base.density, fontScale.value)) {
-                RouxTheme(dark) { TeamsScreen(suppliedState.value, onToggle, onRetry, onTeamClick, onOpenAlerts) }
+                RouxTheme(dark) {
+                    TeamsScreen(
+                        state = suppliedState.value,
+                        onToggle = onToggle,
+                        onRetry = onRetry,
+                        onTeamClick = onTeamClick,
+                        onOpenAlerts = onOpenAlerts,
+                    )
+                }
             }
         }
     }

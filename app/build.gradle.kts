@@ -74,6 +74,13 @@ android {
         // to bump versions in the catalog rather than failing a build. Disabling only these
         // two checks keeps the remaining lint checks enforcing correctness issues as errors.
         disable += setOf("GradleDependency", "NewerVersionAvailable")
+        // AGP 9.5.0 is the version to revisit, but it cannot be adopted yet: under it
+        // :app:testDebugUnitTest fails before running a single test with
+        // java.nio.file.NoSuchFileException on
+        // app/build/test-results/testDebugUnitTest/binary/in-progress-results-generic.bin,
+        // reproduced twice from a clean test-results directory. Suppress only the version nag; the
+        // rest of lint still enforces correctness as errors.
+        disable += "AndroidGradlePluginVersion"
     }
 
     dependenciesInfo {

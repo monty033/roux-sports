@@ -1,5 +1,7 @@
 package net.montycasa.roux.ui.scores
 
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.LocalActivity
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toPixelMap
@@ -46,7 +48,7 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class DateShelfCalendarTest {
     @get:Rule val rule = createComposeRule()
-    private lateinit var activity: androidx.activity.ComponentActivity
+    private lateinit var activity: ComponentActivity
     private val state =
         mutableStateOf(
             ScoresUiState(
@@ -63,7 +65,7 @@ class DateShelfCalendarTest {
     ) {
         state.value = state.value.copy(selectedDate = selected)
         rule.setContent {
-            activity = androidx.compose.ui.platform.LocalContext.current as androidx.activity.ComponentActivity
+            activity = LocalActivity.current as ComponentActivity
             RouxTheme(dark) {
                 ScoresScreen(state.value, {}, {}, { state.value = state.value.copy(selectedDate = it) })
             }

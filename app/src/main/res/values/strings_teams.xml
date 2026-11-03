@@ -14,7 +14,6 @@
     <string name="teams_toggle_label">%1$s</string>
 
     <string name="teams_alerts_title">%1$s alerts</string>
-    <string name="teams_alerts_button">Alerts</string>
     <string name="teams_alerts_open">Alerts for %1$s, %2$s</string>
     <string name="teams_alerts_on">on</string>
     <string name="teams_alerts_off">off</string>

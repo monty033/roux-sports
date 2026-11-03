@@ -1,10 +1,2 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- A day number stays legible inside a 56 dp chip; the announcement supplies the full date. -->
-    <string name="date_strip_day_label">%1$d</string>
-    <plurals name="date_strip_day_with_games">
-        <item quantity="one">%1$s, %2$d game</item>
-        <item quantity="other">%1$s, %2$d games</item>
-    </plurals>
-    <string name="date_strip_day_without_games">%1$s, no games</string>
-</resources>
+<resources />
