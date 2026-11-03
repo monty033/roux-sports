@@ -313,6 +313,24 @@ class TeamScheduleListTest {
     }
 
     @Test
+    fun theTabsSitAtTheBottomOfThePageUnderTheList() {
+        showScreen(schedule = Loadable(seasonAroundNext(), Freshness.Fresh, null))
+
+        val list = rule.onNodeWithTag("team.schedule.list").fetchSemanticsNode().boundsInRoot
+        val tabs = rule.onNodeWithTag("team.tab.Schedule").fetchSemanticsNode().boundsInRoot
+        val page = rule.onNodeWithTag("team.page.TOR").fetchSemanticsNode().boundsInRoot
+
+        assertTrue(
+            "the tab row belongs below the list, at ${tabs.top} against the list's ${list.bottom}",
+            tabs.top >= list.bottom - 1f,
+        )
+        assertTrue(
+            "the tab row belongs at the bottom of the page, ${tabs.bottom} against ${page.bottom}",
+            page.bottom - tabs.bottom <= 32f,
+        )
+    }
+
+    @Test
     fun aScheduleFailureLeavesTheHeaderAndTabsOnScreen() {
         showScreen(
             schedule = Loadable(data = null, freshness = Freshness.Missing, error = LoadError.Network),

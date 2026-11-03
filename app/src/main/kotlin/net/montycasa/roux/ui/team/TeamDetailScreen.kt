@@ -91,7 +91,6 @@ fun TeamDetailScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            TeamTabRow(Modifier.padding(top = 12.dp, bottom = 8.dp))
         }
         TeamScheduleList(
             teamKey = state.teamKey,
@@ -101,6 +100,13 @@ fun TeamDetailScreen(
             onGameClick = onGameClick,
             now = now,
             modifier = Modifier.weight(1f).fillMaxWidth(),
+        )
+        // The page's own second level sits at the bottom, where the app's other navigation lives, so the thumb
+        // reaches it without crossing the list and the header keeps the height the card needs.
+        TeamTabRow(
+            Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp),
         )
     }
 }
