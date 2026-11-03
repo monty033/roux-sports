@@ -13,6 +13,11 @@
     <string name="team_roster_position">POS</string>
     <string name="team_roster_empty">No roster available.</string>
     <string name="team_roster_error">Roster could not be loaded.</string>
+    <string name="team_stats_skaters">Skaters</string>
+    <string name="team_stats_goalies">Goalies</string>
+    <string name="team_stats_position">POS</string>
+    <string name="team_stats_empty">No stats available.</string>
+    <string name="team_stats_error">Stats could not be loaded.</string>
     <string name="team_schedule_empty">No games scheduled.</string>
     <string name="team_schedule_error">Schedule could not be loaded.</string>
     <string name="team_schedule_next">Next</string>

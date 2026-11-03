@@ -9,6 +9,9 @@ object Fixtures {
     /** Club season schedules were captured separately, after the base corpus. */
     const val CLUB_SCHEDULE_CAPTURE = "2026-11-03"
 
+    /** Club statistics arrived in the same later capture as the schedule and roster. */
+    const val CLUB_STATS_CAPTURE = CLUB_SCHEDULE_CAPTURE
+
     fun bytes(name: String): ByteArray = bytes(CURRENT, name)
 
     fun bytes(
@@ -32,4 +35,10 @@ object Fixtures {
 
     /** A current roster captured 3 November 2026 from the live API. */
     fun roster(name: String): String = text(CLUB_SCHEDULE_CAPTURE, name)
+
+    /** Club season statistics captured 3 November 2026 from the live API. */
+    fun clubStats(name: String): String = text(CLUB_SCHEDULE_CAPTURE, name)
+
+    /** The shorter name, for callers that already have "club" in scope. */
+    fun stats(name: String): String = clubStats(name)
 }

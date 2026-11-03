@@ -65,6 +65,7 @@ fun TeamDetailScreen(
     modifier: Modifier = Modifier,
     onRetry: () -> Unit = {},
     onRosterRetry: () -> Unit = {},
+    onStatsRetry: () -> Unit = {},
     onGameClick: (ClubGame) -> Unit = {},
     now: Instant = Clock.System.now(),
 ) {
@@ -129,7 +130,12 @@ fun TeamDetailScreen(
                     }
 
                     TeamTab.Stats -> {
-                        // Stats is disabled; this branch exists only to keep the switch exhaustive.
+                        TeamStatsList(
+                            stats = state.stats,
+                            isRefreshing = state.isStatsLoading,
+                            onRetry = onStatsRetry,
+                            modifier = Modifier.fillMaxSize(),
+                        )
                     }
                 }
             }
@@ -147,7 +153,7 @@ fun TeamDetailScreen(
     }
 }
 
-/** The club page's own second level. Schedule and Roster are live; Stats remains a coming-soon peer. */
+/** The club page's own second level. All three tabs are live and read their own request. */
 internal enum class TeamTab {
     Schedule,
     Roster,
@@ -166,7 +172,6 @@ private fun TeamTabRow(
         onSelect = onSelect,
         tagPrefix = "team.tab",
         modifier = modifier,
-        enabled = { it != TeamTab.Stats },
         label = { tab ->
             stringResource(
                 when (tab) {

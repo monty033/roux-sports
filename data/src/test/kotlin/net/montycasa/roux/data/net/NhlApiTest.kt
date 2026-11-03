@@ -31,6 +31,9 @@ class NhlApiTest {
     fun rosterUsesExactCurrentPath() = assertPath("/v1/roster/ANA/current") { roster("ANA") }
 
     @Test
+    fun clubStatsUsesTheSeasonAndRegularSeasonGameType() = assertPath("/v1/club-stats/ANA/20262027/2") { clubStats("ANA", "20262027") }
+
+    @Test
     fun gamecenterLandingUsesExactPath() = assertPath("/v1/gamecenter/2026020123/landing") { gamecenterLanding(GameId("2026020123")) }
 
     @Test
