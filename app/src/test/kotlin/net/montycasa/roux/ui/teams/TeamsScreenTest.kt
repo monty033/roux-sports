@@ -71,19 +71,24 @@ class TeamsScreenTest {
     private val suppliedState = mutableStateOf(fresh)
     private val fontScale = mutableStateOf(1f)
     private val rowMatcher =
-        SemanticsMatcher("team row") { it.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("teams.row.") == true }
+        SemanticsMatcher("team row") {
+            val tag = it.config.getOrNull(SemanticsProperties.TestTag)
+            tag?.startsWith("teams.row.") == true && tag.startsWith("teams.row.body.").not()
+        }
 
     private fun launchScreen(
         state: TeamsUiState = fresh,
         onToggle: (TeamKey) -> Unit = {},
         onRetry: () -> Unit = {},
+        onTeamClick: (TeamKey) -> Unit = {},
+        onOpenAlerts: (TeamRef) -> Unit = {},
         dark: Boolean = false,
     ) {
         suppliedState.value = state
         rule.setContent {
             val base = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(base.density, fontScale.value)) {
-                RouxTheme(dark) { TeamsScreen(suppliedState.value, onToggle, onRetry) }
+                RouxTheme(dark) { TeamsScreen(suppliedState.value, onToggle, onRetry, onTeamClick, onOpenAlerts) }
             }
         }
     }
@@ -346,11 +351,32 @@ class TeamsScreenTest {
     }
 
     @Test
+    fun theRowBodyOpensTheClubAndTheStarbellDoNot() {
+        val opened = mutableListOf<TeamKey>()
+        var toggles = 0
+        var alerts = 0
+        launchScreen(onToggle = { toggles++ }, onTeamClick = { opened += it }, onOpenAlerts = { alerts++ })
+        val ana = teams.first()
+        val body = rule.onNodeWithTag("teams.row.body.${ana.abbrev}")
+        body.performScrollTo().assertIsDisplayed().assertContentDescriptionEquals(ana.name!!)
+        body.performClick()
+        assertEquals(listOf(ana.key), opened)
+
+        // The star and the bell are separate nodes with their own actions: a tap on either must not navigate.
+        toggle(ana).performScrollTo().performClick()
+        bell(ana).performScrollTo().performClick()
+        assertEquals(listOf(ana.key), opened)
+        assertEquals(1, toggles)
+        assertEquals(1, alerts)
+    }
+
+    @Test
     fun theRowItselfIsNotClickable() {
         launchScreen()
-        // B1 makes the crest/name area tappable; this stage deliberately does not. A clickable row would
-        // merge the star and bell into it and swallow both accessibility nodes.
+        // The body is the target; the row container is layout only. Keeping them separate is what leaves the
+        // star and bell as their own accessibility nodes.
         rule.onNodeWithTag("teams.row.${teams.first().abbrev}").assertHasNoClickAction()
+        rule.onNodeWithTag("teams.row.body.${teams.first().abbrev}", useUnmergedTree = true).assertExists()
     }
 
     @Test

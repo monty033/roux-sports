@@ -1,0 +1,11 @@
+<resources>
+    <string name="team_loading_record">Loading record…</string>
+    <string name="team_no_record">The standings table doesn’t have this team’s record yet.</string>
+    <string name="team_rank_conference">%1$s in conference</string>
+    <string name="team_rank_league">%1$s in league</string>
+    <string name="team_division_line">%1$s Conference · %2$s Division</string>
+    <plurals name="team_points">
+        <item quantity="one">%1$d point</item>
+        <item quantity="other">%1$d points</item>
+    </plurals>
+</resources>

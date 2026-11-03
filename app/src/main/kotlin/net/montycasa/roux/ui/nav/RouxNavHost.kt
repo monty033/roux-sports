@@ -116,6 +116,8 @@ import net.montycasa.roux.ui.scores.ScoresScreen
 import net.montycasa.roux.ui.scores.ScoresViewModel
 import net.montycasa.roux.ui.standings.StandingsScreen
 import net.montycasa.roux.ui.standings.StandingsViewModel
+import net.montycasa.roux.ui.team.TeamDetailScreen
+import net.montycasa.roux.ui.team.TeamDetailViewModel
 import net.montycasa.roux.ui.teams.TeamsScreen
 import net.montycasa.roux.ui.teams.TeamsViewModel
 import kotlin.time.Instant
@@ -399,7 +401,7 @@ fun RouxNavHost(
                                 }
 
                                 TopLevelDestination.Teams -> {
-                                    TeamsDestination()
+                                    TeamsDestination(onTeamClick = { key -> navController.navigate(teamRoute(key)) })
                                 }
 
                                 TopLevelDestination.Standings -> {
@@ -421,6 +423,24 @@ fun RouxNavHost(
                             DetailDestination(
                                 container = container,
                                 game = game,
+                                onBack = { navController.popBackStack() },
+                                onTeamClick = { team -> navController.navigate(teamRoute(team.key)) },
+                            )
+                        }
+                    }
+
+                    composable(
+                        route = TEAM_ROUTE,
+                        arguments = teamArguments(),
+                    ) { entry ->
+                        val teamKey = teamKeyFromRoute(entry)
+                        if (teamKey == null) {
+                            // A link that names no club is not a crash; it goes back to where it came from.
+                            LaunchedEffect(Unit) { navController.popBackStack() }
+                        } else {
+                            TeamDetailDestination(
+                                container = container,
+                                teamKey = teamKey,
                                 onBack = { navController.popBackStack() },
                             )
                         }
@@ -468,7 +488,7 @@ fun RouxNavHost(
 
 /** The back stack entry owns the picker; its repositories are shared with Scores through the app. */
 @Composable
-private fun TeamsDestination() {
+private fun TeamsDestination(onTeamClick: (TeamKey) -> Unit) {
     val appContext = LocalContext.current.applicationContext
     val container = (appContext as RouxApp).container
     val teams: TeamsViewModel =
@@ -534,6 +554,7 @@ private fun TeamsDestination() {
         state = state,
         onToggle = teams::toggle,
         onRetry = teams::retry,
+        onTeamClick = onTeamClick,
         onOpenAlerts = teams::openAlerts,
         onCloseAlerts = teams::closeAlerts,
         onSetStartAlert = { enabled -> withPermission { teams.setAlert(start = enabled) } },
@@ -609,6 +630,28 @@ private fun glyph(
             viewportHeight = 24f,
         ).addPath(pathData = addPathNodes(path), fill = SolidColor(Color.Black))
         .build()
+
+/* ---------------------------------------------------------------------------------------------------------------
+ * The club page's route
+ * ------------------------------------------------------------------------------------------------------------ */
+
+/**
+ * A club's page as a URL.
+ *
+ * The abbreviation is the only identity every entry point has, and it is small enough to survive a process
+ * restoration in the back stack. Everything else on the page comes from the standings cache.
+ */
+internal const val TEAM_ROUTE = "team/{teamKey}"
+
+internal fun teamRoute(team: TeamKey): String = "team/${Uri.encode(team.abbrev)}"
+
+private fun teamArguments(): List<NamedNavArgument> = listOf(navArgument("teamKey") { type = NavType.StringType })
+
+/** Null when the route carries no club, so the caller backs out rather than opening a page with no identity. */
+internal fun teamKeyFromRoute(entry: NavBackStackEntry): TeamKey? {
+    val abbrev = entry.arguments?.getString("teamKey")?.takeIf { it.isNotBlank() } ?: return null
+    return TeamKey(abbrev)
+}
 
 /* ---------------------------------------------------------------------------------------------------------------
  * The game page's route
@@ -754,6 +797,7 @@ private fun DetailDestination(
     container: AppContainer,
     game: Game,
     onBack: () -> Unit,
+    onTeamClick: (TeamRef) -> Unit,
 ) {
     // Keyed by the game and its state: a rotation from scheduled to live is a different polling contract.
     val detail: GameDetailViewModel =
@@ -777,5 +821,27 @@ private fun DetailDestination(
         state = state,
         onBack = onBack,
         onRetry = detail::refresh,
+        onTeamClick = onTeamClick,
     )
+}
+
+@Composable
+private fun TeamDetailDestination(
+    container: AppContainer,
+    teamKey: TeamKey,
+    onBack: () -> Unit,
+) {
+    // Keyed by club so a second club cannot inherit the first one's loaded row.
+    val detail: TeamDetailViewModel =
+        viewModel(
+            key = "team:${teamKey.abbrev}",
+            factory =
+                viewModelFactory {
+                    initializer {
+                        TeamDetailViewModel(teamKey = teamKey, standings = container.standings)
+                    }
+                },
+        )
+    val state by detail.uiState.collectAsStateWithLifecycle()
+    TeamDetailScreen(state = state, onBack = onBack)
 }

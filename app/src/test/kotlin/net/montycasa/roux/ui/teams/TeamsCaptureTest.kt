@@ -38,7 +38,8 @@ import kotlin.time.Instant
 /** The test tag on a composed team row; the picker renders all thirty-two once the list has arrived. */
 internal val teamRowMatcher =
     SemanticsMatcher("team row") {
-        it.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("teams.row.") == true
+        val tag = it.config.getOrNull(SemanticsProperties.TestTag)
+        tag?.startsWith("teams.row.") == true && tag.startsWith("teams.row.body.").not()
     }
 
 /**

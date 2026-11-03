@@ -53,6 +53,8 @@ fun GameDetailScreen(
     state: DetailUiState,
     onBack: () -> Unit,
     onRetry: () -> Unit,
+    /** A tap on either club in the hero opens that club's page. */
+    onTeamClick: (TeamRef) -> Unit = {},
     modifier: Modifier = Modifier,
     zone: ZoneId = ZoneId.systemDefault(),
 ) {
@@ -89,7 +91,7 @@ fun GameDetailScreen(
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp),
             ) {
-                GameHero(game = heroGame, zone = zone)
+                GameHero(game = heroGame, zone = zone, onTeamClick = onTeamClick)
 
                 when (page) {
                     0 -> {

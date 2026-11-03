@@ -6,11 +6,13 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -24,9 +26,12 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.captureRoboImage
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import net.montycasa.roux.ui.reach.Reach
 import net.montycasa.roux.ui.reach.findReachViolations
 import net.montycasa.roux.ui.reach.reachTargets
+import net.montycasa.roux.ui.scores.ScoreFixture
 import net.montycasa.roux.ui.scores.ScoresIntegrationApp
 import net.montycasa.roux.ui.scores.waitForFixtureScores
 import net.montycasa.roux.ui.teams.waitForTeamsRows
@@ -461,6 +466,53 @@ class ShellTest {
         launchShell(dark = true)
         rule.onNodeWithTag("nav.menu").performClick()
         rule.onRoot().captureRoboImage("src/test/screenshots/drawer/shell-sheet-dark.png")
+    }
+
+    @Test
+    fun aTeamsRowBodyOpensThatClubPageAndBackReturnsToTheList() {
+        launchShell()
+        barItem("Teams").performClick()
+        rule.waitForTeamsRows()
+
+        rule.onNodeWithTag("teams.row.body.ANA").performClick()
+        waitForTeamPage("ANA")
+        rule.onNodeWithTag("team.name").assertIsDisplayed().assertTextEquals("Anaheim Ducks")
+
+        rule.onNodeWithTag("team.back").performClick()
+        rule.waitUntil(timeoutMillis = 10_000) {
+            rule.onAllNodesWithTag("teams.row.ANA").fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    @Test
+    fun aClubInTheGameHeroOpensTheSamePageAndBackReturnsToTheGame() {
+        launchShell(leagueMode = true)
+        val first = ScoreFixture.games.first()
+        val id = first.getValue("id").jsonPrimitive.content
+        val away =
+            first
+                .getValue("awayTeam")
+                .jsonObject
+                .getValue("abbrev")
+                .jsonPrimitive.content
+
+        rule.onNodeWithTag("scores.game.$id").performClick()
+        rule.waitUntil(timeoutMillis = 10_000) {
+            rule.onAllNodesWithTag("detail.back").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithTag("detail.hero.away.club").performClick()
+        waitForTeamPage(away)
+
+        rule.onNodeWithTag("team.back").performClick()
+        rule.waitUntil(timeoutMillis = 10_000) {
+            rule.onAllNodesWithTag("detail.back").fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    private fun waitForTeamPage(abbrev: String) {
+        rule.waitUntil(timeoutMillis = 10_000) {
+            rule.onAllNodesWithTag("team.page.$abbrev").fetchSemanticsNodes().isNotEmpty()
+        }
     }
 
     @Test

@@ -269,6 +269,7 @@ class GameDetailScreenTest {
         detail: GameDetail,
         fontScale: Float = 1f,
         shownGame: Game = game,
+        onTeamClick: (TeamRef) -> Unit = {},
     ) {
         compose.setContent {
             CompositionLocalProvider(LocalDensity provides Density(testDensity, fontScale)) {
@@ -278,11 +279,23 @@ class GameDetailScreenTest {
                         state = DetailUiState(detail = detail, refreshing = false, unexpectedFailure = false),
                         onBack = {},
                         onRetry = {},
+                        onTeamClick = onTeamClick,
                         zone = java.time.ZoneId.of("America/New_York"),
                     )
                 }
             }
         }
+    }
+
+    @Test
+    fun `either club in the hero opens that club's page`() {
+        val opened = mutableListOf<TeamRef>()
+        show(fullDetail, onTeamClick = { opened += it })
+
+        compose.onNodeWithTag("detail.hero.away.club").performClick()
+        compose.onNodeWithTag("detail.hero.home.club").performClick()
+
+        assertEquals(listOf(game.away, game.home), opened)
     }
 
     @Test
@@ -1312,10 +1325,10 @@ class GameDetailScreenTest {
         show(fullDetail)
 
         listOf("away", "home").forEach { side ->
-            val crest = compose.onNodeWithTag("detail.hero.$side.crest").getUnclippedBoundsInRoot()
-            val name = compose.onNodeWithTag("detail.hero.$side.name").getUnclippedBoundsInRoot()
-            val score = compose.onNodeWithTag("detail.hero.$side.score").getUnclippedBoundsInRoot()
-            val city = compose.onNodeWithTag("detail.hero.$side.city").getUnclippedBoundsInRoot()
+            val crest = compose.onNodeWithTag("detail.hero.$side.crest", useUnmergedTree = true).getUnclippedBoundsInRoot()
+            val name = compose.onNodeWithTag("detail.hero.$side.name", useUnmergedTree = true).getUnclippedBoundsInRoot()
+            val score = compose.onNodeWithTag("detail.hero.$side.score", useUnmergedTree = true).getUnclippedBoundsInRoot()
+            val city = compose.onNodeWithTag("detail.hero.$side.city", useUnmergedTree = true).getUnclippedBoundsInRoot()
 
             val crestCentre = (crest.top.value + crest.bottom.value) / 2f
             assertEquals(crestCentre, (name.top.value + name.bottom.value) / 2f, 2f)
@@ -1408,7 +1421,7 @@ class GameDetailScreenTest {
     fun `the club name in the scoreboard is set larger than body text`() {
         show(fullDetail)
 
-        val name = compose.onNodeWithTag("detail.hero.home.name").getUnclippedBoundsInRoot()
+        val name = compose.onNodeWithTag("detail.hero.home.name", useUnmergedTree = true).getUnclippedBoundsInRoot()
         // titleLarge, not titleMedium: the club is the thing the eye should land on first.
         assertTrue("club name is only ${name.bottom.value - name.top.value} dp tall", name.bottom.value - name.top.value >= 20f)
     }
