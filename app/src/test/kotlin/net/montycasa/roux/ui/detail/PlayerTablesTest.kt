@@ -207,6 +207,31 @@ class PlayerTablesTest {
         .getUnclippedBoundsInRoot()
 
     @Test
+    fun aPlayerWithAnIdAndASeasonGetsAPicture() {
+        show(
+            forwards = listOf(skater("Travis Konecny", id = 8478439L)),
+            defense = emptyList(),
+            goalies = emptyList(),
+            seasonStartYear = 2026,
+        )
+        // The boxscore carries no headshot field, so the path is built from id, club and season; this asserts the
+        // request the row makes rather than the pixels that come back.
+        compose.onNodeWithTag("detail.section.forwards.8478439.mugshot.image", useUnmergedTree = true).assertExists()
+    }
+
+    @Test
+    fun withoutASeasonTheRowDrawsInitialsRatherThanAPicture() {
+        show(
+            forwards = listOf(skater("Travis Konecny", id = 8478439L)),
+            defense = emptyList(),
+            goalies = emptyList(),
+        )
+        compose.onNodeWithTag("detail.section.forwards.8478439.mugshot", useUnmergedTree = true).assertExists()
+        compose.onNodeWithTag("detail.section.forwards.8478439.mugshot.image", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithText("TK", useUnmergedTree = true).assertExists()
+    }
+
+    @Test
     fun aPlayerWithAnIdOpensTheirPage() {
         val opened = mutableListOf<Long>()
         show(
@@ -263,6 +288,7 @@ class PlayerTablesTest {
         defense: List<SkaterLine>,
         goalies: List<GoalieLine>,
         onPlayerClick: (Long) -> Unit = {},
+        seasonStartYear: Int? = null,
     ) {
         compose.setContent {
             RouxTheme(dark = true) {
@@ -271,6 +297,7 @@ class PlayerTablesTest {
                     forwards = forwards,
                     defense = defense,
                     onPlayerClick = onPlayerClick,
+                    seasonStartYear = seasonStartYear,
                 )
             }
         }

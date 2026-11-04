@@ -429,7 +429,8 @@ class StandingsScreenTest {
         // Identity comes from the crest and the club's own name; the abbreviation is only a fallback for a payload
         // that carries no name at all.
         rule.onAllNodesWithTag(CREST_TAG, useUnmergedTree = true).assertCountEquals(32)
-        rule.onAllNodesWithTag(CREST_TAG, useUnmergedTree = true)[0].assertWidthIsEqualTo(30.dp).assertHeightIsEqualTo(30.dp)
+        // 34 dp, the size the score cards use: the row is 48 dp now, so the crest no longer has to be a token.
+        rule.onAllNodesWithTag(CREST_TAG, useUnmergedTree = true)[0].assertWidthIsEqualTo(34.dp).assertHeightIsEqualTo(34.dp)
         val leader = rows.first()
         rule.onNodeWithText(leader.team.shortName!!).assertIsDisplayed()
     }

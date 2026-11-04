@@ -80,6 +80,9 @@ private data class CardMetrics(
     val startPadding: Dp,
 )
 
+/** The rail pads 12 dp at the start and 7 at the end; a child given the inner width cannot widen the rail. */
+private val RAIL_INSETS = 19.dp
+
 private val wideCard = CardMetrics(92.dp, 34.dp, 15.sp, 22.sp, 30.dp, 8.dp, 13.dp)
 private val narrowCard = CardMetrics(128.dp, 32.dp, 14.sp, 21.sp, 28.dp, 7.dp, 11.dp)
 
@@ -295,7 +298,9 @@ private fun StateRail(
                     StateClock(startTimeLabel(game), live = false)
                     // A game that has not started has no shots to report, so the second line is the one thing
                     // a viewer wants before it does: where it will be shown.
-                    watchLine(game.broadcasts)?.let { WatchChannels(it) }
+                    // The line is given the rail's inner width so it can wrap down the card rather than push the
+                    // rail wider: the right edge of every card is the same edge.
+                    watchLine(game.broadcasts)?.let { WatchChannels(it, width - RAIL_INSETS) }
                 }
 
                 is GameState.Live -> {
@@ -357,20 +362,25 @@ internal fun watchLine(broadcasts: List<Broadcast>): String? {
             .filter { it.isNotBlank() }
             .distinct()
     if (names.isEmpty()) return null
-    val shown = names.take(2).joinToString(" · ")
-    val remaining = names.size - 2
+    // Two names used to be the ceiling because the rail refused to wrap; it wraps now, so three fit when the
+    // names are short, and the count still says how many are left.
+    val shown = names.take(3).joinToString(" · ")
+    val remaining = names.size - 3
     return if (remaining > 0) "$shown +$remaining" else shown
 }
 
 @Composable
-private fun WatchChannels(line: String) {
+private fun WatchChannels(
+    line: String,
+    maxWidth: Dp,
+) {
     Text(
         line,
-        Modifier.testTag(WATCH_TAG),
+        Modifier.width(maxWidth).testTag(WATCH_TAG),
         style = Roux.cardTypography.shots,
         color = Roux.accents.muted,
         textAlign = TextAlign.Start,
-        maxLines = 2,
+        maxLines = 3,
     )
 }
 

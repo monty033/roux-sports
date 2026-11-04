@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import net.montycasa.roux.domain.model.Game
+import net.montycasa.roux.domain.model.PlayerMugshot
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.ui.common.TeamNames
 import net.montycasa.roux.ui.reach.reachTarget
@@ -110,6 +111,7 @@ fun GameDetailScreen(
                             detail = detail,
                             team = if (page == 1) game.away else game.home,
                             onPlayerClick = onPlayerClick,
+                            seasonStartYear = PlayerMugshot.seasonStartYear(game.date),
                         )
                     }
                 }

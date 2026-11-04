@@ -2,24 +2,37 @@
 
 package net.montycasa.roux.ui.detail
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 import net.montycasa.roux.domain.model.GoalieLine
+import net.montycasa.roux.domain.model.PlayerMugshot
 import net.montycasa.roux.domain.model.SkaterLine
 import net.montycasa.roux.ui.reach.listRow
 import net.montycasa.roux.ui.theme.LocalRouxAccents
@@ -37,17 +50,19 @@ internal fun PlayerTables(
     forwards: List<SkaterLine>,
     defense: List<SkaterLine>,
     onPlayerClick: (Long) -> Unit = {},
+    /** The season the game belongs to, for the mugshot path; null draws initials instead. */
+    seasonStartYear: Int? = null,
 ) {
     val blocks =
         buildList {
             if (forwards.isNotEmpty()) {
-                add(RosterBlock("Forwards", "detail.section.forwards", SKATER_COLUMNS, forwards.map { skaterRow(it) }))
+                add(RosterBlock("Forwards", "detail.section.forwards", SKATER_COLUMNS, forwards.map { skaterRow(it, seasonStartYear) }))
             }
             if (defense.isNotEmpty()) {
-                add(RosterBlock("Defensemen", "detail.section.defense", SKATER_COLUMNS, defense.map { skaterRow(it) }))
+                add(RosterBlock("Defensemen", "detail.section.defense", SKATER_COLUMNS, defense.map { skaterRow(it, seasonStartYear) }))
             }
             if (goalies.isNotEmpty()) {
-                add(RosterBlock("Goalies", "detail.section.goalies", GOALIE_COLUMNS, goalies.map { goalieRow(it) }))
+                add(RosterBlock("Goalies", "detail.section.goalies", GOALIE_COLUMNS, goalies.map { goalieRow(it, seasonStartYear) }))
             }
         }
 
@@ -79,9 +94,13 @@ private data class PlayerRow(
     val name: String,
     val values: List<String>,
     val playerId: Long?,
+    val mugshotUrl: String? = null,
 )
 
-private fun skaterRow(line: SkaterLine): PlayerRow =
+private fun skaterRow(
+    line: SkaterLine,
+    seasonStartYear: Int?,
+): PlayerRow =
     // The name is the name; position is no longer a column, so the stats start at goals.
     PlayerRow(
         line.skater.name,
@@ -96,9 +115,13 @@ private fun skaterRow(line: SkaterLine): PlayerRow =
             line.faceoffPercent()?.let { "$it%" } ?: "—",
         ),
         line.skater.id,
+        PlayerMugshot.url(line.skater.id, line.skater.teamAbbrev, seasonStartYear),
     )
 
-private fun goalieRow(line: GoalieLine): PlayerRow =
+private fun goalieRow(
+    line: GoalieLine,
+    seasonStartYear: Int?,
+): PlayerRow =
     PlayerRow(
         line.goalie.name,
         listOf(
@@ -108,6 +131,7 @@ private fun goalieRow(line: GoalieLine): PlayerRow =
             line.goalsAgainstAverage()?.let { formatAverage(it, 2) } ?: "—",
         ),
         line.goalie.id,
+        PlayerMugshot.url(line.goalie.id, line.goalie.teamAbbrev, seasonStartYear),
     )
 
 private val GOALIE_COLUMNS = listOf("SA", "SV", "SV%", "GAA")
@@ -158,14 +182,17 @@ private fun RosterTable(
                 Modifier.fillMaxWidth().height(ROW_HEIGHT).then(action),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(
+                Row(
                     Modifier.width(NAME_COLUMN.dp).height(ROW_HEIGHT),
-                    contentAlignment = Alignment.CenterStart,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    PlayerMugshotImage(row.mugshotUrl, name = row.name, tag = "$tag.${row.playerId ?: row.name}")
+                    Spacer(Modifier.width(MUGSHOT_GAP))
                     Text(
                         row.name,
                         style = MaterialTheme.typography.bodyMedium,
                         maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
                 Row(
@@ -179,8 +206,62 @@ private fun RosterTable(
     }
 }
 
+private val MUGSHOT_SIZE = 28.dp
+private val MUGSHOT_GAP = 6.dp
 private val ROW_HEADER_HEIGHT = 22.dp
 private val ROW_HEIGHT = 48.dp
+
+/** First letter of the first and last word of a name; the same shape the roster uses. */
+private fun initialsOf(name: String): String {
+    val words = name.trim().split(' ').filter { it.isNotBlank() }
+    return when {
+        words.isEmpty() -> ""
+        words.size == 1 -> words.first().take(1).uppercase()
+        else -> (words.first().take(1) + words.last().take(1)).uppercase()
+    }
+}
+
+/**
+ * A player's mugshot, or their initials while it loads and if it never arrives.
+ *
+ * The image is decoration: the name beside it is the content, so it carries no description of its own.
+ */
+@Composable
+private fun PlayerMugshotImage(
+    url: String?,
+    name: String,
+    tag: String,
+) {
+    var loaded by remember(url) { mutableStateOf(false) }
+    Box(
+        Modifier
+            .size(MUGSHOT_SIZE)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .testTag("$tag.mugshot"),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (!loaded) {
+            Text(
+                initialsOf(name),
+                style = MaterialTheme.typography.labelSmall,
+                color = LocalRouxAccents.current.muted,
+                maxLines = 1,
+            )
+        }
+        url?.let { src ->
+            AsyncImage(
+                model = src,
+                contentDescription = null,
+                modifier = Modifier.matchParentSize().testTag("$tag.mugshot.image"),
+                contentScale = ContentScale.Crop,
+                onLoading = { loaded = false },
+                onError = { loaded = false },
+                onSuccess = { loaded = true },
+            )
+        }
+    }
+}
 
 @Composable
 private fun StatCell(text: String) {

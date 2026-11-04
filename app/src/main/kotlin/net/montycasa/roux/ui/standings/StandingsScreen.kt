@@ -86,8 +86,8 @@ private fun pageIndex(
 /** Rank sits in a fixed gutter so the numbers form a column instead of drifting with the club name. */
 private val RANK_WIDTH = 18.dp
 
-/** The same crest the scores cards use, at table size: identity without the card's height. */
-private val CREST_SIZE = 30.dp
+// The same crest the scores cards use, at 34 dp: the row is 48 dp now, so it no longer has to be a token.
+private val CREST_SIZE = 34.dp
 
 private val CHIP_SHAPE = RoundedCornerShape(12.dp)
 

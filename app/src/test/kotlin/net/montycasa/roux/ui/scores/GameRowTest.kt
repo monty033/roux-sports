@@ -721,9 +721,38 @@ class GameRowTest {
                     ),
             ),
         )
-        // National listings lead, because a local channel is meaningless to most readers. Two names fit the
-        // 92 dp rail; the rest are counted rather than wrapped.
-        rule.onNodeWithText("NHLN · SN +1").assertIsDisplayed()
+        // National listings lead, because a local channel is meaningless to most readers. Three names fit a
+        // wrapping 92 dp rail, so this list needs no count.
+        rule.onNodeWithText("NHLN · SN · MSG").assertIsDisplayed()
+    }
+
+    @Test
+    fun aLongListOfNetworksWrapsInsteadOfWideningTheRail() {
+        // The rail's right edge is the same edge on every card in the list: a long channel list wraps down the
+        // card instead of pushing the rail out. Four long names is the worst case a feed produces.
+        launch(
+            scheduled.copy(
+                broadcasts =
+                    listOf(
+                        Broadcast("PRIME VIDEO", "US", "N"),
+                        Broadcast("NBC SPORTS CALIFORNIA", "US", "A"),
+                        Broadcast("MSG SPORTSNET", "US", "H"),
+                        Broadcast("SPORTSNET ONE", "CA", "N"),
+                    ),
+            ),
+        )
+        val rail = rule.onNodeWithTag(STATE_RAIL_TAG).getUnclippedBoundsInRoot()
+        val watch = rule.onNodeWithTag(WATCH_TAG).getUnclippedBoundsInRoot()
+        // The rail keeps its own minimum rather than growing to fit the text...
+        assertTrue(
+            "the rail grew to ${rail.width} with a crowded channel list",
+            rail.width.value <= 92f + 1f,
+        )
+        // ...and the text is laid out inside it, so it cannot be what widened the card.
+        assertTrue(
+            "the channel line (${watch.width}) runs past the rail's insets",
+            watch.width.value <= rail.width.value - 19f + 1f,
+        )
     }
 
     @Test
