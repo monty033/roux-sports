@@ -86,9 +86,9 @@ class AppContainerTest {
     }
 
     /**
-     * The NHL allowlist belongs to the client, not the caller: anything outside `api-web.nhle.com` and
-     * `assets.nhle.com` throws before the request reaches the engine, so a typo or a later feature pointing at
-     * another host fails here rather than quietly contacting it.
+     * The NHL allowlist belongs to the client, not the caller: anything outside `api-web.nhle.com`,
+     * `assets.nhle.com` and `api.nhle.com` throws before the request reaches the engine, so a typo or a later
+     * feature pointing at another host fails here rather than quietly contacting it.
      */
     @Test
     fun httpClientRefusesAHostOutsideTheAllowlist() {

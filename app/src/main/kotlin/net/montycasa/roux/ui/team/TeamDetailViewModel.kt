@@ -14,11 +14,13 @@ import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.ClubGame
 import net.montycasa.roux.domain.model.ClubRoster
 import net.montycasa.roux.domain.model.ClubStats
+import net.montycasa.roux.domain.model.LeagueSummary
 import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.repo.ClubRosterRepository
 import net.montycasa.roux.domain.repo.ClubScheduleRepository
 import net.montycasa.roux.domain.repo.ClubStatsRepository
+import net.montycasa.roux.domain.repo.LeagueStatsRepository
 import net.montycasa.roux.domain.repo.StandingsRepository
 import kotlin.time.Clock
 
@@ -53,6 +55,13 @@ data class TeamDetailUiState(
     val stats: Loadable<ClubStats>? = null,
     /** True while a stats request is in flight; the header's flag must not drive this tab's retry. */
     val isStatsLoading: Boolean = false,
+    /**
+     * The league table every club page ranks against, or null before it has answered. It is read for the whole
+     * league, so one failure cannot blank this club's header, schedule or roster.
+     */
+    val leagueStats: Loadable<LeagueSummary>? = null,
+    /** True while a league-table request is in flight; the Team Stats tab's retry is driven by this alone. */
+    val isLeagueStatsLoading: Boolean = false,
 )
 
 class TeamDetailViewModel(
@@ -61,6 +70,7 @@ class TeamDetailViewModel(
     private val schedule: ClubScheduleRepository? = null,
     private val roster: ClubRosterRepository? = null,
     private val stats: ClubStatsRepository? = null,
+    private val leagueStats: LeagueStatsRepository? = null,
     private val clock: Clock = Clock.System,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(TeamDetailUiState(teamKey))
@@ -70,6 +80,7 @@ class TeamDetailViewModel(
         loadTableAndSchedule()
         loadRoster()
         loadStats()
+        loadLeagueStats()
     }
 
     /** Re-reads the header and schedule after a failure; roster retry is [retryRoster]. */
@@ -86,6 +97,9 @@ class TeamDetailViewModel(
         loadRoster()
         loadStats()
     }
+
+    /** Re-reads the league table behind the Team Stats tab, leaving everything else untouched. */
+    fun retryLeagueStats() = loadLeagueStats()
 
     private fun loadTableAndSchedule() {
         mutableState.update { it.copy(isLoading = true, error = null, schedule = null) }
@@ -112,6 +126,16 @@ class TeamDetailViewModel(
         viewModelScope.launch {
             val read = readStats()
             mutableState.update { it.copy(stats = read, isStatsLoading = false) }
+        }
+    }
+
+    private fun loadLeagueStats() {
+        if (leagueStats == null) return
+        // Keeps the last table on screen while refreshing, so a retry after a failure does not blank a readable table.
+        mutableState.update { it.copy(isLeagueStatsLoading = true) }
+        viewModelScope.launch {
+            val read = readLeagueStats()
+            mutableState.update { it.copy(leagueStats = read, isLeagueStatsLoading = false) }
         }
     }
 
@@ -158,6 +182,15 @@ class TeamDetailViewModel(
     private suspend fun readStats(): Loadable<ClubStats> =
         try {
             stats?.stats(teamKey) ?: Loadable(null, Freshness.Missing, null)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            Loadable(null, Freshness.Missing, LoadError.Local)
+        }
+
+    private suspend fun readLeagueStats(): Loadable<LeagueSummary> =
+        try {
+            leagueStats?.summary() ?: Loadable(null, Freshness.Missing, null)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {

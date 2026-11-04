@@ -65,6 +65,8 @@ fun TeamDetailScreen(
     modifier: Modifier = Modifier,
     onRetry: () -> Unit = {},
     onPlayersRetry: () -> Unit = {},
+    /** Re-reads the league table behind the Team Stats tab only. */
+    onLeagueStatsRetry: () -> Unit = {},
     /** Superseded callbacks kept for callers compiled against the two old tabs. */
     onRosterRetry: (() -> Unit)? = null,
     onStatsRetry: (() -> Unit)? = null,
@@ -141,7 +143,15 @@ fun TeamDetailScreen(
                     }
 
                     TeamTab.TeamStats -> {
-                        // Team Stats is the next PR; this branch keeps the switch exhaustive.
+                        TeamStatsList(
+                            league = state.leagueStats,
+                            teamName = row?.team?.name,
+                            standingsLoading = state.isLoading,
+                            standingsFailed = state.error != null && row == null,
+                            isRefreshing = state.isLeagueStatsLoading,
+                            onRetry = onLeagueStatsRetry,
+                            modifier = Modifier.fillMaxSize(),
+                        )
                     }
                 }
             }
@@ -159,7 +169,7 @@ fun TeamDetailScreen(
     }
 }
 
-/** The club page's own second level. Players is live; Team Stats remains a coming-soon seat. */
+/** The club page's own second level. Schedule, Players and Team Stats are all live. */
 internal enum class TeamTab {
     Schedule,
     Players,
@@ -178,7 +188,6 @@ private fun TeamTabRow(
         onSelect = onSelect,
         tagPrefix = "team.tab",
         modifier = modifier,
-        enabled = { it != TeamTab.TeamStats },
         label = { tab ->
             stringResource(
                 when (tab) {

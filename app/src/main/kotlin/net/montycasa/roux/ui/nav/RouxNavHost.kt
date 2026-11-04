@@ -906,6 +906,7 @@ private fun TeamDetailDestination(
                             schedule = container.clubSchedule,
                             roster = container.clubRoster,
                             stats = container.clubStats,
+                            leagueStats = container.leagueStats,
                             clock = container.clock,
                         )
                     }
@@ -917,6 +918,7 @@ private fun TeamDetailDestination(
         onBack = onBack,
         onRetry = detail::retry,
         onPlayersRetry = detail::retryPlayers,
+        onLeagueStatsRetry = detail::retryLeagueStats,
         onGameClick = onGameClick,
         onPlayerClick = onPlayerClick,
     )

@@ -43,6 +43,8 @@ sealed interface ApiResult {
 class NhlApi(
     private val client: HttpClient,
     private val baseUrl: String = "https://api-web.nhle.com",
+    /** The stats host serves league-wide tables; it is separate from the web host the other endpoints use. */
+    private val statsBaseUrl: String = "https://api.nhle.com",
 ) {
     suspend fun score(date: String): ApiResult = get(datedPath("/v1/score", date))
 
@@ -107,6 +109,23 @@ class NhlApi(
     ): ApiResult = clubStats(abbrev, season, gameType)
 
     /**
+     * Every club's season totals for one season and game type, in a single response.
+     *
+     * This is the stats host's team summary, not the web host's: `api.nhle.com` answers with one row per
+     * club, so one request covers the whole league. The season and game type are validated like
+     * [clubStats] before they reach the query string, and the `%20` spaces are the feed's own spelling of
+     * the expression, not an encoding choice.
+     */
+    suspend fun leagueSummary(
+        season: String,
+        gameType: Int = 2,
+    ): ApiResult {
+        require(SEASON_ID.matches(season)) { "Season must be eight digits, was '$season'" }
+        require(gameType in 1..3) { "Game type must be 1, 2 or 3, was '$gameType'" }
+        return get("/stats/rest/en/team/summary?cayenneExp=seasonId=$season%20and%20gameTypeId=$gameType", statsBaseUrl)
+    }
+
+    /**
      * A player's landing page: identity, career and season totals, and the last five games.
      *
      * The id is checked before a request is built, so only a positive whole number can become part of the path.
@@ -152,13 +171,16 @@ class NhlApi(
         return "/v1/gamecenter/${gameId.value}/$section"
     }
 
-    private suspend fun get(path: String): ApiResult =
+    private suspend fun get(
+        path: String,
+        base: String = baseUrl,
+    ): ApiResult =
         try {
             // prepareGet/execute rather than client.get: client.get buffers the whole body and
             // releases the connection before returning, so a large 5xx payload would be held in
             // memory twice for nothing. The streaming form lets a non-2xx body be discarded without
             // ever being materialised.
-            client.prepareGet("${baseUrl.trimEnd('/')}$path").execute { response ->
+            client.prepareGet("${base.trimEnd('/')}$path").execute { response ->
                 if (response.status.value in 200..299) {
                     ApiResult.Success(response.readRawBytes())
                 } else {

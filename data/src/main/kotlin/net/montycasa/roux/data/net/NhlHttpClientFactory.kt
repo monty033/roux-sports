@@ -13,7 +13,9 @@ import kotlin.time.Duration.Companion.seconds
 /** Identifies a blocked destination so support can trace an unexpected URL or redirect. */
 class HostNotAllowedException(
     val host: String,
-) : IllegalArgumentException("Blocked NHL HTTP request to host '$host'; only api-web.nhle.com and assets.nhle.com are allowed")
+) : IllegalArgumentException(
+        "Blocked NHL HTTP request to host '$host'; only api-web.nhle.com, assets.nhle.com and api.nhle.com are allowed",
+    )
 
 /** Keeps a server-requested pause distinct from other HTTP failures for the polling caller. */
 class RateLimited(
@@ -22,7 +24,7 @@ class RateLimited(
 
 /** Centralises the NHL network boundary while leaving engine ownership and version selection to callers. */
 object NhlHttpClientFactory {
-    private val allowedHosts = setOf("api-web.nhle.com", "assets.nhle.com")
+    private val allowedHosts = setOf("api-web.nhle.com", "assets.nhle.com", "api.nhle.com")
 
     private val nhlBoundary =
         createClientPlugin("NhlBoundary") {
