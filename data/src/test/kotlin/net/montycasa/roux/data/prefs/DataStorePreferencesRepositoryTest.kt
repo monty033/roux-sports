@@ -35,6 +35,7 @@ import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Files
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Instant
 
 /**
@@ -506,6 +507,7 @@ class DataStorePreferencesRepositoryTest {
                 listOf(
                     { repository.setFavourites(setOf(TeamKey("MTL"))) },
                     { repository.setFavouritesOnly(false) },
+                    { repository.setUpcomingLeadMinutes(60) },
                     { repository.setLeagueOrder(listOf("mlb", "nhl", "nfl")) },
                     { repository.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(start = false, goals = false)) },
                     {
@@ -838,6 +840,470 @@ class DataStorePreferencesRepositoryTest {
                 assertEquals(true, repository.claimGoal("2025020123", 4, at))
             } finally {
                 closeScope(scope)
+            }
+        }
+
+    @Test
+    fun anEntryWrittenWithOnlyTheBaseKeysReadsTheNewFieldsAtTheirDefaults() =
+        runTest {
+            val directory = newDirectory()
+            // What a build from before these fields existed left behind: the three base keys and nothing else.
+            writeRawLedgerEntry(directory, "2024020001", goalCount = 2, startNotified = true, updatedAt = 5_000L)
+            val scope = newScope()
+            try {
+                assertEquals(
+                    NotificationLedgerEntry(
+                        lastNotifiedGoalCount = 2,
+                        startNotified = true,
+                        updatedAt = Instant.fromEpochMilliseconds(5_000L),
+                        finalNotified = false,
+                        lastIntermissionNotified = 0,
+                        upcomingNotified = false,
+                    ),
+                    openWhenReleased(directory, scope).getNotificationLedgerEntry("2024020001"),
+                )
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun aFinalAlreadyClaimedIsNotClaimedAgain() =
+        runTest {
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(newDirectory(), scope)
+                val at = Instant.parse("2025-01-01T00:00:00Z")
+                assertEquals(true, repository.claimFinal("2025020123", at))
+                assertEquals(false, repository.claimFinal("2025020123", at))
+                assertEquals(true, repository.getNotificationLedgerEntry("2025020123")?.finalNotified)
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun anUpcomingAlreadyClaimedIsNotClaimedAgain() =
+        runTest {
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(newDirectory(), scope)
+                val at = Instant.parse("2025-01-01T00:00:00Z")
+                assertEquals(true, repository.claimUpcoming("2025020123", at))
+                assertEquals(false, repository.claimUpcoming("2025020123", at))
+                assertEquals(true, repository.getNotificationLedgerEntry("2025020123")?.upcomingNotified)
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun anIntermissionIsClaimedOnlyForAPeriodHigherThanTheLastAnnounced() =
+        runTest {
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(newDirectory(), scope)
+                val at = Instant.parse("2025-01-01T00:00:00Z")
+                assertEquals("the first intermission is always new", true, repository.claimIntermission("2025020123", 1, at))
+                assertEquals("a later period is new", true, repository.claimIntermission("2025020123", 2, at))
+                assertEquals("an earlier period is stale", false, repository.claimIntermission("2025020123", 1, at))
+                assertEquals("the same period is a duplicate", false, repository.claimIntermission("2025020123", 2, at))
+                assertEquals(
+                    "a refused claim must not move the record backwards",
+                    2,
+                    repository.getNotificationLedgerEntry("2025020123")?.lastIntermissionNotified,
+                )
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun aClaimOnAGameWithNoEntryLeavesACompleteEntryThatReadsBack() =
+        runTest {
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(newDirectory(), scope)
+                val at = Instant.parse("2025-01-01T00:00:00Z")
+                assertEquals(true, repository.claimFinal("game-final", at))
+                assertEquals(true, repository.claimIntermission("game-intermission", 2, at))
+                assertEquals(true, repository.claimUpcoming("game-upcoming", at))
+
+                // Nothing was observed and nothing but the claim was announced, so the base is the neutral one.
+                assertEquals(
+                    NotificationLedgerEntry(NotificationLedgerEntry.UNKNOWN_GOAL_COUNT, false, at, finalNotified = true),
+                    repository.getNotificationLedgerEntry("game-final"),
+                )
+                assertEquals(
+                    NotificationLedgerEntry(NotificationLedgerEntry.UNKNOWN_GOAL_COUNT, false, at, lastIntermissionNotified = 2),
+                    repository.getNotificationLedgerEntry("game-intermission"),
+                )
+                assertEquals(
+                    NotificationLedgerEntry(NotificationLedgerEntry.UNKNOWN_GOAL_COUNT, false, at, upcomingNotified = true),
+                    repository.getNotificationLedgerEntry("game-upcoming"),
+                )
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun aClaimOnAGameWithAnEntryKeepsTheGoalsAndStartAlreadyRecorded() =
+        runTest {
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(newDirectory(), scope)
+                val earlier = Instant.parse("2025-01-01T00:00:00Z")
+                val later = Instant.parse("2025-01-01T03:00:00Z")
+                assertEquals(true, repository.claimStart("2025020123", goalBaseline = 1, at = earlier))
+                assertEquals(true, repository.claimGoal("2025020123", 3, earlier))
+
+                assertEquals(true, repository.claimFinal("2025020123", later))
+
+                assertEquals(
+                    "a new claim must not rewrite what goal and start claims recorded",
+                    NotificationLedgerEntry(3, true, later, finalNotified = true),
+                    repository.getNotificationLedgerEntry("2025020123"),
+                )
+                assertEquals("the goal stays claimed", false, repository.claimGoal("2025020123", 3, later))
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun fiftyConcurrentFinalClaimsProduceExactlyOneWinner() =
+        runBlocking {
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(newDirectory(), scope)
+                val at = Instant.parse("2025-01-01T00:00:00Z")
+                // Real overlap, as with the goal claims: sequential calls would pass with the transaction removed.
+                val winners =
+                    coroutineScope {
+                        (1..50)
+                            .map { async(Dispatchers.IO) { repository.claimFinal("2025020123", at) } }
+                            .awaitAll()
+                            .count { it }
+                    }
+                assertEquals("exactly one caller may post the final", 1, winners)
+                assertEquals(true, repository.getNotificationLedgerEntry("2025020123")?.finalNotified)
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun anEntryCreatedOnlyByAnUpcomingClaimIsSweptAfterRetentionEvenIfTheGameNeverGoesFinal() =
+        runTest {
+            val directory = newDirectory()
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(directory, scope)
+                val claimedAt = Instant.parse("2025-01-01T00:00:00Z")
+                // A postponed game: the upcoming alert went out, then the game never started, so nothing ever
+                // writes a final that would have let a final-only sweep reach this row.
+                assertEquals(true, repository.claimUpcoming("postponed-game", claimedAt))
+                assertEquals(true, repository.claimUpcoming("tomorrows-game", claimedAt + 25.hours))
+
+                repository.pruneNotificationLedger(olderThan = claimedAt + 24.hours, keep = emptySet())
+
+                assertNull(repository.getNotificationLedgerEntry("postponed-game"))
+                assertEquals(
+                    NotificationLedgerEntry(
+                        NotificationLedgerEntry.UNKNOWN_GOAL_COUNT,
+                        false,
+                        claimedAt + 25.hours,
+                        upcomingNotified = true,
+                    ),
+                    repository.getNotificationLedgerEntry("tomorrows-game"),
+                )
+            } finally {
+                closeScope(scope)
+            }
+
+            // Sweeping must remove the claim keys as well, or they pile up under a game id nothing will ever read.
+            val readerScope = newScope()
+            try {
+                val stored = openRawStore(directory, readerScope).data.first()
+                assertNull(stored[booleanPreferencesKey("ledger_upcoming_postponed-game")])
+                assertNull(stored[intPreferencesKey("ledger_goals_postponed-game")])
+                assertEquals(true, stored[booleanPreferencesKey("ledger_upcoming_tomorrows-game")])
+            } finally {
+                closeScope(readerScope)
+            }
+        }
+
+    @Test
+    fun sweepingAGameRemovesEveryClaimKeyItOwned() =
+        runTest {
+            val directory = newDirectory()
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(directory, scope)
+                val at = Instant.parse("2025-01-01T00:00:00Z")
+                repository.claimFinal("game-1", at)
+                repository.claimIntermission("game-1", 3, at)
+                repository.claimUpcoming("game-1", at)
+
+                repository.pruneNotificationLedger(olderThan = at + 1.hours, keep = emptySet())
+            } finally {
+                closeScope(scope)
+            }
+
+            val readerScope = newScope()
+            try {
+                val stored = openRawStore(directory, readerScope).data.first()
+                assertNull(stored[booleanPreferencesKey("ledger_final_game-1")])
+                assertNull(stored[intPreferencesKey("ledger_intermission_game-1")])
+                assertNull(stored[booleanPreferencesKey("ledger_upcoming_game-1")])
+            } finally {
+                closeScope(readerScope)
+            }
+        }
+
+    @Test
+    fun anUnsetTeamReadsExactlyTheDefaultAlertPreferences() =
+        runTest {
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(newDirectory(), scope)
+                val preferences = repository.getTeamAlertPreferences(TeamKey("TOR"))
+
+                assertEquals(TeamAlertPreferences(), preferences)
+                assertEquals(
+                    TeamAlertPreferences(start = false, goals = false, intermission = false, final = false, upcoming = false),
+                    preferences,
+                )
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun aTeamWithOnlyTheOldSwitchesStoredReadsTheNewOnesOff() =
+        runTest {
+            val directory = newDirectory()
+            val first = newScope()
+            try {
+                // An upgrade: the file holds the two switches the previous build wrote and nothing else.
+                openRawStore(directory, first).edit { stored ->
+                    stored[booleanPreferencesKey("team_TOR_alerts_start")] = true
+                    stored[booleanPreferencesKey("team_TOR_alerts_goals")] = true
+                }
+            } finally {
+                closeScope(first)
+            }
+
+            val second = newScope()
+            try {
+                assertEquals(
+                    TeamAlertPreferences(start = true, goals = true),
+                    openWhenReleased(directory, second).getTeamAlertPreferences(TeamKey("TOR")),
+                )
+            } finally {
+                closeScope(second)
+            }
+        }
+
+    @Test
+    fun eachAlertSwitchSavesToItsOwnKeyAndReadsBackIndependently() =
+        runTest {
+            val switches =
+                listOf(
+                    Triple("start", TeamAlertPreferences(start = true), "team_TOR_alerts_start"),
+                    Triple("goals", TeamAlertPreferences(goals = true), "team_TOR_alerts_goals"),
+                    Triple("intermission", TeamAlertPreferences(intermission = true), "team_TOR_alerts_intermission"),
+                    Triple("final", TeamAlertPreferences(final = true), "team_TOR_alerts_final"),
+                    Triple("upcoming", TeamAlertPreferences(upcoming = true), "team_TOR_alerts_upcoming"),
+                )
+            for ((name, preferences, keyName) in switches) {
+                val directory = newDirectory()
+                val writerScope = newScope()
+                DataStorePreferencesRepository(directory, writerScope).setTeamAlertPreferences(TeamKey("TOR"), preferences)
+                closeScope(writerScope)
+
+                val readerScope = newScope()
+                try {
+                    assertEquals(
+                        "only $name was switched on, so only $name may read back on",
+                        preferences,
+                        openWhenReleased(directory, readerScope).getTeamAlertPreferences(TeamKey("TOR")),
+                    )
+                } finally {
+                    closeScope(readerScope)
+                }
+
+                // The round trip alone cannot catch two switches sharing or exchanging keys, because the setter and
+                // the getter would agree on the wrong ones. The stored names are the contract.
+                val rawScope = newScope()
+                try {
+                    val stored = openRawStore(directory, rawScope).data.first()
+                    val on =
+                        stored
+                            .asMap()
+                            .filter { it.value == true }
+                            .keys
+                            .map { it.name }
+                    assertEquals("$name must land in $keyName and in no other key", listOf(keyName), on)
+                } finally {
+                    closeScope(rawScope)
+                }
+            }
+        }
+
+    @Test
+    fun theUpcomingLeadDefaultsToThirtyMinutes() =
+        runTest {
+            val scope = newScope()
+            try {
+                assertEquals(30, DataStorePreferencesRepository(newDirectory(), scope).getUpcomingLeadMinutes())
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun theLegalUpcomingLeadsReadBackUnchanged() =
+        runTest {
+            for (minutes in listOf(15, 30, 60)) {
+                val directory = newDirectory()
+                val writerScope = newScope()
+                DataStorePreferencesRepository(directory, writerScope).setUpcomingLeadMinutes(minutes)
+                closeScope(writerScope)
+
+                val readerScope = newScope()
+                try {
+                    assertEquals(minutes, openWhenReleased(directory, readerScope).getUpcomingLeadMinutes())
+                } finally {
+                    closeScope(readerScope)
+                }
+            }
+        }
+
+    @Test
+    fun aStoredUpcomingLeadThatIsNotLegalReadsAsThirty() =
+        runTest {
+            for (illegal in listOf(45, 0, -15, 90)) {
+                val directory = newDirectory()
+                val rawScope = newScope()
+                try {
+                    openRawStore(directory, rawScope).edit { it[intPreferencesKey("upcoming_lead_minutes")] = illegal }
+                } finally {
+                    closeScope(rawScope)
+                }
+
+                val scope = newScope()
+                try {
+                    val repository = openWhenReleased(directory, scope)
+                    assertEquals("a stored $illegal is not a legal lead", 30, repository.getUpcomingLeadMinutes())
+                    assertEquals("the flow must agree with the one-shot read", 30, repository.observeUpcomingLeadMinutes().first())
+                } finally {
+                    closeScope(scope)
+                }
+            }
+        }
+
+    @Test
+    fun anIllegalUpcomingLeadIsRejectedAndNothingIsStored() =
+        runTest {
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(newDirectory(), scope)
+                assertThrows(IllegalArgumentException::class.java) { runBlocking { repository.setUpcomingLeadMinutes(45) } }
+                assertEquals(30, repository.getUpcomingLeadMinutes())
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun observingTheUpcomingLeadEmitsWhatIsStoredAndThenTheChange() =
+        runTest {
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(newDirectory(), scope)
+                repository.observeUpcomingLeadMinutes().test {
+                    assertEquals(30, awaitItem())
+                    repository.setUpcomingLeadMinutes(60)
+                    assertEquals(60, awaitItem())
+                    cancelAndIgnoreRemainingEvents()
+                }
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun ledgerRowsForDifferentGamesDoNotCollide() =
+        runTest {
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(newDirectory(), scope)
+                val at = Instant.parse("2025-01-01T00:00:00Z")
+                assertEquals(true, repository.claimFinal("game-a", at))
+                assertEquals(true, repository.claimIntermission("game-a", 2, at))
+                assertEquals(true, repository.claimUpcoming("game-a", at))
+
+                // Another game must see none of that, whichever of the three claims is asked.
+                assertEquals(null, repository.getNotificationLedgerEntry("game-b"))
+                assertEquals(true, repository.claimFinal("game-b", at))
+                assertEquals(true, repository.claimIntermission("game-b", 1, at))
+                assertEquals(true, repository.claimUpcoming("game-b", at))
+
+                assertEquals(
+                    NotificationLedgerEntry(
+                        NotificationLedgerEntry.UNKNOWN_GOAL_COUNT,
+                        false,
+                        at,
+                        finalNotified = true,
+                        lastIntermissionNotified = 2,
+                        upcomingNotified = true,
+                    ),
+                    repository.getNotificationLedgerEntry("game-a"),
+                )
+                assertEquals(
+                    NotificationLedgerEntry(
+                        NotificationLedgerEntry.UNKNOWN_GOAL_COUNT,
+                        false,
+                        at,
+                        finalNotified = true,
+                        lastIntermissionNotified = 1,
+                        upcomingNotified = true,
+                    ),
+                    repository.getNotificationLedgerEntry("game-b"),
+                )
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun claimsOnANewerFileAreRefusedWithoutWritingTheNewKeys() =
+        runTest {
+            val directory = newDirectory()
+            val at = Instant.parse("2025-01-01T00:00:00Z")
+            writeRawLedgerEntry(directory, gameId = "game-1", goalCount = 1, startNotified = false, updatedAt = 1L, version = 2)
+
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(directory, scope)
+                assertEquals(false, repository.claimFinal("game-1", at))
+                assertEquals(false, repository.claimIntermission("game-1", 1, at))
+                assertEquals(false, repository.claimUpcoming("game-1", at))
+            } finally {
+                closeScope(scope)
+            }
+
+            val readerScope = newScope()
+            try {
+                val stored = openRawStore(directory, readerScope).data.first()
+                assertEquals(2, stored[intPreferencesKey("prefs_version")])
+                assertNull(stored[booleanPreferencesKey("ledger_final_game-1")])
+                assertNull(stored[intPreferencesKey("ledger_intermission_game-1")])
+                assertNull(stored[booleanPreferencesKey("ledger_upcoming_game-1")])
+            } finally {
+                closeScope(readerScope)
             }
         }
 }

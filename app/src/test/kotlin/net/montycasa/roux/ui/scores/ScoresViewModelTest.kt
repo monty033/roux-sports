@@ -888,6 +888,10 @@ private class FakePreferencesRepository(
 
     override suspend fun setThemeMode(mode: ThemeMode) = Unit
 
+    override suspend fun getUpcomingLeadMinutes() = 30
+
+    override suspend fun setUpcomingLeadMinutes(minutes: Int) = Unit
+
     // Backed by flows so the observing reads behave like the real store: a write reaches a collector. The plain
     // properties below keep every existing test reading naturally.
     private val favouritesFlow = MutableStateFlow(teams)
@@ -984,6 +988,22 @@ private class FakePreferencesRepository(
     override suspend fun claimBaseline(
         gameId: String,
         goalCount: Int,
+        at: Instant,
+    ) = false
+
+    override suspend fun claimFinal(
+        gameId: String,
+        at: Instant,
+    ) = false
+
+    override suspend fun claimIntermission(
+        gameId: String,
+        period: Int,
+        at: Instant,
+    ) = false
+
+    override suspend fun claimUpcoming(
+        gameId: String,
         at: Instant,
     ) = false
 

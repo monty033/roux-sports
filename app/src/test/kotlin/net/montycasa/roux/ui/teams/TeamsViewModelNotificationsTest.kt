@@ -68,6 +68,10 @@ class TeamsViewModelNotificationsTest {
 
         override suspend fun setThemeMode(mode: ThemeMode) = Unit
 
+        override suspend fun getUpcomingLeadMinutes() = 30
+
+        override suspend fun setUpcomingLeadMinutes(minutes: Int) = Unit
+
         val writes = CopyOnWriteArrayList<Pair<TeamKey, TeamAlertPreferences>>()
 
         override suspend fun getFavourites(): Set<TeamKey> = setOf(TeamKey("TOR"))
@@ -121,6 +125,22 @@ class TeamsViewModelNotificationsTest {
         override suspend fun claimBaseline(
             gameId: String,
             goalCount: Int,
+            at: kotlin.time.Instant,
+        ) = true
+
+        override suspend fun claimFinal(
+            gameId: String,
+            at: kotlin.time.Instant,
+        ) = true
+
+        override suspend fun claimIntermission(
+            gameId: String,
+            period: Int,
+            at: kotlin.time.Instant,
+        ) = true
+
+        override suspend fun claimUpcoming(
+            gameId: String,
             at: kotlin.time.Instant,
         ) = true
 
