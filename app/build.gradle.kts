@@ -1,5 +1,6 @@
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.gradle.api.artifacts.component.ProjectComponentIdentifier
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
@@ -7,6 +8,17 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.roborazzi)
 }
+
+// Release signing reads a gitignored keystore.properties when one is present. Without it the release
+// build stays unsigned, so a release APK can be built and audited on a machine that holds no key, and
+// the secrets themselves never live in the repository.
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties =
+    Properties().apply {
+        if (keystorePropertiesFile.exists()) {
+            keystorePropertiesFile.inputStream().use { load(it) }
+        }
+    }
 
 android {
     namespace = "net.montycasa.roux"
@@ -17,6 +29,9 @@ android {
 
     defaultConfig {
         applicationId = "net.montycasa.roux"
+        // The published version. Bumping these is a release decision, not a side effect of a feature branch.
+        versionCode = 1
+        versionName = "1.0.0"
         minSdk =
             libs.versions.minSdk
                 .get()
@@ -31,7 +46,30 @@ android {
         compose = true
     }
 
+    signingConfigs {
+        // Only when the developer's gitignored keystore.properties is present; otherwise there is no release
+        // signing config at all and assembleRelease writes app-release-unsigned.apk.
+        if (keystorePropertiesFile.exists()) {
+            create("release") {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
+        // The published build: minified and resource-shrunk, signed with the release key when one is
+        // configured. Nothing that needs a keystore happens here; scripts/check-release-signing.sh proves
+        // both the unsigned and the signed path.
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.findByName("release")
+        }
+
         // Device performance testing: the shipping code path with none of the debug runtime overhead that
         // makes every Compose scroll feel heavier than it will on a release build. Minification stays off
         // so this measures the runtime difference alone; R8 becomes its own reviewed step.
@@ -39,6 +77,11 @@ android {
         // never be published, and why it is not called "release".
         create("perf") {
             initWith(getByName("release"))
+            // initWith copies the release block, so these two must be pinned back off: otherwise R8 renames
+            // the classes the device-verification step greps for in the dex, and a device round silently
+            // stops measuring the unminified runtime it exists to compare.
+            isMinifyEnabled = false
+            isShrinkResources = false
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += listOf("release")
         }
