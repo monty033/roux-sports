@@ -122,6 +122,10 @@ private class StubPreferences : PreferencesRepository {
 
     override suspend fun setThemeMode(mode: ThemeMode) = Unit
 
+    override suspend fun getUpcomingLeadMinutes() = 30
+
+    override suspend fun setUpcomingLeadMinutes(minutes: Int) = Unit
+
     override suspend fun getFavourites(): Set<TeamKey> = emptySet()
 
     override suspend fun setFavourites(teams: Set<TeamKey>) = Unit
@@ -165,6 +169,22 @@ private class StubPreferences : PreferencesRepository {
     override suspend fun claimBaseline(
         gameId: String,
         goalCount: Int,
+        at: Instant,
+    ) = false
+
+    override suspend fun claimFinal(
+        gameId: String,
+        at: Instant,
+    ) = false
+
+    override suspend fun claimIntermission(
+        gameId: String,
+        period: Int,
+        at: Instant,
+    ) = false
+
+    override suspend fun claimUpcoming(
+        gameId: String,
         at: Instant,
     ) = false
 

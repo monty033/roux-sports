@@ -24,6 +24,7 @@ import net.montycasa.roux.domain.policy.LeagueOrder
 import net.montycasa.roux.domain.repo.NotificationLedgerEntry
 import net.montycasa.roux.domain.repo.PreferencesRepository
 import net.montycasa.roux.domain.repo.TeamAlertPreferences
+import net.montycasa.roux.domain.repo.UpcomingLead
 import okio.Path
 import kotlin.time.Instant
 
@@ -75,6 +76,22 @@ class DataStorePreferencesRepository(
         }
     }
 
+    // A stored value outside the legal set reads as the default rather than being trusted: the file can hold anything a
+    // newer or older build, or a hand edit, left behind.
+    override suspend fun getUpcomingLeadMinutes(): Int = UpcomingLead.coerce(readablePreferences()?.get(UPCOMING_LEAD_MINUTES))
+
+    override fun observeUpcomingLeadMinutes(): Flow<Int> =
+        readablePreferencesFlow().map { UpcomingLead.coerce(it?.get(UPCOMING_LEAD_MINUTES)) }
+
+    override suspend fun setUpcomingLeadMinutes(minutes: Int) {
+        require(minutes in UpcomingLead.allowed) { "upcoming lead must be one of ${UpcomingLead.allowed} minutes" }
+        requireWritable()
+        store.edit { preferences ->
+            preferences[VERSION] = PREFERENCES_VERSION
+            preferences[UPCOMING_LEAD_MINUTES] = minutes
+        }
+    }
+
     override suspend fun getFavourites(): Set<TeamKey> {
         val preferences = readablePreferences() ?: return emptySet()
         return preferences[FAVOURITES].orEmpty().mapTo(mutableSetOf(), ::TeamKey)
@@ -121,6 +138,9 @@ class DataStorePreferencesRepository(
         return TeamAlertPreferences(
             start = preferences[startKey(team)] ?: defaults.start,
             goals = preferences[goalsKey(team)] ?: defaults.goals,
+            intermission = preferences[intermissionKey(team)] ?: defaults.intermission,
+            final = preferences[finalKey(team)] ?: defaults.final,
+            upcoming = preferences[upcomingKey(team)] ?: defaults.upcoming,
         )
     }
 
@@ -133,6 +153,9 @@ class DataStorePreferencesRepository(
             stored[VERSION] = PREFERENCES_VERSION
             stored[startKey(team)] = preferences.start
             stored[goalsKey(team)] = preferences.goals
+            stored[intermissionKey(team)] = preferences.intermission
+            stored[finalKey(team)] = preferences.final
+            stored[upcomingKey(team)] = preferences.upcoming
         }
     }
 
@@ -149,6 +172,11 @@ class DataStorePreferencesRepository(
             lastNotifiedGoalCount = goalCount,
             startNotified = startNotified,
             updatedAt = Instant.fromEpochMilliseconds(updatedAt),
+            // These are optional on read: an entry written before they existed is still a complete entry, and an
+            // absent key means "not yet sent". Requiring them would turn every older record into no record.
+            finalNotified = preferences[finalNotifiedKey(gameId)] ?: false,
+            lastIntermissionNotified = preferences[intermissionNotifiedKey(gameId)] ?: 0,
+            upcomingNotified = preferences[upcomingNotifiedKey(gameId)] ?: false,
         )
     }
 
@@ -162,6 +190,9 @@ class DataStorePreferencesRepository(
             preferences[goalCountKey(gameId)] = entry.lastNotifiedGoalCount
             preferences[startNotifiedKey(gameId)] = entry.startNotified
             preferences[updatedAtKey(gameId)] = entry.updatedAt.toEpochMilliseconds()
+            preferences[finalNotifiedKey(gameId)] = entry.finalNotified
+            preferences[intermissionNotifiedKey(gameId)] = entry.lastIntermissionNotified
+            preferences[upcomingNotifiedKey(gameId)] = entry.upcomingNotified
         }
     }
 
@@ -252,6 +283,76 @@ class DataStorePreferencesRepository(
         return claimed
     }
 
+    override suspend fun claimFinal(
+        gameId: String,
+        at: Instant,
+    ): Boolean {
+        requireUsableGameId(gameId)
+        var claimed = false
+        store.edit { preferences ->
+            if (!isInterpretable(preferences)) return@edit
+            if (preferences[finalNotifiedKey(gameId)] == true) return@edit
+            writeCompleteBase(preferences, gameId, at)
+            preferences[finalNotifiedKey(gameId)] = true
+            claimed = true
+        }
+        return claimed
+    }
+
+    override suspend fun claimIntermission(
+        gameId: String,
+        period: Int,
+        at: Instant,
+    ): Boolean {
+        requireUsableGameId(gameId)
+        var claimed = false
+        store.edit { preferences ->
+            if (!isInterpretable(preferences)) return@edit
+            // Strictly higher only. An equal period is a duplicate, and a lower one is a stale observation that must
+            // not pull the record back down and make a period already announced claimable again.
+            if (period <= (preferences[intermissionNotifiedKey(gameId)] ?: 0)) return@edit
+            writeCompleteBase(preferences, gameId, at)
+            preferences[intermissionNotifiedKey(gameId)] = period
+            claimed = true
+        }
+        return claimed
+    }
+
+    override suspend fun claimUpcoming(
+        gameId: String,
+        at: Instant,
+    ): Boolean {
+        requireUsableGameId(gameId)
+        var claimed = false
+        store.edit { preferences ->
+            if (!isInterpretable(preferences)) return@edit
+            if (preferences[upcomingNotifiedKey(gameId)] == true) return@edit
+            writeCompleteBase(preferences, gameId, at)
+            preferences[upcomingNotifiedKey(gameId)] = true
+            claimed = true
+        }
+        return claimed
+    }
+
+    /**
+     * Makes the three base fields exist, keeping any that already do, and stamps the entry.
+     *
+     * A new claim's own key is not a ledger entry: [getNotificationLedgerEntry] reads nothing without all three base
+     * fields. Writing the claim alone would store a record the reader reports as absent, and the alert would repeat.
+     * Missing fields take the "nothing observed, nothing announced" values, so this never claims a start or a goal.
+     */
+    private fun writeCompleteBase(
+        preferences: MutablePreferences,
+        gameId: String,
+        at: Instant,
+    ) = writeLedger(
+        preferences = preferences,
+        gameId = gameId,
+        goalCount = preferences[goalCountKey(gameId)] ?: NotificationLedgerEntry.UNKNOWN_GOAL_COUNT,
+        startNotified = preferences[startNotifiedKey(gameId)] ?: false,
+        at = at,
+    )
+
     /**
      * True when this build may interpret and write the file.
      *
@@ -306,7 +407,8 @@ class DataStorePreferencesRepository(
         val cutoff = olderThan.toEpochMilliseconds()
         store.edit { preferences ->
             // The update stamp is the key whose name carries the game id, so it drives the sweep and
-            // the other two keys are removed alongside it.
+            // the other keys are removed alongside it. Age alone decides: a game that never reaches final - a
+            // postponement whose entry came from an upcoming claim - must not keep its row forever.
             val expired =
                 preferences
                     .asMap()
@@ -325,6 +427,9 @@ class DataStorePreferencesRepository(
                 preferences.remove(updatedAtKey(gameId))
                 preferences.remove(goalCountKey(gameId))
                 preferences.remove(startNotifiedKey(gameId))
+                preferences.remove(finalNotifiedKey(gameId))
+                preferences.remove(intermissionNotifiedKey(gameId))
+                preferences.remove(upcomingNotifiedKey(gameId))
             }
         }
     }
@@ -385,6 +490,18 @@ class DataStorePreferencesRepository(
 
     private fun goalsKey(team: TeamKey) = booleanPreferencesKey("team_${team.abbrev}_alerts_goals")
 
+    private fun intermissionKey(team: TeamKey) = booleanPreferencesKey("team_${team.abbrev}_alerts_intermission")
+
+    private fun finalKey(team: TeamKey) = booleanPreferencesKey("team_${team.abbrev}_alerts_final")
+
+    private fun upcomingKey(team: TeamKey) = booleanPreferencesKey("team_${team.abbrev}_alerts_upcoming")
+
+    private fun finalNotifiedKey(gameId: String) = booleanPreferencesKey(FINAL_NOTIFIED_PREFIX + requireUsableGameId(gameId))
+
+    private fun intermissionNotifiedKey(gameId: String) = intPreferencesKey(INTERMISSION_NOTIFIED_PREFIX + requireUsableGameId(gameId))
+
+    private fun upcomingNotifiedKey(gameId: String) = booleanPreferencesKey(UPCOMING_NOTIFIED_PREFIX + requireUsableGameId(gameId))
+
     private fun goalCountKey(gameId: String) = intPreferencesKey(GOAL_COUNT_PREFIX + requireUsableGameId(gameId))
 
     private fun startNotifiedKey(gameId: String) = booleanPreferencesKey(START_NOTIFIED_PREFIX + requireUsableGameId(gameId))
@@ -399,6 +516,9 @@ class DataStorePreferencesRepository(
         const val GOAL_COUNT_PREFIX = "ledger_goals_"
         const val START_NOTIFIED_PREFIX = "ledger_start_"
         const val UPDATED_AT_PREFIX = "ledger_time_"
+        const val FINAL_NOTIFIED_PREFIX = "ledger_final_"
+        const val INTERMISSION_NOTIFIED_PREFIX = "ledger_intermission_"
+        const val UPCOMING_NOTIFIED_PREFIX = "ledger_upcoming_"
 
         val GAME_ID = Regex("[A-Za-z0-9._-]{1,64}")
 
@@ -407,6 +527,7 @@ class DataStorePreferencesRepository(
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val LEAGUE_ORDER = stringPreferencesKey("league_order")
         val FAVOURITES_ONLY = booleanPreferencesKey("favourites_only")
+        val UPCOMING_LEAD_MINUTES = intPreferencesKey("upcoming_lead_minutes")
     }
 }
 

@@ -7,26 +7,50 @@ import net.montycasa.roux.domain.model.ThemeMode
 import kotlin.time.Instant
 
 /**
- * Per-team controls for game-start and goal alerts.
+ * Per-team controls for game alerts.
  *
- * Both start disabled. An alert nobody asked for is worse than one they have to switch on, and the old
- * defaults were on for teams that could not alert at all.
+ * Every switch starts disabled. An alert nobody asked for is worse than one they have to switch on, and the old
+ * defaults were on for teams that could not alert at all. An upgrade must not start notifying anyone, which is why
+ * the switches added later default off as well.
  */
 data class TeamAlertPreferences(
     val start: Boolean = false,
     val goals: Boolean = false,
+    val intermission: Boolean = false,
+    val final: Boolean = false,
+    val upcoming: Boolean = false,
 )
+
+/**
+ * The lead times the "game is about to start" alert may use, in minutes.
+ *
+ * A closed set rather than a free number: the setting is a choice between a few meaningful warnings, and a stored
+ * value outside the set is read as [DEFAULT] instead of being trusted.
+ */
+object UpcomingLead {
+    const val DEFAULT: Int = 30
+    val allowed: List<Int> = listOf(15, 30, 60)
+
+    /** [stored] if it is one of the legal lead times, otherwise [DEFAULT]. */
+    fun coerce(stored: Int?): Int = if (stored in allowed) checkNotNull(stored) else DEFAULT
+}
 
 /**
  * Durable notification state. Persist this BEFORE posting to enforce at-most-once delivery.
  *
  * [lastNotifiedGoalCount] is the high-water score total that has been announced. See
  * [UNKNOWN_GOAL_COUNT] for a game first seen without a score.
+ *
+ * [lastIntermissionNotified] is the highest period whose intermission has been announced; 0 means none. The other
+ * two flags read false for a game whose entry predates them.
  */
 data class NotificationLedgerEntry(
     val lastNotifiedGoalCount: Int,
     val startNotified: Boolean,
     val updatedAt: Instant,
+    val finalNotified: Boolean = false,
+    val lastIntermissionNotified: Int = 0,
+    val upcomingNotified: Boolean = false,
 ) {
     /** True when the game was first seen without a score, so no total has ever been established. */
     val goalCountIsUnknown: Boolean get() = lastNotifiedGoalCount == UNKNOWN_GOAL_COUNT
@@ -53,6 +77,15 @@ interface PreferencesRepository {
 
     /** Saved theme as it changes, starting with the current value. */
     fun observeThemeMode(): Flow<ThemeMode> = flow { emit(getThemeMode()) }
+
+    /** Minutes before puck drop that the upcoming-game alert fires: 15, 30 or 60, and 30 when unset or illegal. */
+    suspend fun getUpcomingLeadMinutes(): Int
+
+    /** Save the lead time. Only the values in [UpcomingLead.allowed] are legal; anything else is rejected. */
+    suspend fun setUpcomingLeadMinutes(minutes: Int)
+
+    /** The lead time as it changes, starting with the current value. */
+    fun observeUpcomingLeadMinutes(): Flow<Int> = flow { emit(getUpcomingLeadMinutes()) }
 
     /** Read the saved favourite teams; an empty set means none are selected. */
     suspend fun getFavourites(): Set<TeamKey>
@@ -152,6 +185,36 @@ interface PreferencesRepository {
     suspend fun claimBaseline(
         gameId: String,
         goalCount: Int,
+        at: Instant,
+    ): Boolean
+
+    /**
+     * Atomically claim the final-score alert; true only for the first caller.
+     *
+     * A game with no complete entry gets one written alongside the claim, with an unknown goal total and the start
+     * unclaimed. Without it the claim would be stored where [getNotificationLedgerEntry] cannot see it, and the alert
+     * could repeat. False also covers a file written by a newer build.
+     */
+    suspend fun claimFinal(
+        gameId: String,
+        at: Instant,
+    ): Boolean
+
+    /**
+     * Atomically claim the intermission alert for [period]; true only when it is higher than any announced so far.
+     *
+     * An equal period is a duplicate and a lower one is a stale observation; neither may move the record backwards.
+     * See [claimFinal] for what happens to a game with no entry.
+     */
+    suspend fun claimIntermission(
+        gameId: String,
+        period: Int,
+        at: Instant,
+    ): Boolean
+
+    /** Atomically claim the upcoming-game alert; true only for the first caller. See [claimFinal]. */
+    suspend fun claimUpcoming(
+        gameId: String,
         at: Instant,
     ): Boolean
 

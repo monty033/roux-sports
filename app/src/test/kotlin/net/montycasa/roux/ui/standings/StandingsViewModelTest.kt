@@ -315,6 +315,10 @@ class StandingsViewModelTest {
 
         override suspend fun setThemeMode(mode: ThemeMode) = Unit
 
+        override suspend fun getUpcomingLeadMinutes() = 30
+
+        override suspend fun setUpcomingLeadMinutes(minutes: Int) = Unit
+
         override suspend fun getFavourites(): Set<TeamKey> {
             if (failRead) error("unreadable")
             return teams
@@ -362,6 +366,22 @@ class StandingsViewModelTest {
         override suspend fun claimBaseline(
             gameId: String,
             goalCount: Int,
+            at: Instant,
+        ) = false
+
+        override suspend fun claimFinal(
+            gameId: String,
+            at: Instant,
+        ) = false
+
+        override suspend fun claimIntermission(
+            gameId: String,
+            period: Int,
+            at: Instant,
+        ) = false
+
+        override suspend fun claimUpcoming(
+            gameId: String,
             at: Instant,
         ) = false
 
