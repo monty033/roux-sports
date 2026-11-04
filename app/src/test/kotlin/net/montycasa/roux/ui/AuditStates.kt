@@ -367,6 +367,11 @@ internal object AuditStates {
                 net.montycasa.roux.ui.settings
                     .SettingsScreen(ThemeMode.System, {}, {})
             },
+            // The default is 30; one alternative proves the selected row moves with the stored value.
+            ContentCase("settings.lead60") {
+                net.montycasa.roux.ui.settings
+                    .SettingsScreen(ThemeMode.System, {}, {}, leadMinutes = 60)
+            },
             // Scores cases include the centred, actionable date shelf in both themes.
             ContentCase("scores.data") { ScoresScreen(scoresData, {}, {}, {}) },
             ContentCase("scores.empty") { ScoresScreen(scoresFresh, {}, {}, {}) },
@@ -399,9 +404,26 @@ internal object AuditStates {
             ContentCase("teams.alerts") {
                 TeamsScreen(
                     teamsList.copy(
-                        alerts = TeamAlerts(teams.first(), start = true, goals = false),
+                        alerts =
+                            TeamAlerts(
+                                teams.first(),
+                                start = true,
+                                goals = true,
+                                intermission = true,
+                                final = true,
+                                upcoming = true,
+                            ),
                         alerting = setOf(teams.first().key),
                     ),
+                    {},
+                    {},
+                )
+            },
+            // The other end of the same sheet: five rows, all off, so the switch graphics are compared with every
+            // state visible rather than inferred from the on case.
+            ContentCase("teams.alerts.off") {
+                TeamsScreen(
+                    teamsList.copy(alerts = TeamAlerts(teams.first())),
                     {},
                     {},
                 )

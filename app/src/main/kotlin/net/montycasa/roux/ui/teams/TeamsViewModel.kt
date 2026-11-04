@@ -53,20 +53,35 @@ data class TeamsUiState(
     val canRetry: Boolean get() = !isRefreshing && (error != null || freshness is Freshness.Stale)
 }
 
+/** The five alerts a team can be followed for, in the order the sheet groups them. */
+enum class AlertKind {
+    Upcoming,
+    Start,
+    Goals,
+    Intermission,
+    Final,
+}
+
 /**
  * One team's alert settings, as the sheet shows them.
  *
- * [start] and [goals] are read from the store rather than assumed false: a sheet that opened with both switches
- * off would invite the user to "turn on" something that is already on, and writing that value would be a no-op
- * they would read as a broken switch.
+ * Every switch is read from the store rather than assumed false: a sheet that opened with all of them off would
+ * invite the user to "turn on" something that is already on, and writing that value would be a no-op they would
+ * read as a broken switch.
  */
 data class TeamAlerts(
     val team: TeamRef,
     val start: Boolean = false,
     val goals: Boolean = false,
+    val intermission: Boolean = false,
+    val final: Boolean = false,
+    val upcoming: Boolean = false,
     /** True when a toggle could not be saved, so the switch can snap back with an explanation. */
     val saveFailed: Boolean = false,
-)
+) {
+    /** Whether the row behind the sheet should show a ringing bell. */
+    val anyOn: Boolean get() = start || goals || intermission || final || upcoming
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TeamsViewModel(
@@ -195,7 +210,7 @@ class TeamsViewModel(
             // was in flight must not reappear with the settings of the team the user opened before it.
             alertSheet.update { current ->
                 if (current?.team?.team?.key == team.key) {
-                    AlertSheetState(current.team.copy(start = saved.start, goals = saved.goals), busy = false)
+                    AlertSheetState(saved.asAlerts(team), busy = false)
                 } else {
                     current
                 }
@@ -216,42 +231,41 @@ class TeamsViewModel(
                     runCatching { preferences.getTeamAlertPreferences(team.key) }
                         .getOrDefault(TeamAlertPreferences())
                 alerting.update { current ->
-                    if (saved.start || saved.goals) current + team.key else current - team.key
+                    if (saved.anyOn) current + team.key else current - team.key
                 }
             }
         }
     }
 
     /**
-     * Turns one of a team's alerts on or off.
+     * Turns one alert on or off. Every switch comes through here, so the mutex, the write-then-show order and the
+     * failed-write rollback exist once rather than five times.
      *
-     * Written first, then shown: a switch that moves before the write lands would be claiming something the
-     * store has not agreed to, and a failed write would leave the user believing a goal alert existed.
+     * The stored value is read again inside the lock, and only [kind] is changed. Writing the sheet's copy of all
+     * five would overwrite a switch that changed while the sheet was open with the value the sheet first saw.
      */
     fun setAlert(
-        start: Boolean? = null,
-        goals: Boolean? = null,
+        kind: AlertKind,
+        on: Boolean,
     ) {
         val current = alertSheet.value ?: return
         if (current.busy) return
-        val next =
-            current.team.copy(
-                start = start ?: current.team.start,
-                goals = goals ?: current.team.goals,
-                saveFailed = false,
-            )
-        alertSheet.value = current.copy(team = next, busy = true)
+        val shown = current.team.withAlert(kind, on).copy(saveFailed = false)
+        alertSheet.value = current.copy(team = shown, busy = true)
         viewModelScope.launch {
             alertWrites.withLock {
-                val saved =
-                    runCatching {
-                        preferences.setTeamAlertPreferences(
-                            current.team.team.key,
-                            TeamAlertPreferences(start = next.start, goals = next.goals),
-                        )
-                    }.isSuccess
+                val key = current.team.team.key
+                // A failed read leaves the sheet on its old values: writing from a guess would claim a setting the
+                // store never agreed to. The write itself is still not attempted.
+                val stored = runCatching { preferences.getTeamAlertPreferences(key) }.getOrNull()
+                if (stored == null) {
+                    alertSheet.update { it?.copy(team = current.team.copy(saveFailed = true), busy = false) }
+                    return@withLock
+                }
+                val next = stored.withAlert(kind, on)
+                val saved = runCatching { preferences.setTeamAlertPreferences(key, next) }.isSuccess
                 if (saved) {
-                    alertSheet.update { it?.copy(team = next.copy(saveFailed = false), busy = false) }
+                    alertSheet.update { it?.copy(team = next.asAlerts(current.team.team), busy = false) }
                     // The watches are only as good as the setting they were built from.
                     runCatching { alertsChanged() }
                 } else {
@@ -294,7 +308,7 @@ class TeamsViewModel(
         teams
             .filter { team ->
                 val saved = runCatching { preferences.getTeamAlertPreferences(team.key) }.getOrNull()
-                saved != null && (saved.start || saved.goals)
+                saved != null && saved.anyOn
             }.map { it.key }
             .toSet()
 
@@ -309,3 +323,37 @@ class TeamsViewModel(
         val isRefreshing: Boolean,
     )
 }
+
+private fun TeamAlertPreferences.asAlerts(team: TeamRef): TeamAlerts =
+    TeamAlerts(
+        team = team,
+        start = start,
+        goals = goals,
+        intermission = intermission,
+        final = final,
+        upcoming = upcoming,
+    )
+
+private fun TeamAlerts.withAlert(
+    kind: AlertKind,
+    on: Boolean,
+): TeamAlerts =
+    when (kind) {
+        AlertKind.Upcoming -> copy(upcoming = on)
+        AlertKind.Start -> copy(start = on)
+        AlertKind.Goals -> copy(goals = on)
+        AlertKind.Intermission -> copy(intermission = on)
+        AlertKind.Final -> copy(final = on)
+    }
+
+private fun TeamAlertPreferences.withAlert(
+    kind: AlertKind,
+    on: Boolean,
+): TeamAlertPreferences =
+    when (kind) {
+        AlertKind.Upcoming -> copy(upcoming = on)
+        AlertKind.Start -> copy(start = on)
+        AlertKind.Goals -> copy(goals = on)
+        AlertKind.Intermission -> copy(intermission = on)
+        AlertKind.Final -> copy(final = on)
+    }

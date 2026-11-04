@@ -4,6 +4,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performScrollTo
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -73,6 +74,20 @@ class ScreenshotMatrixTest {
                         rule.waitForIdle()
                     }
                 }
+                // Settings and the alert sheet both scroll inside a fixed surface. Start them from the top so
+                // the next state's "unscrolled" image is not the previous state's scroll position.
+                if (screen.name.startsWith("settings")) {
+                    runCatching {
+                        rule.onNodeWithText("Settings").performScrollTo()
+                        rule.waitForIdle()
+                    }
+                }
+                if (screen.name.startsWith("teams.alerts")) {
+                    runCatching {
+                        rule.onNodeWithTag("teams.alerts.upcoming").performScrollTo()
+                        rule.waitForIdle()
+                    }
+                }
                 // The card at the top of the page is the one place a state is distinguishable - the hero carries the
                 // live capsule, the clock and the score - so it is always captured unscrolled. Scrolling before the
                 // capture made detail.full and detail.live produce the same picture, which audited nothing.
@@ -82,6 +97,29 @@ class ScreenshotMatrixTest {
                     failures += failure
                 }
                 captured++
+                // The lead-time rows sit below the fold on the audit viewport; their own image is where the
+                // selected row can actually be read.
+                if (screen.name.startsWith("settings")) {
+                    val selected = if (screen.name == "settings.lead60") 60 else 30
+                    rule.onNodeWithTag("settings.lead.$selected").performScrollTo()
+                    rule.waitForIdle()
+                    try {
+                        rule.onRoot().captureRoboImage("src/test/screenshots/matrix/$file-lead.png")
+                    } catch (failure: AssertionError) {
+                        failures += failure
+                    }
+                }
+                // The sheet scrolls too: the bottom image is where the last two switches and the pinned Done
+                // are compared with the top image's first three.
+                if (screen.name.startsWith("teams.alerts")) {
+                    rule.onNodeWithTag("teams.alerts.final").performScrollTo()
+                    rule.waitForIdle()
+                    try {
+                        rule.onRoot().captureRoboImage("src/test/screenshots/matrix/$file-bottom.png")
+                    } catch (failure: AssertionError) {
+                        failures += failure
+                    }
+                }
                 // A card between two others is in neither image: scrolling to it is the only way the matrix sees it.
                 if (screen.name in shotsStates) {
                     rule.onNodeWithTag("detail.section.shots").performScrollTo()
