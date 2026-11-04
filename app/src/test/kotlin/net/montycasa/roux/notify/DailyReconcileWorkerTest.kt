@@ -76,7 +76,7 @@ class DailyReconcileWorkerTest {
         data class Call(
             val now: Instant,
             val day: ScoreDay,
-            val favourites: Set<TeamKey>,
+            val alertPreferences: (TeamKey) -> TeamAlertPreferences,
         )
 
         val calls = CopyOnWriteArrayList<Call>()
@@ -84,10 +84,9 @@ class DailyReconcileWorkerTest {
         override suspend fun reconcile(
             now: Instant,
             day: ScoreDay,
-            favourites: Set<TeamKey>,
             alertPreferences: (TeamKey) -> TeamAlertPreferences,
         ) {
-            calls += Call(now, day, favourites)
+            calls += Call(now, day, alertPreferences)
         }
 
         override suspend fun watchAgain(
@@ -164,8 +163,22 @@ class DailyReconcileWorkerTest {
             assertTrue("a completed reconcile reports success", result is ListenableWorker.Result.Success)
             val call = scheduler.calls.single()
             assertEquals("the whole slate is handed over, not just a game id", slate, call.day)
-            assertEquals(setOf(TeamKey("TOR")), call.favourites)
             assertEquals("and the clock the reconciler was given", now, call.now)
+        }
+
+    @Test
+    fun theWorkerHandsOverTheAlertSwitchesOfEveryTeamInTheSlateFavouriteOrNot() =
+        runBlocking {
+            val preferences = preferences()
+            // Nobody is a favourite: the switch on Toronto is the whole request.
+            preferences.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(final = true))
+            val scheduler = RecordingScheduler()
+
+            worker(reconciler(FakeScores { Loadable(slate, Freshness.Fresh, null) }, scheduler, preferences)).doWork()
+
+            val call = scheduler.calls.single()
+            assertEquals(TeamAlertPreferences(final = true), call.alertPreferences(TeamKey("TOR")))
+            assertEquals(TeamAlertPreferences(), call.alertPreferences(TeamKey("MTL")))
         }
 
     @Test

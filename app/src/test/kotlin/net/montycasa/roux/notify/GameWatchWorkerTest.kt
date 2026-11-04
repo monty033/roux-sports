@@ -58,7 +58,6 @@ class GameWatchWorkerTest {
         override suspend fun reconcile(
             now: Instant,
             day: ScoreDay,
-            favourites: Set<TeamKey>,
             alertPreferences: (TeamKey) -> TeamAlertPreferences,
         ) = Unit
 

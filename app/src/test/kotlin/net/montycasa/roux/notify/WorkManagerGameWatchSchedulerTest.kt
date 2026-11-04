@@ -84,7 +84,7 @@ class WorkManagerGameWatchSchedulerTest {
     @Test
     fun aFavouriteTwoHoursAheadIsWatchedOnceWithADelayOfTwoHours() =
         runBlocking {
-            scheduler.reconcile(now, day(game(startInHours = 2)), setOf(TeamKey("TOR")), alerts())
+            scheduler.reconcile(now, day(game(startInHours = 2)), alerts())
 
             // Read back by unique name: that is what makes a second reconcile replace nothing.
             val work = workManager.getWorkInfosForUniqueWork(WorkManagerGameWatchScheduler.watchName(gameId)).get()
@@ -101,8 +101,8 @@ class WorkManagerGameWatchSchedulerTest {
     fun reconcilingTwiceLeavesExactlyOneWatch() =
         runBlocking {
             val today = day(game(startInHours = 2))
-            scheduler.reconcile(now, today, setOf(TeamKey("TOR")), alerts())
-            scheduler.reconcile(now, today, setOf(TeamKey("TOR")), alerts())
+            scheduler.reconcile(now, today, alerts())
+            scheduler.reconcile(now, today, alerts())
 
             assertEquals("reconciling is idempotent, not additive", 1, watches().size)
             assertEquals(1, watches().count { it.state == WorkInfo.State.ENQUEUED })
@@ -111,9 +111,9 @@ class WorkManagerGameWatchSchedulerTest {
     @Test
     fun aPostponedStartRetargetsTheWatchInsteadOfFiringAtTheOldTime() =
         runBlocking {
-            scheduler.reconcile(now, day(game(startInHours = 2)), setOf(TeamKey("TOR")), alerts())
+            scheduler.reconcile(now, day(game(startInHours = 2)), alerts())
             // The feed moves the game an hour later; a watch still pointing at the old start would fire an hour early.
-            scheduler.reconcile(now, day(game(startInHours = 3)), setOf(TeamKey("TOR")), alerts())
+            scheduler.reconcile(now, day(game(startInHours = 3)), alerts())
 
             val work = watches().single()
             assertEquals("one watch, moved rather than duplicated", 1, watches().size)
@@ -123,9 +123,9 @@ class WorkManagerGameWatchSchedulerTest {
     @Test
     fun anUnchangedStartLeavesTheQueuedWatchAlone() =
         runBlocking {
-            scheduler.reconcile(now, day(game(startInHours = 2)), setOf(TeamKey("TOR")), alerts())
+            scheduler.reconcile(now, day(game(startInHours = 2)), alerts())
             val first = watches().single().id
-            scheduler.reconcile(now, day(game(startInHours = 2)), setOf(TeamKey("TOR")), alerts())
+            scheduler.reconcile(now, day(game(startInHours = 2)), alerts())
 
             // Same id means the queued work was kept, not cancelled and re-created on every pass.
             assertEquals("reconciling an unchanged day must not churn the queue", first, watches().single().id)
@@ -136,10 +136,10 @@ class WorkManagerGameWatchSchedulerTest {
     fun aWatchThatFiredBeforeTheGameWasPostponedIsReArmedForTheNewStart() =
         runBlocking {
             // Due now, so the watch runs and finishes before the feed moves the game back to a future start.
-            scheduler.reconcile(now, day(game(startInHours = 0)), setOf(TeamKey("TOR")), alerts())
+            scheduler.reconcile(now, day(game(startInHours = 0)), alerts())
             assertEquals(WorkInfo.State.SUCCEEDED, watches().single().state)
 
-            scheduler.reconcile(now, day(game(startInHours = 2)), setOf(TeamKey("TOR")), alerts())
+            scheduler.reconcile(now, day(game(startInHours = 2)), alerts())
 
             // The spent watch stays in the platform's record; what matters is that something is armed for 8 pm.
             val armed = watches().filter { !it.state.isFinished }
@@ -152,9 +152,9 @@ class WorkManagerGameWatchSchedulerTest {
     fun aGameUnderWayIsNotReWatchedOnceItsWatchHasFired() =
         runBlocking {
             // The plan keeps asking for a live game on every pass; re-arming each time would alert again.
-            scheduler.reconcile(now, day(game(state = GameState.Live())), setOf(TeamKey("TOR")), alerts())
+            scheduler.reconcile(now, day(game(state = GameState.Live())), alerts())
             val fired = watches().single()
-            scheduler.reconcile(now, day(game(state = GameState.Live())), setOf(TeamKey("TOR")), alerts())
+            scheduler.reconcile(now, day(game(state = GameState.Live())), alerts())
 
             assertEquals("one watch, already spent, and no second one", 1, watches().size)
             assertEquals(fired.id, watches().single().id)
@@ -164,10 +164,10 @@ class WorkManagerGameWatchSchedulerTest {
     fun turningAlertsOffCancelsTheWatchThatWasScheduled() =
         runBlocking {
             val today = day(game(startInHours = 2))
-            scheduler.reconcile(now, today, setOf(TeamKey("TOR")), alerts())
+            scheduler.reconcile(now, today, alerts())
             assertEquals(WorkInfo.State.ENQUEUED, watches().single().state)
 
-            scheduler.reconcile(now, today, setOf(TeamKey("TOR")), alerts(start = false, goals = false))
+            scheduler.reconcile(now, today, alerts(start = false, goals = false))
 
             assertEquals(
                 "a game the user no longer wants alerts for must stop waking the device",
@@ -177,31 +177,51 @@ class WorkManagerGameWatchSchedulerTest {
         }
 
     @Test
-    fun aGameThatIsNotFollowedIsNotWatched() =
+    fun aGameWhoseTeamsHaveNoSwitchOnIsNotWatched() =
         runBlocking {
-            scheduler.reconcile(now, day(game(startInHours = 2)), favourites = emptySet(), alertPreferences = alerts())
+            scheduler.reconcile(now, day(game(startInHours = 2)), alerts(start = false, goals = false))
 
             assertEquals(emptyList<WorkInfo>(), watches())
         }
 
     @Test
-    fun aFinishedGameIsNotWatched() =
+    fun aGameFinishedLongAgoIsNotWatched() =
         runBlocking {
-            scheduler.reconcile(
-                now,
-                day(game(startInHours = -4, state = GameState.Final)),
-                setOf(TeamKey("TOR")),
-                alerts(),
-            )
+            scheduler.reconcile(now, day(game(startInHours = -10, state = GameState.Final)), alerts())
 
             assertEquals(emptyList<WorkInfo>(), watches())
+        }
+
+    @Test
+    fun aReconcileRightAfterTheHornKeepsThatGamesWatchAlive() =
+        runBlocking {
+            scheduler.reconcile(now, day(game(startInHours = 2)), alerts())
+            assertEquals(WorkInfo.State.ENQUEUED, watches().single().state)
+
+            scheduler.reconcile(now, day(game(startInHours = -3, state = GameState.Final)), alerts())
+
+            assertTrue(
+                "the pass after the horn is still wanted, so it must not be cancelled: ${watches().map { it.state }}",
+                watches().any { it.state in setOf(WorkInfo.State.ENQUEUED, WorkInfo.State.RUNNING, WorkInfo.State.SUCCEEDED) },
+            )
+        }
+
+    @Test
+    fun aReconcileAfterTheWindowCancelsTheFinishedGamesWatch() =
+        runBlocking {
+            scheduler.reconcile(now, day(game(startInHours = 2)), alerts())
+            assertEquals(WorkInfo.State.ENQUEUED, watches().single().state)
+
+            scheduler.reconcile(now, day(game(startInHours = -7, state = GameState.Final)), alerts())
+
+            assertEquals(WorkInfo.State.CANCELLED, watches().single().state)
         }
 
     @Test
     fun aGameAlreadyUnderWayIsWatchedImmediately() =
         runBlocking {
             // The app may have been closed through the start; the goals still matter, so the watch is now.
-            scheduler.reconcile(now, day(game(state = GameState.Live())), setOf(TeamKey("TOR")), alerts())
+            scheduler.reconcile(now, day(game(state = GameState.Live())), alerts())
 
             val work = watches().single()
             // A zero delay is due at once, and the test executor runs due work inline: "it already ran" is the
@@ -222,8 +242,8 @@ class WorkManagerGameWatchSchedulerTest {
     fun thePeriodicReconcileIsEnqueuedExactlyOnceAtTwelveHours() =
         runBlocking {
             val today = day(game(startInHours = 2))
-            scheduler.reconcile(now, today, setOf(TeamKey("TOR")), alerts())
-            scheduler.reconcile(now, today, setOf(TeamKey("TOR")), alerts())
+            scheduler.reconcile(now, today, alerts())
+            scheduler.reconcile(now, today, alerts())
 
             val periodic = workManager.getWorkInfosForUniqueWork(WorkManagerGameWatchScheduler.RECONCILE_NAME).get()
             assertEquals("one periodic reconcile, however often it is reconciled", 1, periodic.size)
@@ -243,7 +263,7 @@ class WorkManagerGameWatchSchedulerTest {
     @Test
     fun cancelAllRemovesEveryWatchAndTheReconcile() =
         runBlocking {
-            scheduler.reconcile(now, day(game(startInHours = 2)), setOf(TeamKey("TOR")), alerts())
+            scheduler.reconcile(now, day(game(startInHours = 2)), alerts())
 
             scheduler.cancelAll()
 
@@ -257,7 +277,7 @@ class WorkManagerGameWatchSchedulerTest {
                     .state,
             )
             // A reconcile after cancelAll re-arms everything, so cancelling is not a one-way door.
-            scheduler.reconcile(now, day(game(startInHours = 2)), setOf(TeamKey("TOR")), alerts())
+            scheduler.reconcile(now, day(game(startInHours = 2)), alerts())
             assertEquals(WorkInfo.State.ENQUEUED, watches().single().state)
             assertNull(
                 "a completed or cancelled watch must not linger as an error",
@@ -295,7 +315,6 @@ private class InertWorkerFactory(
                     override suspend fun reconcile(
                         now: kotlin.time.Instant,
                         day: net.montycasa.roux.domain.model.ScoreDay,
-                        favourites: Set<net.montycasa.roux.domain.model.TeamKey>,
                         alertPreferences: (net.montycasa.roux.domain.model.TeamKey) -> net.montycasa.roux.domain.repo.TeamAlertPreferences,
                     ) = Unit
 

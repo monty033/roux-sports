@@ -9,6 +9,7 @@ import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.DateIndexEntry
+import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
@@ -33,6 +34,7 @@ import java.time.ZoneId
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.time.Clock
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
@@ -58,6 +60,7 @@ class GameWatchRunTest {
         state: GameState = GameState.Live(),
         away: Int? = 1,
         home: Int? = 0,
+        finalKind: FinalKind? = null,
     ) = Game(
         id = GameId(gameId),
         date = "2025-01-01",
@@ -67,6 +70,7 @@ class GameWatchRunTest {
         startTimeUtc = now - 30.minutes,
         awayScore = away,
         homeScore = home,
+        finalKind = finalKind,
     )
 
     private fun day(game: Game) =
@@ -97,7 +101,6 @@ class GameWatchRunTest {
         override suspend fun reconcile(
             now: Instant,
             day: ScoreDay,
-            favourites: Set<TeamKey>,
             alertPreferences: (TeamKey) -> TeamAlertPreferences,
         ) = Unit
 
@@ -220,7 +223,7 @@ class GameWatchRunTest {
         }
 
     @Test
-    fun aFinishedGameIsNotPostedAndIsNotFollowedFurther() =
+    fun aFinishedGameWithTheFinalSwitchOffPostsNothingAndIsNotFollowedFurther() =
         runBlocking {
             val preferences = preferences()
             preferences.setFavourites(setOf(TeamKey("TOR")))
@@ -237,7 +240,117 @@ class GameWatchRunTest {
                 ).run(gameId)
 
             assertEquals(0, outcome.posted)
+            assertEquals(emptyList<Alert>(), poster.posted)
             assertEquals("a finished game is not polled again", emptyList<Pair<String, Duration>>(), scheduler.repeated)
+        }
+
+    @Test
+    fun aRunOnAFinalGamePostsOnceAndSchedulesNoFurtherPass() =
+        runBlocking {
+            val preferences = preferences()
+            preferences.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(final = true))
+            val poster = RecordingPoster()
+            val scheduler = RecordingScheduler()
+            val ended = game(state = GameState.Final, away = 3, home = 2, finalKind = FinalKind.OT)
+            val pass = run(FakeScores { Loadable(day(ended), Freshness.Fresh, null) }, scheduler, poster, preferences)
+
+            val first = pass.run(gameId)
+            val second = pass.run(gameId)
+
+            assertEquals(1, first.posted)
+            assertEquals("the claim, not the schedule, keeps a final from repeating", 0, second.posted)
+            assertEquals(
+                listOf<Alert>(Alert.Final(GameId(gameId), awayScore = 3, homeScore = 2, finalKind = FinalKind.OT)),
+                poster.posted.toList(),
+            )
+            assertEquals("a final ends the chain, whatever the outcome", emptyList<Pair<String, Duration>>(), scheduler.repeated)
+            assertTrue(preferences.getNotificationLedgerEntry(gameId)!!.finalNotified)
+        }
+
+    @Test
+    fun aFinalThatCouldNotBePostedIsNotClaimedAndStillEndsTheChain() =
+        runBlocking {
+            val preferences = preferences()
+            preferences.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(final = true))
+            val scheduler = RecordingScheduler()
+            val ended = game(state = GameState.Final, away = 3, home = 2)
+
+            val blocked =
+                run(FakeScores { Loadable(day(ended), Freshness.Fresh, null) }, scheduler, RecordingPoster { false }, preferences)
+                    .run(gameId)
+
+            assertEquals(0, blocked.posted)
+            assertEquals("canPost is asked before the claim, so nothing was spent", null, preferences.getNotificationLedgerEntry(gameId))
+            assertEquals(emptyList<Pair<String, Duration>>(), scheduler.repeated)
+        }
+
+    @Test
+    fun aFinalWithAMissingScorePostsNothingClaimsNothingAndEndsTheChain() =
+        runBlocking {
+            val preferences = preferences()
+            preferences.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(final = true))
+            val poster = RecordingPoster()
+            val scheduler = RecordingScheduler()
+            val ended = game(state = GameState.Final, away = null, home = 2)
+
+            val outcome =
+                run(FakeScores { Loadable(day(ended), Freshness.Fresh, null) }, scheduler, poster, preferences).run(gameId)
+
+            assertEquals(0, outcome.posted)
+            assertEquals(emptyList<Alert>(), poster.posted.toList())
+            assertEquals(null, preferences.getNotificationLedgerEntry(gameId))
+            assertEquals(emptyList<Pair<String, Duration>>(), scheduler.repeated)
+        }
+
+    @Test
+    fun aFinalOutsideTheWindowIsNotAnnouncedEvenWhenItsLedgerRowWasSwept() =
+        runBlocking {
+            val preferences = preferences()
+            preferences.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(final = true))
+            val poster = RecordingPoster()
+            val yesterdays = game(state = GameState.Final, away = 3, home = 2).copy(startTimeUtc = now - 30.hours)
+
+            val outcome =
+                run(FakeScores { Loadable(day(yesterdays), Freshness.Fresh, null) }, RecordingScheduler(), poster, preferences)
+                    .run(gameId)
+
+            assertEquals(0, outcome.posted)
+            assertEquals(emptyList<Alert>(), poster.posted.toList())
+            assertEquals(null, preferences.getNotificationLedgerEntry(gameId))
+        }
+
+    @Test
+    fun aTeamThatIsNotAFavouriteIsFollowedWhenASwitchIsOn() =
+        runBlocking {
+            val preferences = preferences()
+            // No favourites at all: the bell on a team is the whole request.
+            preferences.setTeamAlertPreferences(TeamKey("MTL"), TeamAlertPreferences(start = true))
+            val poster = RecordingPoster()
+            val scheduler = RecordingScheduler()
+
+            val outcome =
+                run(FakeScores { Loadable(day(game()), Freshness.Fresh, null) }, scheduler, poster, preferences).run(gameId)
+
+            assertEquals(1, outcome.posted)
+            assertTrue(poster.posted.single() is Alert.GameStart)
+            assertEquals("and the live game is still watched", 1, scheduler.repeated.size)
+        }
+
+    @Test
+    fun aFinalOnlySwitchOnTheOpposingTeamIsEnoughForTheFinal() =
+        runBlocking {
+            val preferences = preferences()
+            preferences.setTeamAlertPreferences(TeamKey("MTL"), TeamAlertPreferences(final = true))
+            val poster = RecordingPoster()
+            val ended = game(state = GameState.Final, away = 3, home = 2)
+
+            run(FakeScores { Loadable(day(ended), Freshness.Fresh, null) }, RecordingScheduler(), poster, preferences)
+                .run(gameId)
+
+            assertEquals(
+                listOf<Alert>(Alert.Final(GameId(gameId), awayScore = 3, homeScore = 2, finalKind = null)),
+                poster.posted.toList(),
+            )
         }
 
     @Test

@@ -50,10 +50,9 @@ class WorkManagerGameWatchScheduler(
     override suspend fun reconcile(
         now: Instant,
         day: ScoreDay,
-        favourites: Set<TeamKey>,
         alertPreferences: (TeamKey) -> TeamAlertPreferences,
     ) {
-        val wanted = GameWatchPlan.wanted(now, day, favourites, alertPreferences)
+        val wanted = GameWatchPlan.wanted(now, day, alertPreferences)
         val wantedIds = wanted.mapTo(mutableSetOf()) { it.gameId }
 
         val scheduled = scheduledWatches()

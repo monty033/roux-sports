@@ -375,6 +375,26 @@ class DataStorePreferencesRepositoryTest {
         }
 
     @Test
+    fun anyTeamAlertsOnIsTrueOnlyWhileASwitchIsOnForSomeTeam() =
+        runTest {
+            val directory = newDirectory()
+            val scope = newScope()
+            val repository = DataStorePreferencesRepository(directory, scope)
+            assertEquals(false, repository.anyTeamAlertsOn())
+
+            repository.setFavourites(setOf(TeamKey("TOR")))
+            repository.setTeamAlertPreferences(TeamKey("MTL"), TeamAlertPreferences(start = false, goals = false))
+            assertEquals(false, repository.anyTeamAlertsOn())
+
+            repository.setTeamAlertPreferences(TeamKey("MTL"), TeamAlertPreferences(final = true))
+            assertEquals(true, repository.anyTeamAlertsOn())
+
+            repository.setTeamAlertPreferences(TeamKey("MTL"), TeamAlertPreferences())
+            assertEquals(false, repository.anyTeamAlertsOn())
+            closeScope(scope)
+        }
+
+    @Test
     fun ledgerPersistsAcrossInstances() =
         runTest {
             val directory = newDirectory()
