@@ -92,6 +92,11 @@ data class Game(
     /** Null means unavailable; a supplied zero is a real shot count. */
     val homeShots: Int? = null,
     val awayShots: Int? = null,
+    /**
+     * Where the game can be watched, from the same day feed. An upcoming card shows these instead of a
+     * shot count; a finished one has no use for them, so they ride along rather than being fetched.
+     */
+    val broadcasts: List<Broadcast> = emptyList(),
 ) {
     // Validation of feed identifiers, dates, and missing or unexpected values belongs
     // to the adapter layer; these value types do not reject messy NHL data.

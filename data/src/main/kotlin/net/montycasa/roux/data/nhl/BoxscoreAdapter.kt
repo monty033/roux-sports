@@ -82,7 +82,7 @@ internal object BoxscoreAdapter {
     private fun BoxscoreSkaterDto.toLine(abbrev: String?): SkaterLine? {
         val skaterName = name?.default?.takeIf { it.isNotBlank() } ?: return null
         return SkaterLine(
-            skater = PlayerRef(name = skaterName, teamAbbrev = abbrev.orEmpty()),
+            skater = PlayerRef(name = skaterName, teamAbbrev = abbrev.orEmpty(), id = playerId),
             position = position?.trim().orEmpty(),
             goals = goals ?: 0,
             assists = assists ?: 0,
@@ -126,7 +126,7 @@ internal object BoxscoreAdapter {
     private fun BoxscoreGoalieDto.toLine(abbrev: String?): GoalieLine? {
         val goalieName = name?.default?.takeIf { it.isNotBlank() } ?: return null
         return GoalieLine(
-            goalie = PlayerRef(name = goalieName, teamAbbrev = abbrev.orEmpty()),
+            goalie = PlayerRef(name = goalieName, teamAbbrev = abbrev.orEmpty(), id = playerId),
             saves = saves ?: 0,
             shotsAgainst = shotsAgainst ?: 0,
             goalsAgainst = goalsAgainst ?: 0,

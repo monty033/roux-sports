@@ -2,6 +2,7 @@
 
 package net.montycasa.roux.ui.detail
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +21,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import net.montycasa.roux.domain.model.GoalieLine
 import net.montycasa.roux.domain.model.SkaterLine
+import net.montycasa.roux.ui.reach.listRow
 import net.montycasa.roux.ui.theme.LocalRouxAccents
 
 /**
@@ -34,6 +36,7 @@ internal fun PlayerTables(
     goalies: List<GoalieLine>,
     forwards: List<SkaterLine>,
     defense: List<SkaterLine>,
+    onPlayerClick: (Long) -> Unit = {},
 ) {
     val blocks =
         buildList {
@@ -57,6 +60,7 @@ internal fun PlayerTables(
                     heading = block.heading,
                     headers = block.headers,
                     rows = block.rows,
+                    onPlayerClick = onPlayerClick,
                 )
             }
         }
@@ -67,12 +71,20 @@ private data class RosterBlock(
     val heading: String,
     val tag: String,
     val headers: List<String>,
-    val rows: List<Pair<String, List<String>>>,
+    val rows: List<PlayerRow>,
 )
 
-private fun skaterRow(line: SkaterLine): Pair<String, List<String>> =
+/** One player's line. The id is what makes the row a door: without it there is no page to open. */
+private data class PlayerRow(
+    val name: String,
+    val values: List<String>,
+    val playerId: Long?,
+)
+
+private fun skaterRow(line: SkaterLine): PlayerRow =
     // The name is the name; position is no longer a column, so the stats start at goals.
-    line.skater.name to
+    PlayerRow(
+        line.skater.name,
         listOf(
             line.goals.toString(),
             line.assists.toString(),
@@ -82,16 +94,21 @@ private fun skaterRow(line: SkaterLine): Pair<String, List<String>> =
             line.penaltyMinutes.toString(),
             formatIceTime(line.toiSeconds),
             line.faceoffPercent()?.let { "$it%" } ?: "—",
-        )
+        ),
+        line.skater.id,
+    )
 
-private fun goalieRow(line: GoalieLine): Pair<String, List<String>> =
-    line.goalie.name to
+private fun goalieRow(line: GoalieLine): PlayerRow =
+    PlayerRow(
+        line.goalie.name,
         listOf(
             line.shotsAgainst.toString(),
             line.saves.toString(),
             line.savePercentage()?.let { formatAverage(it * 100, 1) } ?: "—",
             line.goalsAgainstAverage()?.let { formatAverage(it, 2) } ?: "—",
-        )
+        ),
+        line.goalie.id,
+    )
 
 private val GOALIE_COLUMNS = listOf("SA", "SV", "SV%", "GAA")
 private val SKATER_COLUMNS = listOf("G", "A", "P", "+/-", "SOG", "PIM", "TOI", "FO%")
@@ -101,11 +118,13 @@ private fun RosterTable(
     tag: String,
     heading: String,
     headers: List<String>,
-    rows: List<Pair<String, List<String>>>,
+    rows: List<PlayerRow>,
+    onPlayerClick: (Long) -> Unit,
 ) {
-    Row(Modifier.fillMaxWidth()) {
-        // The names stay put. The reason to scroll is to reach a column, never to lose track of whose row it is.
-        Column {
+    // One scroll state for the whole group, so a name and its numbers stay on the same row while the columns move.
+    val scroll = rememberScrollState()
+    Column(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().height(ROW_HEADER_HEIGHT), verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier.width(NAME_COLUMN.dp).height(ROW_HEADER_HEIGHT),
                 contentAlignment = Alignment.CenterStart,
@@ -118,28 +137,42 @@ private fun RosterTable(
                     maxLines = 1,
                 )
             }
-            rows.forEach { (name, _) ->
-                Box(Modifier.width(NAME_COLUMN.dp).height(ROW_HEIGHT), contentAlignment = Alignment.CenterStart) {
+            Row(
+                Modifier
+                    .weight(1f)
+                    .height(ROW_HEADER_HEIGHT)
+                    .horizontalScroll(scroll)
+                    .testTag(tag),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                headers.forEach { StatHeader(it) }
+            }
+        }
+        rows.forEach { row ->
+            // A player with an id is a door to their page; one without stays plain text rather than a dead control.
+            val action =
+                row.playerId?.let { id ->
+                    Modifier.listRow().clickable { onPlayerClick(id) }
+                } ?: Modifier
+            Row(
+                Modifier.fillMaxWidth().height(ROW_HEIGHT).then(action),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    Modifier.width(NAME_COLUMN.dp).height(ROW_HEIGHT),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
                     Text(
-                        name,
+                        row.name,
                         style = MaterialTheme.typography.bodyMedium,
                         maxLines = 1,
                     )
                 }
-            }
-        }
-        Column(
-            Modifier
-                .weight(1f)
-                .horizontalScroll(rememberScrollState())
-                .testTag(tag),
-        ) {
-            Row {
-                headers.forEach { StatHeader(it) }
-            }
-            rows.forEach { (_, values) ->
-                Row {
-                    values.forEach { StatCell(it) }
+                Row(
+                    Modifier.weight(1f).height(ROW_HEIGHT).horizontalScroll(scroll),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    row.values.forEach { StatCell(it) }
                 }
             }
         }
@@ -147,7 +180,7 @@ private fun RosterTable(
 }
 
 private val ROW_HEADER_HEIGHT = 22.dp
-private val ROW_HEIGHT = 30.dp
+private val ROW_HEIGHT = 48.dp
 
 @Composable
 private fun StatCell(text: String) {

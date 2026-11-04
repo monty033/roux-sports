@@ -5,6 +5,7 @@ package net.montycasa.roux.ui.standings
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -44,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import net.montycasa.roux.R
 import net.montycasa.roux.domain.model.StandingRow
+import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.policy.StandingsGroups
 import net.montycasa.roux.domain.policy.StandingsMode
 import net.montycasa.roux.domain.policy.StandingsView
@@ -51,12 +53,16 @@ import net.montycasa.roux.ui.common.RetryButton
 import net.montycasa.roux.ui.common.StaleBanner
 import net.montycasa.roux.ui.common.SubNavigationRow
 import net.montycasa.roux.ui.nav.NavSwipe
+import net.montycasa.roux.ui.reach.listRow
 import net.montycasa.roux.ui.reach.primaryControl
 import net.montycasa.roux.ui.reach.reachTarget
 import net.montycasa.roux.ui.scores.TeamLogo
 import net.montycasa.roux.ui.theme.Roux
 
 private const val VIEW_SETTLE_MILLIS = 360
+
+/** A standings row now opens the club, so it carries the minimum touch target rather than the old 30 dp. */
+private val ROW_HEIGHT = 48.dp
 
 /**
  * The pager's page list, in strip order: each conference's three rankings, then the league. It is a value, not a
@@ -96,6 +102,7 @@ fun StandingsScreen(
     onRefresh: () -> Unit,
     onSelect: (StandingsView, StandingsMode) -> Unit,
     modifier: Modifier = Modifier,
+    onTeamClick: (TeamKey) -> Unit = {},
 ) {
     // Seven pages, one per question: the East's three rankings, the West's three, then the league. A swipe walks
     // that list in order, so it moves through the rankings and then on to the next conference - the strip is a
@@ -231,12 +238,14 @@ fun StandingsScreen(
                                                 modifier =
                                                     Modifier
                                                         .fillMaxWidth()
-                                                        .heightIn(min = 30.dp)
-                                                        // A row has no action, so it is not a control: the tag is for
-                                                        // the tests that read the table, and the row is not a touch
-                                                        // target. That is what lets the table run at 40 dp, not 48.
+                                                        .heightIn(min = ROW_HEIGHT)
+                                                        // The row opens the club, so it is a control and takes the
+                                                        // 48 dp minimum. It used to run at 30 dp precisely because it
+                                                        // had no action; the table is taller for it, and the Wild Card
+                                                        // page now scrolls a little rather than fitting exactly.
                                                         .then(if (primary) Modifier.testTag(tag) else Modifier),
                                                 tagged = primary,
+                                                onClick = { onTeamClick(row.team.key) },
                                             )
                                             when {
                                                 section.playoffCutAfter == index -> {
@@ -407,8 +416,17 @@ private fun StandingsRow(
     rank: Int,
     tagged: Boolean,
     modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
 ) {
-    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+    // Clickable merges the row's texts into one node, so a screen reader offers the club as a single control
+    // instead of reading six separate numbers; listRow says neighbouring rows are one run, not six stray targets.
+    val rowModifier =
+        if (onClick == null) {
+            modifier
+        } else {
+            modifier.listRow().clickable(onClick = onClick)
+        }
+    Row(rowModifier, verticalAlignment = Alignment.CenterVertically) {
         Text(
             rank.toString(),
             Modifier.width(RANK_WIDTH).then(if (tagged) Modifier.testTag("standings.rank") else Modifier),

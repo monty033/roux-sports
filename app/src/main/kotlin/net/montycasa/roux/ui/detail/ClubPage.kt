@@ -19,6 +19,7 @@ import net.montycasa.roux.ui.common.TeamNames
 internal fun TeamDestination(
     detail: GameDetail,
     team: TeamRef,
+    onPlayerClick: (Long) -> Unit = {},
 ) {
     val boxscore = detail.boxscore
     val goalies =
@@ -48,6 +49,6 @@ internal fun TeamDestination(
         hideWhenEmpty = { goalies.isEmpty() && forwards.isEmpty() && defense.isEmpty() },
         failureLabel = "Player stats could not be loaded",
     ) { _ ->
-        PlayerTables(goalies = goalies, forwards = forwards, defense = defense)
+        PlayerTables(goalies = goalies, forwards = forwards, defense = defense, onPlayerClick = onPlayerClick)
     }
 }

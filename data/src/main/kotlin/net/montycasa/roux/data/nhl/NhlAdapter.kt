@@ -13,6 +13,7 @@ import net.montycasa.roux.data.nhl.dto.ScoreDto
 import net.montycasa.roux.data.nhl.dto.SeasonsDto
 import net.montycasa.roux.data.nhl.dto.StandingsDto
 import net.montycasa.roux.data.nhl.dto.TeamDto
+import net.montycasa.roux.domain.model.Broadcast
 import net.montycasa.roux.domain.model.ClubGame
 import net.montycasa.roux.domain.model.ClubStats
 import net.montycasa.roux.domain.model.Conference
@@ -332,6 +333,17 @@ internal object NhlAdapter {
             period = period,
             // A bad or absent timestamp must never drop a game: its score is still useful.
             startTimeUtc = startTimeUTC?.let { Instant.parseOrNull(it) },
+            // Broadcasts are decoration, never identity: an unreadable entry drops on its own.
+            broadcasts =
+                tvBroadcasts.orEmpty().mapNotNull { broadcast ->
+                    broadcast?.network?.let { network ->
+                        Broadcast(
+                            network.trim(),
+                            broadcast.countryCode?.trim(),
+                            broadcast.market?.trim(),
+                        )
+                    }
+                },
         )
     }
 

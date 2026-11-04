@@ -409,7 +409,9 @@ fun RouxNavHost(
                                 }
 
                                 TopLevelDestination.Standings -> {
-                                    StandingsDestination()
+                                    StandingsDestination(
+                                        onTeamClick = { team -> navController.navigate(teamRoute(team)) },
+                                    )
                                 }
                             }
                         }
@@ -429,6 +431,7 @@ fun RouxNavHost(
                                 game = game,
                                 onBack = { navController.popBackStack() },
                                 onTeamClick = { team -> navController.navigate(teamRoute(team.key)) },
+                                onPlayerClick = { playerId -> navController.navigate(playerRoute(playerId)) },
                             )
                         }
                     }
@@ -608,7 +611,7 @@ private fun TeamsDestination(onTeamClick: (TeamKey) -> Unit) {
 
 /** The back stack entry owns the table; the app supplies the shared repository and preferences. */
 @Composable
-private fun StandingsDestination() {
+private fun StandingsDestination(onTeamClick: (TeamKey) -> Unit) {
     val appContext = LocalContext.current.applicationContext
     val container = (appContext as RouxApp).container
     val standings: StandingsViewModel =
@@ -625,6 +628,8 @@ private fun StandingsDestination() {
         state = state,
         onRefresh = standings::refresh,
         onSelect = standings::select,
+        // Standings and the Teams tab now open the same page, so a club is reachable from the table that ranks it.
+        onTeamClick = onTeamClick,
     )
 }
 
@@ -860,6 +865,7 @@ private fun DetailDestination(
     game: Game,
     onBack: () -> Unit,
     onTeamClick: (TeamRef) -> Unit,
+    onPlayerClick: (Long) -> Unit,
 ) {
     // Keyed by the game and its state: a rotation from scheduled to live is a different polling contract.
     val detail: GameDetailViewModel =
@@ -884,6 +890,7 @@ private fun DetailDestination(
         onBack = onBack,
         onRetry = detail::refresh,
         onTeamClick = onTeamClick,
+        onPlayerClick = onPlayerClick,
     )
 }
 

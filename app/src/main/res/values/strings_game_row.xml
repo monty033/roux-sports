@@ -18,7 +18,6 @@
     <string name="game_row_time_tbd">Time TBD</string>
     <string name="game_row_status_unavailable">Status unavailable</string>
     <!-- Paired away/home statistics with an invariant abbreviation, not one inflected quantity. -->
-    <string name="game_row_shots" tools:ignore="PluralsCandidate">%1$d–%2$d sog</string>
     <!-- One spoken sentence per card: who played, the score, then the state. Translators own the order. -->
     <string name="game_row_description">%1$s, %2$s</string>
     <string name="game_row_description_score">%1$s %2$d, %3$s %4$d</string>

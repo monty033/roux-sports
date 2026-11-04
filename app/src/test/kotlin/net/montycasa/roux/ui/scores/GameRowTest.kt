@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.width
 import androidx.test.core.app.ApplicationProvider
 import com.github.takahirom.roborazzi.captureRoboImage
 import net.montycasa.roux.domain.Freshness
+import net.montycasa.roux.domain.model.Broadcast
 import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
@@ -366,7 +367,7 @@ class GameRowTest {
     @Config(qualifiers = "en-rUS-w360dp-h780dp-mdpi")
     fun doubleTypeFitsKnownShotsAndTwoDigitScores() {
         launch(live.copy(homeScore = 12, awayScore = 10, homeShots = 14, awayShots = 18), fontScale = 2f)
-        assertTextFits(expectedCount = 9)
+        assertTextFits(expectedCount = 8)
         rule.onNodeWithTag(STATE_RAIL_TAG).assertWidthIsAtLeast(128.dp)
     }
 
@@ -374,14 +375,16 @@ class GameRowTest {
     @Config(qualifiers = "en-rUS-w360dp-h780dp-mdpi")
     fun doubleTypeFitsIntermissionAndShots() {
         launch(live.copy(homeShots = 14, awayShots = 18, period = live.period!!.copy(inIntermission = true)), fontScale = 2f)
-        assertTextFits(expectedCount = 9)
+        assertTextFits(expectedCount = 8)
     }
 
     @Test
     @Config(qualifiers = "en-rUS-w360dp-h780dp-mdpi")
     fun doubleTypeFitsFinalShootoutCapsule() {
         launch(finalOt.copy(finalKind = FinalKind.SO, homeShots = 14, awayShots = 18), fontScale = 2f)
-        assertTextFits(expectedCount = 8)
+        // One fewer than the live cases: a shootout card carries the capsule alone in its rail, with no clock and
+        // no channel line, so the fit check has one less text to walk.
+        assertTextFits(expectedCount = 7)
     }
 
     @Test
@@ -530,7 +533,7 @@ class GameRowTest {
         assertEquals(pillNode.id, labelNode.parent!!.id)
         assertEquals("pill is a rail child", railNode.id, pillNode.parent!!.id)
         assertEquals("clock is a sibling of the pill", railNode.id, clockNode.parent!!.id)
-        assertEquals(3, railNode.children.size)
+        assertEquals("rail holds the pill and the clock, and nothing else", 2, railNode.children.size)
         val pixels = capsule.captureToImage().toPixelMap()
         assertEquals(accents.fill, pixels[pixels.width / 2, 1])
         val dot = rule.onNodeWithContentDescription("Live")
@@ -557,7 +560,7 @@ class GameRowTest {
             assertEquals(colors.onSurface, score.color)
             assertEquals(FontWeight.Bold, score.fontWeight)
         }
-        assertStartAlignedStack(listOf(capsule, rule.onNodeWithText("2nd 12:34"), rule.onNodeWithTag(SHOTS_TAG)))
+        assertStartAlignedStack(listOf(capsule, rule.onNodeWithText("2nd 12:34")))
         println(
             "Measured ${if (dark) "dark" else "light"}: live pill fill=#%08X text=#%08X; clock=#%08X weight=%d; score=#%08X weight=%d"
                 .format(
@@ -601,7 +604,12 @@ class GameRowTest {
                 layout.layoutInput.constraints.maxWidth
                     .toDp()
             }
-        assertEquals("rail content width reserves both insets", (rail.width - 19.dp).value, contentWidth.value, 0.01f)
+        // The rail has a minimum width; its lines are laid out inside the insets rather than stretched to fill them.
+        // It used to be the shots line that reached the edge, so equality was the wrong claim to keep once that went.
+        assertTrue(
+            "rail content width stays inside both insets",
+            contentWidth.value <= (rail.width - 19.dp).value + 0.01f,
+        )
         assertEquals("first text line starts at the left", 0f, layout.getLineLeft(0), 0.01f)
         val leftInset = bounds.first().left - rail.left
         val rightInset = rail.width - leftInset - contentWidth
@@ -640,7 +648,7 @@ class GameRowTest {
         val pixels = pill.captureToImage().toPixelMap()
         assertEquals(accents.stroke, pixels[pixels.width / 2, 0])
         assertEquals(colors.surfaceVariant, pixels[pixels.width / 2, pixels.height - 3])
-        assertStartAlignedStack(listOf(rule.onNodeWithTag(STATE_CAPSULE_TAG), rule.onNodeWithTag(SHOTS_TAG)))
+        assertStartAlignedStack(listOf(rule.onNodeWithTag(STATE_CAPSULE_TAG)))
         println(
             "Measured ${if (dark) "dark" else "light"}: final pill text=#%08X weight=%d".format(
                 label.color.toArgb(),
@@ -673,7 +681,7 @@ class GameRowTest {
         rule.onNodeWithText("0").assertDoesNotExist()
         rule.onNodeWithText("2").assertDoesNotExist()
         rule.onNodeWithTag(STATE_CAPSULE_TAG).assertDoesNotExist()
-        rule.onNodeWithTag(SHOTS_TAG).assertDoesNotExist()
+        rule.onNodeWithTag(WATCH_TAG).assertDoesNotExist()
         val name = textLayout(rule.onNodeWithText("Boston Bruins")).layoutInput.style
         assertEquals(colors.onSurfaceVariant, name.color)
         val dashes = rule.onAllNodesWithText("–")
@@ -702,36 +710,45 @@ class GameRowTest {
     fun pregameShowsDashesToo() = assertUpcoming(dark = false, state = GameState.Pre)
 
     @Test
-    fun knownShotsRenderAwayThenHomeWithTabularFigures() {
+    fun anUpcomingGameNamesItsNetworksNationalFirst() {
+        launch(
+            scheduled.copy(
+                broadcasts =
+                    listOf(
+                        Broadcast("MSG", "US", "H"),
+                        Broadcast("NHLN", "US", "N"),
+                        Broadcast("SN", "CA", "N"),
+                    ),
+            ),
+        )
+        // National listings lead, because a local channel is meaningless to most readers. Two names fit the
+        // 92 dp rail; the rest are counted rather than wrapped.
+        rule.onNodeWithText("NHLN · SN +1").assertIsDisplayed()
+    }
+
+    @Test
+    fun oneNetworkNeedsNoCount() {
+        launch(scheduled.copy(broadcasts = listOf(Broadcast("NHLN", "US", "N"))))
+        rule.onNodeWithText("NHLN").assertIsDisplayed()
+    }
+
+    @Test
+    fun aGameWithNoListedNetworkShowsOnlyItsTime() {
+        launch(scheduled)
+        rule.onNodeWithTag(WATCH_TAG).assertDoesNotExist()
+    }
+
+    @Test
+    fun aLiveGameShowsNoNetworks() {
+        // Where to watch is a pre-game question; once the puck drops the rail has a clock to spend that line on.
+        launch(live.copy(broadcasts = listOf(Broadcast("NHLN", "US", "N"))))
+        rule.onNodeWithTag(WATCH_TAG).assertDoesNotExist()
+    }
+
+    @Test
+    fun shotsAreGoneFromTheRowEvenWhenTheFeedStillCarriesThem() {
         launch(live.copy(awayShots = 18, homeShots = 14))
-        val shots = textLayout(rule.onNodeWithText("18–14 sog")).layoutInput.style
-        assertEquals(12.sp, shots.fontSize)
-        assertEquals("tnum", shots.fontFeatureSettings)
-        assertEquals(RouxLightAccents.muted, shots.color)
-    }
-
-    @Test
-    fun zeroShotsAreShownWhenBothCountsAreKnown() {
-        launch(live.copy(awayShots = 0, homeShots = 0))
-        rule.onNodeWithText("0–0 sog").assertIsDisplayed()
-    }
-
-    @Test
-    fun shotsAreOmittedWhenEitherCountIsUnknown() {
-        launch(live.copy(homeShots = 14))
-        rule.onNodeWithTag(SHOTS_TAG).assertDoesNotExist()
-    }
-
-    @Test
-    fun shotsAreOmittedWhenHomeCountIsUnknown() {
-        launch(live.copy(awayShots = 18))
-        rule.onNodeWithTag(SHOTS_TAG).assertDoesNotExist()
-    }
-
-    @Test
-    fun absentShotsAreOmitted() {
-        launch(live)
-        rule.onNodeWithTag(SHOTS_TAG).assertDoesNotExist()
+        rule.onNodeWithText("18–14 sog").assertDoesNotExist()
     }
 
     @Test
@@ -759,6 +776,36 @@ class GameRowTest {
 
     @Test
     fun scheduledDark() = snapshot("scheduled-dark", scheduled, dark = true)
+
+    @Test
+    fun scheduledWithNetworksLight() =
+        snapshot(
+            "scheduled-networks-light",
+            scheduled.copy(
+                broadcasts =
+                    listOf(
+                        Broadcast("MSG", "US", "H"),
+                        Broadcast("NHLN", "US", "N"),
+                        Broadcast("SN", "CA", "N"),
+                    ),
+            ),
+            dark = false,
+        )
+
+    @Test
+    fun scheduledWithNetworksDark() =
+        snapshot(
+            "scheduled-networks-dark",
+            scheduled.copy(
+                broadcasts =
+                    listOf(
+                        Broadcast("MSG", "US", "H"),
+                        Broadcast("NHLN", "US", "N"),
+                        Broadcast("SN", "CA", "N"),
+                    ),
+            ),
+            dark = true,
+        )
 
     @Test
     fun liveLight() = snapshot("live-light", live, dark = false)
