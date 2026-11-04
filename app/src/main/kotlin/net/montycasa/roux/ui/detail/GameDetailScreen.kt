@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import net.montycasa.roux.domain.model.Game
+import net.montycasa.roux.domain.model.PlayerMugshot
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.ui.common.TeamNames
 import net.montycasa.roux.ui.reach.reachTarget
@@ -56,6 +57,8 @@ fun GameDetailScreen(
     modifier: Modifier = Modifier,
     /** A tap on either club in the hero opens that club's page. */
     onTeamClick: (TeamRef) -> Unit = {},
+    /** A tap on a player in either club's player table opens that player's page. */
+    onPlayerClick: (Long) -> Unit = {},
     zone: ZoneId = ZoneId.systemDefault(),
 ) {
     // 0 is Game; 1 and 2 are the away and home clubs, in that order. The three are pages, so a swipe moves
@@ -107,6 +110,8 @@ fun GameDetailScreen(
                         TeamDestination(
                             detail = detail,
                             team = if (page == 1) game.away else game.home,
+                            onPlayerClick = onPlayerClick,
+                            seasonStartYear = PlayerMugshot.seasonStartYear(game),
                         )
                     }
                 }

@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import net.montycasa.roux.domain.model.GoalieLine
 import net.montycasa.roux.domain.model.PlayerRef
@@ -205,6 +206,58 @@ class PlayerTablesTest {
         .onNode(hasText(text) and hasAnyAncestor(hasTestTag(sectionTag)))
         .getUnclippedBoundsInRoot()
 
+    @Test
+    fun aPlayerWithAnIdAndASeasonGetsAPicture() {
+        show(
+            forwards = listOf(skater("Travis Konecny", id = 8478439L)),
+            defense = emptyList(),
+            goalies = emptyList(),
+            seasonStartYear = 2026,
+        )
+        // The boxscore carries no headshot field, so the path is built from id, club and season; this asserts the
+        // request the row makes rather than the pixels that come back.
+        compose.onNodeWithTag("detail.section.forwards.8478439.mugshot.image", useUnmergedTree = true).assertExists()
+    }
+
+    @Test
+    fun withoutASeasonTheRowDrawsInitialsRatherThanAPicture() {
+        show(
+            forwards = listOf(skater("Travis Konecny", id = 8478439L)),
+            defense = emptyList(),
+            goalies = emptyList(),
+        )
+        compose.onNodeWithTag("detail.section.forwards.8478439.mugshot", useUnmergedTree = true).assertExists()
+        compose.onNodeWithTag("detail.section.forwards.8478439.mugshot.image", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithText("TK", useUnmergedTree = true).assertExists()
+    }
+
+    @Test
+    fun aPlayerWithAnIdOpensTheirPage() {
+        val opened = mutableListOf<Long>()
+        show(
+            forwards = listOf(skater("Travis Konecny", id = 8478439L)),
+            defense = emptyList(),
+            goalies = emptyList(),
+            onPlayerClick = { opened += it },
+        )
+        compose.onNodeWithText("Travis Konecny").performClick()
+        assertEquals(listOf(8478439L), opened)
+    }
+
+    @Test
+    fun aPlayerWithoutAnIdStaysTextRatherThanADeadControl() {
+        val opened = mutableListOf<Long>()
+        show(
+            forwards = listOf(skater("Unlisted Skater")),
+            defense = emptyList(),
+            goalies = emptyList(),
+            onPlayerClick = { opened += it },
+        )
+        // No id means no page to open, so the row is not a control and a tap must not pretend otherwise.
+        compose.onNodeWithText("Unlisted Skater").performClick()
+        assertTrue("a row with no player id opened $opened", opened.isEmpty())
+    }
+
     private fun topOf(text: String): Float =
         compose
             .onNodeWithText(text)
@@ -234,16 +287,25 @@ class PlayerTablesTest {
         forwards: List<SkaterLine>,
         defense: List<SkaterLine>,
         goalies: List<GoalieLine>,
+        onPlayerClick: (Long) -> Unit = {},
+        seasonStartYear: Int? = null,
     ) {
         compose.setContent {
             RouxTheme(dark = true) {
-                PlayerTables(goalies = goalies, forwards = forwards, defense = defense)
+                PlayerTables(
+                    goalies = goalies,
+                    forwards = forwards,
+                    defense = defense,
+                    onPlayerClick = onPlayerClick,
+                    seasonStartYear = seasonStartYear,
+                )
             }
         }
     }
 
     private fun skater(
         name: String,
+        id: Long? = null,
         position: String = "C",
         goals: Int = 0,
         assists: Int = 0,
@@ -251,7 +313,7 @@ class PlayerTablesTest {
         plusMinus: Int = 0,
         shotsOnGoal: Int = 0,
     ) = SkaterLine(
-        skater = PlayerRef(name, "PHI"),
+        skater = PlayerRef(name, "PHI", id),
         position = position,
         goals = goals,
         assists = assists,
@@ -263,5 +325,8 @@ class PlayerTablesTest {
         faceoffFraction = null,
     )
 
-    private fun goalie(name: String) = GoalieLine(goalie = PlayerRef(name, "PHI"), saves = 1, shotsAgainst = 1)
+    private fun goalie(
+        name: String,
+        id: Long? = null,
+    ) = GoalieLine(goalie = PlayerRef(name, "PHI", id), saves = 1, shotsAgainst = 1)
 }

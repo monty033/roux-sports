@@ -601,8 +601,20 @@ class ShellTest {
         }
     }
 
+    /**
+     * Coil's caches live in the JVM, not the test: an earlier test that served a crest leaves it in memory for the
+     * next one, so the Teams tab photographed sometimes with artwork and sometimes with the abbreviation fallback.
+     * Clearing here makes the capture depend on this test's own fixture - which serves no logos - and nothing else.
+     */
+    private fun clearImageCaches() {
+        val loader = coil3.SingletonImageLoader.get(org.robolectric.RuntimeEnvironment.getApplication())
+        loader.memoryCache?.clear()
+        loader.diskCache?.clear()
+    }
+
     @Test
     fun teamsTabLight() {
+        clearImageCaches()
         launchShell()
         barItem("Teams").performClick()
         // The rows come from a repository flow outside the composition, so idle alone can still be the
@@ -614,6 +626,7 @@ class ShellTest {
 
     @Test
     fun teamsTabDark() {
+        clearImageCaches()
         launchShell(dark = true)
         barItem("Teams").performClick()
         // Same load gate as the light capture: the bounds below would otherwise throw on a missing tag if

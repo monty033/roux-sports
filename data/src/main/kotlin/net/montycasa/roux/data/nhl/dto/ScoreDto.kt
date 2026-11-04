@@ -33,6 +33,8 @@ internal data class GameDto(
     val periodDescriptor: PeriodDescriptorDto? = null,
     @Serializable(with = ClockSerializer::class)
     val clock: ClockDto? = null,
+    // The day feed carries broadcast listings beside the score; the same shape the landing page uses.
+    val tvBroadcasts: List<LandingBroadcastDto?>? = null,
 )
 
 /** Scores and display assets may be absent independently of the team's identity. */

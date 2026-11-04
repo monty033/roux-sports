@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import net.montycasa.roux.R
+import net.montycasa.roux.domain.model.Broadcast
 import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameState
@@ -65,7 +66,7 @@ const val LOGO_TAG = "gameRowLogo"
 const val CREST_TAG = "gameRowCrest"
 const val STATE_CAPSULE_TAG = "gameRowStateCapsule"
 const val STATE_RAIL_TAG = "gameRowStateRail"
-const val SHOTS_TAG = "gameRowShots"
+const val WATCH_TAG = "gameRowWatch"
 const val TEAM_LINE_TAG = "gameRowTeamLine"
 
 /** Values from the reference's wide rules and max-width:380px list viewport variant. */
@@ -78,6 +79,9 @@ private data class CardMetrics(
     val columnGap: Dp,
     val startPadding: Dp,
 )
+
+/** The rail pads 12 dp at the start and 7 at the end; a child given the inner width cannot widen the rail. */
+private val RAIL_INSETS = 19.dp
 
 private val wideCard = CardMetrics(92.dp, 34.dp, 15.sp, 22.sp, 30.dp, 8.dp, 13.dp)
 private val narrowCard = CardMetrics(128.dp, 32.dp, 14.sp, 21.sp, 28.dp, 7.dp, 11.dp)
@@ -260,8 +264,6 @@ private fun StateRail(
     width: Dp,
 ) {
     val rule = MaterialTheme.colorScheme.outline
-    val awayShots = game.awayShots
-    val homeShots = game.homeShots
     val unknown = game.state is GameState.Unknown
     // The reference's .rr elements are empty spacers. .rstate centres one stack across the
     // full card height; its lines have no relationship to the two team rows.
@@ -294,6 +296,11 @@ private fun StateRail(
             when (game.state) {
                 GameState.Scheduled, GameState.Pre -> {
                     StateClock(startTimeLabel(game), live = false)
+                    // A game that has not started has no shots to report, so the second line is the one thing
+                    // a viewer wants before it does: where it will be shown.
+                    // The line is given the rail's inner width so it can wrap down the card rather than push the
+                    // rail wider: the right edge of every card is the same edge.
+                    watchLine(game.broadcasts)?.let { WatchChannels(it, width - RAIL_INSETS) }
                 }
 
                 is GameState.Live -> {
@@ -337,27 +344,43 @@ private fun StateRail(
                 is GameState.Unknown -> {}
             }
         }
-        if (unknown) {
-            Box(Modifier.weight(1f).heightIn(min = 28.dp), contentAlignment = Alignment.CenterStart) {
-                if (awayShots != null && homeShots != null) Shots(awayShots, homeShots)
-            }
-        } else if (!upcoming && awayShots != null && homeShots != null) {
-            Shots(awayShots, homeShots)
-        }
     }
 }
 
+/**
+ * The networks a game will be on, national listings first.
+ *
+ * The rail is 92 dp wide, so a full listing - five networks is ordinary - would wrap into noise. Two names
+ * and a count keep it one glance; the game page carries the complete list.
+ */
+internal fun watchLine(broadcasts: List<Broadcast>): String? {
+    if (broadcasts.isEmpty()) return null
+    val names =
+        broadcasts
+            .sortedBy { if (it.market == "N") 0 else 1 }
+            .map { it.network }
+            .filter { it.isNotBlank() }
+            .distinct()
+    if (names.isEmpty()) return null
+    // Two names used to be the ceiling because the rail refused to wrap; it wraps now, so three fit when the
+    // names are short, and the count still says how many are left.
+    val shown = names.take(3).joinToString(" · ")
+    val remaining = names.size - 3
+    return if (remaining > 0) "$shown +$remaining" else shown
+}
+
 @Composable
-private fun Shots(
-    away: Int,
-    home: Int,
+private fun WatchChannels(
+    line: String,
+    maxWidth: Dp,
 ) {
     Text(
-        stringResource(R.string.game_row_shots, away, home),
-        Modifier.testTag(SHOTS_TAG),
+        line,
+        Modifier.width(maxWidth).testTag(WATCH_TAG),
         style = Roux.cardTypography.shots,
         color = Roux.accents.muted,
         textAlign = TextAlign.Start,
+        maxLines = 3,
     )
 }
 

@@ -115,6 +115,8 @@ data class ThreeStar(
 data class PlayerRef(
     val name: String,
     val teamAbbrev: String = "",
+    /** The league's player id when the feed supplied one; a row with none has no page to open. */
+    val id: Long? = null,
 )
 
 /**

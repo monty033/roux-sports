@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
+import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.policy.StandingsGrouping
 import net.montycasa.roux.domain.policy.StandingsGroups
 import net.montycasa.roux.domain.policy.StandingsMode
@@ -106,6 +107,7 @@ class StandingsScreenTest {
         modes: MutableList<StandingsMode> = mutableListOf(),
         applySelection: Boolean = true,
         fontScale: Float = 1f,
+        opened: MutableList<TeamKey> = mutableListOf(),
     ) {
         suppliedState.value = state
         rule.setContent {
@@ -143,6 +145,7 @@ class StandingsScreenTest {
                                     )
                             },
                             Modifier.padding(insets),
+                            onTeamClick = { team -> opened += team },
                         )
                     }
                 }
@@ -209,14 +212,15 @@ class StandingsScreenTest {
     }
 
     @Test
-    fun switcherIsFrequentTableRowsAreNotControlsAndViewsSwitch() {
+    fun switcherIsFrequentTableRowsOpenTheirClubAndViewsSwitch() {
         val selected = mutableListOf<StandingsView>()
         launchScreen(selected = selected)
         val targets = rule.reachTargets()
         val switcher = targets.single { it.tag == "standings.view" }
         assertTrue(switcher.primary)
         assertTrue(switcher.frequent)
-        assertEquals(0, targets.count { it.tag.startsWith("standings.row.") })
+        // Rows are controls now: one target per club, each measuring the 48 dp minimum the audit enforces.
+        assertEquals(16, targets.count { it.tag.startsWith("standings.row.") })
         // The screen opens on a conference, so sixteen rows, and the league table is one tap away.
         rule.onAllNodes(rowMatcher).assertCountEquals(16)
         assertEquals((navTags.toList() + "standings.view").sorted(), targets.filter { it.primary }.map { it.tag }.sorted())
@@ -226,6 +230,20 @@ class StandingsScreenTest {
             assertReach()
         }
         assertEquals(StandingsView.entries, selected)
+    }
+
+    @Test
+    fun tappingARowOpensThatClub() {
+        val opened = mutableListOf<TeamKey>()
+        val team = rows.first().team
+        // One known row, so the tag names the club the assertion expects rather than whichever club heads the table.
+        launchScreen(
+            fresh.copy(view = StandingsView.League, groups = StandingsGrouping.group(listOf(rows.first()), StandingsView.League)),
+            opened = opened,
+        )
+        rule.onNodeWithTag("standings.row.0.${team.abbrev}").performClick()
+        // The row hands over the club, not the row: the page it opens is addressed by team key.
+        assertEquals(listOf(team.key), opened)
     }
 
     @Test
@@ -332,7 +350,7 @@ class StandingsScreenTest {
     }
 
     @Test
-    fun elevenRowsAreFullyVisibleWithSwitcherHeaderAndBottomNavigationAt411By923() {
+    fun theLeagueTableShowsThirteenRowsAt411By923BecauseEveryRowIsATouchTarget() {
         // The shipped density claim is about the league table: twenty teams on one screen.
         launchScreen(leagueState)
         rule.onNodeWithTag("standings.header").assertIsDisplayed()
@@ -347,9 +365,16 @@ class StandingsScreenTest {
         println(
             "STANDINGS_MEASUREMENT: fullyVisible=$fullyVisible windowDp=${window.width / rule.density.density}x${window.height / rule.density.density} listHeightDp=${viewport.height / rule.density.density}",
         )
-        // A floor, not an equality: the promise is that the whole league table is on screen without scrolling, so
-        // fitting more is a feature rather than a regression.
-        assertTrue("Fully visible league rows measured at 411x923: $fullyVisible", fullyVisible >= 20)
+        // The old promise was the whole league table on one screen at 30 dp a row. A row that opens its club is a
+        // control and takes 48 dp, so the table scrolls instead: thirteen is what the same phone now holds, and a
+        // floor keeps a future redesign from quietly spending more of the screen on chrome.
+        assertTrue("Fully visible league rows measured at 411x923: $fullyVisible", fullyVisible >= 13)
+        rule.onAllNodes(rowMatcher).fetchSemanticsNodes().forEach { row ->
+            assertTrue(
+                "a tappable row measures at least 48 dp, was ${row.size.height / rule.density.density}",
+                row.size.height >= 48 * rule.density.density - 0.5f,
+            )
+        }
     }
 
     @Test
@@ -385,11 +410,7 @@ class StandingsScreenTest {
     }
 
     private fun assertReach(retry: Boolean = false) {
-        // A table row has no action, so it is not a target at all - which is what allows the dense row height.
-        assertTrue(
-            "A standings row is text, not a control",
-            rule.reachTargets().none { it.tag.startsWith("standings.row.") },
-        )
+        // A table row now opens its club, so it is a control and the audit measures it at 48 dp like any other.
         // The pull-to-refresh gesture is reachable and measured, but it is a gesture rather than a control.
         val gesture = rule.reachTargets().single { it.tag == "standings.refresh" }
         assertFalse("Pull-to-refresh is a gesture, not a primary control", gesture.primary)
@@ -408,7 +429,8 @@ class StandingsScreenTest {
         // Identity comes from the crest and the club's own name; the abbreviation is only a fallback for a payload
         // that carries no name at all.
         rule.onAllNodesWithTag(CREST_TAG, useUnmergedTree = true).assertCountEquals(32)
-        rule.onAllNodesWithTag(CREST_TAG, useUnmergedTree = true)[0].assertWidthIsEqualTo(30.dp).assertHeightIsEqualTo(30.dp)
+        // 34 dp, the size the score cards use: the row is 48 dp now, so the crest no longer has to be a token.
+        rule.onAllNodesWithTag(CREST_TAG, useUnmergedTree = true)[0].assertWidthIsEqualTo(34.dp).assertHeightIsEqualTo(34.dp)
         val leader = rows.first()
         rule.onNodeWithText(leader.team.shortName!!).assertIsDisplayed()
     }
@@ -481,9 +503,9 @@ class StandingsScreenTest {
     }
 
     @Test
-    fun everyConferenceAndRankingShowsItsWholeConferenceAboveTheFold() {
-        // The acceptance question for this design: the ranking row costs height, so does a conference still fit
-        // without scrolling in all six combinations?
+    fun everyConferencePageHoldsSixteenClubsAndScrollsRatherThanShrinkingItsRows() {
+        // This used to demand the whole conference above the fold at 30 dp a row. Rows open clubs now, and a control
+        // is 48 dp, so a sixteen-club conference is taller than the screen: the table scrolls and the rows stay legible.
         launchScreen()
         listOf(StandingsView.Eastern, StandingsView.Western).forEach { view ->
             rule.onNodeWithTag("standings.view.$view").performClick()
@@ -507,7 +529,11 @@ class StandingsScreenTest {
                         "listHeight=${viewport.height / rule.density.density} " +
                         "overflowDp=${overflow / rule.density.density}",
                 )
-                assertEquals("${view.name}/${mode.name} must fit whole", 16, fullyVisible)
+                assertEquals("${view.name}/${mode.name} still lists sixteen clubs", 16, rowsNow.size)
+                assertTrue(
+                    "${view.name}/${mode.name} needs a scroll once rows are touch targets",
+                    fullyVisible < 16,
+                )
             }
         }
     }

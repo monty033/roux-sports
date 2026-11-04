@@ -93,7 +93,8 @@ class StandingsIntegrationTest {
         fixtureTeams.forEach { abbrev ->
             val tag = "standings.row.0.$abbrev"
             rule.onNodeWithTag(tag).performScrollTo().assertIsDisplayed()
-            rule.onNode(hasText(abbrev) and hasAnyAncestor(hasTestTag(tag))).assertIsDisplayed()
+            // A tappable row merges its texts into one node, so the club name is read from the unmerged tree.
+            rule.onNode(hasText(abbrev) and hasAnyAncestor(hasTestTag(tag)), useUnmergedTree = true).assertIsDisplayed()
             visited += abbrev
         }
         assertEquals(fixtureTeams.size, visited.size)
