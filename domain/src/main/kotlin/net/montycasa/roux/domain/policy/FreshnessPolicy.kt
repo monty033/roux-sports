@@ -58,6 +58,14 @@ object FreshnessPolicy {
     val seasonsAge: Duration = 24.hours
     val liveDetailAge: Duration = 30.seconds
     val scheduledDetailAge: Duration = 5.minutes
+
+    /**
+     * A final boxscore is not immutable. The league corrects goal and assist credits the day after a
+     * game, and those corrections are exactly what the game page shows. The old "a final boxscore
+     * never changes" reasoning served the first copy for ever, so a corrected boxscore never
+     * appeared; a day is long enough to pick up the overnight corrections.
+     */
+    val finalDetailAge: Duration = 24.hours
     val nextStartLead: Duration = 1.minutes
 
     /**
@@ -142,7 +150,8 @@ object FreshnessPolicy {
     fun playerProfileMaxAge(): Duration = playerProfileAge
 
     /**
-     * A final boxscore never changes, so only a live detail needs the short lifetime.
+     * A live detail gets the short lifetime; a scheduled one changes at puck drop; a final one is
+     * bounded by a day because scoring corrections land after the game.
      *
      * "Not live" is not the same as "final": a scheduled game is not live, and it changes the
      * moment the game begins - which, because the scheduled time precedes the puck drop, can
@@ -155,7 +164,7 @@ object FreshnessPolicy {
     ): Duration? =
         when {
             isLive -> liveDetailAge
-            isFinal -> null
+            isFinal -> finalDetailAge
             else -> scheduledDetailAge
         }
 

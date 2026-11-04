@@ -96,21 +96,34 @@ class GameDetailRepositoryImplTest {
     }
 
     /**
-     * A final game does not change, so the second visit makes no request at all - not even one to prove the copy is
-     * current. This is the whole reason the cache is keyed per endpoint.
+     * A final game is not immutable: the league corrects goal and assist credits the next day, so a copy older than
+     * the day must be re-read. The cache is still keyed per endpoint, and all three are re-read together.
      */
     @Test
-    fun aFinalGameIsNeverRefetched() =
+    fun aFinalGameIsRefetchedAfterTwentyFourHours() =
+        runBlocking {
+            val harness = harness()
+            harness.repository.load(gameId, GameState.Final)
+            assertEquals(3, harness.requests.size)
+
+            harness.clock.advance(25.hours)
+            harness.repository.load(gameId, GameState.Final)
+
+            assertEquals("a final page must be re-read once the corrections window has passed", 6, harness.requests.size)
+        }
+
+    @Test
+    fun aFinalGameIsReusedAfterAnHour() =
         runBlocking {
             val harness = harness()
             val first = harness.repository.load(gameId, GameState.Final)
             assertEquals(3, harness.requests.size)
             assertEquals(Freshness.Fresh, first.landing.freshness)
 
-            harness.clock.advance(720.hours)
+            harness.clock.advance(1.hours)
             val second = harness.repository.load(gameId, GameState.Final)
 
-            assertEquals("a final page must not be requested twice", 3, harness.requests.size)
+            assertEquals("inside the day the copy is still good", 3, harness.requests.size)
             assertEquals(Freshness.Fresh, second.landing.freshness)
             assertNotNull(second.boxscore.data)
         }

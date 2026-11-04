@@ -143,8 +143,12 @@ class FreshnessPolicyTest {
     }
 
     @Test
-    fun finalDetailNeverExpires() {
-        assertNull(FreshnessPolicy.detailMaxAge(isLive = false, isFinal = true))
+    fun finalDetailExpiresAfterTwentyFourHours() {
+        // A final boxscore is not immutable: the league corrects scoring the next day, so the old
+        // "final means never expires" rule kept the first copy for ever. A day picks up the fix.
+        val maxAge = FreshnessPolicy.detailMaxAge(isLive = false, isFinal = true)
+        assertEquals(24.hours, maxAge)
+        assertFalse(FreshnessPolicy.isStale(now - 1.hours, now, maxAge))
     }
 
     @Test
