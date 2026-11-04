@@ -122,7 +122,9 @@ at each stage.
 
 Releases are published on Forgejo releases and nowhere else.
 
-To build a release, use `scripts/build-release.sh` (arrives with the release). It runs the gate, `assembleRelease`, `check-release-apk.sh`, `apksigner verify`, and writes `app/build/dist/roux-sports-1.0.0.apk` plus its `.sha256`.
+To build a release, run `scripts/build-release.sh` inside `nix develop`. It refuses without a `keystore.properties` and
+refuses on a dirty tree, then runs the gate, `check-metadata.sh`, `assembleRelease`, `check-release-apk.sh` and
+`apksigner verify --print-certs`, and writes `app/build/dist/roux-sports-1.0.0.apk` plus its `.sha256`.
 
 Signing uses a `keystore.properties` file (gitignored, never committed) in the project root:
 
