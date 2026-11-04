@@ -110,6 +110,18 @@ class NotificationsIntegrationTest {
         }
 
     @Test
+    fun aTeamThatIsNotAFavouriteGetsAWatchWhenOneOfItsSwitchesIsOn() =
+        runBlocking {
+            // Nobody is a favourite here: the final switch on Toronto is the whole request.
+            app.container.preferences.setTeamAlertPreferences(TORONTO, TeamAlertPreferences(final = true))
+            assertEquals(emptySet<TeamKey>(), app.container.preferences.getFavourites())
+
+            app.reconcileWatches()
+
+            assertEquals(listOf(WorkManagerGameWatchScheduler.watchName(TORONTO_GAME)), watchNames())
+        }
+
+    @Test
     fun theAppAsksForThatPassWhenItOpens() {
         assertTrue(
             "the application never began a start-up reconcile",

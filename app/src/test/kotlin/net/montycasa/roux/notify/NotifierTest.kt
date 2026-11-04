@@ -10,6 +10,7 @@ import android.content.ContextWrapper
 import android.content.pm.PackageManager
 import androidx.test.core.app.ApplicationProvider
 import net.montycasa.roux.MainActivity
+import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
@@ -198,6 +199,108 @@ class NotifierTest {
                 ?.toString()
         assertEquals("TOR at MTL", title)
         assertTrue("no digits, so no score the feed did not give: $title", title!!.none { it.isDigit() })
+    }
+
+    private val shortNamed =
+        game.copy(
+            state = GameState.Final,
+            home = TeamRef(TeamKey("MTL"), name = "Montréal Canadiens", shortName = "Canadiens"),
+            away = TeamRef(TeamKey("TOR"), name = "Toronto Maple Leafs", shortName = "Maple Leafs"),
+        )
+
+    private fun final(kind: FinalKind?) = Alert.Final(GameId(gameId), awayScore = 3, homeScore = 2, finalKind = kind)
+
+    private fun titleOf(notification: Notification): String? = notification.extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
+
+    @Test
+    fun theFinalChannelIsCalledFinalScoresAndIsDefaultImportance() {
+        val channel = manager.getNotificationChannel("final_scores")
+
+        assertNotNull("a final-scores channel, so finals can be silenced on their own", channel)
+        assertEquals("final_scores", Notifier.FINAL_CHANNEL)
+        assertEquals("Final scores", channel.name)
+        assertEquals(NotificationManager.IMPORTANCE_DEFAULT, channel.importance)
+        assertEquals("When a game you follow ends", channel.description)
+    }
+
+    @Test
+    fun eachAlertTypeLandsOnItsOwnChannel() {
+        notifier.post(Alert.GameStart(GameId(gameId), goalBaseline = 0), shortNamed)
+        notifier.post(goal(), shortNamed)
+        notifier.post(final(FinalKind.REG), shortNamed)
+
+        val channelByTitle = posted().associate { titleOf(it) to it.channelId }
+        assertEquals(
+            mapOf(
+                "TOR at MTL" to "game_start",
+                "TOR 2 – 1 MTL" to "goals",
+                "Final: Maple Leafs 3, Canadiens 2" to "final_scores",
+            ),
+            channelByTitle,
+        )
+    }
+
+    @Test
+    fun aFinalCarriesTheScoreAndTheKindWhenTheKindIsKnown() {
+        notifier.post(final(FinalKind.OT), shortNamed)
+        assertEquals("Final/OT: Maple Leafs 3, Canadiens 2", titleOf(posted().single()))
+    }
+
+    @Test
+    fun aShootoutFinalSaysSoAndARegulationFinalSaysNeither() {
+        notifier.post(final(FinalKind.SO), shortNamed)
+        assertEquals("Final/SO: Maple Leafs 3, Canadiens 2", titleOf(posted().single()))
+
+        // The same id, so the second post replaces the first: what remains is the regulation wording alone.
+        notifier.post(final(FinalKind.REG), shortNamed)
+        assertEquals("Final: Maple Leafs 3, Canadiens 2", titleOf(posted().single()))
+    }
+
+    @Test
+    fun aFinalWithNoKindIsAPlainFinalAndInventsNone() {
+        notifier.post(final(null), shortNamed)
+
+        assertEquals("Final: Maple Leafs 3, Canadiens 2", titleOf(posted().single()))
+    }
+
+    @Test
+    fun aFinalFallsBackToTheFullNameThenTheAbbreviationWhenThereIsNoShortName() {
+        notifier.post(final(null), game)
+        assertEquals("Final: Toronto Maple Leafs 3, Montréal Canadiens 2", titleOf(posted().single()))
+
+        val bare = game.copy(home = TeamRef(TeamKey("MTL")), away = TeamRef(TeamKey("TOR")))
+        notifier.post(final(null), bare)
+        assertEquals("Final: TOR 3, MTL 2", titleOf(posted().single()))
+    }
+
+    @Test
+    fun aFinalReplacesNeitherAGoalNorAStartNotification() {
+        val start = notifier.post(Alert.GameStart(GameId(gameId), goalBaseline = 0), shortNamed) as NotificationOutcome.Posted
+        val goal = notifier.post(goal(), shortNamed) as NotificationOutcome.Posted
+        val final = notifier.post(final(FinalKind.OT), shortNamed) as NotificationOutcome.Posted
+
+        assertEquals("three different pieces of news", 3, posted().size)
+        assertEquals("and three different ids", 3, setOf(start.id, goal.id, final.id).size)
+        assertEquals(
+            setOf("TOR at MTL", "TOR 2 – 1 MTL", "Final/OT: Maple Leafs 3, Canadiens 2"),
+            posted().map { titleOf(it) }.toSet(),
+        )
+    }
+
+    @Test
+    fun aSilencedFinalChannelIsNotPostableAndDoesNotSilenceTheOthers() {
+        manager.deleteNotificationChannel(Notifier.FINAL_CHANNEL)
+        manager.createNotificationChannel(
+            NotificationChannel(Notifier.FINAL_CHANNEL, "Final scores", NotificationManager.IMPORTANCE_NONE),
+        )
+
+        assertEquals(false, notifier.canPost(final(null)))
+        assertEquals(true, notifier.canPost(goal()))
+        assertEquals(
+            NotificationOutcome.NotPosted(NotificationOutcome.Reason.NotificationsOff),
+            notifier.post(final(null), shortNamed),
+        )
+        assertEquals(emptyList<Notification>(), posted())
     }
 
     @Test

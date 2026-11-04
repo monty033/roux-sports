@@ -12,7 +12,9 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import net.montycasa.roux.MainActivity
 import net.montycasa.roux.R
+import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.Game
+import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.domain.policy.Alert
 
 /** What happened to an alert, so a caller can record it rather than guess. */
@@ -42,8 +44,8 @@ sealed interface NotificationOutcome {
 /**
  * Posts the alerts the decider asked for.
  *
- * Two channels, because the user's answer to "tell me when it starts" is not always their answer to
- * "tell me about every goal": one can be silenced without silencing the other.
+ * One channel per kind of alert, because the user's answer to "tell me when it starts" is not always their answer
+ * to "tell me about every goal" or "tell me how it ended": each can be silenced without silencing the others.
  *
  * The tap target is an **explicit** intent naming [MainActivity] with the game id as an extra. A data
  * URI would also work, but an implicit route can be claimed by any app that registers for the scheme,
@@ -58,7 +60,7 @@ class Notifier(
     private val notificationManager: NotificationManager =
         context.getSystemService(NotificationManager::class.java)
 
-    /** Creates both channels. Safe to call on every launch; the platform keeps the user's settings. */
+    /** Creates every channel. Safe to call on every launch; the platform keeps the user's settings. */
     fun ensureChannels() {
         notificationManager.createNotificationChannel(
             NotificationChannel(
@@ -76,6 +78,15 @@ class Notifier(
                 NotificationManager.IMPORTANCE_DEFAULT,
             ).apply {
                 description = context.getString(R.string.notify_channel_goals_description)
+            },
+        )
+        notificationManager.createNotificationChannel(
+            NotificationChannel(
+                FINAL_CHANNEL,
+                context.getString(R.string.notify_channel_final),
+                NotificationManager.IMPORTANCE_DEFAULT,
+            ).apply {
+                description = context.getString(R.string.notify_channel_final_description)
             },
         )
     }
@@ -137,6 +148,28 @@ class Notifier(
                         .build()
                 }
 
+                is Alert.Final -> {
+                    val teams =
+                        context.getString(
+                            R.string.notify_final_teams,
+                            displayName(game.away),
+                            alert.awayScore,
+                            displayName(game.home),
+                            alert.homeScore,
+                        )
+                    // Only a kind the feed actually gave is worded: regulation and "not stated" are both a plain
+                    // "Final", because inventing "/OT" or "/SO" would be a claim about how the game ended.
+                    val title =
+                        when (alert.finalKind) {
+                            FinalKind.OT -> context.getString(R.string.notify_final_ot_title, teams)
+                            FinalKind.SO -> context.getString(R.string.notify_final_so_title, teams)
+                            FinalKind.REG, null -> context.getString(R.string.notify_final_title, teams)
+                        }
+                    base(id, channel, alert.gameId.value)
+                        .setContentTitle(title)
+                        .build()
+                }
+
                 // Unreachable - a baseline returned above - but the when has to name every alert to stay total.
                 is Alert.Baseline -> {
                     error("a baseline is not news")
@@ -161,7 +194,17 @@ class Notifier(
 
     /** The id shown for a game and kind; also the request code of its tap target. */
     fun idOf(alert: Alert): Int {
-        val kind = if (alert is Alert.GameStart) START_KIND else GOAL_KIND
+        val kind =
+            when (alert) {
+                is Alert.GameStart -> START_KIND
+
+                is Alert.Goal -> GOAL_KIND
+
+                is Alert.Final -> FINAL_KIND
+
+                // Never posted, so the id is only asked for by the exhaustive when; it shares the goal's, as it always did.
+                is Alert.Baseline -> GOAL_KIND
+            }
         // Positive because a PendingIntent request code must be; a collision only merges two games' updates.
         return (alert.gameId.value.hashCode() * KINDS + kind) and Int.MAX_VALUE
     }
@@ -194,7 +237,21 @@ class Notifier(
         )
     }
 
-    private fun channelOf(alert: Alert): String = if (alert is Alert.GameStart) GAME_START_CHANNEL else GOALS_CHANNEL
+    /**
+     * Every alert type is named, with no fallback, so a new type is a compile error here rather than a notification
+     * quietly routed to the wrong channel.
+     */
+    private fun channelOf(alert: Alert): String =
+        when (alert) {
+            is Alert.GameStart -> GAME_START_CHANNEL
+            is Alert.Goal -> GOALS_CHANNEL
+            is Alert.Final -> FINAL_CHANNEL
+            is Alert.Baseline -> error("a baseline is not news and has no channel")
+        }
+
+    /** The club's short name where the feed gave one, then its full name, then its abbreviation. */
+    private fun displayName(team: TeamRef): String =
+        team.shortName?.takeIf { it.isNotBlank() } ?: team.name?.takeIf { it.isNotBlank() } ?: team.key.abbrev
 
     /**
      * Why nothing can be posted, or null when it can.
@@ -219,10 +276,12 @@ class Notifier(
     companion object {
         const val GAME_START_CHANNEL = "game_start"
         const val GOALS_CHANNEL = "goals"
+        const val FINAL_CHANNEL = "final_scores"
         const val EXTRA_GAME_ID = "net.montycasa.roux.extra.GAME_ID"
 
         private const val START_KIND = 0
         private const val GOAL_KIND = 1
-        private const val KINDS = 2
+        private const val FINAL_KIND = 2
+        private const val KINDS = 3
     }
 }

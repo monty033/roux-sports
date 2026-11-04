@@ -107,10 +107,9 @@ open class RouxApp :
         startUpPasses++
         appScope.launch {
             try {
-                // A store with no favourites cannot want a watch, and reading it is local. Without this the
-                // first launch after install - which follows nobody - would open the cache, and on a cold
-                // device the network, to be told there is nothing to do.
-                if (container.preferences.getFavourites().isEmpty()) return@launch
+                // Not gated on favourites: an alert can be on for any team. But with no alert on anywhere nothing
+                // can be wanted, and reading the slate (the network, on a cold device) would only say so.
+                if (!container.preferences.anyTeamAlertsOn()) return@launch
                 reconcileWatches()
             } catch (cancelled: CancellationException) {
                 throw cancelled

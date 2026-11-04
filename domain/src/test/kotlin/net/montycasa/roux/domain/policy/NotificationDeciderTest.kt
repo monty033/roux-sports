@@ -1,5 +1,6 @@
 package net.montycasa.roux.domain.policy
 
+import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
@@ -12,6 +13,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
 /**
@@ -29,6 +31,8 @@ class NotificationDeciderTest {
         state: GameState = GameState.Live(),
         awayScore: Int? = 0,
         homeScore: Int? = 0,
+        start: Instant? = null,
+        finalKind: FinalKind? = null,
     ) = Game(
         id = gameId,
         date = "2025-02-01",
@@ -37,13 +41,18 @@ class NotificationDeciderTest {
         away = TeamRef(TeamKey("TOR"), name = "Toronto Maple Leafs"),
         awayScore = awayScore,
         homeScore = homeScore,
+        startTimeUtc = start,
+        finalKind = finalKind,
     )
 
     private fun ledger(
         goalCount: Int = 0,
         startNotified: Boolean = false,
         updatedAt: Instant = now,
-    ) = NotificationLedgerEntry(goalCount, startNotified, updatedAt)
+        finalNotified: Boolean = false,
+    ) = NotificationLedgerEntry(goalCount, startNotified, updatedAt, finalNotified = finalNotified)
+
+    private val finalOn = TeamAlertPreferences(final = true)
 
     /**
      * Applies the alerts a pass produced the way the store's claims would: a start claims the start,
@@ -71,10 +80,10 @@ class NotificationDeciderTest {
         // Nothing is said about a game that has not started.
         assertEquals(
             emptyList<Alert>(),
-            decider.decide(game(GameState.Scheduled), ledger(), TeamAlertPreferences(start = true, goals = true), isFavourite = true),
+            decider.decide(game(GameState.Scheduled), ledger(), TeamAlertPreferences(start = true, goals = true), now),
         )
 
-        val first = decider.decide(game(GameState.Live()), ledger(), TeamAlertPreferences(start = true, goals = true), isFavourite = true)
+        val first = decider.decide(game(GameState.Live()), ledger(), TeamAlertPreferences(start = true, goals = true), now)
         assertEquals(listOf<Alert>(Alert.GameStart(gameId, goalBaseline = 0)), first)
 
         // Second pass, reading what the first pass's claim wrote: silence.
@@ -84,7 +93,7 @@ class NotificationDeciderTest {
                 game(GameState.Live()),
                 applyClaims(first, ledger()),
                 TeamAlertPreferences(start = true, goals = true),
-                isFavourite = true,
+                now,
             ),
         )
     }
@@ -98,7 +107,7 @@ class NotificationDeciderTest {
                 game(awayScore = 1, homeScore = 0),
                 started,
                 TeamAlertPreferences(start = true, goals = true),
-                isFavourite = true,
+                now,
             )
         assertEquals(listOf<Alert>(Alert.Goal(gameId, goalCount = 1, awayScore = 1, homeScore = 0)), first)
 
@@ -110,7 +119,7 @@ class NotificationDeciderTest {
                 game(awayScore = 1, homeScore = 0),
                 claimed,
                 TeamAlertPreferences(start = true, goals = true),
-                isFavourite = true,
+                now,
             ),
         )
 
@@ -120,7 +129,7 @@ class NotificationDeciderTest {
                 game(awayScore = 1, homeScore = 1),
                 claimed,
                 TeamAlertPreferences(start = true, goals = true),
-                isFavourite = true,
+                now,
             ),
         )
     }
@@ -135,7 +144,7 @@ class NotificationDeciderTest {
                 game(awayScore = 1, homeScore = 1),
                 corrected,
                 TeamAlertPreferences(start = true, goals = true),
-                isFavourite = true,
+                now,
             ),
         )
         assertEquals(
@@ -145,7 +154,7 @@ class NotificationDeciderTest {
                 game(awayScore = 1, homeScore = 2),
                 corrected,
                 TeamAlertPreferences(start = true, goals = true),
-                isFavourite = true,
+                now,
             ),
         )
     }
@@ -161,20 +170,144 @@ class NotificationDeciderTest {
                 game(awayScore = 2, homeScore = 1),
                 ledger = null,
                 TeamAlertPreferences(start = true, goals = true),
-                isFavourite = true,
+                now,
             ),
         )
     }
 
     @Test
-    fun aTeamThatIsNotAFavouriteGetsNothing() {
+    fun preferencesWithNoSwitchOnGetNothingFromALiveOrAFinishedGame() {
+        val allOff = TeamAlertPreferences()
+
+        assertEquals(emptyList<Alert>(), decider.decide(game(awayScore = 2, homeScore = 1), ledger(), allOff, now))
+        assertEquals(emptyList<Alert>(), decider.decide(game(awayScore = 2, homeScore = 1), ledger = null, allOff, now))
+        assertEquals(
+            emptyList<Alert>(),
+            decider.decide(game(GameState.Final, awayScore = 3, homeScore = 2, start = now - 1.hours), ledger(), allOff, now),
+        )
+    }
+
+    @Test
+    fun aFinalWithTheSwitchOnAndNothingClaimedIsExactlyOneFinalAlert() {
+        val ended = game(GameState.Final, awayScore = 3, homeScore = 2, start = now - 3.hours, finalKind = FinalKind.OT)
+
+        assertEquals(
+            listOf<Alert>(Alert.Final(gameId, awayScore = 3, homeScore = 2, finalKind = FinalKind.OT)),
+            decider.decide(ended, ledger(goalCount = 5, startNotified = true), finalOn, now),
+        )
+        assertEquals(
+            "a game this app never recorded still gets its final",
+            listOf<Alert>(Alert.Final(gameId, awayScore = 3, homeScore = 2, finalKind = FinalKind.OT)),
+            decider.decide(ended, ledger = null, finalOn, now),
+        )
+    }
+
+    @Test
+    fun aFinalAlreadyClaimedIsNotAnnouncedAgain() {
+        val ended = game(GameState.Final, awayScore = 3, homeScore = 2, start = now - 3.hours)
+
+        assertEquals(
+            emptyList<Alert>(),
+            decider.decide(ended, ledger(finalNotified = true), finalOn, now),
+        )
+    }
+
+    @Test
+    fun aFinalWithTheFinalSwitchOffGetsNothingWhateverElseIsOn() {
+        val ended = game(GameState.Final, awayScore = 3, homeScore = 2, start = now - 3.hours)
+        val everythingButFinal =
+            TeamAlertPreferences(start = true, goals = true, intermission = true, final = false, upcoming = true)
+
+        assertEquals(emptyList<Alert>(), decider.decide(ended, ledger(), everythingButFinal, now))
+    }
+
+    @Test
+    fun aFinalOutsideTheSixHourWindowGetsNothing() {
+        val settled = ledger(startNotified = true)
+
+        assertEquals(
+            "exactly six hours after the start is still inside the window",
+            listOf<Alert>(Alert.Final(gameId, awayScore = 3, homeScore = 2, finalKind = null)),
+            decider.decide(game(GameState.Final, awayScore = 3, homeScore = 2, start = now - 6.hours), settled, finalOn, now),
+        )
         assertEquals(
             emptyList<Alert>(),
             decider.decide(
-                game(awayScore = 2, homeScore = 1),
-                ledger(),
+                game(GameState.Final, awayScore = 3, homeScore = 2, start = now - 6.hours - 1.minutes),
+                settled,
+                finalOn,
+                now,
+            ),
+        )
+        assertEquals(
+            "a swept ledger row must not let yesterday's final be announced again",
+            emptyList<Alert>(),
+            decider.decide(game(GameState.Final, awayScore = 3, homeScore = 2, start = now - 30.hours), ledger = null, finalOn, now),
+        )
+    }
+
+    @Test
+    fun aFinalWithNoStartTimeIsAnnouncedOnlyWhenALedgerEntryExists() {
+        val noStart = game(GameState.Final, awayScore = 3, homeScore = 2, start = null)
+
+        assertEquals(
+            listOf<Alert>(Alert.Final(gameId, awayScore = 3, homeScore = 2, finalKind = null)),
+            decider.decide(noStart, ledger(), finalOn, now),
+        )
+        assertEquals(emptyList<Alert>(), decider.decide(noStart, ledger = null, finalOn, now))
+    }
+
+    @Test
+    fun aFinalWithAMissingScoreGetsNothingRatherThanAZero() {
+        val inWindow = now - 3.hours
+
+        assertEquals(
+            emptyList<Alert>(),
+            decider.decide(game(GameState.Final, awayScore = null, homeScore = 2, start = inWindow), ledger(), finalOn, now),
+        )
+        assertEquals(
+            emptyList<Alert>(),
+            decider.decide(game(GameState.Final, awayScore = 3, homeScore = null, start = inWindow), ledger(), finalOn, now),
+        )
+        assertEquals(
+            emptyList<Alert>(),
+            decider.decide(game(GameState.Final, awayScore = null, homeScore = null, start = inWindow), ledger(), finalOn, now),
+        )
+    }
+
+    @Test
+    fun aFinalCarriesTheKindTheFeedGaveAndNoneWhenItGaveNone() {
+        fun kindOf(kind: FinalKind?) =
+            (
+                decider
+                    .decide(
+                        game(GameState.Final, awayScore = 1, homeScore = 0, start = now - 3.hours, finalKind = kind),
+                        ledger(),
+                        finalOn,
+                        now,
+                    ).single() as Alert.Final
+            ).finalKind
+
+        assertEquals(FinalKind.OT, kindOf(FinalKind.OT))
+        assertEquals(FinalKind.SO, kindOf(FinalKind.SO))
+        assertEquals(FinalKind.REG, kindOf(FinalKind.REG))
+        assertEquals(null, kindOf(null))
+    }
+
+    @Test
+    fun aLiveGameIsNotGivenAFinalAlertAndAFinalIsNotGivenLiveAlerts() {
+        assertEquals(
+            emptyList<Alert>(),
+            decider.decide(game(GameState.Live(), awayScore = 3, homeScore = 2), ledger(startNotified = true), finalOn, now),
+        )
+        assertEquals(
+            "a finished game with start and goals on says nothing about a goal",
+            emptyList<Alert>(),
+            decider.decide(
+                game(GameState.Final, awayScore = 3, homeScore = 2, start = now - 3.hours),
+                ledger(goalCount = 1, startNotified = true),
                 TeamAlertPreferences(start = true, goals = true),
-                isFavourite = false,
+                now,
             ),
         )
     }
@@ -188,7 +321,7 @@ class NotificationDeciderTest {
                 game(awayScore = 1, homeScore = 0),
                 ledger(startNotified = false),
                 TeamAlertPreferences(start = false, goals = true),
-                isFavourite = true,
+                now,
             ),
         )
         assertEquals(
@@ -198,7 +331,7 @@ class NotificationDeciderTest {
                 game(awayScore = 1, homeScore = 0),
                 ledger(startNotified = false),
                 TeamAlertPreferences(start = true, goals = false),
-                isFavourite = true,
+                now,
             ),
         )
         assertEquals(
@@ -207,7 +340,7 @@ class NotificationDeciderTest {
                 game(awayScore = 1, homeScore = 0),
                 ledger(startNotified = true),
                 TeamAlertPreferences(start = false, goals = false),
-                isFavourite = true,
+                now,
             ),
         )
     }
@@ -222,7 +355,7 @@ class NotificationDeciderTest {
                 game(awayScore = null, homeScore = null),
                 ledger(goalCount = 0, startNotified = true),
                 TeamAlertPreferences(start = true, goals = true),
-                isFavourite = true,
+                now,
             ),
         )
     }
@@ -236,7 +369,7 @@ class NotificationDeciderTest {
                 final,
                 ledger(goalCount = 5, startNotified = true),
                 TeamAlertPreferences(start = true, goals = true),
-                isFavourite = true,
+                now,
             ),
         )
 
@@ -258,7 +391,7 @@ class NotificationDeciderTest {
                 game(awayScore = 1, homeScore = 0),
                 pendingStart,
                 TeamAlertPreferences(start = true, goals = true),
-                isFavourite = true,
+                now,
             )
         assertEquals(
             listOf<Alert>(
@@ -282,7 +415,7 @@ class NotificationDeciderTest {
                 game(awayScore = 2, homeScore = 1),
                 lateStart,
                 TeamAlertPreferences(start = true, goals = true),
-                isFavourite = true,
+                now,
             ),
         )
     }
@@ -290,18 +423,18 @@ class NotificationDeciderTest {
     @Test
     fun withStartAlertsOffTheFirstSightIsASilentBaselineSoLaterGoalsStillWork() {
         val startOff = TeamAlertPreferences(start = false, goals = true)
-        val first = decider.decide(game(awayScore = 2, homeScore = 1), ledger = null, startOff, isFavourite = true)
+        val first = decider.decide(game(awayScore = 2, homeScore = 1), ledger = null, startOff, now)
         assertEquals("nothing is announced, but the total is recorded", listOf<Alert>(Alert.Baseline(gameId, 3)), first)
 
         // With the baseline written, the next goal is a goal rather than another first sight.
         val baselined = ledger(goalCount = 3, startNotified = false)
         assertEquals(
             emptyList<Alert>(),
-            decider.decide(game(awayScore = 2, homeScore = 1), baselined, startOff, isFavourite = true),
+            decider.decide(game(awayScore = 2, homeScore = 1), baselined, startOff, now),
         )
         assertEquals(
             listOf<Alert>(Alert.Goal(gameId, goalCount = 5, awayScore = 3, homeScore = 2)),
-            decider.decide(game(awayScore = 3, homeScore = 2), baselined, startOff, isFavourite = true),
+            decider.decide(game(awayScore = 3, homeScore = 2), baselined, startOff, now),
         )
     }
 
@@ -316,7 +449,7 @@ class NotificationDeciderTest {
                 game(awayScore = null, homeScore = null),
                 ledger = null,
                 TeamAlertPreferences(start = true, goals = true),
-                isFavourite = true,
+                now,
             ),
         )
 
@@ -328,7 +461,7 @@ class NotificationDeciderTest {
                 game(awayScore = 2, homeScore = 1),
                 recordedUnknown,
                 TeamAlertPreferences(start = true, goals = true),
-                isFavourite = true,
+                now,
             ),
         )
 
@@ -339,7 +472,7 @@ class NotificationDeciderTest {
                 game(awayScore = 2, homeScore = 2),
                 ledger(goalCount = 3, startNotified = true),
                 TeamAlertPreferences(start = true, goals = true),
-                isFavourite = true,
+                now,
             ),
         )
     }

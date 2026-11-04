@@ -19,7 +19,10 @@ data class TeamAlertPreferences(
     val intermission: Boolean = false,
     val final: Boolean = false,
     val upcoming: Boolean = false,
-)
+) {
+    /** Whether any switch is on: the one question that decides whether a team's games are followed at all. */
+    val anyOn: Boolean get() = start || goals || intermission || final || upcoming
+}
 
 /**
  * The lead times the "game is about to start" alert may use, in minutes.
@@ -107,6 +110,12 @@ interface PreferencesRepository {
 
     /** Read alert controls for a team, returning disabled defaults when unset. */
     suspend fun getTeamAlertPreferences(team: TeamKey): TeamAlertPreferences
+
+    /**
+     * Whether any team has any alert switched on. A local read that lets start-up skip the slate when nothing
+     * could be wanted; the default answers true, which only costs a read.
+     */
+    suspend fun anyTeamAlertsOn(): Boolean = true
 
     /** Save alert controls for one team. */
     suspend fun setTeamAlertPreferences(

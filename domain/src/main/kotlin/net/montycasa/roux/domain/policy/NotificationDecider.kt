@@ -1,5 +1,6 @@
 package net.montycasa.roux.domain.policy
 
+import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
@@ -47,6 +48,20 @@ sealed interface Alert {
     ) : Alert
 
     /**
+     * The game has ended and the final score can be stated.
+     *
+     * Both scores are non-null on purpose: an alert that cannot state a score is worse than no alert, so a final
+     * with a missing score never becomes one. [finalKind] is null when the feed did not say how it ended, and the
+     * notifier words that as a plain "Final" rather than guessing.
+     */
+    data class Final(
+        override val gameId: GameId,
+        val awayScore: Int,
+        val homeScore: Int,
+        val finalKind: FinalKind?,
+    ) : Alert
+
+    /**
      * Record this total without announcing anything.
      *
      * Needed when the app first sees a live game whose start alerts are switched off: without a record,
@@ -66,8 +81,13 @@ sealed interface Alert {
  * a wrong answer here can repeat an alert only if the claim also allows it - which it cannot.
  *
  * The rules, in the order they are applied:
- *  - A game that is not a favourite, or is not live, produces nothing.
- *  - No ledger entry means this app has never observed the game - the phone was asleep through the
+ *  - Preferences with no switch on produce nothing. Favourites play no part: a bell on any team is a request.
+ *  - A game that is neither live nor final produces nothing.
+ *  - A final needs the final preference, an unclaimed final, both scores, and to be inside the recency window
+ *    ([FINAL_WINDOW] after the start, or - with no start time to measure from - an existing ledger entry). A
+ *    missing score is no alert at all, and nothing is claimed for it. Without the window, a pass that can reach
+ *    finished games would re-announce a final whose ledger row had been swept.
+ *  - For a live game: no ledger entry means this app has never observed the game - the phone was asleep through the
  *    start, or alerts were just turned on. With start alerts on, that is a start alert whose baseline is
  *    the current score, so goals scored before now are not announced. With them off, it is a silent
  *    baseline, so a goal from here on still has something to compare against.
@@ -85,9 +105,10 @@ class NotificationDecider {
         game: Game,
         ledger: NotificationLedgerEntry?,
         preferences: TeamAlertPreferences,
-        isFavourite: Boolean,
+        now: Instant,
     ): List<Alert> {
-        if (!isFavourite) return emptyList()
+        if (!preferences.anyOn) return emptyList()
+        if (game.state is GameState.Final) return decideFinal(game, ledger, preferences, now)
         if (game.state !is GameState.Live) return emptyList()
 
         val away = game.awayScore
@@ -128,6 +149,25 @@ class NotificationDecider {
         return alerts
     }
 
+    private fun decideFinal(
+        game: Game,
+        ledger: NotificationLedgerEntry?,
+        preferences: TeamAlertPreferences,
+        now: Instant,
+    ): List<Alert> {
+        if (!preferences.final) return emptyList()
+        if (ledger?.finalNotified == true) return emptyList()
+        // With no start time there is nothing to measure the window from, so only a game this app has already
+        // recorded - one it was watching - qualifies.
+        val recent = if (game.startTimeUtc != null) isWithinFinalWindow(game.startTimeUtc, now) else ledger != null
+        if (!recent) return emptyList()
+
+        // A missing score is unknown, not zero: "Final: 0, 0" would be a statement the feed never made.
+        val away = game.awayScore ?: return emptyList()
+        val home = game.homeScore ?: return emptyList()
+        return listOf(Alert.Final(game.id, awayScore = away, homeScore = home, finalKind = game.finalKind))
+    }
+
     /**
      * Whether a finished game's ledger entry is old enough to sweep.
      *
@@ -144,5 +184,18 @@ class NotificationDecider {
     companion object {
         /** How long a finished game's deduplication record is kept. */
         val LEDGER_RETENTION: Duration = 24.hours
+
+        /**
+         * How long after its start a finished game can still be announced; also how long the plan keeps it wanted.
+         * Measured from the start because that is what the feed gives, and long enough for the longest game plus the
+         * pass that follows the horn.
+         */
+        val FINAL_WINDOW: Duration = 6.hours
+
+        /** Whether a game that began at [start] is still inside [FINAL_WINDOW] at [now]. False when there is no start. */
+        fun isWithinFinalWindow(
+            start: Instant?,
+            now: Instant,
+        ): Boolean = start != null && now <= start + FINAL_WINDOW
     }
 }

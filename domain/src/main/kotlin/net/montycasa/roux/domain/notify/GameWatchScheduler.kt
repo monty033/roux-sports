@@ -4,6 +4,7 @@ import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.ScoreDay
 import net.montycasa.roux.domain.model.TeamKey
+import net.montycasa.roux.domain.policy.NotificationDecider
 import net.montycasa.roux.domain.repo.TeamAlertPreferences
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.ZERO
@@ -38,15 +39,15 @@ data class WatchedGame(
  */
 interface GameWatchScheduler {
     /**
-     * Schedule work for every game in [day] that the user follows and that has not finished.
+     * Schedule work for every game in [day] that the user follows and that has not finished, or finished
+     * recently enough that its final-score pass is still due.
      *
-     * [favourites] and [alertPreferences] are passed in rather than looked up here: a scheduler that
-     * read the store would be untestable, and the caller already has both to hand.
+     * [alertPreferences] is passed in rather than looked up here: a scheduler that read the store would be
+     * untestable, and the caller already has it to hand.
      */
     suspend fun reconcile(
         now: Instant,
         day: ScoreDay,
-        favourites: Set<TeamKey>,
         alertPreferences: (TeamKey) -> TeamAlertPreferences,
     )
 
@@ -77,10 +78,12 @@ object GameWatchPlan {
     /**
      * The games in [day] to watch, in the feed's order.
      *
-     * A game is watched when a team in it is a favourite whose alerts are on - either kind counts, since
-     * a watch that only reported goals would have to be started by something else.
+     * A game is watched when a team in it has any alert switch on - any kind counts, since a watch that
+     * only reported goals would have to be started by something else. Favourites play no part.
      *
-     * Finished games are not watched. A game already under way is watched immediately: the app may have
+     * A finished game stays wanted for [NotificationDecider.FINAL_WINDOW] after its start, so one pass still
+     * happens after the horn and a reconcile cannot cancel it; outside the window it is not wanted. A finished game
+     * with no start time has no window to measure and is not wanted. A game already under way is watched immediately: the app may have
      * been closed through the start, and the goals are what the user opened it for. A scheduled game is
      * watched when it starts. A scheduled game with no readable start time is skipped rather than
      * treated as starting now, which would wake the device for a game there is no time to wait for.
@@ -88,13 +91,11 @@ object GameWatchPlan {
     fun wanted(
         now: Instant,
         day: ScoreDay,
-        favourites: Set<TeamKey>,
         alertPreferences: (TeamKey) -> TeamAlertPreferences,
     ): List<WatchedGame> {
         val wanted = mutableListOf<WatchedGame>()
         for (game in day.games) {
-            if (game.state is GameState.Final) continue
-            if (!isFollowed(game, favourites, alertPreferences)) continue
+            if (!isFollowed(game, alertPreferences)) continue
             wanted += schedule(now, game) ?: continue
         }
         // A feed that lists the same game twice must not produce two watches.
@@ -103,15 +104,10 @@ object GameWatchPlan {
 
     private fun isFollowed(
         game: Game,
-        favourites: Set<TeamKey>,
         alertPreferences: (TeamKey) -> TeamAlertPreferences,
-    ): Boolean =
-        listOf(game.home.key, game.away.key).any { team ->
-            team in favourites &&
-                alertPreferences(team).let { preferences -> preferences.start || preferences.goals }
-        }
+    ): Boolean = listOf(game.home.key, game.away.key).any { team -> alertPreferences(team).anyOn }
 
-    /** Null when the game cannot be scheduled: it is neither under way nor has a start time to wait for. */
+    /** Null when the game cannot be scheduled: it is neither under way, recently final, nor has a start time to wait for. */
     private fun schedule(
         now: Instant,
         game: Game,
@@ -127,6 +123,14 @@ object GameWatchPlan {
                     // A start time already in the past is under way as far as this is concerned, so it is due
                     // now rather than at a moment that has gone - and stays due now on every later pass.
                     WatchedGame(game.id.value, delay, firesAt = start.takeIf { delay > ZERO })
+                }
+            }
+
+            // One pass after the horn announces the final; the same window the decider applies, so a pass is never
+            // scheduled for a final it would refuse.
+            GameState.Final -> {
+                WatchedGame(game.id.value, ZERO, firesAt = null).takeIf {
+                    NotificationDecider.isWithinFinalWindow(game.startTimeUtc, now)
                 }
             }
 

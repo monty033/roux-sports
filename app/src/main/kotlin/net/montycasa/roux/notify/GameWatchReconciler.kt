@@ -10,8 +10,8 @@ import java.time.ZoneId
 import kotlin.time.Clock
 
 /**
- * Gathers the three things [GameWatchScheduler.reconcile] needs - who the user follows, what they want told,
- * and today's slate - and hands them over.
+ * Gathers the two things [GameWatchScheduler.reconcile] needs - what the user wants told about each team, and
+ * today's slate - and hands them over.
  *
  * It exists because two callers need exactly this: the app start, and the periodic tick that catches a game
  * whose start time the feed publishes late. A second copy of this assembly in the worker would be the copy
@@ -36,13 +36,14 @@ class GameWatchReconciler(
         val today = civilDate(now)
         val day: ScoreDay = scores.loadDay(today, today).data ?: return
 
-        val favourites = preferences.getFavourites()
         // Read once, up front: the scheduler's question is a plain function, and calling a suspend store from
-        // inside it for every team would make the plan's rules depend on how many favourites there are.
+        // inside it for every team would make the plan's rules depend on how many teams are playing. Every team in
+        // the slate is read, not only favourites - an alert on any team is a request.
+        val teams = day.games.flatMapTo(linkedSetOf()) { listOf(it.home.key, it.away.key) }
         val alertPreferences: Map<TeamKey, TeamAlertPreferences> =
-            favourites.associateWith { team -> preferences.getTeamAlertPreferences(team) }
+            teams.associateWith { team -> preferences.getTeamAlertPreferences(team) }
 
-        scheduler.reconcile(now, day, favourites) { team ->
+        scheduler.reconcile(now, day) { team ->
             alertPreferences[team] ?: TeamAlertPreferences()
         }
     }

@@ -41,7 +41,8 @@ interface AlertPoster {
  * twice - or a whole game's goals announced again after a restart - is the app being wrong about the score.
  * The claim is also what makes two workers racing on the same game harmless: only one of them wins it.
  *
- * A game that is finished, absent from the slate, or not followed produces nothing. A slate that could not be
+ * A game that is absent from the slate or not followed produces nothing, and a finished one produces at most its
+ * final-score alert and is never watched again. A slate that could not be
  * loaded produces nothing either, and says so through [Outcome.retryAfter] when the feed asked for a pause.
  */
 class GameWatchRun(
@@ -82,22 +83,21 @@ class GameWatchRun(
         }
 
         val playing = game ?: return Outcome(posted = 0, failed = failure != null, retryAfter = pauseAsked(failure))
-        if (playing.state is GameState.Final) return Outcome(posted = 0)
 
-        val followed = listOf(playing.home.key, playing.away.key).filter { it in preferences.getFavourites() }
-        if (followed.isEmpty()) return Outcome(posted = 0)
-
-        // Two favourites in one game is a real case: the start is announced if either asked for it, because the
-        // user asked for it on a team that is playing.
-        val perTeam = followed.map { preferences.getTeamAlertPreferences(it) }
-        val forAlert = TeamAlertPreferences(start = perTeam.any { it.start }, goals = perTeam.any { it.goals })
-        val alerts =
-            decider.decide(
-                playing,
-                preferences.getNotificationLedgerEntry(gameId),
-                forAlert,
-                isFavourite = true,
+        // Both teams are asked, favourite or not: an alert switched on for either team is a request about this game.
+        // The alert is wanted if either team asked for it, because the user asked on a team that is playing.
+        val perTeam = listOf(playing.home.key, playing.away.key).map { preferences.getTeamAlertPreferences(it) }
+        val forAlert =
+            TeamAlertPreferences(
+                start = perTeam.any { it.start },
+                goals = perTeam.any { it.goals },
+                intermission = perTeam.any { it.intermission },
+                final = perTeam.any { it.final },
+                upcoming = perTeam.any { it.upcoming },
             )
+        if (!forAlert.anyOn) return Outcome(posted = 0)
+
+        val alerts = decider.decide(playing, preferences.getNotificationLedgerEntry(gameId), forAlert, now)
 
         // Each alert is checked against its own channel before its claim is spent, so a silenced channel costs
         // nothing permanent; the game stays watched either way.
@@ -105,7 +105,8 @@ class GameWatchRun(
 
         // Keep following a game that has not finished - not only one the feed calls Live. A watch fires at the
         // scheduled start and the feed often still says Scheduled for the first minutes, so re-chaining only on
-        // Live would end the chain exactly when the goals begin.
+        // Live would end the chain exactly when the goals begin. A final ends the chain whatever happened above:
+        // the claim, not another pass, is what stops the alert repeating.
         if (playing.state !is GameState.Final) {
             val cadence =
                 PollPolicy.nextDelay(now, slateDate ?: today, today, listOf(playing)) ?: DEFAULT_IN_PROGRESS_DELAY
@@ -123,6 +124,7 @@ class GameWatchRun(
         when (alert) {
             is Alert.GameStart -> preferences.claimStart(gameId, alert.goalBaseline, now)
             is Alert.Goal -> preferences.claimGoal(gameId, alert.goalCount, now)
+            is Alert.Final -> preferences.claimFinal(gameId, now)
             is Alert.Baseline -> preferences.claimBaseline(gameId, alert.goalCount, now)
         }
 

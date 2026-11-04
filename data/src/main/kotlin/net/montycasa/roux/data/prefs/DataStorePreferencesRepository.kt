@@ -144,6 +144,13 @@ class DataStorePreferencesRepository(
         )
     }
 
+    override suspend fun anyTeamAlertsOn(): Boolean {
+        val preferences = readablePreferences() ?: return false
+        return preferences.asMap().any { (key, value) ->
+            value == true && key.name.startsWith("team_") && "_alerts_" in key.name
+        }
+    }
+
     override suspend fun setTeamAlertPreferences(
         team: TeamKey,
         preferences: TeamAlertPreferences,
