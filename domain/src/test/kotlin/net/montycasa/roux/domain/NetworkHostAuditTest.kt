@@ -20,7 +20,7 @@ class NetworkHostAuditTest {
      */
     private val sourceLinkPaths =
         mapOf(
-            "app/src/main/kotlin/net/montycasa/roux/ui/teams/AboutSection.kt" to "the About section links to the project",
+            "app/src/main/kotlin/net/montycasa/roux/ui/settings/AboutSection.kt" to "the About section links to the project",
             "data/src/main/kotlin/net/montycasa/roux/data/net/NhlHttpClientFactory.kt" to
                 "the User-Agent names the project; the header is sent, not fetched",
         )
@@ -179,7 +179,7 @@ class NetworkHostAuditTest {
     }
 
     private companion object {
-        const val SOURCE_LINK_ALLOWED_PATH = "app/src/main/kotlin/net/montycasa/roux/ui/teams/AboutSection.kt"
+        const val SOURCE_LINK_ALLOWED_PATH = "app/src/main/kotlin/net/montycasa/roux/ui/settings/AboutSection.kt"
 
         val URL_HOST = Regex("""https?://([A-Za-z0-9._-]+)""")
         val BARE_HOST = Regex("""(?<![\w.-])[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*(?:\.nhle\.com|\.montycasa\.net)(?![\w.-])""")

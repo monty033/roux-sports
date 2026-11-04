@@ -44,6 +44,8 @@ android {
 
     buildFeatures {
         compose = true
+        // The About section reads VERSION_NAME from BuildConfig so the screen cannot disagree with the APK.
+        buildConfig = true
     }
 
     signingConfigs {

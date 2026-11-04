@@ -10,8 +10,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
@@ -46,7 +48,14 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     Surface(modifier.fillMaxSize()) {
-        Column(Modifier.padding(16.dp)) {
+        // The About section makes the page longer than a small phone, so the whole page scrolls as one
+        // rather than the last section becoming unreachable.
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+        ) {
             TextButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.settings_back)) }
             Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.headlineMedium)
             Spacer(Modifier.height(24.dp))
@@ -76,6 +85,7 @@ fun SettingsScreen(
                     }
                 }
             }
+            AboutSection()
         }
     }
 }
