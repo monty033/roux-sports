@@ -11,8 +11,6 @@ import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.captureRoboImage
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
-import net.montycasa.roux.domain.model.ThemeMode
-import net.montycasa.roux.ui.settings.SettingsScreen
 import net.montycasa.roux.ui.teams.TeamAlerts
 import net.montycasa.roux.ui.teams.TeamsScreen
 import net.montycasa.roux.ui.teams.TeamsUiState
@@ -25,11 +23,12 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * The five-switch alert sheet, at the size of the phone it is used on.
+ * The alert sheet at the size of the phone it is used on, in the two states that have to be told apart.
  *
- * The matrix renders 320x470, where five switches with three headings cannot fit and the capture shows the sheet
- * mid-scroll - which looks like clipping whether or not anything is clipped. This records the whole sheet at 393x881
- * in both themes, so the thing Patrick judges is the thing his phone draws.
+ * The matrix renders 320x470, where the sheet's rows cannot all fit and the capture shows it mid-scroll - which looks
+ * like clipping whether or not anything is clipped. This records the whole sheet at 393x881, for every switch off
+ * (where the reminder's chosen answer is Off and must not wear the accent that means "on") and for a reminder set to
+ * 30 minutes with the other alerts on.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "w393dp-h881dp")
@@ -39,9 +38,10 @@ class TeamAlertsSheetScreenshotTest {
     val rule = createComposeRule()
 
     @Test
-    fun theFiveSwitchSheetInBothThemes() {
+    fun theSheetOffAndPartlyOnInBothThemes() {
         val row = TeamRef(TeamKey("ANA"), name = "Anaheim Ducks")
         val dark = mutableStateOf(false)
+        val alerts = mutableStateOf(TeamAlerts(team = row))
         rule.setContent {
             RouxTheme(dark = dark.value) {
                 Surface(color = MaterialTheme.colorScheme.background) {
@@ -52,13 +52,7 @@ class TeamAlertsSheetScreenshotTest {
                                     rows = listOf(row),
                                     favourites = setOf(row.key),
                                     isRefreshing = false,
-                                    alerts =
-                                        TeamAlerts(
-                                            team = row,
-                                            start = true,
-                                            goals = true,
-                                            intermission = true,
-                                        ),
+                                    alerts = alerts.value,
                                 ),
                             onToggle = {},
                             onRetry = {},
@@ -67,31 +61,27 @@ class TeamAlertsSheetScreenshotTest {
                 }
             }
         }
-        listOf(false, true).forEach { isDark ->
-            val theme = if (isDark) "dark" else "light"
-            rule.runOnIdle { dark.value = isDark }
-            rule.waitForIdle()
-            rule.onRoot().captureRoboImage("src/test/screenshots/matrix/team-alerts-sheet-$theme.png")
-        }
-    }
 
-    @Test
-    fun theLeadTimeSettingInBothThemes() {
-        // The matrix cannot show this either: at 320x470 only the first option is above the fold, so the choice the
-        // screen exists for looks like a single row. Recorded whole, at phone size, in both themes.
-        val dark = mutableStateOf(false)
-        rule.setContent {
-            RouxTheme(dark = dark.value) {
-                Surface(color = MaterialTheme.colorScheme.background) {
-                    SettingsScreen(mode = ThemeMode.System, onMode = {}, onBack = {}, leadMinutes = 30)
-                }
-            }
+        // Default: nothing is on, so "Off" is the chosen answer.
+        rule.waitForIdle()
+        rule.onRoot().captureRoboImage("src/test/screenshots/matrix/team-alerts-sheet-off-light.png")
+
+        rule.runOnIdle {
+            alerts.value =
+                TeamAlerts(
+                    team = row,
+                    start = true,
+                    goals = true,
+                    intermission = true,
+                    upcoming = true,
+                    leadMinutes = 30,
+                )
         }
-        listOf(false, true).forEach { isDark ->
-            val theme = if (isDark) "dark" else "light"
-            rule.runOnIdle { dark.value = isDark }
-            rule.waitForIdle()
-            rule.onRoot().captureRoboImage("src/test/screenshots/matrix/settings-lead-time-$theme.png")
-        }
+        rule.waitForIdle()
+        rule.onRoot().captureRoboImage("src/test/screenshots/matrix/team-alerts-sheet-light.png")
+
+        rule.runOnIdle { dark.value = true }
+        rule.waitForIdle()
+        rule.onRoot().captureRoboImage("src/test/screenshots/matrix/team-alerts-sheet-dark.png")
     }
 }

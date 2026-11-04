@@ -26,6 +26,7 @@ import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.domain.repo.PreferencesRepository
 import net.montycasa.roux.domain.repo.StandingsRepository
 import net.montycasa.roux.domain.repo.TeamAlertPreferences
+import net.montycasa.roux.domain.repo.UpcomingLead
 
 data class TeamsUiState(
     val rows: List<TeamRef> = emptyList(),
@@ -76,6 +77,8 @@ data class TeamAlerts(
     val intermission: Boolean = false,
     val final: Boolean = false,
     val upcoming: Boolean = false,
+    /** Minutes before puck drop the upcoming alert fires; only meaningful while [upcoming] is on. */
+    val leadMinutes: Int = UpcomingLead.DEFAULT,
     /** True when a toggle could not be saved, so the switch can snap back with an explanation. */
     val saveFailed: Boolean = false,
 ) {
@@ -247,10 +250,30 @@ class TeamsViewModel(
     fun setAlert(
         kind: AlertKind,
         on: Boolean,
+    ) = writeAlerts(optimistic = { it.withAlert(kind, on) }, apply = { it.withAlert(kind, on) })
+
+    /**
+     * The reminder answer: a lead time, or null for Off.
+     *
+     * Written down the same path as a switch, because it is the same setting - "whether" and "how early" are one
+     * question in the sheet, and storing them as two independent values is what let the UI ask it twice.
+     */
+    fun setReminder(minutes: Int?) = writeAlerts(optimistic = { it.withReminder(minutes) }, apply = { it.withReminder(minutes) })
+
+    /**
+     * The one way a sheet setting is saved.
+     *
+     * [optimistic] is what the sheet shows at once; [apply] is what the store is asked for. Both are given because the
+     * store copy is re-read inside the lock and only the one field changes - a sheet that wrote its whole snapshot
+     * back would undo a switch that changed elsewhere while it was open.
+     */
+    private fun writeAlerts(
+        optimistic: (TeamAlerts) -> TeamAlerts,
+        apply: (TeamAlertPreferences) -> TeamAlertPreferences,
     ) {
         val current = alertSheet.value ?: return
         if (current.busy) return
-        val shown = current.team.withAlert(kind, on).copy(saveFailed = false)
+        val shown = optimistic(current.team).copy(saveFailed = false)
         alertSheet.value = current.copy(team = shown, busy = true)
         viewModelScope.launch {
             alertWrites.withLock {
@@ -262,7 +285,7 @@ class TeamsViewModel(
                     alertSheet.update { it?.copy(team = current.team.copy(saveFailed = true), busy = false) }
                     return@withLock
                 }
-                val next = stored.withAlert(kind, on)
+                val next = apply(stored)
                 val saved = runCatching { preferences.setTeamAlertPreferences(key, next) }.isSuccess
                 if (saved) {
                     alertSheet.update { it?.copy(team = next.asAlerts(current.team.team), busy = false) }
@@ -332,7 +355,28 @@ private fun TeamAlertPreferences.asAlerts(team: TeamRef): TeamAlerts =
         intermission = intermission,
         final = final,
         upcoming = upcoming,
+        leadMinutes = upcomingLeadMinutes,
     )
+
+/**
+ * One answer, applied to both halves of the setting.
+ *
+ * Off leaves the lead time where it was: the reader who turns the reminder off and on again expects their 1 hour
+ * back, not the default.
+ */
+private fun TeamAlertPreferences.withReminder(minutes: Int?): TeamAlertPreferences =
+    if (minutes == null) {
+        copy(upcoming = false)
+    } else {
+        copy(upcoming = true, upcomingLeadMinutes = UpcomingLead.coerce(minutes))
+    }
+
+private fun TeamAlerts.withReminder(minutes: Int?): TeamAlerts =
+    if (minutes == null) {
+        copy(upcoming = false)
+    } else {
+        copy(upcoming = true, leadMinutes = UpcomingLead.coerce(minutes))
+    }
 
 private fun TeamAlerts.withAlert(
     kind: AlertKind,

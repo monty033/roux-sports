@@ -122,10 +122,6 @@ private class StubPreferences : PreferencesRepository {
 
     override suspend fun setThemeMode(mode: ThemeMode) = Unit
 
-    override suspend fun getUpcomingLeadMinutes() = 30
-
-    override suspend fun setUpcomingLeadMinutes(minutes: Int) = Unit
-
     override suspend fun getFavourites(): Set<TeamKey> = emptySet()
 
     override suspend fun setFavourites(teams: Set<TeamKey>) = Unit

@@ -76,22 +76,6 @@ class DataStorePreferencesRepository(
         }
     }
 
-    // A stored value outside the legal set reads as the default rather than being trusted: the file can hold anything a
-    // newer or older build, or a hand edit, left behind.
-    override suspend fun getUpcomingLeadMinutes(): Int = UpcomingLead.coerce(readablePreferences()?.get(UPCOMING_LEAD_MINUTES))
-
-    override fun observeUpcomingLeadMinutes(): Flow<Int> =
-        readablePreferencesFlow().map { UpcomingLead.coerce(it?.get(UPCOMING_LEAD_MINUTES)) }
-
-    override suspend fun setUpcomingLeadMinutes(minutes: Int) {
-        require(minutes in UpcomingLead.allowed) { "upcoming lead must be one of ${UpcomingLead.allowed} minutes" }
-        requireWritable()
-        store.edit { preferences ->
-            preferences[VERSION] = PREFERENCES_VERSION
-            preferences[UPCOMING_LEAD_MINUTES] = minutes
-        }
-    }
-
     override suspend fun getFavourites(): Set<TeamKey> {
         val preferences = readablePreferences() ?: return emptySet()
         return preferences[FAVOURITES].orEmpty().mapTo(mutableSetOf(), ::TeamKey)
@@ -141,6 +125,7 @@ class DataStorePreferencesRepository(
             intermission = preferences[intermissionKey(team)] ?: defaults.intermission,
             final = preferences[finalKey(team)] ?: defaults.final,
             upcoming = preferences[upcomingKey(team)] ?: defaults.upcoming,
+            upcomingLeadMinutes = UpcomingLead.coerce(preferences[upcomingLeadKey(team)]),
         )
     }
 
@@ -163,6 +148,9 @@ class DataStorePreferencesRepository(
             stored[intermissionKey(team)] = preferences.intermission
             stored[finalKey(team)] = preferences.final
             stored[upcomingKey(team)] = preferences.upcoming
+            // Coerced on the way in as well as out: a value the alert has no meaning for is never written, so the
+            // stored file cannot disagree with what the sheet shows.
+            stored[upcomingLeadKey(team)] = UpcomingLead.coerce(preferences.upcomingLeadMinutes)
         }
     }
 
@@ -503,6 +491,8 @@ class DataStorePreferencesRepository(
 
     private fun upcomingKey(team: TeamKey) = booleanPreferencesKey("team_${team.abbrev}_alerts_upcoming")
 
+    private fun upcomingLeadKey(team: TeamKey) = intPreferencesKey("team_${team.abbrev}_alerts_upcoming_lead")
+
     private fun finalNotifiedKey(gameId: String) = booleanPreferencesKey(FINAL_NOTIFIED_PREFIX + requireUsableGameId(gameId))
 
     private fun intermissionNotifiedKey(gameId: String) = intPreferencesKey(INTERMISSION_NOTIFIED_PREFIX + requireUsableGameId(gameId))
@@ -534,7 +524,6 @@ class DataStorePreferencesRepository(
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val LEAGUE_ORDER = stringPreferencesKey("league_order")
         val FAVOURITES_ONLY = booleanPreferencesKey("favourites_only")
-        val UPCOMING_LEAD_MINUTES = intPreferencesKey("upcoming_lead_minutes")
     }
 }
 

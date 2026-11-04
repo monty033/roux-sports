@@ -97,18 +97,6 @@ class ScreenshotMatrixTest {
                     failures += failure
                 }
                 captured++
-                // The lead-time rows sit below the fold on the audit viewport; their own image is where the
-                // selected row can actually be read.
-                if (screen.name.startsWith("settings")) {
-                    val selected = if (screen.name == "settings.lead60") 60 else 30
-                    rule.onNodeWithTag("settings.lead.$selected").performScrollTo()
-                    rule.waitForIdle()
-                    try {
-                        rule.onRoot().captureRoboImage("src/test/screenshots/matrix/$file-lead.png")
-                    } catch (failure: AssertionError) {
-                        failures += failure
-                    }
-                }
                 // The sheet scrolls too: the bottom image is where the last two switches and the pinned Done
                 // are compared with the top image's first three.
                 if (screen.name.startsWith("teams.alerts")) {

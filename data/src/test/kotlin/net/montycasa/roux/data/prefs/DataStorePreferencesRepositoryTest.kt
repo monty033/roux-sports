@@ -527,7 +527,7 @@ class DataStorePreferencesRepositoryTest {
                 listOf(
                     { repository.setFavourites(setOf(TeamKey("MTL"))) },
                     { repository.setFavouritesOnly(false) },
-                    { repository.setUpcomingLeadMinutes(60) },
+                    { repository.setTeamAlertPreferences(TeamKey("MTL"), TeamAlertPreferences(upcomingLeadMinutes = 60)) },
                     { repository.setLeagueOrder(listOf("mlb", "nhl", "nfl")) },
                     { repository.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(start = false, goals = false)) },
                     {
@@ -1173,11 +1173,12 @@ class DataStorePreferencesRepositoryTest {
         }
 
     @Test
-    fun theUpcomingLeadDefaultsToThirtyMinutes() =
+    fun aTeamsUpcomingLeadDefaultsToThirtyMinutes() =
         runTest {
             val scope = newScope()
             try {
-                assertEquals(30, DataStorePreferencesRepository(newDirectory(), scope).getUpcomingLeadMinutes())
+                val repository = DataStorePreferencesRepository(newDirectory(), scope)
+                assertEquals(30, repository.getTeamAlertPreferences(TeamKey("TOR")).upcomingLeadMinutes)
             } finally {
                 closeScope(scope)
             }
@@ -1189,12 +1190,17 @@ class DataStorePreferencesRepositoryTest {
             for (minutes in listOf(15, 30, 60)) {
                 val directory = newDirectory()
                 val writerScope = newScope()
-                DataStorePreferencesRepository(directory, writerScope).setUpcomingLeadMinutes(minutes)
+                DataStorePreferencesRepository(directory, writerScope)
+                    .setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(upcoming = true, upcomingLeadMinutes = minutes))
                 closeScope(writerScope)
 
                 val readerScope = newScope()
                 try {
-                    assertEquals(minutes, openWhenReleased(directory, readerScope).getUpcomingLeadMinutes())
+                    assertEquals(
+                        "a stored $minutes must read back as $minutes",
+                        minutes,
+                        openWhenReleased(directory, readerScope).getTeamAlertPreferences(TeamKey("TOR")).upcomingLeadMinutes,
+                    )
                 } finally {
                     closeScope(readerScope)
                 }
@@ -1202,13 +1208,28 @@ class DataStorePreferencesRepositoryTest {
         }
 
     @Test
-    fun aStoredUpcomingLeadThatIsNotLegalReadsAsThirty() =
+    fun oneTeamsLeadIsNotAnotherTeamsLead() =
+        runTest {
+            val scope = newScope()
+            try {
+                val repository = DataStorePreferencesRepository(newDirectory(), scope)
+                repository.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(upcomingLeadMinutes = 60))
+
+                assertEquals("the team that was written", 60, repository.getTeamAlertPreferences(TeamKey("TOR")).upcomingLeadMinutes)
+                assertEquals("a team that was not", 30, repository.getTeamAlertPreferences(TeamKey("MTL")).upcomingLeadMinutes)
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test
+    fun aStoredLeadThatIsNotLegalReadsAsThirty() =
         runTest {
             for (illegal in listOf(45, 0, -15, 90)) {
                 val directory = newDirectory()
                 val rawScope = newScope()
                 try {
-                    openRawStore(directory, rawScope).edit { it[intPreferencesKey("upcoming_lead_minutes")] = illegal }
+                    openRawStore(directory, rawScope).edit { it[intPreferencesKey("team_TOR_alerts_upcoming_lead")] = illegal }
                 } finally {
                     closeScope(rawScope)
                 }
@@ -1216,8 +1237,11 @@ class DataStorePreferencesRepositoryTest {
                 val scope = newScope()
                 try {
                     val repository = openWhenReleased(directory, scope)
-                    assertEquals("a stored $illegal is not a legal lead", 30, repository.getUpcomingLeadMinutes())
-                    assertEquals("the flow must agree with the one-shot read", 30, repository.observeUpcomingLeadMinutes().first())
+                    assertEquals(
+                        "a stored $illegal is not a legal lead",
+                        30,
+                        repository.getTeamAlertPreferences(TeamKey("TOR")).upcomingLeadMinutes,
+                    )
                 } finally {
                     closeScope(scope)
                 }
@@ -1225,32 +1249,27 @@ class DataStorePreferencesRepositoryTest {
         }
 
     @Test
-    fun anIllegalUpcomingLeadIsRejectedAndNothingIsStored() =
+    fun anIllegalLeadIsCoercedOnTheWayInRatherThanStored() =
         runTest {
+            val directory = newDirectory()
             val scope = newScope()
             try {
-                val repository = DataStorePreferencesRepository(newDirectory(), scope)
-                assertThrows(IllegalArgumentException::class.java) { runBlocking { repository.setUpcomingLeadMinutes(45) } }
-                assertEquals(30, repository.getUpcomingLeadMinutes())
+                val repository = DataStorePreferencesRepository(directory, scope)
+                repository.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(upcomingLeadMinutes = 45))
+
+                assertEquals("the read", 30, repository.getTeamAlertPreferences(TeamKey("TOR")).upcomingLeadMinutes)
             } finally {
                 closeScope(scope)
             }
-        }
 
-    @Test
-    fun observingTheUpcomingLeadEmitsWhatIsStoredAndThenTheChange() =
-        runTest {
-            val scope = newScope()
+            // The file itself must agree, and only one DataStore may hold it: a stored 45 would read back as 30 anyway,
+            // but it would still be a number the alert has no meaning for sitting in the user's data.
+            val rawScope = newScope()
             try {
-                val repository = DataStorePreferencesRepository(newDirectory(), scope)
-                repository.observeUpcomingLeadMinutes().test {
-                    assertEquals(30, awaitItem())
-                    repository.setUpcomingLeadMinutes(60)
-                    assertEquals(60, awaitItem())
-                    cancelAndIgnoreRemainingEvents()
-                }
+                val raw = openRawStore(directory, rawScope).data.first()
+                assertEquals("the stored value", 30, raw[intPreferencesKey("team_TOR_alerts_upcoming_lead")])
             } finally {
-                closeScope(scope)
+                closeScope(rawScope)
             }
         }
 

@@ -488,10 +488,6 @@ private class FakePreferences(
 
     override suspend fun setThemeMode(mode: ThemeMode) = Unit
 
-    override suspend fun getUpcomingLeadMinutes() = 30
-
-    override suspend fun setUpcomingLeadMinutes(minutes: Int) = Unit
-
     var reads = 0
     val writes = mutableListOf<Set<TeamKey>>()
     var beforeRead: suspend () -> Unit = {}

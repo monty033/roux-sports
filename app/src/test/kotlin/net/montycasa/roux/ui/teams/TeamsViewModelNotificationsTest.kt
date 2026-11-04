@@ -66,6 +66,7 @@ class TeamsViewModelNotificationsTest {
         var intermission: Boolean = false,
         var final: Boolean = false,
         var upcoming: Boolean = false,
+        var upcomingLeadMinutes: Int = net.montycasa.roux.domain.repo.UpcomingLead.DEFAULT,
         private val writable: Boolean = true,
         private val readGate: CompletableDeferred<Unit>? = null,
         /** Limits the saved answer to one club, so "every team" and "this team" cannot be confused. */
@@ -74,10 +75,6 @@ class TeamsViewModelNotificationsTest {
         override suspend fun getThemeMode() = ThemeMode.System
 
         override suspend fun setThemeMode(mode: ThemeMode) = Unit
-
-        override suspend fun getUpcomingLeadMinutes() = 30
-
-        override suspend fun setUpcomingLeadMinutes(minutes: Int) = Unit
 
         val writes = CopyOnWriteArrayList<Pair<TeamKey, TeamAlertPreferences>>()
 
@@ -104,6 +101,7 @@ class TeamsViewModelNotificationsTest {
                 intermission = intermission,
                 final = final,
                 upcoming = upcoming,
+                upcomingLeadMinutes = upcomingLeadMinutes,
             )
         }
 
@@ -118,6 +116,7 @@ class TeamsViewModelNotificationsTest {
             intermission = preferences.intermission
             final = preferences.final
             upcoming = preferences.upcoming
+            upcomingLeadMinutes = preferences.upcomingLeadMinutes
         }
 
         override suspend fun getNotificationLedgerEntry(gameId: String) = null
@@ -315,6 +314,51 @@ class TeamsViewModelNotificationsTest {
                             upcoming = false,
                         ),
                 ),
+                preferences.writes,
+            )
+        }
+
+    @Test
+    fun choosingATimeTurnsTheReminderOnAndSavesThatTime() =
+        runTest {
+            // The sheet asks one question, so one answer has to set both halves: the alert and how early it comes.
+            val preferences = FakePreferences(start = true, upcoming = false)
+            val viewModel = viewModel(preferences)
+            observe(viewModel)
+
+            viewModel.openAlerts(toronto)
+            advanceUntilIdle()
+            viewModel.setReminder(60)
+            advanceUntilIdle()
+
+            assertEquals(
+                listOf(
+                    TeamKey("TOR") to
+                        TeamAlertPreferences(
+                            start = true,
+                            upcoming = true,
+                            upcomingLeadMinutes = 60,
+                        ),
+                ),
+                preferences.writes,
+            )
+        }
+
+    @Test
+    fun choosingOffTurnsTheReminderOffAndKeepsTheTimeForNextTime() =
+        runTest {
+            // Off is not a reset: someone who turns the reminder off and on again expects their hour back.
+            val preferences = FakePreferences(upcoming = true, upcomingLeadMinutes = 60)
+            val viewModel = viewModel(preferences)
+            observe(viewModel)
+
+            viewModel.openAlerts(toronto)
+            advanceUntilIdle()
+            viewModel.setReminder(null)
+            advanceUntilIdle()
+
+            assertEquals(
+                listOf(TeamKey("TOR") to TeamAlertPreferences(upcoming = false, upcomingLeadMinutes = 60)),
                 preferences.writes,
             )
         }

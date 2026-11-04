@@ -536,10 +536,6 @@ private class DrawerPreferences(
 
     override suspend fun setThemeMode(mode: ThemeMode) = Unit
 
-    override suspend fun getUpcomingLeadMinutes() = 30
-
-    override suspend fun setUpcomingLeadMinutes(minutes: Int) = Unit
-
     val writes = mutableListOf<List<String>>()
 
     override suspend fun getLeagueOrder(): List<String> = order

@@ -367,11 +367,6 @@ internal object AuditStates {
                 net.montycasa.roux.ui.settings
                     .SettingsScreen(ThemeMode.System, {}, {})
             },
-            // The default is 30; one alternative proves the selected row moves with the stored value.
-            ContentCase("settings.lead60") {
-                net.montycasa.roux.ui.settings
-                    .SettingsScreen(ThemeMode.System, {}, {}, leadMinutes = 60)
-            },
             // Scores cases include the centred, actionable date shelf in both themes.
             ContentCase("scores.data") { ScoresScreen(scoresData, {}, {}, {}) },
             ContentCase("scores.empty") { ScoresScreen(scoresFresh, {}, {}, {}) },
@@ -412,6 +407,7 @@ internal object AuditStates {
                                 intermission = true,
                                 final = true,
                                 upcoming = true,
+                                leadMinutes = 30,
                             ),
                         alerting = setOf(teams.first().key),
                     ),
