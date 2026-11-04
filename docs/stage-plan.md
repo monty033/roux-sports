@@ -1686,7 +1686,7 @@ STEP S10.3: Network-host source audit (A9)
 - Files: test only
 - Depends on: S8.7
 - Acceptance test (file + assertion): `domT/NetworkHostAuditTest.kt`:
-  - URL hosts found anywhere under `*/src/main` are a subset of {api-web.nhle.com, assets.nhle.com}
+  - URL hosts found anywhere under `*/src/main` are a subset of {api-web.nhle.com, assets.nhle.com, api.nhle.com}; `api.nhle.com` was authorized on 2026-11-03 for league-relative team statistics.
   - `git.montycasa.net` is allowed only in `appM/ui/teams/AboutSection.kt`
   - a sample containing `https://example.com` is flagged
 - Risk class: none

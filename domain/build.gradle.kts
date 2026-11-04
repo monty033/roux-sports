@@ -1,3 +1,6 @@
+import org.gradle.api.tasks.PathSensitivity
+import java.io.File
+
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.android.lint)
@@ -63,4 +66,16 @@ tasks.check {
 
 tasks.withType<Test>().configureEach {
     systemProperty("roux.rootDir", rootDir.absolutePath)
+    // NetworkHostAuditTest reads every module's src/main at runtime, which is invisible to this task's declared
+    // inputs: without these, Gradle would report the test UP-TO-DATE and a new host could land with a green run.
+    inputs
+        .files(
+            rootDir
+                .listFiles()
+                .orEmpty()
+                .filter { it.isDirectory }
+                .map { File(it, "src/main") }
+                .filter { it.isDirectory },
+        ).withPropertyName("auditedMainSources")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
 }

@@ -7,11 +7,9 @@ telemetry.
 
 Kotlin and Jetpack Compose. GPL-3.0-or-later.
 
-**Current state: Stage 0 of 11 — the skeleton.** The app builds, installs and launches, and
-shows its own name on a blank screen. None of the screens described above exist yet. What
-Stage 0 does establish is the pipeline: the module split, the boundary and dependency gates,
-the device-size test harness, and the render baseline that the real screens will be checked
-against.
+**Current state: Stage 10 of 11 — release readiness.** Scores, standings, teams, team detail (schedule, players,
+league-relative team stats), player detail, game detail and team alerts are all built and on `main`. What remains is
+the release itself: the About screen, and publishing a signed 1.0.0.
 
 ## Building
 
@@ -115,6 +113,28 @@ no value once the diff is visible; the reasoning is the part that is lost otherw
 See [docs/device-testing.md](docs/device-testing.md) for getting an APK onto a physical
 device, and [docs/device-checklist.md](docs/device-checklist.md) for what to check on one
 at each stage.
+
+## Release
+
+Releases are published on Forgejo releases and nowhere else.
+
+To build a release, use `scripts/build-release.sh` (arrives with the release). It runs the gate, `assembleRelease`, `check-release-apk.sh`, `apksigner verify`, and writes `app/build/dist/roux-sports-1.0.0.apk` plus its `.sha256`.
+
+Signing uses a `keystore.properties` file (gitignored, never committed) in the project root:
+
+```
+storeFile=...
+storePassword=...
+keyAlias=...
+keyPassword=...
+```
+
+Verify a download with:
+
+```
+sha256sum -c roux-sports-1.0.0.apk.sha256
+apksigner verify --print-certs roux-sports-1.0.0.apk
+```
 
 ## License
 
