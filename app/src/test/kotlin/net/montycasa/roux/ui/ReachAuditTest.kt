@@ -268,7 +268,17 @@ class ReachAuditTest {
                 listOf("teams.alerts.done"),
                 {
                     TeamsScreen(
-                        teamsList.copy(alerts = TeamAlerts(teams.first(), start = true, goals = false)),
+                        teamsList.copy(
+                            alerts =
+                                TeamAlerts(
+                                    teams.first(),
+                                    start = true,
+                                    goals = true,
+                                    intermission = true,
+                                    final = true,
+                                    upcoming = true,
+                                ),
+                        ),
                         {},
                         {},
                     )

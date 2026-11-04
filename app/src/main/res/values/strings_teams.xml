@@ -17,15 +17,21 @@
     <string name="teams_alerts_open">Alerts for %1$s, %2$s</string>
     <string name="teams_alerts_on">on</string>
     <string name="teams_alerts_off">off</string>
+    <string name="teams_alerts_group_before">Before the game</string>
+    <string name="teams_alerts_group_during">During the game</string>
+    <string name="teams_alerts_group_after">After the game</string>
+    <string name="teams_alerts_upcoming">Upcoming</string>
     <string name="teams_alerts_start">Game start</string>
     <string name="teams_alerts_goals">Goals</string>
-    <string name="teams_alerts_disclosure">Starting a game and every goal, built on your phone from the score feed. No account, no tracking, and nothing sent anywhere.</string>
+    <string name="teams_alerts_intermission">Intermissions</string>
+    <string name="teams_alerts_final">Final score</string>
+    <string name="teams_alerts_disclosure">Upcoming games, game start, goals, intermissions and final scores, built on your phone from the score feed. No account, no tracking, and nothing sent anywhere.</string>
     <string name="teams_alerts_blocked">Notifications are off for Roux Sports, so these switches can\'t take effect yet.</string>
     <string name="teams_alerts_open_settings">Open notification settings</string>
     <string name="teams_alerts_save_failed">Couldn\'t save that change. Try again.</string>
     <string name="teams_alerts_done">Done</string>
     <string name="teams_alerts_prompt_title">Notifications are off</string>
-    <string name="teams_alerts_prompt_body">Turn them on to be told when a followed team starts a game and when it scores.</string>
+    <string name="teams_alerts_prompt_body">Turn them on to be told when a followed team is about to play, starts, scores, reaches an intermission or finishes.</string>
     <string name="teams_alerts_prompt_enable">Turn on</string>
     <string name="teams_alerts_prompt_later">Not now</string>
 </resources>

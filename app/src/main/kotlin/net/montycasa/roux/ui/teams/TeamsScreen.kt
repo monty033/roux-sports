@@ -78,8 +78,8 @@ fun TeamsScreen(
     onTeamClick: (TeamKey) -> Unit = {},
     onOpenAlerts: (TeamRef) -> Unit = {},
     onCloseAlerts: () -> Unit = {},
-    onSetStartAlert: (Boolean) -> Unit = {},
-    onSetGoalAlert: (Boolean) -> Unit = {},
+    /** One entry point for all five switches, so the permission path is not copied per alert. */
+    onSetAlert: (AlertKind, Boolean) -> Unit = { _, _ -> },
     /** Whether the runtime permission has been granted. Missing, a tap asks for it rather than greying out. */
     permissionGranted: Boolean = true,
     /** Whether the app's notifications are on at all. Off, nothing can help but the system settings screen. */
@@ -277,8 +277,7 @@ fun TeamsScreen(
                 onEnableNotifications = onEnableNotifications,
                 onDismissPrompt = onDismissPrompt,
                 onDismiss = onCloseAlerts,
-                onSetStart = onSetStartAlert,
-                onSetGoals = onSetGoalAlert,
+                onSetAlert = onSetAlert,
                 onOpenSystemSettings = onOpenNotificationSettings,
             )
         }

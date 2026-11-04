@@ -519,12 +519,18 @@ private class FakePreferences(
 
     override suspend fun setFavouritesOnly(enabled: Boolean) = Unit
 
-    override suspend fun getTeamAlertPreferences(team: TeamKey): TeamAlertPreferences = TeamAlertPreferences()
+    var alertPreferences = TeamAlertPreferences()
+    val alertWrites = mutableListOf<Pair<TeamKey, TeamAlertPreferences>>()
+
+    override suspend fun getTeamAlertPreferences(team: TeamKey): TeamAlertPreferences = alertPreferences
 
     override suspend fun setTeamAlertPreferences(
         team: TeamKey,
         preferences: TeamAlertPreferences,
-    ) = Unit
+    ) {
+        alertWrites += team to preferences
+        alertPreferences = preferences
+    }
 
     override suspend fun getNotificationLedgerEntry(gameId: String): NotificationLedgerEntry? = null
 

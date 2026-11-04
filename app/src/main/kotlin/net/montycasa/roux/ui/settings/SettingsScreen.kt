@@ -22,11 +22,13 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import net.montycasa.roux.R
 import net.montycasa.roux.domain.model.ThemeMode
+import net.montycasa.roux.domain.repo.UpcomingLead
 import net.montycasa.roux.ui.reach.reachTarget
 
 /** Platform interpretation belongs in UI, never in the saved preference. */
@@ -46,6 +48,9 @@ fun SettingsScreen(
     onMode: (ThemeMode) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    /** The stored lead, already coerced by the repository that read it. */
+    leadMinutes: Int = UpcomingLead.DEFAULT,
+    onLeadMinutes: (Int) -> Unit = {},
 ) {
     Surface(modifier.fillMaxSize()) {
         // The About section makes the page longer than a small phone, so the whole page scrolls as one
@@ -82,6 +87,46 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.bodyLarge,
                         )
                         RadioButton(selected = mode == choice, onClick = null)
+                    }
+                }
+            }
+            Spacer(Modifier.height(24.dp))
+            Text(stringResource(R.string.settings_lead_title), style = MaterialTheme.typography.titleMedium)
+            Text(
+                stringResource(R.string.settings_lead_explainer),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            Spacer(Modifier.height(8.dp))
+            // The allowed set is the domain's, not a list copied here: a free number would be a fourth state the
+            // alert has no meaning for, and a stored value outside the set has already read as the default.
+            Column(Modifier.selectableGroup()) {
+                UpcomingLead.allowed.forEach { minutes ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 56.dp)
+                            .selectable(
+                                selected = leadMinutes == minutes,
+                                role = Role.RadioButton,
+                                onClick = { onLeadMinutes(minutes) },
+                            ).reachTarget("settings.lead.$minutes")
+                            .testTag("settings.lead.$minutes"),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            stringResource(
+                                when (minutes) {
+                                    15 -> R.string.settings_lead_15
+                                    30 -> R.string.settings_lead_30
+                                    else -> R.string.settings_lead_60
+                                },
+                            ),
+                            Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                        RadioButton(selected = leadMinutes == minutes, onClick = null)
                     }
                 }
             }
