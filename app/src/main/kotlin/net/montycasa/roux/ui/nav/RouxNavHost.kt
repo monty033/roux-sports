@@ -98,7 +98,6 @@ import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.domain.model.ThemeMode
-import net.montycasa.roux.domain.repo.UpcomingLead
 import net.montycasa.roux.notify.GameWatchReconciler
 import net.montycasa.roux.notify.WorkManagerGameWatchScheduler
 import net.montycasa.roux.notify.hasNotificationPermission
@@ -375,15 +374,10 @@ fun RouxNavHost(
                     composable("settings") {
                         val mode by remember(container.preferences) { container.preferences.observeThemeMode() }
                             .collectAsStateWithLifecycle(initialValue = ThemeMode.System)
-                        val leadMinutes by remember(container.preferences) { container.preferences.observeUpcomingLeadMinutes() }
-                            .collectAsStateWithLifecycle(initialValue = UpcomingLead.DEFAULT)
                         net.montycasa.roux.ui.settings.SettingsScreen(
                             mode = mode,
                             onMode = { mode -> scope.launch { container.preferences.setThemeMode(mode) } },
                             onBack = { navController.popBackStack() },
-                            // The stored value is coerced by the repository's flow; the screen only offers choices.
-                            leadMinutes = leadMinutes,
-                            onLeadMinutes = { minutes -> scope.launch { container.preferences.setUpcomingLeadMinutes(minutes) } },
                         )
                     }
                     composable(HOME_ROUTE) {
@@ -591,6 +585,7 @@ private fun TeamsDestination(onTeamClick: (TeamKey) -> Unit) {
         // One wrapper for all five switches: every switch asks for the permission the same way, and the write
         // runs only once it is granted.
         onSetAlert = { kind, enabled -> withPermission { teams.setAlert(kind, enabled) } },
+        onSetReminder = { minutes -> withPermission { teams.setReminder(minutes) } },
         permissionGranted = permissionGranted,
         notificationsEnabled = notificationsEnabled,
         onOpenNotificationSettings = { openNotificationSettings(appContext) },

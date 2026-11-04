@@ -7,11 +7,6 @@
     <string name="theme_system">System</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
-    <string name="settings_lead_title">Before the game</string>
-    <string name="settings_lead_explainer">How early the upcoming-game alert arrives.</string>
-    <string name="settings_lead_15">15 minutes</string>
-    <string name="settings_lead_30">30 minutes</string>
-    <string name="settings_lead_60">1 hour</string>
     <string name="settings_back">Back</string>
     <string name="settings_about">About</string>
     <string name="settings_about_version">Roux Sports %1$s</string>

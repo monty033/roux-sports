@@ -2,18 +2,26 @@
 
 package net.montycasa.roux.ui.teams
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -31,8 +39,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import net.montycasa.roux.R
+import net.montycasa.roux.domain.repo.UpcomingLead
 import net.montycasa.roux.ui.reach.Reach
 import net.montycasa.roux.ui.reach.listRow
 import net.montycasa.roux.ui.reach.primaryControl
@@ -80,6 +91,14 @@ private val SHEET_ROW_GAP = 8.dp
 /** Air above a group heading, which is what separates one run of switches from the next. */
 private val SHEET_GROUP_GAP = 12.dp
 
+/** The fill of a chosen "Off": a raised neutral, never the accent that means "on" everywhere else. */
+internal val SHEET_OFF_FILL = Color(0xFF3A3A40)
+
+/** The hairline above a group heading: structure, not decoration - it says a new run of rows starts here. */
+internal val SHEET_RULE = Color(0xFF3A3A40)
+
+private val SEGMENT_SHAPE = RoundedCornerShape(10.dp)
+
 /** How much of the window the scrim dims at full height; the same value the menu uses. */
 private const val SCRIM_ALPHA = 0.55f
 
@@ -106,6 +125,13 @@ fun TeamAlertsSheet(
     onDismiss: () -> Unit,
     /** Every switch writes through here, so the permission path and the write path exist once. */
     onSetAlert: (AlertKind, Boolean) -> Unit,
+    /**
+     * The reminder answer: a lead time in minutes, or null for "Off".
+     *
+     * One callback for both halves of the question because the sheet asks it once - a switch and a separate lead
+     * value would be two controls for one decision, and the reader cannot tell which one owns it.
+     */
+    onSetReminder: (Int?) -> Unit,
     onOpenSystemSettings: () -> Unit,
     /** True when notifications cannot arrive and the user has not already declined the question. */
     showPrompt: Boolean = false,
@@ -155,27 +181,30 @@ fun TeamAlertsSheet(
                     PromptBlock(onEnable = onEnableNotifications, onDismissPrompt = onDismissPrompt)
                 } else {
                     AlertGroup(stringResource(R.string.teams_alerts_group_before), "teams.alerts.group.before")
-                    AlertSwitch(
-                        kind = AlertKind.Upcoming,
-                        label = stringResource(R.string.teams_alerts_upcoming),
-                        checked = alerts.upcoming,
+                    ReminderBlock(
+                        alerts = alerts,
                         enabled = canNotify && !busy,
-                        tag = "teams.alerts.upcoming",
-                        onSetAlert = onSetAlert,
+                        onSetReminder = onSetReminder,
                     )
+
+                    AlertGroup(stringResource(R.string.teams_alerts_group_during), "teams.alerts.group.during")
+                    // First row of "during", because that is when it fires: the puck drops and the game is under way.
+                    // Before-the-game holds only the reminder, which is the one alert that arrives ahead of time.
                     AlertSwitch(
                         kind = AlertKind.Start,
                         label = stringResource(R.string.teams_alerts_start),
+                        whenText = stringResource(R.string.teams_alerts_start_when),
                         checked = alerts.start,
                         enabled = canNotify && !busy,
                         tag = "teams.alerts.start",
                         onSetAlert = onSetAlert,
                     )
-
-                    AlertGroup(stringResource(R.string.teams_alerts_group_during), "teams.alerts.group.during")
                     AlertSwitch(
                         kind = AlertKind.Goals,
                         label = stringResource(R.string.teams_alerts_goals),
+                        // Both teams' goals, which is what the decider counts: the name of the followed team
+                        // here would promise a filter the alert does not apply.
+                        whenText = stringResource(R.string.teams_alerts_goals_when),
                         checked = alerts.goals,
                         enabled = canNotify && !busy,
                         tag = "teams.alerts.goals",
@@ -184,6 +213,7 @@ fun TeamAlertsSheet(
                     AlertSwitch(
                         kind = AlertKind.Intermission,
                         label = stringResource(R.string.teams_alerts_intermission),
+                        whenText = stringResource(R.string.teams_alerts_intermission_when),
                         checked = alerts.intermission,
                         enabled = canNotify && !busy,
                         tag = "teams.alerts.intermission",
@@ -194,6 +224,7 @@ fun TeamAlertsSheet(
                     AlertSwitch(
                         kind = AlertKind.Final,
                         label = stringResource(R.string.teams_alerts_final),
+                        whenText = stringResource(R.string.teams_alerts_final_when),
                         checked = alerts.final,
                         enabled = canNotify && !busy,
                         tag = "teams.alerts.final",
@@ -262,18 +293,135 @@ fun TeamAlertsSheet(
     }
 }
 
-/** A quiet label above a run of switches; it is a heading, not another control. */
+/**
+ * The one row that asks whether and when at once: a name, the answer spelled out, and four answers across the width.
+ *
+ * "Off" is an answer rather than a switch, so nothing in the sheet looks like a second alert; and the second line
+ * restates the choice in words ("One alert, 30 min before each game"), so "1 hour" cannot be read as "every hour".
+ */
+@Composable
+private fun ReminderBlock(
+    alerts: TeamAlerts,
+    enabled: Boolean,
+    onSetReminder: (Int?) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().padding(top = 4.dp).testTag("teams.alerts.reminder")) {
+        Text(
+            stringResource(R.string.teams_alerts_reminder),
+            style = MaterialTheme.typography.bodyLarge,
+            color = SHEET_INK,
+        )
+        Text(
+            if (alerts.upcoming) {
+                stringResource(R.string.teams_alerts_reminder_summary, leadLabel(alerts.leadMinutes))
+            } else {
+                stringResource(R.string.teams_alerts_reminder_off_summary)
+            },
+            Modifier.padding(top = 2.dp, bottom = 8.dp).testTag("teams.alerts.reminder.summary"),
+            style = MaterialTheme.typography.bodySmall,
+            color = SHEET_MUTED,
+        )
+        Row(
+            Modifier.fillMaxWidth().selectableGroup(),
+            horizontalArrangement = Arrangement.spacedBy(Reach.MIN_TARGET_GAP_DP.dp),
+        ) {
+            ReminderSegment(
+                label = stringResource(R.string.teams_alerts_reminder_off),
+                selected = !alerts.upcoming,
+                accentWhenSelected = false,
+                enabled = enabled,
+                tag = "teams.alerts.reminder.off",
+                onClick = { onSetReminder(null) },
+            )
+            UpcomingLead.allowed.forEach { minutes ->
+                ReminderSegment(
+                    label = leadLabel(minutes),
+                    selected = alerts.upcoming && alerts.leadMinutes == minutes,
+                    accentWhenSelected = true,
+                    enabled = enabled,
+                    tag = "teams.alerts.reminder.$minutes",
+                    onClick = { onSetReminder(minutes) },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * One answer of the reminder.
+ *
+ * A chosen time fills with the accent; Off fills neutral. Orange is this app's "on", and a default Off wearing it
+ * would read as "reminders are on" from across the room.
+ */
+@Composable
+private fun RowScope.ReminderSegment(
+    label: String,
+    selected: Boolean,
+    accentWhenSelected: Boolean,
+    enabled: Boolean,
+    tag: String,
+    onClick: () -> Unit,
+) {
+    val fill =
+        when {
+            !selected -> Color.Transparent
+            accentWhenSelected -> SHEET_ACCENT
+            else -> SHEET_OFF_FILL
+        }
+    Box(
+        Modifier
+            .weight(1f)
+            .heightIn(min = Reach.MIN_TARGET_DP.dp)
+            .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
+            .background(fill, SEGMENT_SHAPE)
+            .border(BorderStroke(1.dp, if (selected) fill else SHEET_MUTED), SEGMENT_SHAPE)
+            .testTag(tag),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            Modifier.padding(horizontal = 4.dp),
+            style = MaterialTheme.typography.labelLarge,
+            // On the accent the text is the panel's near-black (7:1); white there would be 3.3:1.
+            color = if (selected && accentWhenSelected) SHEET_PANEL else SHEET_INK,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+/** The lead as a sentence says it: "15 min", "30 min", "1 hour". */
+@Composable
+private fun leadLabel(minutes: Int): String =
+    stringResource(
+        when (minutes) {
+            15 -> R.string.teams_alerts_reminder_15
+            30 -> R.string.teams_alerts_reminder_30
+            else -> R.string.teams_alerts_reminder_60
+        },
+    )
+
+/**
+ * A heading above a run of rows.
+ *
+ * Three things separate it from a row label, and all three are needed: a hairline above it starts the run, capitals
+ * and letter spacing make it read as a label rather than a sentence, and the muted colour keeps it quieter than the
+ * rows it introduces. A heading that is only "a smaller grey line" is what made these read as rows in the first place.
+ */
 @Composable
 private fun AlertGroup(
     label: String,
     tag: String,
 ) {
-    Text(
-        label,
-        Modifier.fillMaxWidth().padding(top = SHEET_GROUP_GAP).testTag(tag),
-        style = MaterialTheme.typography.labelMedium,
-        color = SHEET_MUTED,
-    )
+    Column(Modifier.fillMaxWidth().padding(top = SHEET_GROUP_GAP).testTag(tag)) {
+        Box(Modifier.fillMaxWidth().height(1.dp).background(SHEET_RULE))
+        Text(
+            label.uppercase(),
+            Modifier.padding(top = 10.dp, bottom = 2.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = SHEET_MUTED,
+            letterSpacing = 1.sp,
+        )
+    }
 }
 
 /**
@@ -333,6 +481,8 @@ private fun AlertSwitch(
     enabled: Boolean,
     tag: String,
     onSetAlert: (AlertKind, Boolean) -> Unit,
+    /** What the alert is, in one line, under the name: the label says which alert, this says when it arrives. */
+    whenText: String? = null,
 ) {
     Row(
         Modifier
@@ -346,7 +496,12 @@ private fun AlertSwitch(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Reach.MIN_TARGET_GAP_DP.dp),
     ) {
-        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, color = SHEET_INK)
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyLarge, color = SHEET_INK)
+            if (whenText != null) {
+                Text(whenText, style = MaterialTheme.typography.bodySmall, color = SHEET_MUTED)
+            }
+        }
         Switch(
             checked = checked,
             onCheckedChange = null,

@@ -19,6 +19,8 @@ data class TeamAlertPreferences(
     val intermission: Boolean = false,
     val final: Boolean = false,
     val upcoming: Boolean = false,
+    /** Minutes before puck drop the upcoming alert fires: one of [UpcomingLead.allowed], per team. */
+    val upcomingLeadMinutes: Int = UpcomingLead.DEFAULT,
 ) {
     /** Whether any switch is on: the one question that decides whether a team's games are followed at all. */
     val anyOn: Boolean get() = start || goals || intermission || final || upcoming
@@ -27,8 +29,9 @@ data class TeamAlertPreferences(
 /**
  * The lead times the "game is about to start" alert may use, in minutes.
  *
- * A closed set rather than a free number: the setting is a choice between a few meaningful warnings, and a stored
- * value outside the set is read as [DEFAULT] instead of being trusted.
+ * Per team, because it is chosen where the alert it belongs to is chosen: one team's warning can be half an hour out
+ * while another's is an hour, and a single app-wide number promised a precision it could not keep. A closed set rather
+ * than a free number: a stored value outside the set is read as [DEFAULT] instead of being trusted.
  */
 object UpcomingLead {
     const val DEFAULT: Int = 30
@@ -80,15 +83,6 @@ interface PreferencesRepository {
 
     /** Saved theme as it changes, starting with the current value. */
     fun observeThemeMode(): Flow<ThemeMode> = flow { emit(getThemeMode()) }
-
-    /** Minutes before puck drop that the upcoming-game alert fires: 15, 30 or 60, and 30 when unset or illegal. */
-    suspend fun getUpcomingLeadMinutes(): Int
-
-    /** Save the lead time. Only the values in [UpcomingLead.allowed] are legal; anything else is rejected. */
-    suspend fun setUpcomingLeadMinutes(minutes: Int)
-
-    /** The lead time as it changes, starting with the current value. */
-    fun observeUpcomingLeadMinutes(): Flow<Int> = flow { emit(getUpcomingLeadMinutes()) }
 
     /** Read the saved favourite teams; an empty set means none are selected. */
     suspend fun getFavourites(): Set<TeamKey>

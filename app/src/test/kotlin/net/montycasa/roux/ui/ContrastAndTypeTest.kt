@@ -23,6 +23,7 @@ import net.montycasa.roux.ui.drawer.LeaguesPanel
 import net.montycasa.roux.ui.teams.SHEET_ACCENT
 import net.montycasa.roux.ui.teams.SHEET_INK
 import net.montycasa.roux.ui.teams.SHEET_MUTED
+import net.montycasa.roux.ui.teams.SHEET_OFF_FILL
 import net.montycasa.roux.ui.teams.SHEET_PANEL
 import net.montycasa.roux.ui.theme.RouxDarkAccents
 import net.montycasa.roux.ui.theme.RouxDarkColors
@@ -152,6 +153,10 @@ class ContrastAndTypeTest {
             TextPair("sheet title/labels/warnings SHEET_INK on SHEET_PANEL", SHEET_INK, SHEET_PANEL),
             TextPair("sheet disclosure SHEET_MUTED on SHEET_PANEL", SHEET_MUTED, SHEET_PANEL),
             TextPair("sheet secondary action SHEET_ACCENT on SHEET_PANEL", SHEET_ACCENT, SHEET_PANEL),
+            // The chosen reminder time: near-black on the accent fill. White on that orange is 3.3:1 and was not used.
+            TextPair("sheet chosen reminder time SHEET_PANEL on SHEET_ACCENT", SHEET_PANEL, SHEET_ACCENT),
+            // The default answer, Off: ink on the raised neutral. Deliberately not the accent, which means "on" here.
+            TextPair("sheet chosen Off SHEET_INK on SHEET_OFF_FILL", SHEET_INK, SHEET_OFF_FILL),
         )
 
     /**

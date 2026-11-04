@@ -4,9 +4,13 @@ package net.montycasa.roux.ui.teams
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -14,6 +18,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import net.montycasa.roux.domain.repo.UpcomingLead
 import net.montycasa.roux.ui.theme.RouxTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -42,7 +47,6 @@ class TeamsScreenAlertsTest {
 
     private val switchTags =
         listOf(
-            "teams.alerts.upcoming",
             "teams.alerts.start",
             "teams.alerts.goals",
             "teams.alerts.intermission",
@@ -93,7 +97,7 @@ class TeamsScreenAlertsTest {
     }
 
     @Test
-    fun allFiveSwitchesRenderWithTheirLabelsInTheirGroups() {
+    fun everyAlertRowRendersWithItsLabelInItsGroup() {
         compose.setContent {
             TeamsScreen(
                 state = state(TeamAlerts(row, start = true, goals = false)),
@@ -106,11 +110,14 @@ class TeamsScreenAlertsTest {
         switchTags.forEach { tag ->
             compose.onNodeWithTag(tag).assertExists().assertHeightIsAtLeast(48.dp)
         }
-        listOf("Upcoming", "Game start", "Goals", "Intermissions", "Final score").forEach { label ->
+        // The reminder is a row of four answers rather than a switch, so it is named here and counted by tag.
+        listOf("Reminder before puck drop", "Game start", "Goals", "Intermissions", "Final score").forEach { label ->
             compose.onNodeWithText(label).assertExists()
         }
+        compose.onNodeWithTag("teams.alerts.reminder").assertExists()
         // The headings are labels, not a sixth switch: they carry no toggle action.
-        listOf("Before the game", "During the game", "After the game").forEach { heading ->
+        // Capitals, because a heading has to look unlike the rows it introduces.
+        listOf("BEFORE THE GAME", "DURING THE GAME", "AFTER THE GAME").forEach { heading ->
             compose.onNodeWithText(heading).assertExists()
         }
         compose.onNodeWithTag("teams.alerts.group.before").assertExists()
@@ -119,6 +126,106 @@ class TeamsScreenAlertsTest {
         // How the alerts are produced is part of the offer, so it is stated in the sheet rather than a policy page.
         compose.onNodeWithTag("teams.alerts.disclosure").assertExists()
         compose.onNodeWithTag("teams.alerts.done").assertExists()
+    }
+
+    @Test
+    fun theReminderAsksOnceAndAnswersOffByDefault() {
+        // One question, four answers: "Off" is a choice next to the times rather than a switch above them, which is
+        // what stops the sheet from looking like it offers two different pre-game alerts.
+        compose.setContent {
+            TeamsScreen(state = state(TeamAlerts(row)), onToggle = {}, onRetry = {})
+        }
+
+        compose.onNodeWithTag("teams.alerts.reminder").assertExists()
+        compose.onNodeWithTag("teams.alerts.reminder.off").assertIsSelected()
+        UpcomingLead.allowed.forEach { minutes ->
+            compose.onNodeWithTag("teams.alerts.reminder.$minutes").assertIsNotSelected()
+        }
+        // The answer is said in words as well, so a time cannot be read as a frequency.
+        compose.onNodeWithText("No reminder before the game").assertExists()
+    }
+
+    @Test
+    fun theReminderOffersEveryLeadTimeAndSaysWhichWasChosen() {
+        var reported: Int? = 0
+        compose.setContent {
+            TeamsScreen(
+                state = state(TeamAlerts(row, upcoming = true, leadMinutes = 15)),
+                onToggle = {},
+                onRetry = {},
+                onSetReminder = { reported = it },
+            )
+        }
+
+        UpcomingLead.allowed.forEach { minutes ->
+            compose.onNodeWithTag("teams.alerts.reminder.$minutes").assertExists().assertHeightIsAtLeast(48.dp)
+        }
+        compose.onNodeWithTag("teams.alerts.reminder.15").assertIsSelected()
+        compose.onNodeWithTag("teams.alerts.reminder.30").assertIsNotSelected()
+        compose.onNodeWithTag("teams.alerts.reminder.off").assertIsNotSelected()
+        compose.onNodeWithText("One alert, 15 min before each game").assertExists()
+
+        compose.onNodeWithTag("teams.alerts.reminder.60").performClick()
+        compose.runOnIdle { assertEquals(60, reported) }
+    }
+
+    @Test
+    fun choosingOffReportsNoLeadTimeRatherThanZeroMinutes() {
+        // Zero would be a lead time the scheduler has to special-case; the sheet says "no reminder" by sending null.
+        var called = false
+        var reported: Int? = 30
+        compose.setContent {
+            TeamsScreen(
+                state = state(TeamAlerts(row, upcoming = true, leadMinutes = 30)),
+                onToggle = {},
+                onRetry = {},
+                onSetReminder = {
+                    called = true
+                    reported = it
+                },
+            )
+        }
+
+        compose.onNodeWithTag("teams.alerts.reminder.off").performClick()
+        compose.runOnIdle {
+            assertTrue("the sheet must report its answer", called)
+            assertEquals(null, reported)
+        }
+    }
+
+    @Test
+    fun gameStartSitsInTheDuringGroupBecauseThatIsWhenItFires() {
+        // The headings name phases of the game, so the row that fires at puck drop belongs at the top of "during".
+        // Read from the sheet's own child order: a one-line move is exactly what no other test would notice.
+        compose.setContent {
+            TeamsScreen(state = state(TeamAlerts(row, upcoming = true)), onToggle = {}, onRetry = {})
+        }
+
+        val sheet = compose.onNodeWithTag("teams.alerts.sheet").fetchSemanticsNode()
+        val order = sheet.children.mapNotNull { it.config.getOrNull(SemanticsProperties.TestTag) }
+
+        val before = order.indexOf("teams.alerts.group.before")
+        val during = order.indexOf("teams.alerts.group.during")
+        val start = order.indexOf("teams.alerts.start")
+        val goals = order.indexOf("teams.alerts.goals")
+
+        assertTrue("every group heading and row is tagged: $order", listOf(before, during, start, goals).all { it >= 0 })
+        assertTrue("start comes after the before group: $order", start > before)
+        assertTrue("start is the first row of the during group: $order", start == during + 1)
+        assertTrue("start sits above Goals: $order", goals > start)
+    }
+
+    @Test
+    fun everySwitchSaysWhenItsAlertArrives() {
+        // The pattern that makes the rest of the sheet readable: the name says which alert, the second line says when.
+        compose.setContent {
+            TeamsScreen(state = state(TeamAlerts(row, upcoming = true)), onToggle = {}, onRetry = {})
+        }
+
+        compose.onNodeWithText("When the puck drops").assertExists()
+        compose.onNodeWithText("Every goal scored").assertExists()
+        compose.onNodeWithText("End of each period, with the score").assertExists()
+        compose.onNodeWithText("When the game ends, with the result").assertExists()
     }
 
     @Test
@@ -208,7 +315,6 @@ class TeamsScreenAlertsTest {
 
         assertEquals(
             listOf(
-                AlertKind.Upcoming to true,
                 AlertKind.Start to true,
                 AlertKind.Goals to true,
                 AlertKind.Intermission to true,
@@ -223,6 +329,7 @@ class TeamsScreenAlertsTest {
         // The permission may be granted after the sheet's question has been declined, so the switches stay live:
         // tapping any of them, including the three new ones, must reach the same action that asks for it.
         val reported = mutableListOf<Pair<AlertKind, Boolean>>()
+        val reminderAnswers = mutableListOf<Int?>()
         compose.setContent {
             TeamsScreen(
                 state = state(TeamAlerts(row)),
@@ -232,21 +339,23 @@ class TeamsScreenAlertsTest {
                 notificationsEnabled = true,
                 promptDismissed = true,
                 onSetAlert = { kind, on -> reported += kind to on },
+                onSetReminder = { reminderAnswers += it },
             )
         }
 
         compose.onNodeWithTag("teams.alerts.intermission").performScrollTo().performClick()
         compose.onNodeWithTag("teams.alerts.final").performScrollTo().performClick()
-        compose.onNodeWithTag("teams.alerts.upcoming").performScrollTo().performClick()
+        compose.onNodeWithTag("teams.alerts.reminder.30").performScrollTo().performClick()
 
         assertEquals(
             listOf(
                 AlertKind.Intermission to true,
                 AlertKind.Final to true,
-                AlertKind.Upcoming to true,
             ),
             reported,
         )
+        // The reminder is not a switch, so it has to reach the same permission path by its own route.
+        assertEquals(listOf<Int?>(30), reminderAnswers)
     }
 
     @Test
