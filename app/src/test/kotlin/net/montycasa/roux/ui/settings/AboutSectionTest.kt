@@ -67,7 +67,7 @@ class AboutSectionTest {
             // An implicit ACTION_VIEW for an https URL is the browser's request to make, not this app's:
             // no HTTP client is involved here and the test never touches the network.
             assertEquals(Intent.ACTION_VIEW, started.action)
-            assertEquals("https://git.montycasa.net/patrick/roux-sports".toUri(), started.data)
+            assertEquals("https://github.com/monty033/roux-sports".toUri(), started.data)
             assertNull("the intent must be left for the browser to resolve", started.component)
         }
     }

@@ -15,14 +15,16 @@ class NetworkHostAuditTest {
     private val allowedHosts = setOf("api-web.nhle.com", "assets.nhle.com", "api.nhle.com")
 
     /**
-     * `git.montycasa.net` is the project's own address. It may appear where the app points a reader at the project, and
-     * nowhere else: the About section links to it, and the User-Agent advertises it in a header (sent, never dialled).
+     * Hosts outside the NHL set that one file may name, and why. Both are references rather than destinations: the
+     * About section hands its link to a browser, and the User-Agent only names the project in a header it sends.
+     *
+     * The About link is the public GitHub mirror, not the self-hosted Forgejo instance development happens on, because
+     * that instance is not reachable from the internet and the link is for readers.
      */
-    private val sourceLinkPaths =
+    private val documentedHostReferences =
         mapOf(
-            "app/src/main/kotlin/net/montycasa/roux/ui/settings/AboutSection.kt" to "the About section links to the project",
-            "data/src/main/kotlin/net/montycasa/roux/data/net/NhlHttpClientFactory.kt" to
-                "the User-Agent names the project; the header is sent, not fetched",
+            "app/src/main/kotlin/net/montycasa/roux/ui/settings/AboutSection.kt" to setOf("github.com"),
+            "data/src/main/kotlin/net/montycasa/roux/data/net/NhlHttpClientFactory.kt" to setOf("git.montycasa.net"),
         )
 
     @Test
@@ -51,12 +53,23 @@ class NetworkHostAuditTest {
 
     @Test
     fun theSourceLinkIsAllowedOnlyWhereItIsDocumented() {
-        val link = "text = \"https://git.montycasa.net/patrick/roux-sports\""
+        val link = "text = \"https://github.com/monty033/roux-sports\""
 
         assertEquals(emptyList<String>(), violationsIn(mapOf(SOURCE_LINK_ALLOWED_PATH to link)))
         assertEquals(
-            listOf("app/src/main/kotlin/Other.kt: unlisted host git.montycasa.net"),
+            listOf("app/src/main/kotlin/Other.kt: unlisted host github.com"),
             violationsIn(mapOf("app/src/main/kotlin/Other.kt" to link)),
+        )
+    }
+
+    @Test
+    fun theProjectHostInTheUserAgentIsAllowedOnlyInTheClient() {
+        val agent = "headers.append(HttpHeaders.UserAgent, \"RouxSports/1.0 (+https://git.montycasa.net/patrick/roux-sports)\")"
+
+        assertEquals(emptyList<String>(), violationsIn(mapOf(USER_AGENT_PATH to agent)))
+        assertEquals(
+            listOf("app/src/main/kotlin/Other.kt: unlisted host git.montycasa.net"),
+            violationsIn(mapOf("app/src/main/kotlin/Other.kt" to agent)),
         )
     }
 
@@ -123,7 +136,7 @@ class NetworkHostAuditTest {
     private fun isAllowed(
         path: String,
         host: String,
-    ): Boolean = host in allowedHosts || (host == "git.montycasa.net" && path in sourceLinkPaths)
+    ): Boolean = host in allowedHosts || host in documentedHostReferences[path].orEmpty()
 
     /**
      * The hosts a file can send a request to. A Kotlin file is read through its string literals, because comments and
@@ -180,6 +193,7 @@ class NetworkHostAuditTest {
 
     private companion object {
         const val SOURCE_LINK_ALLOWED_PATH = "app/src/main/kotlin/net/montycasa/roux/ui/settings/AboutSection.kt"
+        const val USER_AGENT_PATH = "data/src/main/kotlin/net/montycasa/roux/data/net/NhlHttpClientFactory.kt"
 
         val URL_HOST = Regex("""https?://([A-Za-z0-9._-]+)""")
         val BARE_HOST = Regex("""(?<![\w.-])[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*(?:\.nhle\.com|\.montycasa\.net)(?![\w.-])""")

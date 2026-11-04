@@ -22,8 +22,11 @@ import androidx.core.net.toUri
 import net.montycasa.roux.BuildConfig
 import net.montycasa.roux.R
 
-/** The project page the source button opens in the reader's browser; this app never fetches it itself. */
-private const val SOURCE_URL = "https://git.montycasa.net/patrick/roux-sports"
+/**
+ * The public mirror of the source, opened in the reader's browser: this app never fetches it, and development happens
+ * on a self-hosted Forgejo that is not reachable from the internet, so the mirror is what an outsider can actually read.
+ */
+private const val SOURCE_URL = "https://github.com/monty033/roux-sports"
 
 /**
  * Licensing, version and provenance, at the bottom of Settings.

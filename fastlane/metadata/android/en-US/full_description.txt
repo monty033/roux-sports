@@ -14,4 +14,4 @@ No ads. No tracking. No analytics. No third-party SDKs that phone home.
 
 Roux Sports is unofficial and is not affiliated with, endorsed by, or sponsored by the National Hockey League or any of its clubs. NHL and the NHL shield are trademarks of the National Hockey League. Game data comes from the NHL's public endpoints.
 
-GPL-3.0-or-later. The source is at https://git.montycasa.net/patrick/roux-sports
+GPL-3.0-or-later. The source is at https://github.com/monty033/roux-sports

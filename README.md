@@ -7,6 +7,10 @@ telemetry.
 
 Kotlin and Jetpack Compose. GPL-3.0-or-later.
 
+Source: [github.com/monty033/roux-sports](https://github.com/monty033/roux-sports) — a public mirror. Development
+happens on a self-hosted Forgejo instance that is not reachable from the internet; the mirror is what outside
+readers can follow.
+
 **Current state: Stage 10 of 11 — release readiness.** Scores, standings, teams, team detail (schedule, players,
 league-relative team stats), player detail, game detail and team alerts are all built and on `main`. What remains is
 the release itself: the About screen, and publishing a signed 1.0.0.
