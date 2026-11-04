@@ -54,6 +54,7 @@ import net.montycasa.roux.domain.model.PeriodShots
 import net.montycasa.roux.domain.model.PlayerRef
 import net.montycasa.roux.domain.model.PowerPlaySummary
 import net.montycasa.roux.domain.model.ShotTotals
+import net.montycasa.roux.domain.model.SkaterLine
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.domain.model.TeamStat
@@ -422,6 +423,49 @@ class GameDetailScreenTest {
         compose.onNodeWithTag("detail.hero.live.capsule").assertDoesNotExist()
         compose.onAllNodesWithText(expected).assertCountEquals(1)
         compose.onAllNodesWithText("FINAL").assertCountEquals(0)
+    }
+
+    @Test
+    fun `a game opened from its route still builds player pictures`() {
+        // The detail route rebuilds the game from its arguments and carries no date, so the season has to come from
+        // the start instant. Without that, every row falls back to initials and the page quietly loses its pictures.
+        val withPlayers =
+            fullDetail.copy(
+                boxscore =
+                    Loadable(
+                        GameBoxscore(
+                            goalies = listOf(GoalieLine(PlayerRef("C. Talbot", "PHI", id = 8478435L), 25, 28)),
+                            forwards =
+                                listOf(
+                                    SkaterLine(
+                                        skater = PlayerRef("T. Konecny", "PHI", id = 8478439L),
+                                        position = "R",
+                                        goals = 1,
+                                        assists = 1,
+                                        points = 2,
+                                        plusMinus = 1,
+                                        shotsOnGoal = 3,
+                                        penaltyMinutes = 0,
+                                        toiSeconds = 1200,
+                                        faceoffFraction = null,
+                                    ),
+                                ),
+                        ),
+                        Freshness.Fresh,
+                        null,
+                    ),
+            )
+        show(
+            withPlayers,
+            shownGame = game.copy(date = "", startTimeUtc = kotlin.time.Instant.parse("2026-10-26T23:00:00Z")),
+        )
+
+        // The tables live on the clubs' pages; the home club is two swipes to the right of the game page.
+        compose.onNodeWithTag("detail.pager").performTouchInput { swipeLeft() }
+        compose.onNodeWithTag("detail.pager").performTouchInput { swipeLeft() }
+
+        compose.onNodeWithTag("detail.section.forwards.8478439.mugshot.image", useUnmergedTree = true).assertExists()
+        compose.onNodeWithTag("detail.section.goalies.8478435.mugshot.image", useUnmergedTree = true).assertExists()
     }
 
     @Test

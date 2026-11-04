@@ -111,7 +111,7 @@ fun GameDetailScreen(
                             detail = detail,
                             team = if (page == 1) game.away else game.home,
                             onPlayerClick = onPlayerClick,
-                            seasonStartYear = PlayerMugshot.seasonStartYear(game.date),
+                            seasonStartYear = PlayerMugshot.seasonStartYear(game),
                         )
                     }
                 }
