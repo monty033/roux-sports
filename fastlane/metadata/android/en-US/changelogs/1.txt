@@ -1,0 +1,7 @@
+First release.
+
+- Scores with live game state, period scoring, shots, team stats and three stars
+- Standings with playoffs, division and conference views
+- Team pages with schedule, roster and league-relative team stats
+- Player pages with career and season totals
+- Game alerts for chosen teams, off by default

@@ -1,0 +1,17 @@
+Roux Sports shows NHL scores, standings and team pages without ads, tracking or an account.
+
+Scores: every game for the day, with live state, period-by-period scoring, shots, team stats, penalties and three stars. Swipe between days, or jump to any date from the month picker.
+
+Standings: Eastern, Western and league tables, with playoffs, division and conference views. Conference and ranking choices are remembered between launches.
+
+Teams: all 32 clubs, each with a full-season schedule centred on the next game, the roster, and league-relative team stats where every number carries its rank across the league.
+
+Players: skaters and goalies with their season totals, and a player page with career and season history.
+
+Game alerts: choose the teams you care about and get a notification when a game starts or its score changes. Alerts are off by default, need no account, and are scheduled on the device.
+
+No ads. No tracking. No analytics. No third-party SDKs that phone home.
+
+Roux Sports is unofficial and is not affiliated with, endorsed by, or sponsored by the National Hockey League or any of its clubs. NHL and the NHL shield are trademarks of the National Hockey League. Game data comes from the NHL's public endpoints.
+
+GPL-3.0-or-later. The source is at https://git.montycasa.net/patrick/roux-sports
