@@ -30,10 +30,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
@@ -46,7 +51,7 @@ import net.montycasa.roux.domain.model.PlayerProfile
 import net.montycasa.roux.domain.model.PlayerSeasonLine
 import net.montycasa.roux.domain.model.PlayerTotals
 import net.montycasa.roux.domain.model.newestFirst
-import net.montycasa.roux.domain.model.newestSeason
+import net.montycasa.roux.domain.model.newestNhlRegularSeasonRows
 import net.montycasa.roux.domain.model.newestSeasonRows
 import net.montycasa.roux.domain.model.playerPositionLabel
 import net.montycasa.roux.domain.policy.PlayerCareerTable
@@ -219,10 +224,21 @@ private fun PlayerTabPage(
             .padding(horizontal = 16.dp),
     ) {
         when (tab) {
-            PlayerTab.Season -> SeasonTab(profile = profile, currentSeason = currentSeason)
-            PlayerTab.Career -> CareerTab(profile = profile)
-            PlayerTab.GameLog -> GameLogTab(profile = profile, gameLog = gameLog, onRetry = onRetry)
-            PlayerTab.Info -> InfoTab(profile = profile)
+            PlayerTab.Season -> {
+                SeasonTab(profile = profile, currentSeason = currentSeason)
+            }
+
+            PlayerTab.Career -> {
+                CareerTab(profile = profile)
+            }
+
+            PlayerTab.GameLog -> {
+                GameLogTab(profile = profile, currentSeason = currentSeason, gameLog = gameLog, onRetry = onRetry)
+            }
+
+            PlayerTab.Info -> {
+                InfoTab(profile = profile)
+            }
         }
     }
 }
@@ -315,14 +331,13 @@ private fun SeasonTab(
     profile: PlayerProfile,
     currentSeason: Int,
 ) {
-    val rows = profile.seasons.newestSeasonRows()
+    // One season, one card: the NHL regular-season rows of the newest NHL season. Other leagues and playoffs live in Career.
+    val rows = profile.seasons.newestNhlRegularSeasonRows()
     val season = rows.firstOrNull()?.season
-    val league = rows.singleOrNull()?.leagueAbbrev
     val title =
         when {
             season == null -> stringResource(R.string.player_tab_season)
             season == currentSeason -> stringResource(R.string.player_this_season)
-            league != null -> stringResource(R.string.player_season_title_league, seasonYears(season), league)
             else -> seasonYears(season)
         }
     SectionCard(
@@ -360,72 +375,91 @@ private fun SeasonLineBlock(
 @Composable
 private fun CareerTab(profile: PlayerProfile) {
     val rows = PlayerCareerTable.rows(profile.seasons)
-    // The regular total is summed from regular rows only and checked against the feed's regular career line; the
-    // playoff total follows it. Both are built here, so the table can print them after the season rows.
-    val regular = PlayerCareerTable.total(rows.filter { !it.isPlayoffs }, profile.career.regularSeason)
+    val regularRows = rows.filter { !it.isPlayoffs }
+    val playoffRows = rows.filter { it.isPlayoffs }
+    // Each total is summed from its own rows and checked against the feed's career line for that kind of game. The
+    // regular total is the career card's; the playoff total is the playoff card's, and it has no card without rows.
+    val regular = PlayerCareerTable.total(regularRows, profile.career.regularSeason)
     val playoffs = PlayerCareerTable.playoffTotal(rows, profile.career.playoffs)
     SectionCard(
         title = stringResource(R.string.player_career),
         tag = "player.career",
-        loadable = loaded(rows),
+        loadable = loaded(regularRows),
         failureLabel = "",
     ) { current ->
-        if (current.isEmpty() && regular == null && playoffs == null) {
+        if (current.isEmpty() && regular == null) {
             EmptySectionLine(stringResource(R.string.player_empty))
         } else {
-            val careerRows =
-                current.mapIndexed { index, line ->
-                    StatRow(
-                        tag = "player.career.row.$index",
-                        label = careerLabel(line),
-                        cells = careerCells(profile.isGoalie, club = clubLabel(line), totals = line.totals),
-                    )
-                }
-            val totalRows =
-                buildList {
-                    regular?.let {
-                        add(
-                            StatRow(
-                                tag = "player.career.total",
-                                label = stringResource(R.string.player_total),
-                                cells = careerCells(profile.isGoalie, club = "", totals = it),
-                            ),
-                        )
-                    }
-                    playoffs?.let {
-                        add(
-                            StatRow(
-                                tag = "player.career.playoffs.total",
-                                label = stringResource(R.string.player_playoffs_total),
-                                cells = careerCells(profile.isGoalie, club = "", totals = it),
-                            ),
-                        )
-                    }
-                }
-            PlayerStatTable(
-                headers = careerCells(profile.isGoalie, club = "", totals = null),
-                rows = careerRows + totalRows,
-                headerTag = "player.career",
+            CareerTable(
+                isGoalie = profile.isGoalie,
+                rows = current,
+                total = regular,
+                totalLabel = stringResource(R.string.player_total),
+                tagPrefix = "player.career",
+            )
+        }
+    }
+    if (playoffRows.isNotEmpty()) {
+        Spacer(Modifier.height(16.dp))
+        SectionCard(
+            title = stringResource(R.string.player_playoffs),
+            tag = "player.playoffs",
+            loadable = loaded(playoffRows),
+            failureLabel = "",
+        ) { current ->
+            CareerTable(
+                isGoalie = profile.isGoalie,
+                rows = current,
+                total = playoffs,
+                totalLabel = stringResource(R.string.player_playoffs_total),
+                tagPrefix = "player.playoffs",
             )
         }
     }
 }
 
+/** One career card's table: a season row per line, then the card's total. The season is frozen; the club comes next. */
+@Composable
+private fun CareerTable(
+    isGoalie: Boolean,
+    rows: List<PlayerSeasonLine>,
+    total: PlayerTotals?,
+    totalLabel: String,
+    tagPrefix: String,
+) {
+    val seasonRows =
+        rows.mapIndexed { index, line ->
+            StatRow(
+                tag = "$tagPrefix.row.$index",
+                label = line.season?.let { seasonYears(it) }.orEmpty(),
+                cells = careerCells(isGoalie, club = clubLabel(line), totals = line.totals),
+            )
+        }
+    val totalRows =
+        total
+            ?.let {
+                listOf(StatRow(tag = "$tagPrefix.total", label = totalLabel, cells = careerCells(isGoalie, club = "", totals = it)))
+            }.orEmpty()
+    PlayerStatTable(
+        headers = careerCells(isGoalie, club = "", totals = null),
+        rows = seasonRows + totalRows,
+        headerTag = tagPrefix,
+    )
+}
+
 @Composable
 private fun GameLogTab(
     profile: PlayerProfile,
+    currentSeason: Int,
     gameLog: Loadable<List<PlayerGame>>?,
     onRetry: () -> Unit,
 ) {
     // A log that has not arrived yet reads as loading; the page's retry reloads it along with the profile.
     val loadable = gameLog ?: Loadable(null, Freshness.Missing, null)
-    val season = profile.seasons.newestSeason()
-    val title =
-        if (season != null) {
-            stringResource(R.string.player_gamelog_title, seasonFullYears(season))
-        } else {
-            stringResource(R.string.player_tab_gamelog)
-        }
+    // The season being played now, whatever the profile's newest season is: a log is never last season's games.
+    val title = stringResource(R.string.player_gamelog_title, seasonFullYears(currentSeason))
+    val measurer = rememberTextMeasurer()
+    val lineStyle = MaterialTheme.typography.bodySmall
     SectionCard(
         title = title,
         tag = "player.gamelog",
@@ -442,20 +476,37 @@ private fun GameLogTab(
                 color = LocalRouxAccents.current.muted,
             )
         } else {
+            val rows =
+                newest.mapIndexed { index, game ->
+                    StatRow(
+                        tag = "player.gamelog.row.$index",
+                        label = game.gameDate?.let { formatShortDate(it) }.orEmpty(),
+                        cells = gameCells(profile.isGoalie, game = game),
+                        detail = opponentLabel(game.opponentAbbrev, game.isHome) ?: statCount(null),
+                    )
+                }
             PlayerStatTable(
                 headers = gameCells(profile.isGoalie, game = null),
-                rows =
-                    newest.mapIndexed { index, game ->
-                        StatRow(
-                            tag = "player.gamelog.row.$index",
-                            label = game.gameDate?.let { formatShortDate(it) }.orEmpty(),
-                            cells = gameCells(profile.isGoalie, game = game),
-                        )
-                    },
+                rows = rows,
                 headerTag = "player.gamelog",
+                labelWidth = widestLineWidth(rows.flatMap { listOfNotNull(it.label, it.detail) }, measurer, lineStyle),
             )
         }
     }
+}
+
+/**
+ * The frozen column's width: the widest of its lines as the style prints it, so the column is only as wide as its
+ * content needs and no line wraps. Every row shares it, so the rows' numbers stay in line with one another.
+ */
+@Composable
+private fun widestLineWidth(
+    lines: List<String>,
+    measurer: TextMeasurer,
+    style: TextStyle,
+): Dp {
+    val widest = lines.maxOfOrNull { measurer.measure(it, style).size.width } ?: 0
+    return with(LocalDensity.current) { widest.toDp() }
 }
 
 @Composable
@@ -470,7 +521,17 @@ private fun InfoTab(profile: PlayerProfile) {
         if (current.isEmpty()) {
             EmptySectionLine(stringResource(R.string.player_empty))
         } else {
-            current.forEach { item -> InfoRowBlock(item) }
+            // The facts fill the left column top to bottom, then the right, so a screen reader hears them in the order
+            // they are seen. Each fact stays a label above its value.
+            val half = (current.size + 1) / 2
+            Row(Modifier.fillMaxWidth()) {
+                Column(Modifier.weight(1f)) {
+                    current.take(half).forEach { item -> InfoRowBlock(item) }
+                }
+                Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                    current.drop(half).forEach { item -> InfoRowBlock(item) }
+                }
+            }
         }
     }
 }
@@ -557,16 +618,6 @@ private fun seasonLabel(line: PlayerSeasonLine): String {
     }
 }
 
-/**
- * A career row's frozen label: the season alone, so it stays in view while the table scrolls sideways. A playoff row
- * says so after its season, and sits after the same season's regular row.
- */
-@Composable
-private fun careerLabel(line: PlayerSeasonLine): String {
-    val season = line.season?.let { seasonYears(it) }.orEmpty()
-    return if (line.isPlayoffs) stringResource(R.string.player_playoff_season, season) else season
-}
-
 /** The club a career row names: its abbreviation, or the feed's own name when the club is not one the app knows. */
 private fun clubLabel(line: PlayerSeasonLine): String = line.teamAbbrev ?: line.teamName.orEmpty()
 
@@ -578,22 +629,20 @@ private fun careerCells(
     totals: PlayerTotals?,
 ): List<StatCell> = listOf(StatCell("club", stringResource(R.string.player_stat_team), club)) + statCells(isGoalie, totals)
 
-/** A game row's columns: the opponent first, then the game's numbers. Headers pass no game and carry labels only. */
+/**
+ * A game row's numbers, which scroll. The date and the opponent sit in the frozen column beside them, so they are not
+ * here. Headers pass no game and carry labels only.
+ */
 @Composable
 private fun gameCells(
     isGoalie: Boolean,
     game: PlayerGame?,
-): List<StatCell> {
-    val opponentText = opponentLabel(game?.opponentAbbrev, game?.isHome) ?: statCount(null)
-    val opponent = StatCell("opp", stringResource(R.string.player_stat_opp), opponentText)
-    val numbers =
-        when (game) {
-            is PlayerGame.Skater -> skaterLogCells(game)
-            is PlayerGame.Goalie -> goalieLogCells(game)
-            null -> if (isGoalie) goalieLogCells(null) else skaterLogCells(null)
-        }
-    return listOf(opponent) + numbers
-}
+): List<StatCell> =
+    when (game) {
+        is PlayerGame.Skater -> skaterLogCells(game)
+        is PlayerGame.Goalie -> goalieLogCells(game)
+        null -> if (isGoalie) goalieLogCells(null) else skaterLogCells(null)
+    }
 
 @Composable
 private fun opponentLabel(

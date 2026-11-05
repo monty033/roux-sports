@@ -157,23 +157,36 @@ class PlayerCareerTableTest {
         assertEquals(3, total.goals)
     }
 
-    /** With no playoff season row, the feed's own playoff career line stands, and nothing is summed in its place. */
+    /**
+     * With no playoff row there is no playoff total, even when the feed sent a playoff career line: the card that would
+     * carry the total is not shown, so the line is not turned into a total on its own.
+     */
     @Test
-    fun thePlayoffTotalFallsBackToTheFeedsPlayoffLineWhenThereAreNoPlayoffRows() {
-        val feed = skater(gamesPlayed = 12, goals = 4)
-
+    fun aPlayoffTotalIsAbsentWithNoPlayoffRowsEvenWhenTheFeedSentAPlayoffLine() {
         val total =
             PlayerCareerTable.playoffTotal(
                 listOf(line(20242025, "NHL", "Carolina Hurricanes", 1, skater(gamesPlayed = 60))),
-                playoffs = feed,
+                playoffs = skater(gamesPlayed = 12, goals = 4),
             )
 
-        assertEquals(feed, total)
+        assertNull(total)
     }
 
     @Test
     fun thePlayoffTotalIsNullWhenTheFeedAndTheRowsHaveNoPlayoffs() {
         assertNull(PlayerCareerTable.playoffTotal(emptyList(), playoffs = null))
+    }
+
+    /** The feed's playoff line still supplies the rates the rows cannot sum: faceoff percentage and ice time. */
+    @Test
+    fun thePlayoffTotalTakesItsRatesFromTheFeedsPlayoffLine() {
+        val seasons = listOf(line(20242025, "NHL", "Carolina Hurricanes", 1, skater(gamesPlayed = 6, goals = 1), gameType = 3))
+        val feed = skater(faceoffWinningPctg = 0.52, avgTimeOnIceSeconds = 900L)
+
+        val total = PlayerCareerTable.playoffTotal(seasons, feed) as PlayerTotals.Skater
+
+        assertEquals(0.52, total.faceoffWinningPctg!!, 0.0)
+        assertEquals(900L, total.avgTimeOnIceSeconds)
     }
 
     private fun line(

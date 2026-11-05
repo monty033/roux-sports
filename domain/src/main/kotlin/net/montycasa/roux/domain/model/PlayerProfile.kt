@@ -149,6 +149,16 @@ fun List<PlayerSeasonLine>.newestSeasonRows(): List<PlayerSeasonLine> {
         )
 }
 
+/**
+ * The Season tab's rows: the NHL regular-season rows of the newest season that has one, in club order. A traded season
+ * gives one row per club. Other leagues and playoff rows are left out, since they are not this tab's to show.
+ */
+fun List<PlayerSeasonLine>.newestNhlRegularSeasonRows(): List<PlayerSeasonLine> {
+    val nhl = filter { it.season != null && it.leagueAbbrev == NHL_LEAGUE && it.isRegularSeason }
+    val newest = nhl.mapNotNull { it.season }.maxOrNull() ?: return emptyList()
+    return nhl.filter { it.season == newest }.sortedBy { it.sequence ?: Int.MIN_VALUE }
+}
+
 /** The feed's league code for the NHL. */
 internal const val NHL_LEAGUE = "NHL"
 

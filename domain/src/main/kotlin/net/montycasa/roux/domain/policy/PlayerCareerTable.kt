@@ -55,16 +55,13 @@ object PlayerCareerTable {
     }
 
     /**
-     * The playoff total, which follows the regular total in the table. It sums the playoff rows. When the feed sent a
-     * playoff career line but no playoff season row, that line stands as it is: it is the feed's own number, not a guess.
+     * The playoff total, at the foot of the playoff card. It sums the playoff rows only, so with no playoff rows there is
+     * no total and no card. The feed's playoff career line supplies the rates, as the regular total does.
      */
     fun playoffTotal(
         rows: List<PlayerSeasonLine>,
         playoffs: PlayerTotals?,
-    ): PlayerTotals? {
-        val playoffRows = rows.filter { it.isPlayoffs }
-        return if (playoffRows.isEmpty()) playoffs else total(playoffRows, playoffs)
-    }
+    ): PlayerTotals? = total(rows.filter { it.isPlayoffs }, playoffs)
 
     private fun skaterTotal(
         rows: List<PlayerTotals.Skater>,
