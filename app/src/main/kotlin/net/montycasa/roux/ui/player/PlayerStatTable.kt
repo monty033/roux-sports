@@ -102,6 +102,7 @@ internal fun fittedStatWidths(
     headers: List<StatCell>,
     rows: List<List<StatCell>>,
     measurer: TextMeasurer,
+    gap: Dp = STAT_COLUMN_GAP,
 ): List<Dp> {
     val headerStyle = MaterialTheme.typography.labelSmall
     val valueStyle = MaterialTheme.typography.bodyMedium
@@ -109,7 +110,7 @@ internal fun fittedStatWidths(
     return headers.mapIndexed { index, header ->
         val headerPx = measurer.measure(header.label, headerStyle).size.width
         val valuePx = rows.maxOfOrNull { cells -> measurer.measure(cells[index].value, valueStyle).size.width } ?: 0
-        with(density) { maxOf(headerPx, valuePx).toDp() } + STAT_COLUMN_GAP
+        with(density) { maxOf(headerPx, valuePx).toDp() } + gap
     }
 }
 
@@ -138,7 +139,7 @@ internal fun PlayerStatTable(
     Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
         Row(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
             Spacer(Modifier.width(labelWidth))
-            StatCells(scroll) {
+            StatCells(scroll, headerTag) {
                 headers.forEachIndexed { index, header ->
                     Text(
                         header.label,
@@ -163,7 +164,7 @@ internal fun PlayerStatTable(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                StatCells(scroll) {
+                StatCells(scroll, headerTag) {
                     row.cells.forEachIndexed { index, cell ->
                         Text(
                             cell.value,
@@ -203,11 +204,12 @@ private fun Modifier.rowModifier(
 @Composable
 private fun RowScope.StatCells(
     scroll: ScrollState,
+    tag: String,
     content: @Composable () -> Unit,
 ) {
     BoxWithConstraints(Modifier.weight(1f)) {
         Row(
-            Modifier.widthIn(min = maxWidth).horizontalScroll(scroll),
+            Modifier.widthIn(min = maxWidth).horizontalScroll(scroll).testTag("$tag.scroll"),
             horizontalArrangement = Arrangement.Center,
         ) {
             content()

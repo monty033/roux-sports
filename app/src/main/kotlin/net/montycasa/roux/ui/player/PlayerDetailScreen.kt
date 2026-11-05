@@ -460,11 +460,18 @@ private fun CareerTable(
                 listOf(StatRow(tag = "$tagPrefix.total", label = totalLabel, cells = careerCells(isGoalie, club = "", totals = it)))
             }.orEmpty()
     val allRows = seasonRows + totalRows
+    val headers = careerCells(isGoalie, club = "", totals = null)
+    val measurer = rememberTextMeasurer()
     PlayerStatTable(
-        headers = careerCells(isGoalie, club = "", totals = null),
+        headers = headers,
         rows = allRows,
         headerTag = tagPrefix,
-        labelWidth = widestLineWidth(allRows.map { it.label }, rememberTextMeasurer(), MaterialTheme.typography.bodySmall),
+        labelWidth = widestLineWidth(allRows.map { it.label }, measurer, MaterialTheme.typography.bodySmall),
+        // Each column is only as wide as the wider of its header and its widest number, so the table spends the card's
+        // width on numbers rather than on air. A wider table still scrolls, but it needs far less of it.
+        // The career table carries thirteen columns, so it takes the tighter gap as well: enough to keep neighbouring
+        // numbers apart, not the wider air the shorter tables can afford.
+        statWidths = fittedStatWidths(headers, allRows.map { it.cells }, measurer, gap = 4.dp),
     )
 }
 
