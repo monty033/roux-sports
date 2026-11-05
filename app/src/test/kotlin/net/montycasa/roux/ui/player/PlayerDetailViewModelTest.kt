@@ -8,6 +8,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.Loadable
@@ -93,13 +94,43 @@ class PlayerDetailViewModelTest {
             )
         }
 
-    private fun viewModel(repository: PlayerProfileRepository) =
-        PlayerDetailViewModel(
-            playerId = PLAYER_ID,
-            repository = repository,
-            clock = november,
-            zone = TimeZone.UTC,
-        )
+    /** The Info card counts ages to the clock's date in UTC: four November 2026 is the day the clock reads. */
+    @Test
+    fun todayIsTheClocksDateInUtc() =
+        runTest {
+            val viewModel = viewModel(FakeRepository(profile(newestSeason = 20252026)))
+
+            assertEquals(LocalDate(2026, 11, 4), viewModel.today)
+        }
+
+    /** Today is the civil date in the player's zone: at 02:00 UTC on the 5th it is still the 4th in Toronto. */
+    @Test
+    fun todayIsTheCivilDateInTheZoneTheAgeIsCountedIn() =
+        runTest {
+            val lateUtc =
+                object : Clock {
+                    override fun now(): Instant = Instant.parse("2026-11-05T02:00:00Z")
+                }
+            val viewModel =
+                viewModel(
+                    FakeRepository(profile(newestSeason = 20252026)),
+                    clock = lateUtc,
+                    zone = TimeZone.of("America/Toronto"),
+                )
+
+            assertEquals(LocalDate(2026, 11, 4), viewModel.today)
+        }
+
+    private fun viewModel(
+        repository: PlayerProfileRepository,
+        clock: Clock = november,
+        zone: TimeZone = TimeZone.UTC,
+    ) = PlayerDetailViewModel(
+        playerId = PLAYER_ID,
+        repository = repository,
+        clock = clock,
+        zone = zone,
+    )
 
     private fun profile(newestSeason: Int) =
         PlayerProfile(

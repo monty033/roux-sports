@@ -1,11 +1,16 @@
 package net.montycasa.roux.ui.player
 
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
@@ -21,7 +26,9 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
 import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
+import kotlinx.datetime.LocalDate
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
@@ -43,6 +50,9 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 private const val CURRENT_SEASON = 20262027
+
+/** The date the Info card counts ages to. Born 2025-11-05 is one year old on it. */
+private val TODAY = LocalDate(2026, 11, 5)
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "en-rUS-w411dp-h923dp-420dpi")
@@ -92,9 +102,17 @@ class PlayerScreenTest {
         rule.onNodeWithTag("player.name").assertTextEquals("Aleksi Heponiemi")
         rule.onNodeWithTag("player.number").assertTextEquals("#20 · C")
         rule.onNodeWithText("This season", ignoreCase = true).assertExists()
-        rule.onNodeWithTag("player.season.row.0.label").assertTextEquals("NHL · Carolina Hurricanes")
         rule.onNodeWithTag("player.season.row.0.gp").assertTextEquals("13")
         rule.onNodeWithTag("player.season.row.0.sog").assertTextEquals("30")
+    }
+
+    /** The season card prints no league or club line above its grid, for an NHL season or any other. */
+    @Test
+    fun theSeasonCardPrintsNoLeagueOrClubLine() {
+        show(loaded(skaterProfile()))
+
+        rule.onNodeWithTag("player.season.row.0.label").assertDoesNotExist()
+        rule.onAllNodesWithText("NHL · ", substring = true).assertCountEquals(0)
     }
 
     /**
@@ -120,9 +138,9 @@ class PlayerScreenTest {
         rule.onAllNodesWithText("Charlotte", substring = true).assertCountEquals(0)
     }
 
-    /** A traded season keeps both clubs as grids inside the one season card, each with its club named above it. */
+    /** A traded season keeps both clubs as grids inside the one season card, with no club line above either grid. */
     @Test
-    fun aTradedSeasonShowsBothClubsInsideTheOneSeasonCard() {
+    fun aTradedSeasonShowsBothClubGridsInsideTheOneSeasonCardWithNoClubLine() {
         show(
             loaded(
                 skaterProfile(
@@ -136,10 +154,11 @@ class PlayerScreenTest {
         )
 
         rule.onAllNodesWithTag("player.season").assertCountEquals(1)
-        rule.onNodeWithTag("player.season.row.0.label").assertTextEquals("NHL · Carolina Hurricanes")
-        rule.onNodeWithTag("player.season.row.1.label").assertTextEquals("NHL · Boston Bruins")
+        rule.onNodeWithTag("player.season.row.0.label").assertDoesNotExist()
+        rule.onNodeWithTag("player.season.row.1.label").assertDoesNotExist()
+        rule.onNodeWithTag("player.season.row.0.gp").assertTextEquals("30")
         rule.onNodeWithTag("player.season.row.1.gp").assertTextEquals("20")
-        assertTrue("the second club is not below the first", top("player.season.row.1.label") > top("player.season.row.0.label"))
+        assertTrue("the second club is not below the first", top("player.season.row.1.gp") > top("player.season.row.0.gp"))
     }
 
     /** A wing is printed as LW or RW; the feed's C, D and G are unchanged. */
@@ -204,6 +223,17 @@ class PlayerScreenTest {
         rule.onNodeWithTag("player.career.row.0.club").assertTextEquals("CAR")
         rule.onNodeWithTag("player.career.row.0.label").assertTextEquals("2024-25")
         assertTrue(bounds("player.career.row.0.label").right <= bounds("player.career.row.0.club").left + 1f)
+    }
+
+    /** The career's frozen column is sized to its content: no wider than its widest season label. */
+    @Test
+    fun theCareerFrozenColumnIsNoWiderThanItsWidestSeasonLabel() {
+        show(loaded(skaterProfile()))
+        selectTab("Career")
+
+        val widest = (0..2).maxOf { bounds("player.career.row.$it.label").width }
+        val frozen = bounds("player.career.row.0.frozen").width
+        assertTrue("the frozen column is $frozen px, wider than its widest label $widest px", frozen <= widest + 2f)
     }
 
     /** The frozen season column keeps its place and stays on screen while the stat columns scroll shut. */
@@ -290,7 +320,7 @@ class PlayerScreenTest {
         rule.onNodeWithTag("player.playoffs.row.0.label").assertTextEquals("2024-25")
         rule.onNodeWithTag("player.playoffs.row.0.gp").assertTextEquals("6")
         rule.onNodeWithTag("player.playoffs.row.1").assertDoesNotExist()
-        rule.onNodeWithTag("player.playoffs.total.label").assertTextEquals("Playoffs total")
+        rule.onNodeWithTag("player.playoffs.total.label").assertTextEquals("Total")
         rule.onNodeWithTag("player.playoffs.total.gp").assertTextEquals("6")
         assertTrue("the playoff card is not below the career card", top("player.playoffs") > top("player.career.total"))
     }
@@ -322,7 +352,7 @@ class PlayerScreenTest {
         show(loaded(goalieProfile()))
 
         rule.onNodeWithTag("player.number").assertTextEquals("#31 · G")
-        rule.onNodeWithTag("player.season.row.0.label").assertTextEquals("NHL · Anaheim Ducks")
+        rule.onNodeWithTag("player.season.row.0.label").assertDoesNotExist()
         rule.onNodeWithTag("player.season.row.0.w.label").assertTextEquals("W")
         rule.onNodeWithTag("player.season.row.1").assertDoesNotExist()
     }
@@ -342,14 +372,14 @@ class PlayerScreenTest {
         rule.onNodeWithText("This season", ignoreCase = true).assertDoesNotExist()
     }
 
-    /** The heading names the season in full years, and the rows read the date as "Nov 1". */
+    /** The heading names the season in full years, and the row's label reads the date and opponent as "Nov 1 · @ OTT". */
     @Test
-    fun theGameLogHeadingNamesTheSeasonInFullYearsAndTheRowDateReadsNovOne() {
+    fun theGameLogHeadingNamesTheSeasonInFullYearsAndTheRowLabelReadsDateAndOpponent() {
         show(loaded(skaterProfile(), gameLog = Loadable(listOf(skaterGame(day = 1, isHome = false)), Freshness.Fresh, null)))
         selectTab("GameLog")
 
         rule.onNodeWithText("GAME LOG 2026-2027 SEASON").assertExists()
-        rule.onNodeWithTag("player.gamelog.row.0.label").assertTextEquals("Nov 1")
+        rule.onNodeWithTag("player.gamelog.row.0.label", useUnmergedTree = true).assertTextEquals("Nov 1 · @ OTT")
     }
 
     @Test
@@ -359,79 +389,159 @@ class PlayerScreenTest {
 
         // Each game's shots equal its day, so the newest game (the 7th) shows 7 at the top.
         (0..6).forEach { index ->
-            rule.onNodeWithTag("player.gamelog.row.$index.sog").assertTextEquals((7 - index).toString())
+            rule.onNodeWithTag("player.gamelog.row.$index.sog", useUnmergedTree = true).assertTextEquals((7 - index).toString())
         }
-        rule.onNodeWithTag("player.gamelog.row.7").assertDoesNotExist()
+        rule.onNodeWithTag("player.gamelog.row.7", useUnmergedTree = true).assertDoesNotExist()
     }
 
-    /** The opponent is printed with a home or away marker, and it is a line in the frozen column, not a scrolling column. */
+    /** The opponent is printed with a home or away marker, and it sits in the frozen label, not a scrolling column. */
     @Test
     fun aSkaterGameShowsTheOpponentWithAHomeOrAwayMarkerNotAResult() {
         show(loaded(skaterProfile(), gameLog = Loadable(listOf(skaterGame(day = 1, isHome = false)), Freshness.Fresh, null)))
         selectTab("GameLog")
 
-        rule.onNodeWithTag("player.gamelog.row.0.detail").assertTextEquals("@ OTT")
+        rule.onNodeWithTag("player.gamelog.row.0.label", useUnmergedTree = true).assertTextEquals("Nov 1 · @ OTT")
         rule.onAllNodesWithTag("player.gamelog.header.opp").assertCountEquals(0)
         rule.onNodeWithTag("player.gamelog.header.ast").assertTextEquals("AST")
         rule.onNodeWithTag("player.gamelog.header.sog").assertTextEquals("SOG")
-        rule.onNodeWithTag("player.gamelog.row.0.dec").assertDoesNotExist()
+        rule.onNodeWithTag("player.gamelog.row.0.dec", useUnmergedTree = true).assertDoesNotExist()
     }
 
-    /** The frozen column holds the date above the opponent, both on the left and both in the same column. */
+    /** The date and the opponent share one line, joined by the separator dot. */
     @Test
-    fun theFrozenGameLogColumnHoldsTheDateAboveTheOpponentInOneColumn() {
+    fun theFrozenGameLogLineHoldsTheDateAndTheOpponentOnOneLineWithADot() {
         show(loaded(skaterProfile(), gameLog = Loadable(listOf(skaterGame(day = 1, isHome = false)), Freshness.Fresh, null)))
         selectTab("GameLog")
 
-        rule.onNodeWithTag("player.gamelog.row.0.label").assertTextEquals("Nov 1")
-        rule.onNodeWithTag("player.gamelog.row.0.detail").assertTextEquals("@ OTT")
-        assertTrue("the opponent is not below the date", top("player.gamelog.row.0.detail") > top("player.gamelog.row.0.label"))
-        assertEquals(bounds("player.gamelog.row.0.label").left, bounds("player.gamelog.row.0.detail").left, 0.5f)
+        rule.onNodeWithTag("player.gamelog.row.0.label", useUnmergedTree = true).assertTextEquals("Nov 1 · @ OTT")
+        assertEquals(1, lineCount("player.gamelog.row.0.label"))
     }
 
-    /** A short date and opponent give a column narrower than the fixed label width, and neither line wraps. */
+    /** A home game reads "vs", with the same dot after the date. */
     @Test
-    fun theFrozenGameLogColumnIsNarrowForShortLinesAndNeitherLineWraps() {
+    fun aHomeGameReadsVsWithTheSeparatorDot() {
+        show(loaded(skaterProfile(), gameLog = Loadable(listOf(skaterGame(day = 1, isHome = true)), Freshness.Fresh, null)))
+        selectTab("GameLog")
+
+        rule.onNodeWithTag("player.gamelog.row.0.label", useUnmergedTree = true).assertTextEquals("Nov 1 · vs OTT")
+    }
+
+    /** The frozen column is only as wide as its one line, and that line does not wrap. */
+    @Test
+    fun theFrozenGameLogColumnIsSizedToItsLineNotTheFixedWidth() {
         show(loaded(skaterProfile(), gameLog = Loadable(listOf(skaterGame(day = 1, isHome = false)), Freshness.Fresh, null)))
         selectTab("GameLog")
 
         val frozen = bounds("player.gamelog.row.0.frozen").width
         val fixed = with(rule.density) { 136.dp.toPx() }
         assertTrue("the frozen column is $frozen px, not narrower than the fixed $fixed px", frozen < fixed)
-        assertEquals(bounds("player.gamelog.row.0.label").height, bounds("player.gamelog.row.0.detail").height, 1f)
+        assertEquals(bounds("player.gamelog.row.0.label").width, frozen, 2f)
     }
 
     /** A long opponent widens the frozen column to fit its text, and the text still sits on one line. */
     @Test
-    fun theFrozenGameLogColumnWidensToALongOpponentAndTheOpponentStaysOnOneLine() {
+    fun theFrozenGameLogColumnWidensToALongOpponentAndTheLineStaysOnOneLine() {
         show(loaded(skaterProfile(), gameLog = Loadable(listOf(skaterGame(day = 1, opponent = longOpponent)), Freshness.Fresh, null)))
         selectTab("GameLog")
 
         val frozen = bounds("player.gamelog.row.0.frozen").width
         val fixed = with(rule.density) { 136.dp.toPx() }
         assertTrue("the frozen column is $frozen px, not wider than the fixed $fixed px", frozen > fixed)
-        assertEquals(bounds("player.gamelog.row.0.label").height, bounds("player.gamelog.row.0.detail").height, 1f)
+        assertEquals(1, lineCount("player.gamelog.row.0.label"))
     }
 
     /** The frozen date and opponent keep their place while the numbers scroll sideways. */
     @Test
     fun theFrozenGameLogColumnStaysPutWhileTheNumbersScroll() {
-        show(loaded(skaterProfile(), gameLog = Loadable(listOf(skaterGame(day = 1, opponent = longOpponent)), Freshness.Fresh, null)))
+        // At 360 dp the long opponent leaves less room than the numbers need, so there is something to scroll.
+        show(
+            loaded(skaterProfile(), gameLog = Loadable(listOf(skaterGame(day = 1, opponent = longOpponent)), Freshness.Fresh, null)),
+            widthDp = 360,
+        )
         selectTab("GameLog")
         rule.waitForIdle()
-        val dateLeft = bounds("player.gamelog.row.0.label").left
-        val opponentLeft = bounds("player.gamelog.row.0.detail").left
+        val labelLeft = bounds("player.gamelog.row.0.label").left
         // Touch bounds are the cell's layout, not clipped to the scroller, so a cell scrolled out of view still has a place.
         val firstStatLeft = touchBounds("player.gamelog.row.0.g").left
         assertTrue("the stat cell is not laid out before the swipe", firstStatLeft > 0f)
 
-        rule.onNodeWithTag("player.gamelog.row.0.g").performTouchInput { swipeLeft() }
+        // A drag that starts in the numbers and runs about 100 dp left: longer than touch slop, and shorter than the numbers
+        // overflow. A longer drag would hand its remainder to the pager and turn the tab.
+        val distance = with(rule.density) { 100.dp.toPx() }
+        rule.onNodeWithTag("player.gamelog.row.0", useUnmergedTree = true).performTouchInput {
+            swipe(Offset(right - 4f, centerY), Offset(right - 4f - distance, centerY))
+        }
         rule.waitForIdle()
 
-        rule.onNodeWithTag("player.gamelog.row.0.detail").assertIsDisplayed()
-        assertEquals(dateLeft, bounds("player.gamelog.row.0.label").left, 0.5f)
-        assertEquals(opponentLeft, bounds("player.gamelog.row.0.detail").left, 0.5f)
-        assertTrue("the numbers did not scroll", touchBounds("player.gamelog.row.0.g").left < firstStatLeft)
+        rule.onNodeWithTag("player.gamelog.row.0.label", useUnmergedTree = true).assertIsDisplayed()
+        assertEquals(labelLeft, bounds("player.gamelog.row.0.label").left, 0.5f)
+        assertTrue(
+            "the numbers did not scroll: g was $firstStatLeft, now ${touchBounds("player.gamelog.row.0.g").left}; " +
+                "cells ${skaterLogKeys.map { "$it=${touchBounds("player.gamelog.row.0.$it")}/${bounds("player.gamelog.row.0.$it")}" }}; " +
+                "card ends at ${bounds("player.gamelog").right}; " +
+                "label ends at ${touchBounds("player.gamelog.row.0.label").right}",
+            touchBounds("player.gamelog.row.0.g").left < firstStatLeft,
+        )
+    }
+
+    /** A game row is a 48 dp button: a tap reports the game's id, and a screen reader hears it as a button. */
+    @Test
+    fun aTappedGameRowReportsItsGameIdAndIsAtLeast48dpTallAsAButton() {
+        val clicked = mutableListOf<Long>()
+        show(
+            loaded(skaterProfile(), gameLog = Loadable(listOf(skaterGame(day = 1)), Freshness.Fresh, null)),
+            onGameClick = { clicked += it },
+        )
+        selectTab("GameLog")
+
+        val row = rule.onNodeWithTag("player.gamelog.row.0", useUnmergedTree = true)
+        row.assertHasClickAction()
+        assertEquals(Role.Button, row.fetchSemanticsNode().config.getOrNull(SemanticsProperties.Role))
+        val minimum = with(rule.density) { 48.dp.toPx() }
+        val height =
+            row
+                .fetchSemanticsNode()
+                .size.height
+                .toFloat()
+        assertTrue("the row is $height px tall, below $minimum px", height >= minimum)
+
+        row.performClick()
+
+        assertEquals(listOf(1001L), clicked)
+    }
+
+    /** A skater's whole game log lays out inside the card at 360 dp: every column is placed, none past the card's edge. */
+    @Test
+    fun aSkatersWholeGameLogFitsInsideTheCardAt360dp() {
+        show(loaded(skaterProfile(), gameLog = Loadable(shuffledSkaterGames(), Freshness.Fresh, null)), widthDp = 360)
+        selectTab("GameLog")
+
+        val card = bounds("player.gamelog")
+        assertFitsInCard(skaterLogKeys.flatMap { listOf("player.gamelog.header.$it", "player.gamelog.row.0.$it") }, card)
+    }
+
+    /** At 360 dp each number sits centred under its header, so the two centres match. */
+    @Test
+    fun aSkatersNumbersAreCentredUnderTheirHeadersAt360dp() {
+        show(loaded(skaterProfile(), gameLog = Loadable(shuffledSkaterGames(), Freshness.Fresh, null)), widthDp = 360)
+        selectTab("GameLog")
+
+        skaterLogKeys.forEach { key ->
+            val header = touchBounds("player.gamelog.header.$key")
+            val value = touchBounds("player.gamelog.row.0.$key")
+            assertTrue("$key is not laid out", header.width > 0f && value.width > 0f)
+            assertEquals("$key is not centred under its header", (header.left + header.right) / 2f, (value.left + value.right) / 2f, 1f)
+        }
+    }
+
+    /** A goalie's whole game log lays out inside the card at 360 dp: every column is placed, none past the card's edge. */
+    @Test
+    fun aGoaliesWholeGameLogFitsInsideTheCardAt360dp() {
+        show(loaded(goalieProfile(), gameLog = Loadable(goalieGames(), Freshness.Fresh, null)), widthDp = 360)
+        selectTab("GameLog")
+
+        val card = bounds("player.gamelog")
+        assertFitsInCard(goalieLogKeys.flatMap { listOf("player.gamelog.header.$it", "player.gamelog.row.0.$it") }, card)
     }
 
     /** The heading names the season being played, not the profile's newest season, which here is an older one. */
@@ -454,12 +564,12 @@ class PlayerScreenTest {
         selectTab("GameLog")
 
         listOf("OT", "W", "L", "W", "OT", "L", "W").forEachIndexed { index, decision ->
-            rule.onNodeWithTag("player.gamelog.row.$index.dec").assertTextEquals(decision)
+            rule.onNodeWithTag("player.gamelog.row.$index.dec", useUnmergedTree = true).assertTextEquals(decision)
         }
         rule.onNodeWithTag("player.gamelog.header.dec").assertTextEquals("DEC")
         rule.onNodeWithTag("player.gamelog.header.g").assertDoesNotExist()
-        rule.onNodeWithTag("player.gamelog.row.0.g").assertDoesNotExist()
-        rule.onNodeWithTag("player.gamelog.row.0.ast").assertDoesNotExist()
+        rule.onNodeWithTag("player.gamelog.row.0.g", useUnmergedTree = true).assertDoesNotExist()
+        rule.onNodeWithTag("player.gamelog.row.0.ast", useUnmergedTree = true).assertDoesNotExist()
     }
 
     @Test
@@ -514,15 +624,21 @@ class PlayerScreenTest {
         rule.onNodeWithTag("player.tab.Season").assertIsSelected()
     }
 
+    /** The five facts, each with its label and its value. Height and weight share one cell. */
     @Test
-    fun theInfoCardIsLabelAndValueRowsWithShootsForASkater() {
+    fun theInfoCardShowsTheFiveFactsAsLabelsAndValuesForASkater() {
         show(loaded(skaterProfile()))
         selectTab("Info")
 
+        rule.onNodeWithTag("player.info.heightweight.label").assertTextEquals("Height and weight")
+        rule.onNodeWithTag("player.info.heightweight").assertTextEquals("5′ 10″ / 155 lb")
         rule.onNodeWithTag("player.info.shoots.label").assertTextEquals("Shoots")
         rule.onNodeWithTag("player.info.shoots").assertTextEquals("L")
-        rule.onNodeWithTag("player.info.height.label").assertTextEquals("Height")
-        rule.onNodeWithTag("player.info.height").assertTextEquals("5′ 10″")
+        rule.onNodeWithTag("player.info.born.label").assertTextEquals("Born")
+        rule.onNodeWithTag("player.info.born").assertTextEquals("Jan 9, 1999 (27)")
+        rule.onNodeWithTag("player.info.birthplace.label").assertTextEquals("Birthplace")
+        rule.onNodeWithTag("player.info.birthplace").assertTextEquals("Tampere, FIN")
+        rule.onNodeWithTag("player.info.draft.label").assertTextEquals("Draft")
         rule.onNodeWithTag("player.info.draft").assertTextEquals("2017 · FLA · Round 2 · Pick 9 · Overall 40")
     }
 
@@ -536,25 +652,25 @@ class PlayerScreenTest {
     }
 
     /**
-     * The facts fill the left column top to bottom, then the right. A screen reader hears them in the order the eye reads
-     * them, so the tree's order is the order on the screen, sorted by column and then by height.
+     * The card is exactly five facts, read across then down. A screen reader hears them in the order the eye reads them,
+     * so the tree's order is the order on the screen, sorted by row and then by column.
      */
     @Test
-    fun theInfoFactsFillTheLeftColumnThenTheRightAndAScreenReaderHearsThemInThatOrder() {
+    fun theInfoFactsReadAcrossThenDownAndAScreenReaderHearsThemInThatOrder() {
         show(loaded(skaterProfile()))
         selectTab("Info")
 
         val facts = rule.onAllNodes(infoValue).fetchSemanticsNodes()
+        assertEquals("the card does not hold exactly five facts", 5, facts.size)
         val inTreeOrder = facts.map { it.config[SemanticsProperties.TestTag] }
         val onScreen =
             facts
-                .sortedWith(compareBy({ it.boundsInRoot.left }, { it.boundsInRoot.top }))
+                .sortedWith(compareBy({ it.boundsInRoot.top }, { it.boundsInRoot.left }))
                 .map { it.config[SemanticsProperties.TestTag] }
 
         assertEquals(
             listOf(
-                "player.info.height",
-                "player.info.weight",
+                "player.info.heightweight",
                 "player.info.shoots",
                 "player.info.born",
                 "player.info.birthplace",
@@ -563,8 +679,73 @@ class PlayerScreenTest {
             inTreeOrder,
         )
         assertEquals("the reading order differs from the screen order", onScreen, inTreeOrder)
-        assertEquals(bounds("player.info.height").left, bounds("player.info.shoots").left, 0.5f)
-        assertTrue("the right column is not to the right", bounds("player.info.born").left > bounds("player.info.height").left)
+        assertEquals(bounds("player.info.heightweight.cell").left, bounds("player.info.born.cell").left, 0.5f)
+        assertTrue(
+            "the right column is not to the right",
+            bounds("player.info.shoots.cell").left > bounds("player.info.heightweight.cell").left,
+        )
+    }
+
+    /** Draft spans both columns: its cell starts where the left column starts and ends where the right one ends. */
+    @Test
+    fun theDraftCellSpansTheWholeCardAcrossBothColumns() {
+        show(loaded(skaterProfile()))
+        selectTab("Info")
+
+        val draft = bounds("player.info.draft.cell")
+        val heightWeight = bounds("player.info.heightweight.cell")
+        val shoots = bounds("player.info.shoots.cell")
+        assertEquals(heightWeight.left, draft.left, 1f)
+        assertEquals(shoots.right, draft.right, 1f)
+        assertTrue(
+            "the draft is ${draft.width} px, not wider than one column ${heightWeight.width} px",
+            draft.width > heightWeight.width * 1.5f,
+        )
+    }
+
+    /** A player born on today's date a year ago is one year old, not zero, on that day. */
+    @Test
+    fun aPlayerBornOnTodayAYearAgoIsOneOnTheBirthday() {
+        show(loaded(skaterProfile(birthDate = "2025-11-05")), today = LocalDate(2026, 11, 5))
+        selectTab("Info")
+
+        rule.onNodeWithTag("player.info.born").assertTextEquals("Nov 5, 2025 (1)")
+    }
+
+    /** The day before that birthday the player is still zero: the age does not turn over early. */
+    @Test
+    fun aPlayerIsStillZeroTheDayBeforeTheirBirthday() {
+        show(loaded(skaterProfile(birthDate = "2025-11-05")), today = LocalDate(2026, 11, 4))
+        selectTab("Info")
+
+        rule.onNodeWithTag("player.info.born").assertTextEquals("Nov 5, 2025 (0)")
+    }
+
+    /** A missing fact prints the dash, and the draft still spans the card when the feed has no draft record. */
+    @Test
+    fun aMissingFactPrintsTheDashAndTheDraftStillSpansTheWholeCard() {
+        show(
+            loaded(
+                skaterProfile().copy(
+                    heightInches = null,
+                    weightPounds = null,
+                    shoots = null,
+                    birthDate = null,
+                    birthCity = null,
+                    birthCountry = null,
+                    draft = null,
+                ),
+            ),
+        )
+        selectTab("Info")
+
+        rule.onNodeWithTag("player.info.heightweight").assertTextEquals("— / —")
+        rule.onNodeWithTag("player.info.shoots").assertTextEquals("—")
+        rule.onNodeWithTag("player.info.born").assertTextEquals("—")
+        rule.onNodeWithTag("player.info.birthplace").assertTextEquals("—")
+        rule.onNodeWithTag("player.info.draft").assertTextEquals("—")
+        assertEquals(bounds("player.info.heightweight.cell").left, bounds("player.info.draft.cell").left, 1f)
+        assertEquals(bounds("player.info.shoots.cell").right, bounds("player.info.draft.cell").right, 1f)
     }
 
     @Test
@@ -594,14 +775,20 @@ class PlayerScreenTest {
     private fun show(
         state: PlayerDetailUiState,
         onRetry: () -> Unit = {},
+        onGameClick: (Long) -> Unit = {},
+        today: LocalDate = TODAY,
+        widthDp: Int? = null,
     ) {
         rule.setContent {
             RouxTheme {
                 PlayerDetailScreen(
                     state = state,
                     currentSeason = CURRENT_SEASON,
+                    today = today,
                     onBack = {},
                     onRetry = onRetry,
+                    onGameClick = onGameClick,
+                    modifier = widthDp?.let { Modifier.width(it.dp) } ?: Modifier,
                 )
             }
         }
@@ -625,19 +812,47 @@ class PlayerScreenTest {
         rule.waitForIdle()
     }
 
-    /** The info card's value lines: every tagged fact value, but not its label. */
+    /** The info card's value lines: every tagged fact value, but neither its label nor the cell that wraps the pair. */
     private val infoValue =
         SemanticsMatcher("an info value") { node ->
             val tag = node.config.getOrNull(SemanticsProperties.TestTag)
-            tag != null && tag.startsWith("player.info.") && !tag.endsWith(".label")
+            tag != null && tag.startsWith("player.info.") && !tag.endsWith(".label") && !tag.endsWith(".cell")
         }
 
-    private fun bounds(tag: String): Rect = rule.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
+    private fun bounds(tag: String): Rect = rule.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
 
     /** Where a node is laid out, not clipped to the scroller it sits in, so a cell scrolled off screen still has a position. */
-    private fun touchBounds(tag: String): Rect = rule.onNodeWithTag(tag).fetchSemanticsNode().touchBoundsInRoot
+    private fun touchBounds(tag: String): Rect = rule.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().touchBoundsInRoot
+
+    /**
+     * Each tag is laid out and ends inside the card's right edge. A cell scrolled past the viewport is not laid out at all
+     * and reports empty bounds, so an empty rect fails here as well as one that runs past the edge.
+     */
+    private fun assertFitsInCard(
+        tags: List<String>,
+        card: Rect,
+    ) {
+        tags.forEach { tag ->
+            val cell = touchBounds(tag)
+            assertTrue("$tag is not laid out inside the card", cell.width > 0f)
+            assertTrue("$tag ends at ${cell.right}, past the card at ${card.right}", cell.right <= card.right)
+        }
+    }
 
     private fun top(tag: String): Float = bounds(tag).top
+
+    /** How many lines the text under a tag lays out to. A label that wraps reads as more than one. */
+    private fun lineCount(tag: String): Int {
+        val layouts = mutableListOf<TextLayoutResult>()
+        rule
+            .onNodeWithTag(tag, useUnmergedTree = true)
+            .fetchSemanticsNode()
+            .config
+            .getOrNull(SemanticsActions.GetTextLayoutResult)
+            ?.action
+            ?.invoke(layouts)
+        return layouts.single().lineCount
+    }
 
     private fun loaded(
         profile: PlayerProfile,
@@ -647,6 +862,7 @@ class PlayerScreenTest {
     private fun skaterProfile(
         seasons: List<PlayerSeasonLine> = skaterSeasons,
         position: String = "C",
+        birthDate: String? = "1999-01-09",
     ) = PlayerProfile(
         playerId = 8480037L,
         firstName = "Aleksi",
@@ -655,7 +871,7 @@ class PlayerScreenTest {
         sweaterNumber = 20,
         heightInches = 70,
         weightPounds = 155,
-        birthDate = "1999-01-09",
+        birthDate = birthDate,
         birthCity = "Tampere",
         birthCountry = "FIN",
         shoots = "L",
@@ -683,6 +899,12 @@ class PlayerScreenTest {
 
     /** An opponent name long enough that its line is wider than the fixed label width, for the frozen-column tests. */
     private val longOpponent = "Vancouver Canucks Hockey Club"
+
+    /** The stat keys of a skater's game log, in column order. */
+    private val skaterLogKeys = listOf("g", "ast", "pts", "pm", "sog", "toi")
+
+    /** The stat keys of a goalie's game log, in column order. */
+    private val goalieLogKeys = listOf("dec", "sa", "ga", "sv", "toi")
 
     /** The club abbreviations the feed never sends; the adapter supplies them, so the fixtures here do the same. */
     private val clubAbbrevs = mapOf("Carolina Hurricanes" to "CAR", "Boston Bruins" to "BOS", "Anaheim Ducks" to "ANA")

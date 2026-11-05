@@ -51,6 +51,16 @@ class PlayerGameLogAdapterTest {
         assertEquals(1455L, first.timeOnIceSeconds) // 24:15
     }
 
+    /** The club a row was played for is carried through, so a tapped game can name its two clubs. */
+    @Test
+    fun eachGameRowKeepsTheClubThePlayerPlayedForInThatGame() {
+        val skater = parsed(skaterJson, isGoalie = false)
+        val goalie = parsed(goalieJson, isGoalie = true)
+
+        assertEquals(listOf("EDM", "EDM", "EDM"), skater.map { it.teamAbbrev })
+        assertEquals(listOf("ANA", "ANA"), goalie.map { it.teamAbbrev })
+    }
+
     @Test
     fun everyFeedDecisionCodeMapsToOneOutcomeAndAnyOtherCodeIsAbsent() {
         val games =

@@ -95,6 +95,7 @@ import net.montycasa.roux.domain.model.ClubGame
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.PlayerGame
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.domain.model.ThemeMode
@@ -449,6 +450,7 @@ fun RouxNavHost(
                                 container = container,
                                 playerId = playerId,
                                 onBack = { navController.popBackStack() },
+                                onOpenGame = { game -> navController.navigate(detailRoute(game)) },
                             )
                         }
                     }
@@ -780,6 +782,27 @@ internal fun ClubGame.toGame(): Game =
         awayScore = awayScore,
     )
 
+/**
+ * A game from a player's log, as the game page needs it. The log names the player's club and whether it was a home game,
+ * which is all the page's two sides need; the page loads its own scores, so none are set here. A log row missing its
+ * club, opponent, home flag or date returns null, and the tap opens nothing rather than a page with the wrong club.
+ */
+internal fun PlayerGame.toGame(): Game? {
+    val club = teamAbbrev ?: return null
+    val opponent = opponentAbbrev ?: return null
+    val home = isHome ?: return null
+    val date = gameDate ?: return null
+    val (homeAbbrev, awayAbbrev) = if (home) club to opponent else opponent to club
+    return Game(
+        id = GameId(gameId.toString()),
+        date = date,
+        // A log holds finished games, so the page opens in its final state.
+        state = GameState.Final,
+        home = TeamRef(TeamKey(homeAbbrev)),
+        away = TeamRef(TeamKey(awayAbbrev)),
+    )
+}
+
 private const val MISSING_SCORE = "-1"
 
 private fun encodeState(state: GameState): String =
@@ -938,6 +961,7 @@ private fun PlayerDetailDestination(
     container: AppContainer,
     playerId: Long,
     onBack: () -> Unit,
+    onOpenGame: (Game) -> Unit,
 ) {
     // Keyed by player so a second player cannot inherit the first one's loaded profile.
     val detail: PlayerDetailViewModel =
@@ -958,7 +982,17 @@ private fun PlayerDetailDestination(
     PlayerDetailScreen(
         state = state,
         currentSeason = detail.currentSeason,
+        today = detail.today,
         onBack = onBack,
         onRetry = detail::retry,
+        // The row names a game by id only. The id is looked up in the log the page already holds, so the tap opens the
+        // same page a scores row does. A row the log cannot make a game of opens nothing.
+        onGameClick = { gameId ->
+            state.gameLog
+                ?.data
+                ?.firstOrNull { it.gameId == gameId }
+                ?.toGame()
+                ?.let(onOpenGame)
+        },
     )
 }

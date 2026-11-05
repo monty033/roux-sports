@@ -1,5 +1,9 @@
 package net.montycasa.roux.domain.model
 
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.until
+
 /**
  * A player's landing page: who the player is and what the feed says they have done, season by season and in career
  * totals. The game log is a separate request and lives in [PlayerGame].
@@ -132,6 +136,17 @@ fun playerPositionLabel(code: String): String =
         "R" -> "RW"
         else -> code
     }
+
+/**
+ * The player's age in whole years on [today]: the years between the birth date and today, so a player is one year old on
+ * the first birthday, not the day before it. Null when the birth date is absent or does not parse, and never negative.
+ */
+fun PlayerProfile.ageOn(today: LocalDate): Int? {
+    val birth = birthDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: return null
+    // `until` truncates toward zero, so a birth date after today would read as 0 years; it has no age at all.
+    if (birth > today) return null
+    return birth.until(today, DateTimeUnit.YEAR).toInt()
+}
 
 /** The newest season any row carries, or null when no row says which season it is. */
 fun List<PlayerSeasonLine>.newestSeason(): Int? = mapNotNull { it.season }.maxOrNull()

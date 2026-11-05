@@ -8,7 +8,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
@@ -37,6 +39,9 @@ class PlayerDetailViewModel(
 ) : ViewModel() {
     /** The season being played now, as the feed's eight-digit id. It decides whether a season card says "This season". */
     val currentSeason: Int = LeagueCalendar.seasonId(clock.now(), zone).toInt()
+
+    /** Today's civil date. The Info card counts a player's age to it, so a birthday turns over on the day itself. */
+    val today: LocalDate = clock.now().toLocalDateTime(zone).date
 
     private val mutableState = MutableStateFlow(PlayerDetailUiState())
     val uiState: StateFlow<PlayerDetailUiState> = mutableState.asStateFlow()

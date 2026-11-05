@@ -14,11 +14,15 @@ sealed interface PlayerGame {
     /** True for a home game, false for a road game, null when the feed does not say. */
     val isHome: Boolean?
 
+    /** The club the player played for in this game, as its abbreviation. Null when the feed does not say. */
+    val teamAbbrev: String?
+
     data class Skater(
         override val gameId: Long,
         override val gameDate: String?,
         override val opponentAbbrev: String?,
         override val isHome: Boolean?,
+        override val teamAbbrev: String? = null,
         val goals: Int? = null,
         val assists: Int? = null,
         val points: Int? = null,
@@ -32,6 +36,7 @@ sealed interface PlayerGame {
         override val gameDate: String?,
         override val opponentAbbrev: String?,
         override val isHome: Boolean?,
+        override val teamAbbrev: String? = null,
         val decision: GoalieDecision? = null,
         val shotsAgainst: Int? = null,
         val goalsAgainst: Int? = null,

@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
+import kotlinx.datetime.LocalDate
 import net.montycasa.roux.R
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.Loadable
@@ -50,6 +51,7 @@ import net.montycasa.roux.domain.model.PlayerGame
 import net.montycasa.roux.domain.model.PlayerProfile
 import net.montycasa.roux.domain.model.PlayerSeasonLine
 import net.montycasa.roux.domain.model.PlayerTotals
+import net.montycasa.roux.domain.model.ageOn
 import net.montycasa.roux.domain.model.newestFirst
 import net.montycasa.roux.domain.model.newestNhlRegularSeasonRows
 import net.montycasa.roux.domain.model.newestSeasonRows
@@ -68,7 +70,6 @@ import net.montycasa.roux.ui.team.formatShootingPercentage
 import net.montycasa.roux.ui.team.formatStatNumber
 import net.montycasa.roux.ui.team.formatStatsIceTime
 import net.montycasa.roux.ui.theme.LocalRouxAccents
-import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 import java.time.format.FormatStyle
@@ -77,6 +78,9 @@ import java.util.Locale
 private val HEADSHOT_SIZE = 112.dp
 private val DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
 private const val TAB_SETTLE_MILLIS = 250
+
+/** What a fact the feed does not have prints in its place. */
+private const val MISSING_FACT = "—"
 
 /**
  * The four tabs, in the order the bottom navigation shows them. The pager and the bar both count pages by this order,
@@ -94,14 +98,17 @@ internal enum class PlayerTab {
  * navigation. Each tab scrolls vertically on its own. A swipe turns the page and the bar follows it.
  *
  * The Season, Career and Info tabs read the profile alone. The Game log tab reads its own request, so a failed or empty
- * log leaves the other three exactly as they were.
+ * log leaves the other three exactly as they were. [today] is the date the Info tab's age is counted to. [onGameClick]
+ * receives the id of a game the Game log tab's row names.
  */
 @Composable
 fun PlayerDetailScreen(
     state: PlayerDetailUiState,
     currentSeason: Int,
+    today: LocalDate,
     onBack: () -> Unit,
     onRetry: () -> Unit,
+    onGameClick: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -118,8 +125,10 @@ fun PlayerDetailScreen(
                 PlayerBody(
                     profile = profile,
                     currentSeason = currentSeason,
+                    today = today,
                     gameLog = state.gameLog,
                     onRetry = onRetry,
+                    onGameClick = onGameClick,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -161,8 +170,10 @@ private fun PlayerBackRow(onBack: () -> Unit) {
 private fun PlayerBody(
     profile: PlayerProfile,
     currentSeason: Int,
+    today: LocalDate,
     gameLog: Loadable<List<PlayerGame>>?,
     onRetry: () -> Unit,
+    onGameClick: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val pager = rememberPagerState { PlayerTab.entries.size }
@@ -193,8 +204,10 @@ private fun PlayerBody(
                 tab = PlayerTab.entries[page],
                 profile = profile,
                 currentSeason = currentSeason,
+                today = today,
                 gameLog = gameLog,
                 onRetry = onRetry,
+                onGameClick = onGameClick,
             )
         }
         SubNavigationRow(
@@ -214,8 +227,10 @@ private fun PlayerTabPage(
     tab: PlayerTab,
     profile: PlayerProfile,
     currentSeason: Int,
+    today: LocalDate,
     gameLog: Loadable<List<PlayerGame>>?,
     onRetry: () -> Unit,
+    onGameClick: (Long) -> Unit,
 ) {
     Column(
         Modifier
@@ -233,11 +248,17 @@ private fun PlayerTabPage(
             }
 
             PlayerTab.GameLog -> {
-                GameLogTab(profile = profile, currentSeason = currentSeason, gameLog = gameLog, onRetry = onRetry)
+                GameLogTab(
+                    profile = profile,
+                    currentSeason = currentSeason,
+                    gameLog = gameLog,
+                    onRetry = onRetry,
+                    onGameClick = onGameClick,
+                )
             }
 
             PlayerTab.Info -> {
-                InfoTab(profile = profile)
+                InfoTab(profile = profile, today = today)
             }
         }
     }
@@ -356,19 +377,16 @@ private fun SeasonTab(
     }
 }
 
-/** One season line: its league and team above a grid of its stats. A traded season is one block per club. */
+/**
+ * One season line, as a grid of its stats. The card prints no league or club line. A traded season is one grid per
+ * club, all inside the one season card.
+ */
 @Composable
 private fun SeasonLineBlock(
     line: PlayerSeasonLine,
     isGoalie: Boolean,
     tagPrefix: String,
 ) {
-    Text(
-        seasonLabel(line),
-        modifier = Modifier.padding(top = 8.dp).testTag("$tagPrefix.label"),
-        style = MaterialTheme.typography.bodyMedium,
-        fontWeight = FontWeight.SemiBold,
-    )
     StatGrid(cells = statCells(isGoalie, line.totals), tagPrefix = tagPrefix)
 }
 
@@ -394,7 +412,6 @@ private fun CareerTab(profile: PlayerProfile) {
                 isGoalie = profile.isGoalie,
                 rows = current,
                 total = regular,
-                totalLabel = stringResource(R.string.player_total),
                 tagPrefix = "player.career",
             )
         }
@@ -411,20 +428,21 @@ private fun CareerTab(profile: PlayerProfile) {
                 isGoalie = profile.isGoalie,
                 rows = current,
                 total = playoffs,
-                totalLabel = stringResource(R.string.player_playoffs_total),
                 tagPrefix = "player.playoffs",
             )
         }
     }
 }
 
-/** One career card's table: a season row per line, then the card's total. The season is frozen; the club comes next. */
+/**
+ * One career card's table: a season row per line, then the card's total, which is labelled "Total" on both cards. The
+ * season is frozen and sized to its widest label; the club comes next.
+ */
 @Composable
 private fun CareerTable(
     isGoalie: Boolean,
     rows: List<PlayerSeasonLine>,
     total: PlayerTotals?,
-    totalLabel: String,
     tagPrefix: String,
 ) {
     val seasonRows =
@@ -435,15 +453,18 @@ private fun CareerTable(
                 cells = careerCells(isGoalie, club = clubLabel(line), totals = line.totals),
             )
         }
+    val totalLabel = stringResource(R.string.player_total)
     val totalRows =
         total
             ?.let {
                 listOf(StatRow(tag = "$tagPrefix.total", label = totalLabel, cells = careerCells(isGoalie, club = "", totals = it)))
             }.orEmpty()
+    val allRows = seasonRows + totalRows
     PlayerStatTable(
         headers = careerCells(isGoalie, club = "", totals = null),
-        rows = seasonRows + totalRows,
+        rows = allRows,
         headerTag = tagPrefix,
+        labelWidth = widestLineWidth(allRows.map { it.label }, rememberTextMeasurer(), MaterialTheme.typography.bodySmall),
     )
 }
 
@@ -453,6 +474,7 @@ private fun GameLogTab(
     currentSeason: Int,
     gameLog: Loadable<List<PlayerGame>>?,
     onRetry: () -> Unit,
+    onGameClick: (Long) -> Unit,
 ) {
     // A log that has not arrived yet reads as loading; the page's retry reloads it along with the profile.
     val loadable = gameLog ?: Loadable(null, Freshness.Missing, null)
@@ -476,23 +498,34 @@ private fun GameLogTab(
                 color = LocalRouxAccents.current.muted,
             )
         } else {
+            val headers = gameCells(profile.isGoalie, game = null)
             val rows =
                 newest.mapIndexed { index, game ->
                     StatRow(
                         tag = "player.gamelog.row.$index",
-                        label = game.gameDate?.let { formatShortDate(it) }.orEmpty(),
+                        label = gameLabel(game),
                         cells = gameCells(profile.isGoalie, game = game),
-                        detail = opponentLabel(game.opponentAbbrev, game.isHome) ?: statCount(null),
+                        gameId = game.gameId,
                     )
                 }
             PlayerStatTable(
-                headers = gameCells(profile.isGoalie, game = null),
+                headers = headers,
                 rows = rows,
                 headerTag = "player.gamelog",
-                labelWidth = widestLineWidth(rows.flatMap { listOfNotNull(it.label, it.detail) }, measurer, lineStyle),
+                labelWidth = widestLineWidth(rows.map { it.label }, measurer, lineStyle),
+                statWidths = fittedStatWidths(headers, rows.map { it.cells }, measurer),
+                onRowClick = onGameClick,
             )
         }
     }
+}
+
+/** A game's frozen line: its date and its opponent on one line, as "Nov 1 · vs OTT". A missing part prints the dash. */
+@Composable
+private fun gameLabel(game: PlayerGame): String {
+    val date = game.gameDate?.let { formatShortDate(it) } ?: statCount(null)
+    val opponent = opponentLabel(game.opponentAbbrev, game.isHome) ?: statCount(null)
+    return "$date${stringResource(R.string.player_separator)}$opponent"
 }
 
 /**
@@ -510,36 +543,40 @@ private fun widestLineWidth(
 }
 
 @Composable
-private fun InfoTab(profile: PlayerProfile) {
-    val items = infoItems(profile)
+private fun InfoTab(
+    profile: PlayerProfile,
+    today: LocalDate,
+) {
+    val facts = infoFacts(profile, today)
     SectionCard(
         title = stringResource(R.string.player_tab_info),
         tag = "player.info",
-        loadable = loaded(items),
+        loadable = loaded(facts),
         failureLabel = "",
     ) { current ->
-        if (current.isEmpty()) {
-            EmptySectionLine(stringResource(R.string.player_empty))
-        } else {
-            // The facts fill the left column top to bottom, then the right, so a screen reader hears them in the order
-            // they are seen. Each fact stays a label above its value.
-            val half = (current.size + 1) / 2
+        // A fixed table of five facts: two across, two across, then the draft across the full width. Reading across and
+        // then down is the order a screen reader hears them, the same order they are seen.
+        Column(Modifier.fillMaxWidth()) {
             Row(Modifier.fillMaxWidth()) {
-                Column(Modifier.weight(1f)) {
-                    current.take(half).forEach { item -> InfoRowBlock(item) }
-                }
-                Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                    current.drop(half).forEach { item -> InfoRowBlock(item) }
-                }
+                InfoCell(current.heightWeight, Modifier.weight(1f))
+                InfoCell(current.shoots, Modifier.weight(1f).padding(start = 12.dp))
             }
+            Row(Modifier.fillMaxWidth()) {
+                InfoCell(current.born, Modifier.weight(1f))
+                InfoCell(current.birthplace, Modifier.weight(1f).padding(start = 12.dp))
+            }
+            InfoCell(current.draft, Modifier.fillMaxWidth())
         }
     }
 }
 
 /** One label above its value, the same shape as the game page's Game info card. */
 @Composable
-private fun InfoRowBlock(item: InfoItem) {
-    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+private fun InfoCell(
+    item: InfoItem,
+    modifier: Modifier,
+) {
+    Column(modifier.padding(vertical = 4.dp).testTag("player.info.${item.key}.cell")) {
         Text(
             item.label,
             modifier = Modifier.testTag("player.info.${item.key}.label"),
@@ -555,67 +592,60 @@ private fun InfoRowBlock(item: InfoItem) {
     }
 }
 
+/**
+ * The five facts of the Info card, each with its value or the dash. Age is counted on [today] from the birth date, so it
+ * is never stored and turns over on the birthday itself.
+ */
 @Composable
-private fun infoItems(profile: PlayerProfile): List<InfoItem> =
-    buildList {
-        profile.heightInches?.let {
-            add(
-                InfoItem(
-                    "height",
-                    stringResource(R.string.player_info_height),
-                    stringResource(R.string.player_height_value, it / 12, it % 12),
-                ),
-            )
-        }
-        profile.weightPounds?.let {
-            add(InfoItem("weight", stringResource(R.string.player_info_weight), stringResource(R.string.player_weight_value, it)))
-        }
-        // Handedness is "Shoots" for every position, a goalie included.
-        profile.shoots?.let {
-            add(InfoItem("shoots", stringResource(R.string.player_info_shoots), it))
-        }
-        profile.birthDate?.let {
-            add(InfoItem("born", stringResource(R.string.player_info_born), formatDate(it)))
-        }
-        val city = profile.birthCity
-        val country = profile.birthCountry
-        val place =
-            when {
-                city != null && country != null -> stringResource(R.string.player_birthplace_value, city, country)
-                else -> city ?: country
+private fun infoFacts(
+    profile: PlayerProfile,
+    today: LocalDate,
+): InfoFacts {
+    val height =
+        profile.heightInches?.let { stringResource(R.string.player_height_value, it / 12, it % 12) } ?: MISSING_FACT
+    val weight = profile.weightPounds?.let { stringResource(R.string.player_weight_value, it) } ?: MISSING_FACT
+    val bornText =
+        profile.birthDate?.let { iso ->
+            val age = profile.ageOn(today)
+            if (age != null) {
+                stringResource(R.string.player_born_value, formatDate(iso), age)
+            } else {
+                formatDate(iso)
             }
-        if (place != null) {
-            add(InfoItem("birthplace", stringResource(R.string.player_info_birthplace), place))
-        }
-        profile.draft?.let { draft ->
-            val parts =
+        } ?: MISSING_FACT
+    val city = profile.birthCity
+    val country = profile.birthCountry
+    val birthplaceText =
+        when {
+            city != null && country != null -> stringResource(R.string.player_birthplace_value, city, country)
+            else -> city ?: country
+        } ?: MISSING_FACT
+    val draftText =
+        profile.draft
+            ?.let { draft ->
                 listOfNotNull(
                     draft.year?.toString(),
                     draft.teamAbbrev,
                     draft.round?.let { stringResource(R.string.player_draft_round, it) },
                     draft.pickInRound?.let { stringResource(R.string.player_draft_pick, it) },
                     draft.overallPick?.let { stringResource(R.string.player_draft_overall, it) },
-                )
-            if (parts.isNotEmpty()) {
-                add(
-                    InfoItem(
-                        "draft",
-                        stringResource(R.string.player_info_draft),
-                        parts.joinToString(separator = stringResource(R.string.player_separator)),
-                    ),
-                )
+                ).takeIf { it.isNotEmpty() }
+                    ?.joinToString(separator = stringResource(R.string.player_separator))
             }
-        }
-    }
-
-@Composable
-private fun seasonLabel(line: PlayerSeasonLine): String {
-    val league = line.leagueAbbrev
-    val team = line.teamName
-    return when {
-        league != null && team != null -> stringResource(R.string.player_league_team, league, team)
-        else -> league ?: team ?: ""
-    }
+            ?: MISSING_FACT
+    return InfoFacts(
+        heightWeight =
+            InfoItem(
+                "heightweight",
+                stringResource(R.string.player_info_height_weight),
+                stringResource(R.string.player_height_weight_value, height, weight),
+            ),
+        // Handedness is "Shoots" for every position, a goalie included.
+        shoots = InfoItem("shoots", stringResource(R.string.player_info_shoots), profile.shoots ?: MISSING_FACT),
+        born = InfoItem("born", stringResource(R.string.player_info_born), bornText),
+        birthplace = InfoItem("birthplace", stringResource(R.string.player_info_birthplace), birthplaceText),
+        draft = InfoItem("draft", stringResource(R.string.player_info_draft), draftText),
+    )
 }
 
 /** The club a career row names: its abbreviation, or the feed's own name when the club is not one the app knows. */
@@ -677,6 +707,15 @@ private data class InfoItem(
     val key: String,
     val label: String,
     val value: String,
+)
+
+/** The five facts of the Info card, in card order. */
+private data class InfoFacts(
+    val heightWeight: InfoItem,
+    val shoots: InfoItem,
+    val born: InfoItem,
+    val birthplace: InfoItem,
+    val draft: InfoItem,
 )
 
 /** The season or career stat columns, in one order. Headers pass `null` so they carry labels and no numbers. */
@@ -788,7 +827,9 @@ private fun seasonFullYears(season: Int): String = "${season / 10_000}-${season 
 /** An ISO `YYYY-MM-DD` day as the locale prints a date. A value that does not parse is shown as the feed sent it. */
 private fun formatDate(iso: String): String =
     try {
-        LocalDate.parse(iso).format(DATE_FORMAT)
+        java.time.LocalDate
+            .parse(iso)
+            .format(DATE_FORMAT)
     } catch (_: DateTimeParseException) {
         iso
     }
@@ -798,7 +839,9 @@ private fun formatDate(iso: String): String =
  */
 private fun formatShortDate(iso: String): String =
     try {
-        LocalDate.parse(iso).format(DateTimeFormatter.ofPattern("MMM d", Locale.getDefault()))
+        java.time.LocalDate
+            .parse(iso)
+            .format(DateTimeFormatter.ofPattern("MMM d", Locale.getDefault()))
     } catch (_: DateTimeParseException) {
         iso
     }
