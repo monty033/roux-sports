@@ -85,6 +85,7 @@ internal object PlayerProfileAdapter {
                             teamName = row.teamName?.default?.takeIf { it.isNotBlank() },
                             sequence = row.sequence,
                             totals = row.totals(isGoalie),
+                            teamAbbrev = row.teamName?.default?.let { NhlClubAbbrevs.forName(it) },
                         )
                     },
             ),

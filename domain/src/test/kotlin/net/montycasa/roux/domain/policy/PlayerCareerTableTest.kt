@@ -1,6 +1,5 @@
 package net.montycasa.roux.domain.policy
 
-import net.montycasa.roux.domain.model.PlayerCareer
 import net.montycasa.roux.domain.model.PlayerSeasonLine
 import net.montycasa.roux.domain.model.PlayerTotals
 import org.junit.Assert.assertEquals
@@ -24,8 +23,12 @@ class PlayerCareerTableTest {
         assertEquals(listOf("NHL", "NHL", "NHL"), rows.map { it.leagueAbbrev })
     }
 
+    /**
+     * A season's regular row comes before its playoff row even when the feed sent them the other way round. A row with no
+     * season has nowhere to sit in the table, so it is left out.
+     */
     @Test
-    fun playoffRowsAndRowsWithNoSeasonAreLeftOutOfTheCareerTable() {
+    fun aPlayoffRowFollowsItsSeasonsRegularRowAndRowsWithNoSeasonAreLeftOut() {
         val rows =
             PlayerCareerTable.rows(
                 listOf(
@@ -35,8 +38,7 @@ class PlayerCareerTableTest {
                 ),
             )
 
-        assertEquals(1, rows.size)
-        assertEquals(2, rows.single().gameTypeId)
+        assertEquals(listOf(2, 3), rows.map { it.gameTypeId })
     }
 
     @Test
@@ -68,7 +70,7 @@ class PlayerCareerTableTest {
                 line(20242025, "NHL", "Boston Bruins", 1, skater(gamesPlayed = 70, goals = 12, shots = 150)),
             )
 
-        val total = PlayerCareerTable.total(PlayerCareerTable.rows(seasons), PlayerCareer()) as PlayerTotals.Skater
+        val total = PlayerCareerTable.total(PlayerCareerTable.rows(seasons), rates = null) as PlayerTotals.Skater
 
         assertEquals(180, total.gamesPlayed)
         assertEquals(31, total.goals)
@@ -84,7 +86,7 @@ class PlayerCareerTableTest {
                     line(20222023, "NHL", "Carolina Hurricanes", 1, skater(gamesPlayed = 60, goals = 10)),
                     line(20232024, "NHL", "Carolina Hurricanes", 1, skater(gamesPlayed = 30, goals = null)),
                 ),
-                PlayerCareer(),
+                rates = null,
             ) as PlayerTotals.Skater
 
         assertEquals(90, total.gamesPlayed)
@@ -93,20 +95,15 @@ class PlayerCareerTableTest {
 
     @Test
     fun aCareerWithNoNhlRowsHasNoTotal() {
-        assertNull(PlayerCareerTable.total(emptyList(), PlayerCareer()))
+        assertNull(PlayerCareerTable.total(emptyList(), rates = null))
     }
 
     @Test
     fun faceoffPercentageAndIceTimeComeFromTheFeedsCareerTotalsNotFromASum() {
-        val career =
-            PlayerCareer(
-                regularSeason = skater(faceoffWinningPctg = 0.5, avgTimeOnIceSeconds = 672L),
-            )
-
         val total =
             PlayerCareerTable.total(
                 listOf(line(20222023, "NHL", "Carolina Hurricanes", 1, skater(gamesPlayed = 60))),
-                career,
+                rates = skater(faceoffWinningPctg = 0.5, avgTimeOnIceSeconds = 672L),
             ) as PlayerTotals.Skater
 
         assertEquals(0.5, total.faceoffWinningPctg!!, 0.000001)
@@ -121,7 +118,7 @@ class PlayerCareerTableTest {
                     line(20242025, "NHL", "Anaheim Ducks", 1, goalie(goalsAgainst = 60, shotsAgainst = 600, timeOnIce = 54000L)),
                     line(20252026, "NHL", "Anaheim Ducks", 1, goalie(goalsAgainst = 40, shotsAgainst = 400, timeOnIce = 36000L)),
                 ),
-                PlayerCareer(),
+                rates = null,
             ) as PlayerTotals.Goalie
 
         assertEquals(100, total.goalsAgainst)
@@ -139,9 +136,44 @@ class PlayerCareerTableTest {
                     line(20242025, "NHL", "Anaheim Ducks", 1, skater()),
                     line(20252026, "NHL", "Anaheim Ducks", 1, goalie()),
                 ),
-                PlayerCareer(),
+                rates = null,
             ),
         )
+    }
+
+    /** The playoff total sums the playoff rows only; the regular rows never leak into it. */
+    @Test
+    fun thePlayoffTotalSumsOnlyThePlayoffRows() {
+        val seasons =
+            listOf(
+                line(20242025, "NHL", "Carolina Hurricanes", 1, skater(gamesPlayed = 60, goals = 10)),
+                line(20242025, "NHL", "Carolina Hurricanes", 1, skater(gamesPlayed = 6, goals = 1), gameType = 3),
+                line(20252026, "NHL", "Carolina Hurricanes", 1, skater(gamesPlayed = 4, goals = 2), gameType = 3),
+            )
+
+        val total = PlayerCareerTable.playoffTotal(PlayerCareerTable.rows(seasons), playoffs = null) as PlayerTotals.Skater
+
+        assertEquals(10, total.gamesPlayed)
+        assertEquals(3, total.goals)
+    }
+
+    /** With no playoff season row, the feed's own playoff career line stands, and nothing is summed in its place. */
+    @Test
+    fun thePlayoffTotalFallsBackToTheFeedsPlayoffLineWhenThereAreNoPlayoffRows() {
+        val feed = skater(gamesPlayed = 12, goals = 4)
+
+        val total =
+            PlayerCareerTable.playoffTotal(
+                listOf(line(20242025, "NHL", "Carolina Hurricanes", 1, skater(gamesPlayed = 60))),
+                playoffs = feed,
+            )
+
+        assertEquals(feed, total)
+    }
+
+    @Test
+    fun thePlayoffTotalIsNullWhenTheFeedAndTheRowsHaveNoPlayoffs() {
+        assertNull(PlayerCareerTable.playoffTotal(emptyList(), playoffs = null))
     }
 
     private fun line(

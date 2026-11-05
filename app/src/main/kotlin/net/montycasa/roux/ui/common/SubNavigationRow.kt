@@ -42,6 +42,8 @@ import net.montycasa.roux.ui.theme.Roux
  * @param tagPrefix the shared prefix for the group and each entry. Entries are tagged
  *   `"$tagPrefix.${entry}"`, which keeps the standings suite's existing `standings.mode.*` tags.
  * @param enabled per-entry availability. A disabled entry cannot be selected or clicked.
+ * @param wrapLabels a label that does not fit one line wraps onto more lines instead of being cut off. Off, a label is one
+ *   line, which is what the club and standings rows keep.
  * @param label the localized label for an entry.
  */
 @Composable
@@ -52,6 +54,7 @@ fun <T> SubNavigationRow(
     tagPrefix: String,
     modifier: Modifier = Modifier,
     enabled: (T) -> Boolean = { true },
+    wrapLabels: Boolean = false,
     label: @Composable (T) -> String,
 ) {
     val unavailable = stringResource(R.string.common_unavailable)
@@ -117,7 +120,7 @@ fun <T> SubNavigationRow(
                         label(entry),
                         textAlign = TextAlign.Center,
                         style = MaterialTheme.typography.labelMedium,
-                        maxLines = 1,
+                        maxLines = if (wrapLabels) Int.MAX_VALUE else 1,
                     )
                 }
             }

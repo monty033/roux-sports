@@ -112,7 +112,26 @@ data class PlayerSeasonLine(
     /** Orders rows inside one season. */
     val sequence: Int?,
     val totals: PlayerTotals,
-)
+    /** The club's abbreviation (`CAR`), when the club is one the adapter knows. Null otherwise, and the UI prints the name. */
+    val teamAbbrev: String? = null,
+) {
+    /** True for a regular-season row: the feed's game type 2. */
+    val isRegularSeason: Boolean get() = gameTypeId == REGULAR_SEASON
+
+    /** True for a playoff row: the feed's game type 3. */
+    val isPlayoffs: Boolean get() = gameTypeId == PLAYOFF_GAME_TYPE
+}
+
+/**
+ * The position as it is printed: the feed's `C`, `L`, `R`, `D` and `G`, with the wings written `LW` and `RW`. A code that
+ * is none of those is returned exactly as the feed sent it, rather than guessed into one of the five.
+ */
+fun playerPositionLabel(code: String): String =
+    when (code) {
+        "L" -> "LW"
+        "R" -> "RW"
+        else -> code
+    }
 
 /** The newest season any row carries, or null when no row says which season it is. */
 fun List<PlayerSeasonLine>.newestSeason(): Int? = mapNotNull { it.season }.maxOrNull()
@@ -133,5 +152,8 @@ fun List<PlayerSeasonLine>.newestSeasonRows(): List<PlayerSeasonLine> {
 /** The feed's league code for the NHL. */
 internal const val NHL_LEAGUE = "NHL"
 
-/** The feed's game-type id for the regular season; the playoffs are 3. */
+/** The feed's game-type id for the regular season. */
 internal const val REGULAR_SEASON = 2
+
+/** The feed's game-type id for the playoffs. */
+internal const val PLAYOFF_GAME_TYPE = 3

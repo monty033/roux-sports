@@ -9,7 +9,7 @@
     <string name="player_context">%1$s · %2$s</string>
     <string name="player_this_season">This season</string>
     <string name="player_season_title_league">%1$s %2$s</string>
-    <string name="player_tab_season">Season stats</string>
+    <string name="player_tab_season">Season</string>
     <string name="player_tab_career">Career</string>
     <string name="player_tab_gamelog">Game log</string>
     <string name="player_tab_info">Info</string>
@@ -29,7 +29,9 @@
     <string name="player_draft_overall">Overall %1$d</string>
     <string name="player_league_team">%1$s · %2$s</string>
     <string name="player_career">Career</string>
-    <string name="player_playoffs">Playoffs</string>
+    <string name="player_playoff_season">%1$s · Playoffs</string>
+    <string name="player_playoffs_total">Playoffs total</string>
+    <string name="player_gamelog_title">Game log %1$s season</string>
     <string name="player_gamelog_error">The game log could not be loaded.</string>
     <string name="player_gamelog_empty">No games this season.</string>
     <string name="player_home_opponent">vs %1$s</string>
@@ -61,4 +63,6 @@
     <string name="player_stat_so">SO</string>
     <string name="player_stat_ga">GA</string>
     <string name="player_stat_sa">SA</string>
+    <string name="player_stat_team">Team</string>
+    <string name="player_stat_opp">Opp</string>
 </resources>

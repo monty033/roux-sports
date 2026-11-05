@@ -1,44 +1,47 @@
 package net.montycasa.roux.domain.policy
 
 import net.montycasa.roux.domain.model.NHL_LEAGUE
-import net.montycasa.roux.domain.model.PlayerCareer
 import net.montycasa.roux.domain.model.PlayerSeasonLine
 import net.montycasa.roux.domain.model.PlayerTotals
-import net.montycasa.roux.domain.model.REGULAR_SEASON
 
 /**
- * The Career tab's rules: which rows show, and how the total row is built. Pure Kotlin so the rules are tested without
+ * The Career tab's rules: which rows show, and how the total rows are built. Pure Kotlin so the rules are tested without
  * Android.
  */
 object PlayerCareerTable {
     private const val SECONDS_PER_HOUR = 3600.0
 
     /**
-     * NHL regular-season rows, oldest season first. A traded season keeps one row per club, in the feed's club order,
-     * and each row keeps its own club name. Other leagues and playoff rows are dropped here, not hidden in the UI.
+     * NHL rows, oldest season first. Within a season the regular-season row comes before the playoff row. A traded season
+     * keeps one row per club for each kind, in the feed's club order, and each row keeps its own club name. Other leagues
+     * and rows with no season are dropped here, not hidden in the UI.
      */
     fun rows(seasons: List<PlayerSeasonLine>): List<PlayerSeasonLine> =
         seasons
-            .filter { it.season != null && it.leagueAbbrev == NHL_LEAGUE && it.gameTypeId == REGULAR_SEASON }
-            .sortedWith(compareBy<PlayerSeasonLine> { it.season }.thenBy { it.sequence ?: Int.MIN_VALUE })
+            .filter { it.season != null && it.leagueAbbrev == NHL_LEAGUE && (it.isRegularSeason || it.isPlayoffs) }
+            .sortedWith(
+                compareBy<PlayerSeasonLine> { it.season }
+                    .thenBy { it.gameTypeId }
+                    .thenBy { it.sequence ?: Int.MIN_VALUE },
+            )
 
     /**
-     * The total row: the sum of [rows], each counted once. Club rows are disjoint, so a traded season's two clubs add
-     * their own games and nothing is added twice. A null in any contributing row makes that count null, so a missing
-     * number prints as a dash instead of a short total.
+     * The total of [rows], which must be of one kind (all regular season, or all playoffs), each counted once. Club rows
+     * are disjoint, so a traded season's two clubs add their own games and nothing is added twice. A null in any
+     * contributing row makes that count null, so a missing number prints as a dash instead of a short total.
      *
      * Rates are worked out from the summed counts. Faceoff percentage and average ice time cannot be summed across
-     * clubs, so they come from the feed's career regular-season totals, which are already NHL-only.
+     * clubs, so they come from the feed's career line for the same kind of game, [rates], which is already NHL-only.
      */
     fun total(
         rows: List<PlayerSeasonLine>,
-        career: PlayerCareer,
+        rates: PlayerTotals?,
     ): PlayerTotals? {
         if (rows.isEmpty()) return null
         val totals = rows.map { it.totals }
         return when {
             totals.all { it is PlayerTotals.Skater } -> {
-                skaterTotal(totals.filterIsInstance<PlayerTotals.Skater>(), career)
+                skaterTotal(totals.filterIsInstance<PlayerTotals.Skater>(), rates as? PlayerTotals.Skater)
             }
 
             totals.all { it is PlayerTotals.Goalie } -> {
@@ -51,13 +54,24 @@ object PlayerCareerTable {
         }
     }
 
+    /**
+     * The playoff total, which follows the regular total in the table. It sums the playoff rows. When the feed sent a
+     * playoff career line but no playoff season row, that line stands as it is: it is the feed's own number, not a guess.
+     */
+    fun playoffTotal(
+        rows: List<PlayerSeasonLine>,
+        playoffs: PlayerTotals?,
+    ): PlayerTotals? {
+        val playoffRows = rows.filter { it.isPlayoffs }
+        return if (playoffRows.isEmpty()) playoffs else total(playoffRows, playoffs)
+    }
+
     private fun skaterTotal(
         rows: List<PlayerTotals.Skater>,
-        career: PlayerCareer,
+        rates: PlayerTotals.Skater?,
     ): PlayerTotals.Skater {
         val goals = rows.totalOf { it.goals }
         val shots = rows.totalOf { it.shots }
-        val regular = career.regularSeason as? PlayerTotals.Skater
         return PlayerTotals.Skater(
             gamesPlayed = rows.totalOf { it.gamesPlayed },
             goals = goals,
@@ -73,8 +87,8 @@ object PlayerCareerTable {
             overtimeGoals = rows.totalOf { it.overtimeGoals },
             shots = shots,
             shootingPctg = if (goals != null && shots != null && shots > 0) goals.toDouble() / shots else null,
-            faceoffWinningPctg = regular?.faceoffWinningPctg,
-            avgTimeOnIceSeconds = regular?.avgTimeOnIceSeconds,
+            faceoffWinningPctg = rates?.faceoffWinningPctg,
+            avgTimeOnIceSeconds = rates?.avgTimeOnIceSeconds,
         )
     }
 

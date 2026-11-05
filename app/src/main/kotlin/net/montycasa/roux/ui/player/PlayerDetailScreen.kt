@@ -2,6 +2,8 @@
 
 package net.montycasa.roux.ui.player
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,19 +15,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerDefaults
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.PrimaryTabRow
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import kotlinx.coroutines.launch
 import net.montycasa.roux.R
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.Loadable
@@ -45,11 +46,15 @@ import net.montycasa.roux.domain.model.PlayerProfile
 import net.montycasa.roux.domain.model.PlayerSeasonLine
 import net.montycasa.roux.domain.model.PlayerTotals
 import net.montycasa.roux.domain.model.newestFirst
+import net.montycasa.roux.domain.model.newestSeason
 import net.montycasa.roux.domain.model.newestSeasonRows
+import net.montycasa.roux.domain.model.playerPositionLabel
 import net.montycasa.roux.domain.policy.PlayerCareerTable
 import net.montycasa.roux.ui.common.RetryButton
+import net.montycasa.roux.ui.common.SubNavigationRow
 import net.montycasa.roux.ui.detail.EmptySectionLine
 import net.montycasa.roux.ui.detail.SectionCard
+import net.montycasa.roux.ui.nav.NavSwipe
 import net.montycasa.roux.ui.reach.reachTarget
 import net.montycasa.roux.ui.team.formatGoalsAgainstAverage
 import net.montycasa.roux.ui.team.formatPlusMinus
@@ -62,22 +67,26 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 import java.time.format.FormatStyle
+import java.util.Locale
 
 private val HEADSHOT_SIZE = 112.dp
 private val DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
+private const val TAB_SETTLE_MILLIS = 250
 
-/** The four tabs, in the order the page shows them. [key] names the tab's test tag, so no test reads the label. */
-internal enum class PlayerTab(
-    val key: String,
-) {
-    Season("season"),
-    Career("career"),
-    GameLog("gamelog"),
-    Info("info"),
+/**
+ * The four tabs, in the order the bottom navigation shows them. The pager and the bar both count pages by this order,
+ * and the bar's test tags are the enum names.
+ */
+internal enum class PlayerTab {
+    Season,
+    Career,
+    GameLog,
+    Info,
 }
 
 /**
- * A player's page: the header, then one of four tabs. Only the body scrolls; the back row stays put.
+ * A player's page: the back row and the header stay put, then one of four tabs in a horizontal pager, then the bottom
+ * navigation. Each tab scrolls vertically on its own. A swipe turns the page and the bar follows it.
  *
  * The Season, Career and Info tabs read the profile alone. The Game log tab reads its own request, so a failed or empty
  * log leaves the other three exactly as they were.
@@ -151,42 +160,69 @@ private fun PlayerBody(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var selected by rememberSaveable { mutableStateOf(PlayerTab.Season) }
-    Column(
-        modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp),
-    ) {
-        PlayerHeader(profile = profile, currentSeason = currentSeason)
-        PlayerTabRow(selected = selected, onSelect = { selected = it })
-        when (selected) {
-            PlayerTab.Season -> SeasonTab(profile = profile, currentSeason = currentSeason)
-            PlayerTab.Career -> CareerTab(profile = profile)
-            PlayerTab.GameLog -> GameLogTab(gameLog = gameLog, isGoalie = profile.isGoalie, onRetry = onRetry)
-            PlayerTab.Info -> InfoTab(profile = profile)
+    val pager = rememberPagerState { PlayerTab.entries.size }
+    val scope = rememberCoroutineScope()
+    // During a swipe the bar follows the page the pager is heading to, not the one it is leaving, so the bar never lags
+    // behind the finger.
+    val shown = PlayerTab.entries[(if (pager.isScrollInProgress) pager.targetPage else pager.currentPage)]
+    Column(modifier.fillMaxWidth()) {
+        PlayerHeader(
+            profile = profile,
+            currentSeason = currentSeason,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
+        HorizontalPager(
+            state = pager,
+            // Off, horizontal drags belong to the pager; on, the shell's pager would claim them instead.
+            userScrollEnabled = !NavSwipe.TURNS_PAGES,
+            // The neighbouring tab is composed ahead of the drag, so a swipe reveals a finished page, not an empty one.
+            beyondViewportPageCount = 1,
+            flingBehavior =
+                PagerDefaults.flingBehavior(
+                    state = pager,
+                    snapAnimationSpec = tween(durationMillis = TAB_SETTLE_MILLIS, easing = FastOutSlowInEasing),
+                ),
+            modifier = Modifier.weight(1f).fillMaxWidth().testTag("player.pager"),
+        ) { page ->
+            PlayerTabPage(
+                tab = PlayerTab.entries[page],
+                profile = profile,
+                currentSeason = currentSeason,
+                gameLog = gameLog,
+                onRetry = onRetry,
+            )
         }
+        SubNavigationRow(
+            entries = PlayerTab.entries,
+            selected = shown,
+            onSelect = { tab -> scope.launch { pager.animateScrollToPage(tab.ordinal) } },
+            tagPrefix = "player.tab",
+            wrapLabels = true,
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp),
+            label = { tab -> tabLabel(tab) },
+        )
     }
 }
 
 @Composable
-private fun PlayerTabRow(
-    selected: PlayerTab,
-    onSelect: (PlayerTab) -> Unit,
+private fun PlayerTabPage(
+    tab: PlayerTab,
+    profile: PlayerProfile,
+    currentSeason: Int,
+    gameLog: Loadable<List<PlayerGame>>?,
+    onRetry: () -> Unit,
 ) {
-    // A Material tab row, not the team page's sub-navigation: its labels wrap rather than cut off at one line, so
-    // "Season stats" stays whole at 360 dp.
-    PrimaryTabRow(
-        selectedTabIndex = selected.ordinal,
-        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).testTag("player.tabs"),
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp),
     ) {
-        PlayerTab.entries.forEach { tab ->
-            Tab(
-                selected = tab == selected,
-                onClick = { onSelect(tab) },
-                modifier = Modifier.testTag("player.tab.${tab.key}"),
-                text = { Text(tabLabel(tab)) },
-            )
+        when (tab) {
+            PlayerTab.Season -> SeasonTab(profile = profile, currentSeason = currentSeason)
+            PlayerTab.Career -> CareerTab(profile = profile)
+            PlayerTab.GameLog -> GameLogTab(profile = profile, gameLog = gameLog, onRetry = onRetry)
+            PlayerTab.Info -> InfoTab(profile = profile)
         }
     }
 }
@@ -204,10 +240,11 @@ private fun tabLabel(tab: PlayerTab): String =
 private fun PlayerHeader(
     profile: PlayerProfile,
     currentSeason: Int,
+    modifier: Modifier = Modifier,
 ) {
     val newest = profile.seasons.newestSeasonRows().firstOrNull()
     Column(
-        Modifier
+        modifier
             .fillMaxWidth()
             .padding(top = 8.dp, bottom = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -242,11 +279,12 @@ private fun PlayerHeader(
 
 @Composable
 private fun numberAndPosition(profile: PlayerProfile): String {
+    val position = playerPositionLabel(profile.position)
     val number = profile.sweaterNumber
     return if (number != null) {
-        stringResource(R.string.player_number_position, number, profile.position)
+        stringResource(R.string.player_number_position, number, position)
     } else {
-        profile.position
+        position
     }
 }
 
@@ -296,79 +334,78 @@ private fun SeasonTab(
         if (current.isEmpty()) {
             EmptySectionLine(stringResource(R.string.player_empty))
         } else {
-            PlayerStatTable(
-                headers = statCells(profile.isGoalie, totals = null),
-                rows =
-                    current.mapIndexed { index, line ->
-                        StatRow(
-                            tag = "player.season.row.$index",
-                            label = seasonLabel(line),
-                            cells = statCells(profile.isGoalie, line.totals),
-                        )
-                    },
-                headerTag = "player.season",
-            )
+            current.forEachIndexed { index, line ->
+                SeasonLineBlock(line = line, isGoalie = profile.isGoalie, tagPrefix = "player.season.row.$index")
+            }
         }
     }
+}
+
+/** One season line: its league and team above a grid of its stats. A traded season is one block per club. */
+@Composable
+private fun SeasonLineBlock(
+    line: PlayerSeasonLine,
+    isGoalie: Boolean,
+    tagPrefix: String,
+) {
+    Text(
+        seasonLabel(line),
+        modifier = Modifier.padding(top = 8.dp).testTag("$tagPrefix.label"),
+        style = MaterialTheme.typography.bodyMedium,
+        fontWeight = FontWeight.SemiBold,
+    )
+    StatGrid(cells = statCells(isGoalie, line.totals), tagPrefix = tagPrefix)
 }
 
 @Composable
 private fun CareerTab(profile: PlayerProfile) {
     val rows = PlayerCareerTable.rows(profile.seasons)
-    val total = PlayerCareerTable.total(rows, profile.career)
-    val playoffs = profile.career.playoffs
+    // The regular total is summed from regular rows only and checked against the feed's regular career line; the
+    // playoff total follows it. Both are built here, so the table can print them after the season rows.
+    val regular = PlayerCareerTable.total(rows.filter { !it.isPlayoffs }, profile.career.regularSeason)
+    val playoffs = PlayerCareerTable.playoffTotal(rows, profile.career.playoffs)
     SectionCard(
         title = stringResource(R.string.player_career),
         tag = "player.career",
         loadable = loaded(rows),
         failureLabel = "",
     ) { current ->
-        if (current.isNotEmpty()) {
+        if (current.isEmpty() && regular == null && playoffs == null) {
+            EmptySectionLine(stringResource(R.string.player_empty))
+        } else {
             val careerRows =
                 current.mapIndexed { index, line ->
                     StatRow(
                         tag = "player.career.row.$index",
                         label = careerLabel(line),
-                        cells = statCells(profile.isGoalie, line.totals),
+                        cells = careerCells(profile.isGoalie, club = clubLabel(line), totals = line.totals),
                     )
                 }
             val totalRows =
-                total
-                    ?.let {
-                        listOf(
+                buildList {
+                    regular?.let {
+                        add(
                             StatRow(
                                 tag = "player.career.total",
                                 label = stringResource(R.string.player_total),
-                                cells = statCells(profile.isGoalie, it),
+                                cells = careerCells(profile.isGoalie, club = "", totals = it),
                             ),
                         )
-                    }.orEmpty()
+                    }
+                    playoffs?.let {
+                        add(
+                            StatRow(
+                                tag = "player.career.playoffs.total",
+                                label = stringResource(R.string.player_playoffs_total),
+                                cells = careerCells(profile.isGoalie, club = "", totals = it),
+                            ),
+                        )
+                    }
+                }
             PlayerStatTable(
-                headers = statCells(profile.isGoalie, totals = null),
+                headers = careerCells(profile.isGoalie, club = "", totals = null),
                 rows = careerRows + totalRows,
                 headerTag = "player.career",
-            )
-        } else if (playoffs == null) {
-            EmptySectionLine(stringResource(R.string.player_empty))
-        }
-        playoffs?.let { totals ->
-            Text(
-                stringResource(R.string.player_playoffs),
-                modifier = Modifier.padding(top = 12.dp).testTag("player.playoffs.label"),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            PlayerStatTable(
-                headers = statCells(profile.isGoalie, totals = null),
-                rows =
-                    listOf(
-                        StatRow(
-                            tag = "player.playoffs.row",
-                            label = stringResource(R.string.player_total),
-                            cells = statCells(profile.isGoalie, totals),
-                        ),
-                    ),
-                headerTag = "player.playoffs",
             )
         }
     }
@@ -376,14 +413,21 @@ private fun CareerTab(profile: PlayerProfile) {
 
 @Composable
 private fun GameLogTab(
+    profile: PlayerProfile,
     gameLog: Loadable<List<PlayerGame>>?,
-    isGoalie: Boolean,
     onRetry: () -> Unit,
 ) {
     // A log that has not arrived yet reads as loading; the page's retry reloads it along with the profile.
     val loadable = gameLog ?: Loadable(null, Freshness.Missing, null)
+    val season = profile.seasons.newestSeason()
+    val title =
+        if (season != null) {
+            stringResource(R.string.player_gamelog_title, seasonFullYears(season))
+        } else {
+            stringResource(R.string.player_tab_gamelog)
+        }
     SectionCard(
-        title = stringResource(R.string.player_tab_gamelog),
+        title = title,
         tag = "player.gamelog",
         loadable = loadable,
         failureLabel = stringResource(R.string.player_gamelog_error),
@@ -399,17 +443,13 @@ private fun GameLogTab(
             )
         } else {
             PlayerStatTable(
-                headers = if (isGoalie) goalieLogCells(null) else skaterLogCells(null),
+                headers = gameCells(profile.isGoalie, game = null),
                 rows =
                     newest.mapIndexed { index, game ->
                         StatRow(
                             tag = "player.gamelog.row.$index",
-                            label = gameLabel(game),
-                            cells =
-                                when (game) {
-                                    is PlayerGame.Skater -> skaterLogCells(game)
-                                    is PlayerGame.Goalie -> goalieLogCells(game)
-                                },
+                            label = game.gameDate?.let { formatShortDate(it) }.orEmpty(),
+                            cells = gameCells(profile.isGoalie, game = game),
                         )
                     },
                 headerTag = "player.gamelog",
@@ -517,17 +557,42 @@ private fun seasonLabel(line: PlayerSeasonLine): String {
     }
 }
 
-/** A career row names its season and its club, so a traded season shows one row per club, each with its own club. */
+/**
+ * A career row's frozen label: the season alone, so it stays in view while the table scrolls sideways. A playoff row
+ * says so after its season, and sits after the same season's regular row.
+ */
 @Composable
-private fun careerLabel(line: PlayerSeasonLine): String =
-    listOfNotNull(line.season?.let { seasonYears(it) }, line.teamName)
-        .joinToString(separator = stringResource(R.string.player_separator))
+private fun careerLabel(line: PlayerSeasonLine): String {
+    val season = line.season?.let { seasonYears(it) }.orEmpty()
+    return if (line.isPlayoffs) stringResource(R.string.player_playoff_season, season) else season
+}
 
+/** The club a career row names: its abbreviation, or the feed's own name when the club is not one the app knows. */
+private fun clubLabel(line: PlayerSeasonLine): String = line.teamAbbrev ?: line.teamName.orEmpty()
+
+/** The career columns: the club first, then the stats. Headers pass no totals and carry labels only. */
 @Composable
-private fun gameLabel(game: PlayerGame): String {
-    val date = game.gameDate?.let { formatDate(it) }
-    val opponent = opponentLabel(game.opponentAbbrev, game.isHome)
-    return listOfNotNull(date, opponent).joinToString(separator = stringResource(R.string.player_separator))
+private fun careerCells(
+    isGoalie: Boolean,
+    club: String,
+    totals: PlayerTotals?,
+): List<StatCell> = listOf(StatCell("club", stringResource(R.string.player_stat_team), club)) + statCells(isGoalie, totals)
+
+/** A game row's columns: the opponent first, then the game's numbers. Headers pass no game and carry labels only. */
+@Composable
+private fun gameCells(
+    isGoalie: Boolean,
+    game: PlayerGame?,
+): List<StatCell> {
+    val opponentText = opponentLabel(game?.opponentAbbrev, game?.isHome) ?: statCount(null)
+    val opponent = StatCell("opp", stringResource(R.string.player_stat_opp), opponentText)
+    val numbers =
+        when (game) {
+            is PlayerGame.Skater -> skaterLogCells(game)
+            is PlayerGame.Goalie -> goalieLogCells(game)
+            null -> if (isGoalie) goalieLogCells(null) else skaterLogCells(null)
+        }
+    return listOf(opponent) + numbers
 }
 
 @Composable
@@ -668,10 +733,23 @@ private fun seasonYears(season: Int): String {
     return "$start-${end.toString().padStart(2, '0')}"
 }
 
+/** The feed's `20262027` as `2026-2027`, the form the game log heading uses. */
+private fun seasonFullYears(season: Int): String = "${season / 10_000}-${season % 10_000}"
+
 /** An ISO `YYYY-MM-DD` day as the locale prints a date. A value that does not parse is shown as the feed sent it. */
 private fun formatDate(iso: String): String =
     try {
         LocalDate.parse(iso).format(DATE_FORMAT)
+    } catch (_: DateTimeParseException) {
+        iso
+    }
+
+/**
+ * An ISO `YYYY-MM-DD` day as a short date, such as "Nov 1", in the device's language. Unparseable input is kept as sent.
+ */
+private fun formatShortDate(iso: String): String =
+    try {
+        LocalDate.parse(iso).format(DateTimeFormatter.ofPattern("MMM d", Locale.getDefault()))
     } catch (_: DateTimeParseException) {
         iso
     }

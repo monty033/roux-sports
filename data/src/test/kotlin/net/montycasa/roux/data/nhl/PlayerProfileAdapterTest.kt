@@ -107,6 +107,20 @@ class PlayerProfileAdapterTest {
         assertTrue(result is ParseResult.Failure)
     }
 
+    /**
+     * The feed names a season's club in full and sends no abbreviation, so the adapter supplies it. The goalie fixture's
+     * Anaheim rows become ANA, and a league whose clubs are not in the NHL table keeps no abbreviation at all.
+     */
+    @Test
+    fun aNhlSeasonRowCarriesItsClubsAbbreviationAndAnotherLeagueCarriesNone() {
+        val profile = parsed(goalieJson)
+
+        val anaheim = profile.seasons.filter { it.teamName == "Anaheim Ducks" }
+        assertTrue(anaheim.isNotEmpty())
+        assertEquals(setOf("ANA"), anaheim.map { it.teamAbbrev }.toSet())
+        assertTrue(profile.seasons.filter { it.leagueAbbrev != "NHL" }.all { it.teamAbbrev == null })
+    }
+
     private fun parsed(json: String): PlayerProfile =
         (PlayerProfileAdapter.parse(json) as? ParseResult.Success)?.value
             ?: throw AssertionError("expected a parsed profile")

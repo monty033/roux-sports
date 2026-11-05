@@ -25,6 +25,9 @@ import androidx.compose.ui.unit.dp
 private val LABEL_WIDTH = 136.dp
 private val STAT_WIDTH = 56.dp
 
+/** The cells across one row of a [StatGrid]. */
+internal const val STAT_GRID_COLUMNS = 4
+
 /** One stat column. [key] names the test tags; [label] is the header; [value] is the number under it. */
 internal data class StatCell(
     val key: String,
@@ -38,6 +41,39 @@ internal data class StatRow(
     val label: String,
     val cells: List<StatCell>,
 )
+
+/**
+ * A stat grid: cells of a small label above their value, [STAT_GRID_COLUMNS] to a row, wrapping down the card. Each
+ * value is tagged `<tagPrefix>.<key>` and its label `<tagPrefix>.<key>.label`.
+ */
+@Composable
+internal fun StatGrid(
+    cells: List<StatCell>,
+    tagPrefix: String,
+) {
+    Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+        cells.chunked(STAT_GRID_COLUMNS).forEach { rowCells ->
+            Row(Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
+                rowCells.forEach { cell ->
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            cell.label,
+                            modifier = Modifier.testTag("$tagPrefix.${cell.key}.label"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            cell.value,
+                            modifier = Modifier.testTag("$tagPrefix.${cell.key}"),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
+                repeat(STAT_GRID_COLUMNS - rowCells.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
 
 /**
  * A stat table: a label column that wraps, then the stat columns.

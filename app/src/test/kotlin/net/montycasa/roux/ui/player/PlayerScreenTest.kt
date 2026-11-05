@@ -1,10 +1,18 @@
 package net.montycasa.roux.ui.player
 
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipe
+import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.unit.dp
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
@@ -23,7 +31,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import kotlin.math.abs
 
 private const val CURRENT_SEASON = 20262027
 
@@ -34,15 +41,36 @@ class PlayerScreenTest {
     val rule = createComposeRule()
 
     @Test
-    fun theFourTabsRenderInTheBriefsOrderWithTheBriefsNames() {
+    fun theBottomNavigationRendersTheFourTabsInOrderWithTheBriefsNames() {
         show(loaded(skaterProfile()))
 
-        val lefts = listOf("season", "career", "gamelog", "info").map { centreOrLeft("player.tab.$it") }
+        val lefts = listOf("Season", "Career", "GameLog", "Info").map { bounds("player.tab.$it").left }
         assertTrue("tabs are not in order: $lefts", lefts.zipWithNext().all { (left, right) -> left < right })
-        rule.onNodeWithTag("player.tab.season").assertTextEquals("Season stats")
-        rule.onNodeWithTag("player.tab.career").assertTextEquals("Career")
-        rule.onNodeWithTag("player.tab.gamelog").assertTextEquals("Game log")
-        rule.onNodeWithTag("player.tab.info").assertTextEquals("Info")
+        rule.onNodeWithTag("player.tab.Season").assertTextEquals("Season")
+        rule.onNodeWithTag("player.tab.Career").assertTextEquals("Career")
+        rule.onNodeWithTag("player.tab.GameLog").assertTextEquals("Game log")
+        rule.onNodeWithTag("player.tab.Info").assertTextEquals("Info")
+        rule.onNodeWithTag("player.tabs").assertDoesNotExist()
+    }
+
+    /** The bar sits under the pager, not above it, and each tab is at least 48 dp tall. */
+    @Test
+    fun theBottomNavigationSitsBelowThePagerAndEveryTabIsReachableAt48dp() {
+        show(loaded(skaterProfile()))
+
+        val pager = bounds("player.pager")
+        val nav = bounds("player.tab.Season")
+        assertTrue("nav top ${nav.top} is above the pager bottom ${pager.bottom}", nav.top >= pager.bottom - 1f)
+        val minimum = with(rule.density) { 48.dp.toPx() }
+        listOf("Season", "Career", "GameLog", "Info").forEach { tab ->
+            val height =
+                rule
+                    .onNodeWithTag("player.tab.$tab")
+                    .fetchSemanticsNode()
+                    .size.height
+                    .toFloat()
+            assertTrue("$tab is $height px tall, below $minimum px", height >= minimum)
+        }
     }
 
     @Test
@@ -57,17 +85,27 @@ class PlayerScreenTest {
         rule.onNodeWithTag("player.season.row.0.sog").assertTextEquals("30")
     }
 
+    /** A wing is printed as LW or RW; the feed's C, D and G are unchanged. */
     @Test
-    fun theSeasonHeadersAreAstAndSogAndEachSharesACentreLineWithItsNumbers() {
+    fun aLeftWingIsPrintedAsLwInTheHeader() {
+        show(loaded(skaterProfile(position = "L")))
+
+        rule.onNodeWithTag("player.number").assertTextEquals("#20 · LW")
+    }
+
+    /** The Season tab is a grid: each stat's label sits above its value in the same cell. */
+    @Test
+    fun theSeasonGridSetsEachLabelAboveItsValueWithAstAndSogNamed() {
         show(loaded(skaterProfile()))
 
-        rule.onNodeWithTag("player.season.header.ast").assertTextEquals("AST")
-        rule.onNodeWithTag("player.season.header.sog").assertTextEquals("SOG")
-        val oneDp = rule.density.density
+        rule.onNodeWithTag("player.season.row.0.ast.label").assertTextEquals("AST")
+        rule.onNodeWithTag("player.season.row.0.sog.label").assertTextEquals("SOG")
+        rule.onNodeWithTag("player.season.row.0.ast").assertTextEquals("3")
         listOf("ast", "sog").forEach { key ->
-            val header = centreX("player.season.header.$key")
-            val numbers = centreX("player.season.row.0.$key")
-            assertTrue("$key: header centre $header, numbers centre $numbers", abs(header - numbers) <= oneDp)
+            val label = bounds("player.season.row.0.$key.label")
+            val value = bounds("player.season.row.0.$key")
+            assertTrue("$key: label bottom ${label.bottom} is below its value top ${value.top}", label.bottom <= value.top + 1f)
+            assertEquals(label.left, value.left, 1f)
         }
     }
 
@@ -80,7 +118,7 @@ class PlayerScreenTest {
                 ),
             ),
         )
-        selectTab("career")
+        selectTab("Career")
 
         rule.onNodeWithTag("player.career.row.0.shg").assertTextEquals("—")
         rule.onNodeWithTag("player.career.row.0.g").assertTextEquals("0")
@@ -89,40 +127,44 @@ class PlayerScreenTest {
     @Test
     fun theCareerTableShowsThreeNhlSeasonsThenTheTotalAndLeavesOutTheAhlRow() {
         show(loaded(skaterProfile()))
-        selectTab("career")
+        selectTab("Career")
 
-        rule.onNodeWithTag("player.career.row.0.label").assertTextEquals("2024-25 · Carolina Hurricanes")
-        rule.onNodeWithTag("player.career.row.2.label").assertTextEquals("2026-27 · Carolina Hurricanes")
+        rule.onNodeWithTag("player.career.row.0.label").assertTextEquals("2024-25")
+        rule.onNodeWithTag("player.career.row.2.label").assertTextEquals("2026-27")
         rule.onNodeWithTag("player.career.row.3").assertDoesNotExist()
         rule.onNodeWithTag("player.career.total.label").assertTextEquals("Total")
         rule.onNodeWithTag("player.career.total.g").assertTextEquals("24")
         rule.onNodeWithTag("player.career.total.toi").assertTextEquals("11:12")
     }
 
+    /** The season is the frozen first column; the club is its own column after it, under a "Team" header. */
     @Test
-    fun aTradedSeasonShowsOneCareerRowPerClubEachNamingItsClub() {
-        show(
-            loaded(
-                skaterProfile(
-                    seasons =
-                        listOf(
-                            line(20252026, "NHL", "Carolina Hurricanes", 1, skaterTotals(gamesPlayed = 30, goals = 5)),
-                            line(20252026, "NHL", "Boston Bruins", 2, skaterTotals(gamesPlayed = 20, goals = 4)),
-                        ),
-                ),
-            ),
-        )
-        selectTab("career")
+    fun theCareerClubIsItsOwnColumnAfterTheSeasonAndTheHeaderNamesIt() {
+        show(loaded(skaterProfile()))
+        selectTab("Career")
 
-        rule.onNodeWithTag("player.career.row.0.label").assertTextEquals("2025-26 · Carolina Hurricanes")
-        rule.onNodeWithTag("player.career.row.1.label").assertTextEquals("2025-26 · Boston Bruins")
-        rule.onNodeWithTag("player.career.row.2").assertDoesNotExist()
+        rule.onNodeWithTag("player.career.header.club").assertTextEquals("Team")
+        rule.onNodeWithTag("player.career.row.0.club").assertTextEquals("CAR")
+        rule.onNodeWithTag("player.career.row.0.label").assertTextEquals("2024-25")
+        assertTrue(bounds("player.career.row.0.label").right <= bounds("player.career.row.0.club").left + 1f)
     }
 
-    /**
-     * The traded fixture where double counting shows. Two clubs in 2023-24 hold 30 and 20 games, 5 and 4 goals. The true
-     * career is 180 games and 31 goals. Counting that season once more for each club would read 230 games and 40 goals.
-     */
+    /** The frozen season column keeps its place and stays on screen while the stat columns scroll shut. */
+    @Test
+    fun theFrozenSeasonColumnStaysInViewWhileTheStatColumnsScroll() {
+        show(loaded(skaterProfile()))
+        selectTab("Career")
+        val labelLeft = bounds("player.career.row.0.label").left
+        val statLeft = bounds("player.career.row.0.gp").left
+
+        rule.onNodeWithTag("player.career.row.0.gp").performTouchInput { swipeLeft() }
+        rule.waitForIdle()
+
+        rule.onNodeWithTag("player.career.row.0.label").assertIsDisplayed()
+        assertEquals(labelLeft, bounds("player.career.row.0.label").left, 0.5f)
+        assertTrue("the stat columns did not scroll", bounds("player.career.row.0.gp").left < statLeft)
+    }
+
     @Test
     fun theCareerTotalSumsTheSeasonsOnceNotTheClubsTwice() {
         show(
@@ -138,22 +180,73 @@ class PlayerScreenTest {
                 ),
             ),
         )
-        selectTab("career")
+        selectTab("Career")
 
         rule.onNodeWithTag("player.career.total.gp").assertTextEquals("180")
         rule.onNodeWithTag("player.career.total.g").assertTextEquals("31")
     }
 
+    /** A traded season has one row per club, both labelled with the same season and each with its own club. */
     @Test
-    fun aGoalieCareerTotalDerivesItsAverageAndSavePercentageAndShowsThePlayoffsRow() {
+    fun aTradedSeasonShowsOneCareerRowPerClubEachNamingItsClub() {
+        show(
+            loaded(
+                skaterProfile(
+                    seasons =
+                        listOf(
+                            line(20252026, "NHL", "Carolina Hurricanes", 1, skaterTotals(gamesPlayed = 30, goals = 5)),
+                            line(20252026, "NHL", "Boston Bruins", 2, skaterTotals(gamesPlayed = 20, goals = 4)),
+                        ),
+                ),
+            ),
+        )
+        selectTab("Career")
+
+        rule.onNodeWithTag("player.career.row.0.label").assertTextEquals("2025-26")
+        rule.onNodeWithTag("player.career.row.1.label").assertTextEquals("2025-26")
+        rule.onNodeWithTag("player.career.row.0.club").assertTextEquals("CAR")
+        rule.onNodeWithTag("player.career.row.1.club").assertTextEquals("BOS")
+        rule.onNodeWithTag("player.career.row.2").assertDoesNotExist()
+    }
+
+    /**
+     * A season's playoff row is marked as playoffs and follows that season's regular row. The playoff total follows the
+     * regular total.
+     */
+    @Test
+    fun aPlayoffRowFollowsItsSeasonAndThePlayoffTotalFollowsTheRegularTotal() {
+        show(
+            loaded(
+                skaterProfile(
+                    seasons =
+                        skaterSeasons +
+                            line(20242025, "NHL", "Carolina Hurricanes", 1, skaterTotals(gamesPlayed = 6, goals = 1), gameType = 3),
+                ),
+            ),
+        )
+        selectTab("Career")
+
+        rule.onNodeWithTag("player.career.row.0.label").assertTextEquals("2024-25")
+        rule.onNodeWithTag("player.career.row.1.label").assertTextEquals("2024-25 · Playoffs")
+        rule.onNodeWithTag("player.career.row.1.gp").assertTextEquals("6")
+        rule.onNodeWithTag("player.career.row.2.label").assertTextEquals("2025-26")
+        rule.onNodeWithTag("player.career.playoffs.total.label").assertTextEquals("Playoffs total")
+        rule.onNodeWithTag("player.career.playoffs.total.gp").assertTextEquals("6")
+        assertTrue(top("player.career.row.1") > top("player.career.row.0"))
+        assertTrue(top("player.career.total") < top("player.career.playoffs.total"))
+        rule.onNodeWithTag("player.playoffs.label").assertDoesNotExist()
+    }
+
+    @Test
+    fun aGoalieCareerTotalDerivesItsAverageAndSavePercentageAndShowsThePlayoffsTotal() {
         show(loaded(goalieProfile()))
-        selectTab("career")
+        selectTab("Career")
 
         rule.onNodeWithTag("player.career.total.gp").assertTextEquals("50")
         rule.onNodeWithTag("player.career.total.gaa").assertTextEquals("4.00")
         rule.onNodeWithTag("player.career.total.sv").assertTextEquals(".900")
-        rule.onNodeWithTag("player.playoffs.label").assertExists()
-        rule.onNodeWithTag("player.playoffs.row.gp").assertTextEquals("10")
+        rule.onNodeWithTag("player.career.playoffs.total.label").assertTextEquals("Playoffs total")
+        rule.onNodeWithTag("player.career.playoffs.total.gp").assertTextEquals("10")
     }
 
     @Test
@@ -163,7 +256,7 @@ class PlayerScreenTest {
         rule.onNodeWithTag("player.number").assertTextEquals("#31 · G")
         rule.onNodeWithTag("player.season.row.0.label").assertTextEquals("NHL · Anaheim Ducks")
         rule.onNodeWithTag("player.season.row.1.label").assertTextEquals("AHL · San Diego Gulls")
-        rule.onNodeWithTag("player.season.header.w").assertTextEquals("W")
+        rule.onNodeWithTag("player.season.row.0.w.label").assertTextEquals("W")
     }
 
     @Test
@@ -180,10 +273,20 @@ class PlayerScreenTest {
         rule.onNodeWithText("This season", ignoreCase = true).assertDoesNotExist()
     }
 
+    /** The heading names the season in full years, and the rows read the date as "Nov 1". */
+    @Test
+    fun theGameLogHeadingNamesTheSeasonInFullYearsAndTheRowDateReadsNovOne() {
+        show(loaded(skaterProfile(), gameLog = Loadable(listOf(skaterGame(day = 1, isHome = false)), Freshness.Fresh, null)))
+        selectTab("GameLog")
+
+        rule.onNodeWithText("GAME LOG 2026-2027 SEASON").assertExists()
+        rule.onNodeWithTag("player.gamelog.row.0.label").assertTextEquals("Nov 1")
+    }
+
     @Test
     fun theGameLogRendersSevenGamesNewestFirstWhateverOrderTheFeedSentThem() {
         show(loaded(skaterProfile(), gameLog = Loadable(shuffledSkaterGames(), Freshness.Fresh, null)))
-        selectTab("gamelog")
+        selectTab("GameLog")
 
         // Each game's shots equal its day, so the newest game (the 7th) shows 7 at the top.
         (0..6).forEach { index ->
@@ -195,9 +298,10 @@ class PlayerScreenTest {
     @Test
     fun aSkaterGameShowsTheOpponentWithAHomeOrAwayMarkerNotAResult() {
         show(loaded(skaterProfile(), gameLog = Loadable(listOf(skaterGame(day = 1, isHome = false)), Freshness.Fresh, null)))
-        selectTab("gamelog")
+        selectTab("GameLog")
 
-        rule.onNodeWithTag("player.gamelog.row.0.label").assertTextEquals("Nov 1, 2026 · @ OTT")
+        rule.onNodeWithTag("player.gamelog.row.0.opp").assertTextEquals("@ OTT")
+        rule.onNodeWithTag("player.gamelog.header.opp").assertTextEquals("Opp")
         rule.onNodeWithTag("player.gamelog.header.ast").assertTextEquals("AST")
         rule.onNodeWithTag("player.gamelog.header.sog").assertTextEquals("SOG")
         rule.onNodeWithTag("player.gamelog.row.0.dec").assertDoesNotExist()
@@ -206,7 +310,7 @@ class PlayerScreenTest {
     @Test
     fun aGoalieLogShowsEachDecisionNotGoalsOrAssists() {
         show(loaded(goalieProfile(), gameLog = Loadable(goalieGames(), Freshness.Fresh, null)))
-        selectTab("gamelog")
+        selectTab("GameLog")
 
         listOf("OT", "W", "L", "W", "OT", "L", "W").forEachIndexed { index, decision ->
             rule.onNodeWithTag("player.gamelog.row.$index.dec").assertTextEquals(decision)
@@ -220,15 +324,15 @@ class PlayerScreenTest {
     @Test
     fun anEmptyGameLogShowsItsEmptyStateAndTheOtherTabsStillWork() {
         show(loaded(skaterProfile(), gameLog = Loadable(emptyList(), Freshness.Fresh, null)))
-        selectTab("gamelog")
+        selectTab("GameLog")
 
         rule.onNodeWithTag("player.gamelog.empty").assertTextEquals("No games this season.")
-        selectTab("career")
+        selectTab("Career")
         rule.onNodeWithTag("player.career.total.g").assertTextEquals("24")
-        selectTab("info")
+        selectTab("Info")
         rule.onNodeWithTag("player.info.shoots").assertTextEquals("L")
-        selectTab("season")
-        rule.onNodeWithTag("player.season.header.ast").assertTextEquals("AST")
+        selectTab("Season")
+        rule.onNodeWithTag("player.season.row.0.ast.label").assertTextEquals("AST")
     }
 
     @Test
@@ -238,19 +342,41 @@ class PlayerScreenTest {
             loaded(skaterProfile(), gameLog = Loadable(null, Freshness.Missing, LoadError.Http(status = 500))),
             onRetry = { retries += 1 },
         )
-        selectTab("gamelog")
+        selectTab("GameLog")
 
         rule.onNodeWithText("The game log could not be loaded.").assertExists()
         rule.onNodeWithTag("player.gamelog.retry").performClick()
         assertEquals(1, retries)
-        selectTab("info")
+        selectTab("Info")
         rule.onNodeWithTag("player.info.shoots").assertTextEquals("L")
+    }
+
+    /** A swipe turns the page one tab at a time, and the bar's selection follows it, both ways. */
+    @Test
+    fun aSwipeMovesThroughTheTabsAndTheBottomBarFollowsIt() {
+        show(loaded(skaterProfile()))
+        rule.onNodeWithTag("player.tab.Season").assertIsSelected()
+
+        swipePager(towardsTheNextTab = true)
+        rule.onNodeWithTag("player.tab.Career").assertIsSelected()
+        swipePager(towardsTheNextTab = true)
+        rule.onNodeWithTag("player.tab.GameLog").assertIsSelected()
+        swipePager(towardsTheNextTab = true)
+        rule.onNodeWithTag("player.tab.Info").assertIsSelected()
+        rule.onNodeWithTag("player.info.shoots").assertTextEquals("L")
+
+        swipePager(towardsTheNextTab = false)
+        rule.onNodeWithTag("player.tab.GameLog").assertIsSelected()
+        swipePager(towardsTheNextTab = false)
+        rule.onNodeWithTag("player.tab.Career").assertIsSelected()
+        swipePager(towardsTheNextTab = false)
+        rule.onNodeWithTag("player.tab.Season").assertIsSelected()
     }
 
     @Test
     fun theInfoCardIsLabelAndValueRowsWithShootsForASkater() {
         show(loaded(skaterProfile()))
-        selectTab("info")
+        selectTab("Info")
 
         rule.onNodeWithTag("player.info.shoots.label").assertTextEquals("Shoots")
         rule.onNodeWithTag("player.info.shoots").assertTextEquals("L")
@@ -262,7 +388,7 @@ class PlayerScreenTest {
     @Test
     fun theInfoCardSaysShootsForAGoalieToo() {
         show(loaded(goalieProfile()))
-        selectTab("info")
+        selectTab("Info")
 
         rule.onNodeWithTag("player.info.shoots.label").assertTextEquals("Shoots")
         rule.onNodeWithTag("player.info.shoots").assertTextEquals("L")
@@ -308,44 +434,52 @@ class PlayerScreenTest {
         }
     }
 
-    private fun selectTab(key: String) {
-        rule.onNodeWithTag("player.tab.$key").performClick()
+    private fun selectTab(name: String) {
+        rule.onNodeWithTag("player.tab.$name").performClick()
     }
 
-    private fun centreX(tag: String): Float =
-        rule
-            .onNodeWithTag(tag)
-            .fetchSemanticsNode()
-            .boundsInRoot.center.x
+    /**
+     * A horizontal swipe on the pager, starting near its top edge. Starting at the top keeps the touch off the career and
+     * game-log tables, whose own sideways scroll would otherwise take the gesture.
+     */
+    private fun swipePager(towardsTheNextTab: Boolean) {
+        rule.onNodeWithTag("player.pager").performTouchInput {
+            val y = top + 4f
+            val start = if (towardsTheNextTab) Offset(right - 16f, y) else Offset(left + 16f, y)
+            val end = if (towardsTheNextTab) Offset(left + 16f, y) else Offset(right - 16f, y)
+            swipe(start, end)
+        }
+        rule.waitForIdle()
+    }
 
-    private fun centreOrLeft(tag: String): Float =
-        rule
-            .onNodeWithTag(tag)
-            .fetchSemanticsNode()
-            .boundsInRoot.left
+    private fun bounds(tag: String): Rect = rule.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
+
+    private fun top(tag: String): Float = bounds(tag).top
 
     private fun loaded(
         profile: PlayerProfile,
         gameLog: Loadable<List<PlayerGame>>? = null,
     ) = PlayerDetailUiState(isLoading = false, profile = Loadable(profile, Freshness.Fresh, null), gameLog = gameLog)
 
-    private fun skaterProfile(seasons: List<PlayerSeasonLine> = skaterSeasons) =
-        PlayerProfile(
-            playerId = 8480037L,
-            firstName = "Aleksi",
-            lastName = "Heponiemi",
-            position = "C",
-            sweaterNumber = 20,
-            heightInches = 70,
-            weightPounds = 155,
-            birthDate = "1999-01-09",
-            birthCity = "Tampere",
-            birthCountry = "FIN",
-            shoots = "L",
-            draft = PlayerDraft(year = 2017, teamAbbrev = "FLA", round = 2, pickInRound = 9, overallPick = 40),
-            career = PlayerCareer(regularSeason = PlayerTotals.Skater(faceoffWinningPctg = 0.5, avgTimeOnIceSeconds = 672L)),
-            seasons = seasons,
-        )
+    private fun skaterProfile(
+        seasons: List<PlayerSeasonLine> = skaterSeasons,
+        position: String = "C",
+    ) = PlayerProfile(
+        playerId = 8480037L,
+        firstName = "Aleksi",
+        lastName = "Heponiemi",
+        position = position,
+        sweaterNumber = 20,
+        heightInches = 70,
+        weightPounds = 155,
+        birthDate = "1999-01-09",
+        birthCity = "Tampere",
+        birthCountry = "FIN",
+        shoots = "L",
+        draft = PlayerDraft(year = 2017, teamAbbrev = "FLA", round = 2, pickInRound = 9, overallPick = 40),
+        career = PlayerCareer(regularSeason = PlayerTotals.Skater(faceoffWinningPctg = 0.5, avgTimeOnIceSeconds = 672L)),
+        seasons = seasons,
+    )
 
     private fun goalieProfile(seasons: List<PlayerSeasonLine> = goalieSeasons) =
         PlayerProfile(
@@ -364,19 +498,24 @@ class PlayerScreenTest {
             seasons = seasons,
         )
 
+    /** The club abbreviations the feed never sends; the adapter supplies them, so the fixtures here do the same. */
+    private val clubAbbrevs = mapOf("Carolina Hurricanes" to "CAR", "Boston Bruins" to "BOS", "Anaheim Ducks" to "ANA")
+
     private fun line(
         season: Int,
         league: String,
         team: String,
         sequence: Int,
         totals: PlayerTotals,
+        gameType: Int = 2,
     ) = PlayerSeasonLine(
         season = season,
-        gameTypeId = 2,
+        gameTypeId = gameType,
         leagueAbbrev = league,
         teamName = team,
         sequence = sequence,
         totals = totals,
+        teamAbbrev = clubAbbrevs[team],
     )
 
     private fun skaterTotals(
