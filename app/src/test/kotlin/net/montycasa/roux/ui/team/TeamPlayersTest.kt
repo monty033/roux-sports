@@ -108,14 +108,36 @@ class TeamPlayersTest {
         showPlayers()
 
         rule.onNodeWithTag("team.players.player.12.name", useUnmergedTree = true).assertTextEquals("Sam Colangelo")
-        listOf("gp", "g", "a", "pts", "+/-", "pim").forEach { column ->
+        listOf("gp", "g", "ast", "pts", "+/-", "pim").forEach { column ->
             rule.onNodeWithTag("team.players.player.12.$column", useUnmergedTree = true).assertTextEquals("—")
         }
     }
 
     @Test
-    fun aStatsOnlyDefensemanIsListedInTheDefenseGroup() {
+    fun aStatsOnlyPlayerIsNotListedWhenTheRosterIsPresent() {
+        // He may have been traded away or sent down this season; Patrick's ruling is that a player
+        // appears only on the club he is currently on, so the stats feed must not add a row here.
         showPlayers()
+
+        rule.onNodeWithTag("team.players.player.3").assertDoesNotExist()
+        rule.onNodeWithTag("team.players.player.40").assertDoesNotExist()
+    }
+
+    @Test
+    fun aRosterOnlyPlayerKeepsHisHeadshotAndDashesWithoutStats() {
+        showPlayers()
+
+        rule.onNodeWithTag("team.players.player.12.name", useUnmergedTree = true).assertTextEquals("Sam Colangelo")
+        rule.onNodeWithTag("team.players.player.12.headshot", useUnmergedTree = true).assertExists()
+        listOf("gp", "g", "ast", "pts", "+/-", "pim").forEach { column ->
+            rule.onNodeWithTag("team.players.player.12.$column", useUnmergedTree = true).assertTextEquals("—")
+        }
+    }
+
+    @Test
+    fun aStatsOnlyDefensemanIsListedInTheDefenseGroupWhenTheRosterIsAbsent() {
+        showScreen(roster = Loadable(data = null, freshness = Freshness.Fresh, error = null))
+        openPlayers()
 
         rule.onNodeWithTag("team.players.player.3.name", useUnmergedTree = true).assertTextEquals("Stats Only D")
         rule.onNodeWithTag("team.players.player.3.pts", useUnmergedTree = true).assertTextEquals("4")
@@ -226,6 +248,14 @@ class TeamPlayersTest {
                 .boundsInRoot.top
         assertTrue("12 must precede 91", twelve < ninetyOne)
         assertTrue("a numberless player sorts last", numberless > ninetyOne)
+    }
+
+    @Test
+    fun theSkaterHeadersSayAstNotA() {
+        showPlayers()
+
+        rule.onNodeWithTag("team.players.group.forwards.header.AST").assertExists()
+        rule.onNodeWithTag("team.players.group.forwards.header.A").assertDoesNotExist()
     }
 
     @Test

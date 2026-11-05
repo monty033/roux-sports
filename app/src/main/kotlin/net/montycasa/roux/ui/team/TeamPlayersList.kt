@@ -57,7 +57,7 @@ private val STAT_COLUMN = 42.dp
 private val HEADER_HEIGHT = 26.dp
 private val ROW_MIN_HEIGHT = 48.dp
 
-private val SKATER_COLUMNS = listOf("GP", "G", "A", "PTS", "+/-", "PIM")
+private val SKATER_COLUMNS = listOf("GP", "G", "AST", "PTS", "+/-", "PIM")
 private val GOALIE_COLUMNS = listOf("GP", "W", "L", "OTL", "GAA", "SV%", "SO")
 
 /**
@@ -445,8 +445,9 @@ internal data class PlayerGroupRows(
  * Joins the roster and the stats feed on the feed's player id. Name is never a key: two players can
  * share one, and matching by name would merge them.
  *
- * Roster rows keep the roster's own group; a stats-only row is grouped from its position code and
- * carries no sweater number, so it sorts last in its group.
+ * Roster rows keep the roster's own group. Stats-only rows are used only when the roster is absent,
+ * where they are grouped from their position code and carry no sweater number, so they sort last in
+ * their group.
  */
 internal fun playerGroups(
     roster: ClubRoster?,
@@ -485,30 +486,35 @@ internal fun playerGroups(
         }
     }
 
-    stats?.skaters.orEmpty().forEach { line ->
-        if (line.playerId == null || line.playerId !in claimedIds) {
-            rows.getValue(groupForSkaterPosition(line.positionCode)) +=
-                PlayerTableRow(
-                    playerId = line.playerId,
-                    name = line.name,
-                    sweaterNumber = null,
-                    headshotUrl = line.headshotUrl,
-                    positionCode = line.positionCode,
-                    skater = line,
-                )
+    // With a roster present the rows come from the roster alone: a player in the season stats who is not on it may have
+    // been traded away or sent down, and he belongs only on the club he is currently on. Without a roster the stats are
+    // all there is, so they stand in rather than leaving the tab blank.
+    if (roster == null) {
+        stats?.skaters.orEmpty().forEach { line ->
+            if (line.playerId == null || line.playerId !in claimedIds) {
+                rows.getValue(groupForSkaterPosition(line.positionCode)) +=
+                    PlayerTableRow(
+                        playerId = line.playerId,
+                        name = line.name,
+                        sweaterNumber = null,
+                        headshotUrl = line.headshotUrl,
+                        positionCode = line.positionCode,
+                        skater = line,
+                    )
+            }
         }
-    }
-    stats?.goalies.orEmpty().forEach { line ->
-        if (line.playerId == null || line.playerId !in claimedIds) {
-            rows.getValue(PlayerGroup.Goalies) +=
-                PlayerTableRow(
-                    playerId = line.playerId,
-                    name = line.name,
-                    sweaterNumber = null,
-                    headshotUrl = line.headshotUrl,
-                    positionCode = line.positionCode ?: "G",
-                    goalie = line,
-                )
+        stats?.goalies.orEmpty().forEach { line ->
+            if (line.playerId == null || line.playerId !in claimedIds) {
+                rows.getValue(PlayerGroup.Goalies) +=
+                    PlayerTableRow(
+                        playerId = line.playerId,
+                        name = line.name,
+                        sweaterNumber = null,
+                        headshotUrl = line.headshotUrl,
+                        positionCode = line.positionCode ?: "G",
+                        goalie = line,
+                    )
+            }
         }
     }
 

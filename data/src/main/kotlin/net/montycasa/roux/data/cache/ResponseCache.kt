@@ -33,9 +33,17 @@ enum class CacheKind(
     // the one being read and the one before it, so a new season does not evict the table still shown.
     LeagueStats(2, "league-stats"),
 
+    // The league penalties table is its own kind, not a field of the summary: it is a second request with its own
+    // freshness and failure, so a penalties refresh can never evict or overwrite the table it is joined onto.
+    LeaguePenaltyTable(2, "league-penalties"),
+
     // One entry per player. A club's roster has at most a few dozen players, and a fan who opens several profiles in a
     // session should not evict another club's stats, so the player kind gets its own cap.
     PlayerProfile(32, "player-profile"),
+
+    // One game log per player and season. It is its own kind, not a field of the profile, so a log that fails or is
+    // refreshed can never evict or overwrite the profile the other tabs read.
+    PlayerGameLog(32, "player-game-log"),
 
     // One kind per detail endpoint, so a burst of landing pages for a busy night cannot evict the boxscore a
     // fan is reading. The caps are per kind; a shared Detail kind would have made the busiest endpoint the

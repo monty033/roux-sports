@@ -114,6 +114,18 @@ class ThemeContrastTest {
         )
     }
 
+    /**
+     * The rank bar is a graphic, so it owes 3:1 rather than the text floor: its orange fill against the track it sits in.
+     * Measured in both themes, because the track is the scheme's outline-variant rule and it changes with the theme.
+     */
+    @Test
+    fun theRankBarFillClearsThreeToOneOnItsTrackInBothThemes() {
+        for ((scheme, accents) in themed) {
+            val ratio = contrastRatio(accents.signature, scheme.outlineVariant)
+            assertTrue("rank bar fill on its track measured ${"%.2f".format(ratio)}:1, needs 3.0", ratio >= 3.0f)
+        }
+    }
+
     /** No dynamic colour: the scheme is a constant selected by a flag. */
     @Test
     fun theSchemeIsSelectedByTheDarkFlag() {

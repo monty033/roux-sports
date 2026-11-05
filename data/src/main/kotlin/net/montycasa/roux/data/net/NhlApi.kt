@@ -126,13 +126,45 @@ class NhlApi(
     }
 
     /**
-     * A player's landing page: identity, career and season totals, and the last five games.
+     * Every club's season penalty totals for one season and game type, in a single response.
+     *
+     * The same stats-host table shape as [leagueSummary], with the same validation, because the two are joined
+     * on the club. It is a separate request so a failure here cannot take the summary with it.
+     */
+    suspend fun leaguePenalties(
+        season: String,
+        gameType: Int = 2,
+    ): ApiResult {
+        require(SEASON_ID.matches(season)) { "Season must be eight digits, was '$season'" }
+        require(gameType in 1..3) { "Game type must be 1, 2 or 3, was '$gameType'" }
+        return get("/stats/rest/en/team/penalties?cayenneExp=seasonId=$season%20and%20gameTypeId=$gameType", statsBaseUrl)
+    }
+
+    /**
+     * A player's landing page: identity, career and season totals.
      *
      * The id is checked before a request is built, so only a positive whole number can become part of the path.
      */
     suspend fun playerLanding(playerId: Long): ApiResult {
         require(playerId > 0) { "Player id must be positive, was '$playerId'" }
         return get("/v1/player/$playerId/landing")
+    }
+
+    /**
+     * One player's game log for one season and game type: a row per game the player appeared in.
+     *
+     * The id and season are checked before a request is built, the same as the other season-scoped calls. The feed
+     * does not sort the rows, so callers must not rely on their order.
+     */
+    suspend fun playerGameLog(
+        playerId: Long,
+        season: String,
+        gameType: Int = 2,
+    ): ApiResult {
+        require(playerId > 0) { "Player id must be positive, was '$playerId'" }
+        require(SEASON_ID.matches(season)) { "Season must be eight digits, was '$season'" }
+        require(gameType in 1..3) { "Game type must be 1, 2 or 3, was '$gameType'" }
+        return get("/v1/player/$playerId/game-log/$season/$gameType")
     }
 
     /**

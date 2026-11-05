@@ -10,12 +10,14 @@ import net.montycasa.roux.data.net.HostNotAllowedException
 import net.montycasa.roux.data.net.NhlApi
 import net.montycasa.roux.data.net.RateLimited
 import net.montycasa.roux.data.nhl.ParseResult
+import net.montycasa.roux.data.nhl.PlayerGameLogAdapter
 import net.montycasa.roux.data.nhl.PlayerProfileAdapter
 import net.montycasa.roux.domain.Cached
 import net.montycasa.roux.domain.FetchOutcome
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
+import net.montycasa.roux.domain.model.PlayerGame
 import net.montycasa.roux.domain.model.PlayerProfile
 import net.montycasa.roux.domain.policy.FreshnessPolicy
 import net.montycasa.roux.domain.repo.PlayerProfileRepository
@@ -43,6 +45,18 @@ internal class PlayerProfileRepositoryImpl(
             maxAge = FreshnessPolicy.playerProfileMaxAge(),
             fetch = { api.playerLanding(playerId) },
             parse = PlayerProfileAdapter::parse,
+        )
+
+    override suspend fun gameLog(
+        playerId: Long,
+        season: Int,
+        isGoalie: Boolean,
+    ): Loadable<List<PlayerGame>> =
+        load(
+            key = CacheKey(CacheKind.PlayerGameLog, "$playerId-$season"),
+            maxAge = FreshnessPolicy.playerGameLogMaxAge(),
+            fetch = { api.playerGameLog(playerId, season.toString()) },
+            parse = { json -> PlayerGameLogAdapter.parse(json, isGoalie) },
         )
 
     private suspend fun <T> load(

@@ -24,6 +24,7 @@ internal fun formatLeagueValue(
         LeagueMetric.PointPct,
         -> formatPercentage(value)
 
+        LeagueMetric.PenaltyMinutes,
         LeagueMetric.Points,
         LeagueMetric.TeamShutouts,
         -> formatStatNumber(value?.roundToInt())

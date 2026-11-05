@@ -1,5 +1,6 @@
 package net.montycasa.roux.data.nhl.dto
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
@@ -21,11 +22,10 @@ internal data class PlayerLandingDto(
     val birthDate: String? = null,
     val birthCity: LocalizedNameDto? = null,
     val birthCountry: String? = null,
-    val shootsCatches: String? = null,
+    @SerialName("shootsCatches") val shoots: String? = null,
     val draftDetails: PlayerDraftDto? = null,
     val careerTotals: PlayerCareerTotalsDto? = null,
     val seasonTotals: List<PlayerStatsDto?>? = null,
-    val last5Games: List<PlayerRecentGameDto?>? = null,
 )
 
 @Serializable
@@ -85,36 +85,4 @@ internal data class PlayerStatsDto(
     val savePctg: Double? = null,
     val shutouts: Int? = null,
     val timeOnIce: String? = null,
-)
-
-/**
- * One of the last five games. Skater and goalie rows share the date, opponent and home flag; the rest is one superset,
- * read by position.
- */
-@Serializable
-internal data class PlayerRecentGameDto(
-    val gameDate: String? = null,
-    val gameId: Long? = null,
-    val gameTypeId: Int? = null,
-    val teamAbbrev: String? = null,
-    val opponentAbbrev: String? = null,
-    val homeRoadFlag: String? = null,
-    // Skater stats.
-    val goals: Int? = null,
-    val assists: Int? = null,
-    val points: Int? = null,
-    val plusMinus: Int? = null,
-    val pim: Int? = null,
-    val shots: Int? = null,
-    val powerPlayGoals: Int? = null,
-    val shorthandedGoals: Int? = null,
-    val shifts: Int? = null,
-    val toi: String? = null,
-    // Goalie stats.
-    val decision: String? = null,
-    val gamesStarted: Int? = null,
-    val goalsAgainst: Int? = null,
-    val shotsAgainst: Int? = null,
-    val savePctg: Double? = null,
-    val penaltyMins: Int? = null,
 )

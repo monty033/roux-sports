@@ -5,7 +5,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import net.montycasa.roux.data.Fixtures
 import net.montycasa.roux.domain.model.PlayerProfile
-import net.montycasa.roux.domain.model.PlayerRecentGame
 import net.montycasa.roux.domain.model.PlayerTotals
 import net.montycasa.roux.domain.model.newestSeasonRows
 import org.junit.Assert.assertEquals
@@ -34,7 +33,7 @@ class PlayerProfileAdapterTest {
         assertEquals("1999-01-09", profile.birthDate)
         assertEquals("Tampere", profile.birthCity)
         assertEquals("FIN", profile.birthCountry)
-        assertEquals("L", profile.shootsCatches)
+        assertEquals("L", profile.shoots)
         assertEquals(2017, profile.draft?.year)
         assertEquals("FLA", profile.draft?.teamAbbrev)
         assertEquals(40, profile.draft?.overallPick)
@@ -93,20 +92,6 @@ class PlayerProfileAdapterTest {
     }
 
     @Test
-    fun theLastFiveRowsTakeTheShapeOfThePlayersPosition() {
-        val goalieGame = parsed(goalieJson).lastFive.single() as PlayerRecentGame.Goalie
-        assertEquals("W", goalieGame.decision)
-        assertEquals(3, goalieGame.goalsAgainst)
-        assertEquals(true, goalieGame.isHome)
-        assertEquals(3600L, goalieGame.timeOnIceSeconds)
-
-        val skaterGame = parsed(skaterJson).lastFive.first() as PlayerRecentGame.Skater
-        assertEquals("BOS", skaterGame.opponentAbbrev)
-        assertEquals(false, skaterGame.isHome)
-        assertEquals(481L, skaterGame.timeOnIceSeconds) // 8:01
-    }
-
-    @Test
     fun iceTimeIsWholeSecondsAndAnythingMalformedIsAbsent() {
         assertEquals(672L, PlayerProfileAdapter.parseIceTime("11:12"))
         assertEquals(463004L, PlayerProfileAdapter.parseIceTime("7716:44"))
@@ -120,6 +105,20 @@ class PlayerProfileAdapterTest {
         val result = PlayerProfileAdapter.parse(withoutTopLevelKey(skaterJson, "playerId"))
 
         assertTrue(result is ParseResult.Failure)
+    }
+
+    /**
+     * The feed names a season's club in full and sends no abbreviation, so the adapter supplies it. The goalie fixture's
+     * Anaheim rows become ANA, and a league whose clubs are not in the NHL table keeps no abbreviation at all.
+     */
+    @Test
+    fun aNhlSeasonRowCarriesItsClubsAbbreviationAndAnotherLeagueCarriesNone() {
+        val profile = parsed(goalieJson)
+
+        val anaheim = profile.seasons.filter { it.teamName == "Anaheim Ducks" }
+        assertTrue(anaheim.isNotEmpty())
+        assertEquals(setOf("ANA"), anaheim.map { it.teamAbbrev }.toSet())
+        assertTrue(profile.seasons.filter { it.leagueAbbrev != "NHL" }.all { it.teamAbbrev == null })
     }
 
     private fun parsed(json: String): PlayerProfile =

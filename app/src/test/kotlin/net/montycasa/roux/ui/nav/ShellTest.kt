@@ -501,7 +501,7 @@ class ShellTest {
 
         rule.onNodeWithTag("team.tab.TeamStats").assertIsSelected()
         rule.onNodeWithTag("team.stats.header", useUnmergedTree = true).assertTextEquals("14 GP · 6-7-1 · 13 pts")
-        rule.onAllNodesWithTag("team.stats.label", useUnmergedTree = true).assertCountEquals(10)
+        rule.onAllNodesWithTag("team.stats.label", useUnmergedTree = true).assertCountEquals(11)
     }
 
     @Test

@@ -4,10 +4,10 @@ import net.montycasa.roux.domain.model.LeagueClub
 import net.montycasa.roux.domain.model.LeagueSummary
 
 /**
- * The ten league-table metrics the Team Stats tab ranks, in the order the tab shows them.
+ * The eleven league-table metrics the Team Stats tab ranks, in the order the tab shows them.
  *
- * [higherIsBetter] is the direction a rank counts in: goals against and shots against are better when
- * they are lower, so a rank of 1 means the fewest, not the most.
+ * [higherIsBetter] is the direction a rank counts in: goals against, shots against and penalty minutes are
+ * better when they are lower, so a rank of 1 means the fewest, not the most.
  */
 enum class LeagueMetric(
     val higherIsBetter: Boolean,
@@ -20,6 +20,7 @@ enum class LeagueMetric(
     FaceoffWinPct(higherIsBetter = true, valueFor = { it.faceoffWinPct }),
     PowerPlayPct(higherIsBetter = true, valueFor = { it.powerPlayPct }),
     PenaltyKillPct(higherIsBetter = true, valueFor = { it.penaltyKillPct }),
+    PenaltyMinutes(higherIsBetter = false, valueFor = { it.penaltyMinutes?.toDouble() }),
     Points(higherIsBetter = true, valueFor = { it.points?.toDouble() }),
     PointPct(higherIsBetter = true, valueFor = { it.pointPct }),
     TeamShutouts(higherIsBetter = true, valueFor = { it.teamShutouts?.toDouble() }),
@@ -53,6 +54,16 @@ class LeagueRanking private constructor(
                 if (metric.higherIsBetter) theirs > mine else theirs < mine
             }
         return better + 1
+    }
+
+    /**
+     * The length of the rank bar for [metric] as a fraction of its track: `(clubCount - rank + 1) / clubCount`,
+     * so rank 1 fills the track and the last place is `1 / clubCount`. Tied clubs share a rank and so a length.
+     * Null when the club has no rank for [metric], and such a row draws no bar.
+     */
+    fun barFractionOf(metric: LeagueMetric): Float? {
+        val rank = rankOf(metric) ?: return null
+        return (clubCount - rank + 1).toFloat() / clubCount
     }
 
     companion object {

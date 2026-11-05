@@ -14,7 +14,8 @@ data class LeagueSummary(
  * One club's line in the league table.
  *
  * The club is identified by its full name, which is the same string the standings table carries for
- * it; the feed's summary row has no abbreviation to join on.
+ * it. The summary row has no abbreviation to join on, so [teamId] is the key a second feed is joined by;
+ * the name is the fallback only when one side has no id.
  *
  * Every number is nullable because the feed can omit any of them. A missing number stays null all the
  * way to the screen, where it prints as an em dash and earns no rank. [ties] is kept so a null tie can
@@ -22,9 +23,13 @@ data class LeagueSummary(
  *
  * Percentages are fractions, not percentages: 0.46979 is 46.98 %. The screen multiplies by 100 only
  * when it prints one.
+ *
+ * [penaltyMinutes] is the season total, not a per-game rate. It comes from the league penalties table,
+ * not from the summary, so it is null when that table did not answer for this club.
  */
 data class LeagueClub(
     val teamName: String,
+    val teamId: Int? = null,
     val gamesPlayed: Int? = null,
     val wins: Int? = null,
     val losses: Int? = null,
@@ -40,4 +45,5 @@ data class LeagueClub(
     val powerPlayPct: Double? = null,
     val penaltyKillPct: Double? = null,
     val teamShutouts: Int? = null,
+    val penaltyMinutes: Int? = null,
 )

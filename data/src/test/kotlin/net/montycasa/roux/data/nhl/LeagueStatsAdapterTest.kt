@@ -45,6 +45,15 @@ class LeagueStatsAdapterTest {
         assertEquals(1, ana.otLosses)
     }
 
+    /** The id is what the penalties table is joined by, so it must come through with the name. */
+    @Test
+    fun everyRowCarriesItsTeamIdAndAnasIsTwentyFour() {
+        val clubs = parsed().clubs
+
+        assertTrue(clubs.all { it.teamId != null })
+        assertEquals(24, ana().teamId)
+    }
+
     /** The feed's `ties` is null on every row. A null must stay a null, never a zero that reads as a real tie count. */
     @Test
     fun tiesNullDoesNotBecomeZeroAnywhere() {

@@ -45,6 +45,7 @@ internal object LeagueStatsAdapter {
         val name = teamFullName?.takeIf { it.isNotBlank() } ?: return null
         return LeagueClub(
             teamName = name,
+            teamId = teamId,
             gamesPlayed = gamesPlayed,
             wins = wins,
             losses = losses,

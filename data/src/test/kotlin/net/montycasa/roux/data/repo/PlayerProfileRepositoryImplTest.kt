@@ -25,6 +25,7 @@ import kotlin.time.Instant
 
 class PlayerProfileRepositoryImplTest {
     private val payload = Fixtures.text("2026-11-03", "player-8476316-landing.json").toByteArray()
+    private val gameLogPayload = Fixtures.text("2026-11-04", "player-8476316-game-log-20262027.json").toByteArray()
 
     @Test
     fun theRequestAsksForThatPlayersLanding() =
@@ -109,31 +110,84 @@ class PlayerProfileRepositoryImplTest {
             assertEquals(LoadError.Http(status = 500), loadable.error)
         }
 
+    @Test
+    fun theGameLogAsksForThatSeasonsRegularSeasonGameType() =
+        runBlocking {
+            val harness = Harness()
+
+            harness.repository.gameLog(PLAYER_ID, season = 20262027, isGoalie = true)
+
+            assertEquals(listOf("/v1/player/8476316/game-log/20262027/2"), harness.requests)
+        }
+
+    @Test
+    fun theGameLogIsItsOwnCacheEntryKeyedByPlayerAndSeason() =
+        runBlocking {
+            val harness = Harness()
+
+            harness.repository.gameLog(PLAYER_ID, season = 20262027, isGoalie = true)
+
+            val entries =
+                harness.fileSystem
+                    .list("/cache".toPath())
+                    .map { it.name }
+                    .filter { it.endsWith(".roux") }
+            assertEquals(listOf("player-game-log-8476316-20262027.roux"), entries)
+        }
+
+    @Test
+    fun theGameLogReturnsItsRowsInTheFeedsOrder() =
+        runBlocking {
+            val harness = Harness()
+
+            val loadable = harness.repository.gameLog(PLAYER_ID, season = 20262027, isGoalie = true)
+
+            assertEquals(listOf(2026020246L, 2026020231L), loadable.data?.map { it.gameId })
+            assertNull(loadable.error)
+        }
+
+    @Test
+    fun aFailedGameLogLeavesTheProfileReadable() =
+        runBlocking {
+            val harness = Harness()
+            harness.gameLogFailing = true
+
+            val log = harness.repository.gameLog(PLAYER_ID, season = 20262027, isGoalie = true)
+            val profile = harness.repository.profile(PLAYER_ID)
+
+            assertNull(log.data)
+            assertEquals(LoadError.Http(status = 500), log.error)
+            assertEquals(8476316L, profile.data?.playerId)
+            assertNull(profile.error)
+        }
+
     private inner class Harness {
         val clock = MutableClock()
         val requests = mutableListOf<String>()
         var failing = false
+        var gameLogFailing = false
         val fileSystem = FakeFileSystem(clock)
         val repository: PlayerProfileRepositoryImpl
 
         init {
             val engine =
                 MockEngine { request ->
-                    requests += request.url.encodedPath
-                    if (failing) {
-                        respond("upstream error", HttpStatusCode.InternalServerError)
-                    } else {
-                        respond(
-                            payload,
-                            HttpStatusCode.OK,
-                            headersOf(HttpHeaders.ContentType, "application/json"),
-                        )
+                    val path = request.url.encodedPath
+                    requests += path
+                    val isGameLog = path.contains("/game-log/")
+                    when {
+                        isGameLog && gameLogFailing -> respond("upstream error", HttpStatusCode.InternalServerError)
+                        isGameLog -> respond(gameLogPayload, HttpStatusCode.OK, jsonHeaders())
+                        failing -> respond("upstream error", HttpStatusCode.InternalServerError)
+                        else -> respond(payload, HttpStatusCode.OK, jsonHeaders())
                     }
                 }
             val cache = ResponseCache(fileSystem, CACHE_DIRECTORY.toPath(), clock)
             val api = NhlApi(NhlHttpClientFactory.create(engine, "test-version"))
             repository = PlayerProfileRepositoryImpl(api, cache, clock)
         }
+
+        private fun jsonHeaders() = headersOf(HttpHeaders.ContentType, "application/json")
     }
 
     private class MutableClock : Clock {

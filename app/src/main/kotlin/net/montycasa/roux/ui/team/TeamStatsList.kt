@@ -4,10 +4,12 @@ package net.montycasa.roux.ui.team
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -39,12 +41,14 @@ import net.montycasa.roux.domain.policy.LeagueRanking
 import net.montycasa.roux.ui.detail.EmptySectionLine
 import net.montycasa.roux.ui.reach.reachTarget
 import net.montycasa.roux.ui.theme.LocalRouxAccents
+import net.montycasa.roux.ui.theme.Roux
 
 private val VALUE_WIDTH = 72.dp
 private val RANK_WIDTH = 72.dp
+private val BAR_HEIGHT = 4.dp
 
 /**
- * The Team Stats tab: this club's rank among every club in the league, for ten metrics.
+ * The Team Stats tab: this club's rank among every club in the league, for eleven metrics, each with a rank bar.
  *
  * [teamName] is the club's name as the standings table spells it. That is the join key, because the league summary
  * has no abbreviation. Each case that cannot be answered gets its own line, so a club missing from the league, a club
@@ -235,36 +239,70 @@ private fun LeagueStatRow(
         } else {
             stringResource(R.string.team_stats_rank_spoken, label, value, ordinal(rank), ranking.clubCount)
         }
-    Row(
+    Column(
         Modifier
             .fillMaxWidth()
             .padding(vertical = 6.dp)
             .testTag("team.stats.row.${metric.name}"),
-        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            label,
-            modifier = Modifier.weight(1f).testTag("team.stats.label"),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Text(
-            value,
-            modifier = Modifier.width(VALUE_WIDTH).testTag("team.stats.value.${metric.name}"),
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.End,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Text(
-            rank?.let { ordinal(it) } ?: "—",
-            modifier =
-                Modifier
-                    .width(RANK_WIDTH)
-                    .semantics { contentDescription = spoken }
-                    .testTag("team.stats.rank.${metric.name}"),
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.End,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                label,
+                modifier = Modifier.weight(1f).testTag("team.stats.label"),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                value,
+                modifier = Modifier.width(VALUE_WIDTH).testTag("team.stats.value.${metric.name}"),
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.End,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                rank?.let { ordinal(it) } ?: "—",
+                modifier =
+                    Modifier
+                        .width(RANK_WIDTH)
+                        .semantics { contentDescription = spoken }
+                        .testTag("team.stats.rank.${metric.name}"),
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.End,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        // A club with no rank for this metric has no share of the league to show, so its row draws no bar.
+        ranking.barFractionOf(metric)?.let { fraction ->
+            Spacer(Modifier.height(4.dp))
+            RankBar(metric, fraction)
+        }
+    }
+}
+
+/**
+ * The rank as a bar: a track the width of the row, filled to the club's share of the league. Rank 1 fills the track,
+ * and the last place fills `1 / clubCount` of it. The rank cell already speaks the rank, so the bar has no content
+ * description of its own.
+ */
+@Composable
+private fun RankBar(
+    metric: LeagueMetric,
+    fraction: Float,
+) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(BAR_HEIGHT)
+            .clip(RoundedCornerShape(2.dp))
+            .background(MaterialTheme.colorScheme.outlineVariant)
+            .testTag("team.stats.bar.${metric.name}"),
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth(fraction)
+                .fillMaxHeight()
+                .background(Roux.accents.signature)
+                .testTag("team.stats.barFill.${metric.name}"),
         )
     }
 }
@@ -278,6 +316,7 @@ private fun metricLabel(metric: LeagueMetric): Int =
         LeagueMetric.FaceoffWinPct -> R.string.team_stats_metric_faceoff
         LeagueMetric.PowerPlayPct -> R.string.team_stats_metric_power_play
         LeagueMetric.PenaltyKillPct -> R.string.team_stats_metric_penalty_kill
+        LeagueMetric.PenaltyMinutes -> R.string.team_stats_metric_penalty_minutes
         LeagueMetric.Points -> R.string.team_stats_metric_points
         LeagueMetric.PointPct -> R.string.team_stats_metric_point_pct
         LeagueMetric.TeamShutouts -> R.string.team_stats_metric_shutouts
