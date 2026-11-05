@@ -471,7 +471,7 @@ private fun CareerTable(
         // width on numbers rather than on air. A wider table still scrolls, but it needs far less of it.
         // The career table carries thirteen columns, so it takes the tighter gap as well: enough to keep neighbouring
         // numbers apart, not the wider air the shorter tables can afford.
-        statWidths = fittedStatWidths(headers, allRows.map { it.cells }, measurer, gap = 4.dp),
+        statWidths = fittedStatWidths(headers, allRows.map { it.cells }, measurer, gap = 5.dp, minimum = 28.dp, paddingShare = 0.10f),
     )
 }
 

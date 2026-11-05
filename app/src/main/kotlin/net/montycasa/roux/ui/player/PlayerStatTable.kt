@@ -103,6 +103,8 @@ internal fun fittedStatWidths(
     rows: List<List<StatCell>>,
     measurer: TextMeasurer,
     gap: Dp = STAT_COLUMN_GAP,
+    minimum: Dp = 0.dp,
+    paddingShare: Float = 0f,
 ): List<Dp> {
     val headerStyle = MaterialTheme.typography.labelSmall
     val valueStyle = MaterialTheme.typography.bodyMedium
@@ -110,7 +112,11 @@ internal fun fittedStatWidths(
     return headers.mapIndexed { index, header ->
         val headerPx = measurer.measure(header.label, headerStyle).size.width
         val valuePx = rows.maxOfOrNull { cells -> measurer.measure(cells[index].value, valueStyle).size.width } ?: 0
-        with(density) { maxOf(headerPx, valuePx).toDp() } + gap
+        // [paddingShare] adds air in proportion to a column's own content, so a wide number is not wedged against its
+        // neighbour while a narrow one does not get more than it needs. [minimum] floors a column whose content is tiny
+        // (the +/− header), which would otherwise sit on its neighbour's edge.
+        val content = with(density) { maxOf(headerPx, valuePx).toDp() }
+        maxOf(content * (1f + paddingShare) + gap, minimum)
     }
 }
 

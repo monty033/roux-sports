@@ -547,7 +547,7 @@ class PlayerScreenTest {
     /**
      * The career table's columns are fitted to their own content instead of a fixed 56 dp, which removes most of the
      * sideways scroll: thirteen columns at a fixed width needed 1243 px of travel at 360 dp, and fitted columns need
-     * under 380. The bound is the regression guard - dropping the fitted widths puts it back over 1200.
+     * under 380. The bound is the regression guard - dropping the fitted widths puts it back over 1200. Per-column air (10 % of each column's own content) and a 28 dp floor cost about 150 px of that saving and are included in the bound.
      */
     @Test
     fun aSkatersCareerTableIsFittedToItsContentSoItBarelyScrollsAt360dp() {
@@ -560,7 +560,7 @@ class PlayerScreenTest {
                 .fetchSemanticsNode()
                 .config[SemanticsProperties.HorizontalScrollAxisRange]
                 .maxValue()
-        assertTrue("the career table scrolls by $max px, so its columns are not fitted to their content", max <= 380f)
+        assertTrue("the career table scrolls by $max px, so its columns are not fitted to their content", max <= 540f)
     }
 
     /** The heading names the season being played, not the profile's newest season, which here is an older one. */
