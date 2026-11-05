@@ -57,7 +57,7 @@ private val STAT_COLUMN = 42.dp
 private val HEADER_HEIGHT = 26.dp
 private val ROW_MIN_HEIGHT = 48.dp
 
-private val SKATER_COLUMNS = listOf("GP", "G", "A", "PTS", "+/-", "PIM")
+private val SKATER_COLUMNS = listOf("GP", "G", "AST", "PTS", "+/-", "PIM")
 private val GOALIE_COLUMNS = listOf("GP", "W", "L", "OTL", "GAA", "SV%", "SO")
 
 /**

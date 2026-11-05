@@ -12,7 +12,9 @@ import kotlinx.datetime.TimeZone
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
+import net.montycasa.roux.domain.model.PlayerGame
 import net.montycasa.roux.domain.model.PlayerProfile
+import net.montycasa.roux.domain.model.newestSeason
 import net.montycasa.roux.domain.policy.LeagueCalendar
 import net.montycasa.roux.domain.repo.PlayerProfileRepository
 import kotlin.time.Clock
@@ -20,6 +22,8 @@ import kotlin.time.Clock
 data class PlayerDetailUiState(
     val isLoading: Boolean = true,
     val profile: Loadable<PlayerProfile>? = null,
+    /** Null while the game log is still being read. An empty list is a log with no games, not a failure. */
+    val gameLog: Loadable<List<PlayerGame>>? = null,
 )
 
 /**
@@ -44,11 +48,18 @@ class PlayerDetailViewModel(
 
     fun retry() = load()
 
+    /**
+     * The profile first, then the game log for the profile's newest season. The log needs the season, so it cannot
+     * start earlier, and a failed log leaves the profile on screen.
+     */
     private fun load() {
-        mutableState.update { it.copy(isLoading = true) }
+        mutableState.update { it.copy(isLoading = true, gameLog = null) }
         viewModelScope.launch {
             val read = readProfile()
             mutableState.update { it.copy(profile = read, isLoading = false) }
+            val profile = read.data ?: return@launch
+            val log = readGameLog(profile)
+            mutableState.update { it.copy(gameLog = log) }
         }
     }
 
@@ -61,4 +72,16 @@ class PlayerDetailViewModel(
             // A repository that throws is the same answer as one that failed: there is nothing to show yet.
             Loadable(null, Freshness.Missing, LoadError.Local)
         }
+
+    private suspend fun readGameLog(profile: PlayerProfile): Loadable<List<PlayerGame>> {
+        // A profile with no season row has no season to ask for, so its log is empty rather than a failure.
+        val season = profile.seasons.newestSeason() ?: return Loadable(emptyList(), Freshness.Fresh, null)
+        return try {
+            repository.gameLog(profile.playerId, season, profile.isGoalie)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            Loadable(null, Freshness.Missing, LoadError.Local)
+        }
+    }
 }

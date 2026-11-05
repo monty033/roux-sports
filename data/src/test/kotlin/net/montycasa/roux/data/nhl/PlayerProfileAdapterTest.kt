@@ -5,7 +5,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import net.montycasa.roux.data.Fixtures
 import net.montycasa.roux.domain.model.PlayerProfile
-import net.montycasa.roux.domain.model.PlayerRecentGame
 import net.montycasa.roux.domain.model.PlayerTotals
 import net.montycasa.roux.domain.model.newestSeasonRows
 import org.junit.Assert.assertEquals
@@ -34,7 +33,7 @@ class PlayerProfileAdapterTest {
         assertEquals("1999-01-09", profile.birthDate)
         assertEquals("Tampere", profile.birthCity)
         assertEquals("FIN", profile.birthCountry)
-        assertEquals("L", profile.shootsCatches)
+        assertEquals("L", profile.shoots)
         assertEquals(2017, profile.draft?.year)
         assertEquals("FLA", profile.draft?.teamAbbrev)
         assertEquals(40, profile.draft?.overallPick)
@@ -90,20 +89,6 @@ class PlayerProfileAdapterTest {
         val rows = parsed(skaterJson).seasons.newestSeasonRows()
 
         assertEquals(listOf("SHL"), rows.map { it.leagueAbbrev })
-    }
-
-    @Test
-    fun theLastFiveRowsTakeTheShapeOfThePlayersPosition() {
-        val goalieGame = parsed(goalieJson).lastFive.single() as PlayerRecentGame.Goalie
-        assertEquals("W", goalieGame.decision)
-        assertEquals(3, goalieGame.goalsAgainst)
-        assertEquals(true, goalieGame.isHome)
-        assertEquals(3600L, goalieGame.timeOnIceSeconds)
-
-        val skaterGame = parsed(skaterJson).lastFive.first() as PlayerRecentGame.Skater
-        assertEquals("BOS", skaterGame.opponentAbbrev)
-        assertEquals(false, skaterGame.isHome)
-        assertEquals(481L, skaterGame.timeOnIceSeconds) // 8:01
     }
 
     @Test

@@ -41,6 +41,10 @@ enum class CacheKind(
     // session should not evict another club's stats, so the player kind gets its own cap.
     PlayerProfile(32, "player-profile"),
 
+    // One game log per player and season. It is its own kind, not a field of the profile, so a log that fails or is
+    // refreshed can never evict or overwrite the profile the other tabs read.
+    PlayerGameLog(32, "player-game-log"),
+
     // One kind per detail endpoint, so a burst of landing pages for a busy night cannot evict the boxscore a
     // fan is reading. The caps are per kind; a shared Detail kind would have made the busiest endpoint the
     // one that decides what survives.

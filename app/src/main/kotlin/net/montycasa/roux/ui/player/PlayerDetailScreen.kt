@@ -13,14 +13,19 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,13 +39,16 @@ import coil3.compose.AsyncImage
 import net.montycasa.roux.R
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.Loadable
-import net.montycasa.roux.domain.model.PlayerCareer
+import net.montycasa.roux.domain.model.GoalieDecision
+import net.montycasa.roux.domain.model.PlayerGame
 import net.montycasa.roux.domain.model.PlayerProfile
-import net.montycasa.roux.domain.model.PlayerRecentGame
 import net.montycasa.roux.domain.model.PlayerSeasonLine
 import net.montycasa.roux.domain.model.PlayerTotals
+import net.montycasa.roux.domain.model.newestFirst
 import net.montycasa.roux.domain.model.newestSeasonRows
+import net.montycasa.roux.domain.policy.PlayerCareerTable
 import net.montycasa.roux.ui.common.RetryButton
+import net.montycasa.roux.ui.detail.EmptySectionLine
 import net.montycasa.roux.ui.detail.SectionCard
 import net.montycasa.roux.ui.reach.reachTarget
 import net.montycasa.roux.ui.team.formatGoalsAgainstAverage
@@ -49,6 +57,7 @@ import net.montycasa.roux.ui.team.formatSavePercentage
 import net.montycasa.roux.ui.team.formatShootingPercentage
 import net.montycasa.roux.ui.team.formatStatNumber
 import net.montycasa.roux.ui.team.formatStatsIceTime
+import net.montycasa.roux.ui.theme.LocalRouxAccents
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
@@ -57,9 +66,21 @@ import java.time.format.FormatStyle
 private val HEADSHOT_SIZE = 112.dp
 private val DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
 
+/** The four tabs, in the order the page shows them. [key] names the tab's test tag, so no test reads the label. */
+internal enum class PlayerTab(
+    val key: String,
+) {
+    Season("season"),
+    Career("career"),
+    GameLog("gamelog"),
+    Info("info"),
+}
+
 /**
- * A player's page: the header, then what the feed says about them, each in a card that hides itself when the feed had
- * nothing for it. Only the body scrolls; the back row stays put.
+ * A player's page: the header, then one of four tabs. Only the body scrolls; the back row stays put.
+ *
+ * The Season, Career and Info tabs read the profile alone. The Game log tab reads its own request, so a failed or empty
+ * log leaves the other three exactly as they were.
  */
 @Composable
 fun PlayerDetailScreen(
@@ -80,7 +101,13 @@ fun PlayerDetailScreen(
         val profile = loaded?.data
         when {
             profile != null -> {
-                PlayerBody(profile = profile, currentSeason = currentSeason, modifier = Modifier.weight(1f))
+                PlayerBody(
+                    profile = profile,
+                    currentSeason = currentSeason,
+                    gameLog = state.gameLog,
+                    onRetry = onRetry,
+                    modifier = Modifier.weight(1f),
+                )
             }
 
             loaded?.error != null -> {
@@ -120,8 +147,11 @@ private fun PlayerBackRow(onBack: () -> Unit) {
 private fun PlayerBody(
     profile: PlayerProfile,
     currentSeason: Int,
+    gameLog: Loadable<List<PlayerGame>>?,
+    onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var selected by rememberSaveable { mutableStateOf(PlayerTab.Season) }
     Column(
         modifier
             .fillMaxWidth()
@@ -129,12 +159,46 @@ private fun PlayerBody(
             .padding(horizontal = 16.dp),
     ) {
         PlayerHeader(profile = profile, currentSeason = currentSeason)
-        VitalsCard(profile = profile)
-        SeasonCard(profile = profile, currentSeason = currentSeason)
-        CareerCard(career = profile.career)
-        LastFiveCard(games = profile.lastFive)
+        PlayerTabRow(selected = selected, onSelect = { selected = it })
+        when (selected) {
+            PlayerTab.Season -> SeasonTab(profile = profile, currentSeason = currentSeason)
+            PlayerTab.Career -> CareerTab(profile = profile)
+            PlayerTab.GameLog -> GameLogTab(gameLog = gameLog, isGoalie = profile.isGoalie, onRetry = onRetry)
+            PlayerTab.Info -> InfoTab(profile = profile)
+        }
     }
 }
+
+@Composable
+private fun PlayerTabRow(
+    selected: PlayerTab,
+    onSelect: (PlayerTab) -> Unit,
+) {
+    // A Material tab row, not the team page's sub-navigation: its labels wrap rather than cut off at one line, so
+    // "Season stats" stays whole at 360 dp.
+    PrimaryTabRow(
+        selectedTabIndex = selected.ordinal,
+        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).testTag("player.tabs"),
+    ) {
+        PlayerTab.entries.forEach { tab ->
+            Tab(
+                selected = tab == selected,
+                onClick = { onSelect(tab) },
+                modifier = Modifier.testTag("player.tab.${tab.key}"),
+                text = { Text(tabLabel(tab)) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun tabLabel(tab: PlayerTab): String =
+    when (tab) {
+        PlayerTab.Season -> stringResource(R.string.player_tab_season)
+        PlayerTab.Career -> stringResource(R.string.player_tab_career)
+        PlayerTab.GameLog -> stringResource(R.string.player_tab_gamelog)
+        PlayerTab.Info -> stringResource(R.string.player_tab_info)
+    }
 
 @Composable
 private fun PlayerHeader(
@@ -209,39 +273,208 @@ private fun Headshot(url: String?) {
 }
 
 @Composable
-private fun VitalsCard(profile: PlayerProfile) {
-    val rows = vitals(profile)
-    if (rows.isEmpty()) return
+private fun SeasonTab(
+    profile: PlayerProfile,
+    currentSeason: Int,
+) {
+    val rows = profile.seasons.newestSeasonRows()
+    val season = rows.firstOrNull()?.season
+    val league = rows.singleOrNull()?.leagueAbbrev
+    val title =
+        when {
+            season == null -> stringResource(R.string.player_tab_season)
+            season == currentSeason -> stringResource(R.string.player_this_season)
+            league != null -> stringResource(R.string.player_season_title_league, seasonYears(season), league)
+            else -> seasonYears(season)
+        }
     SectionCard(
-        title = stringResource(R.string.player_vitals),
-        tag = "player.vitals",
+        title = title,
+        tag = "player.season",
         loadable = loaded(rows),
         failureLabel = "",
     ) { current ->
-        current.forEach { vital -> VitalRow(vital) }
+        if (current.isEmpty()) {
+            EmptySectionLine(stringResource(R.string.player_empty))
+        } else {
+            PlayerStatTable(
+                headers = statCells(profile.isGoalie, totals = null),
+                rows =
+                    current.mapIndexed { index, line ->
+                        StatRow(
+                            tag = "player.season.row.$index",
+                            label = seasonLabel(line),
+                            cells = statCells(profile.isGoalie, line.totals),
+                        )
+                    },
+                headerTag = "player.season",
+            )
+        }
     }
 }
 
 @Composable
-private fun vitals(profile: PlayerProfile): List<Vital> =
+private fun CareerTab(profile: PlayerProfile) {
+    val rows = PlayerCareerTable.rows(profile.seasons)
+    val total = PlayerCareerTable.total(rows, profile.career)
+    val playoffs = profile.career.playoffs
+    SectionCard(
+        title = stringResource(R.string.player_career),
+        tag = "player.career",
+        loadable = loaded(rows),
+        failureLabel = "",
+    ) { current ->
+        if (current.isNotEmpty()) {
+            val careerRows =
+                current.mapIndexed { index, line ->
+                    StatRow(
+                        tag = "player.career.row.$index",
+                        label = careerLabel(line),
+                        cells = statCells(profile.isGoalie, line.totals),
+                    )
+                }
+            val totalRows =
+                total
+                    ?.let {
+                        listOf(
+                            StatRow(
+                                tag = "player.career.total",
+                                label = stringResource(R.string.player_total),
+                                cells = statCells(profile.isGoalie, it),
+                            ),
+                        )
+                    }.orEmpty()
+            PlayerStatTable(
+                headers = statCells(profile.isGoalie, totals = null),
+                rows = careerRows + totalRows,
+                headerTag = "player.career",
+            )
+        } else if (playoffs == null) {
+            EmptySectionLine(stringResource(R.string.player_empty))
+        }
+        playoffs?.let { totals ->
+            Text(
+                stringResource(R.string.player_playoffs),
+                modifier = Modifier.padding(top = 12.dp).testTag("player.playoffs.label"),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            PlayerStatTable(
+                headers = statCells(profile.isGoalie, totals = null),
+                rows =
+                    listOf(
+                        StatRow(
+                            tag = "player.playoffs.row",
+                            label = stringResource(R.string.player_total),
+                            cells = statCells(profile.isGoalie, totals),
+                        ),
+                    ),
+                headerTag = "player.playoffs",
+            )
+        }
+    }
+}
+
+@Composable
+private fun GameLogTab(
+    gameLog: Loadable<List<PlayerGame>>?,
+    isGoalie: Boolean,
+    onRetry: () -> Unit,
+) {
+    // A log that has not arrived yet reads as loading; the page's retry reloads it along with the profile.
+    val loadable = gameLog ?: Loadable(null, Freshness.Missing, null)
+    SectionCard(
+        title = stringResource(R.string.player_tab_gamelog),
+        tag = "player.gamelog",
+        loadable = loadable,
+        failureLabel = stringResource(R.string.player_gamelog_error),
+        onRetry = onRetry,
+    ) { games ->
+        val newest = games.newestFirst()
+        if (newest.isEmpty()) {
+            Text(
+                stringResource(R.string.player_gamelog_empty),
+                modifier = Modifier.padding(top = 6.dp).testTag("player.gamelog.empty"),
+                style = MaterialTheme.typography.bodySmall,
+                color = LocalRouxAccents.current.muted,
+            )
+        } else {
+            PlayerStatTable(
+                headers = if (isGoalie) goalieLogCells(null) else skaterLogCells(null),
+                rows =
+                    newest.mapIndexed { index, game ->
+                        StatRow(
+                            tag = "player.gamelog.row.$index",
+                            label = gameLabel(game),
+                            cells =
+                                when (game) {
+                                    is PlayerGame.Skater -> skaterLogCells(game)
+                                    is PlayerGame.Goalie -> goalieLogCells(game)
+                                },
+                        )
+                    },
+                headerTag = "player.gamelog",
+            )
+        }
+    }
+}
+
+@Composable
+private fun InfoTab(profile: PlayerProfile) {
+    val items = infoItems(profile)
+    SectionCard(
+        title = stringResource(R.string.player_tab_info),
+        tag = "player.info",
+        loadable = loaded(items),
+        failureLabel = "",
+    ) { current ->
+        if (current.isEmpty()) {
+            EmptySectionLine(stringResource(R.string.player_empty))
+        } else {
+            current.forEach { item -> InfoRowBlock(item) }
+        }
+    }
+}
+
+/** One label above its value, the same shape as the game page's Game info card. */
+@Composable
+private fun InfoRowBlock(item: InfoItem) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Text(
+            item.label,
+            modifier = Modifier.testTag("player.info.${item.key}.label"),
+            style = MaterialTheme.typography.labelMedium,
+            color = LocalRouxAccents.current.muted,
+        )
+        Text(
+            item.value,
+            modifier = Modifier.testTag("player.info.${item.key}"),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+@Composable
+private fun infoItems(profile: PlayerProfile): List<InfoItem> =
     buildList {
         profile.heightInches?.let {
             add(
-                Vital(
+                InfoItem(
                     "height",
-                    stringResource(R.string.player_vital_height),
+                    stringResource(R.string.player_info_height),
                     stringResource(R.string.player_height_value, it / 12, it % 12),
                 ),
             )
         }
         profile.weightPounds?.let {
-            add(Vital("weight", stringResource(R.string.player_vital_weight), stringResource(R.string.player_weight_value, it)))
+            add(InfoItem("weight", stringResource(R.string.player_info_weight), stringResource(R.string.player_weight_value, it)))
         }
-        profile.shootsCatches?.let {
-            add(Vital("shoots", stringResource(R.string.player_vital_shoots), it))
+        // Handedness is "Shoots" for every position, a goalie included.
+        profile.shoots?.let {
+            add(InfoItem("shoots", stringResource(R.string.player_info_shoots), it))
         }
         profile.birthDate?.let {
-            add(Vital("born", stringResource(R.string.player_vital_born), formatDate(it)))
+            add(InfoItem("born", stringResource(R.string.player_info_born), formatDate(it)))
         }
         val city = profile.birthCity
         val country = profile.birthCountry
@@ -251,7 +484,7 @@ private fun vitals(profile: PlayerProfile): List<Vital> =
                 else -> city ?: country
             }
         if (place != null) {
-            add(Vital("birthplace", stringResource(R.string.player_vital_birthplace), place))
+            add(InfoItem("birthplace", stringResource(R.string.player_info_birthplace), place))
         }
         profile.draft?.let { draft ->
             val parts =
@@ -264,9 +497,9 @@ private fun vitals(profile: PlayerProfile): List<Vital> =
                 )
             if (parts.isNotEmpty()) {
                 add(
-                    Vital(
+                    InfoItem(
                         "draft",
-                        stringResource(R.string.player_vital_draft),
+                        stringResource(R.string.player_info_draft),
                         parts.joinToString(separator = stringResource(R.string.player_separator)),
                     ),
                 )
@@ -275,168 +508,26 @@ private fun vitals(profile: PlayerProfile): List<Vital> =
     }
 
 @Composable
-private fun VitalRow(vital: Vital) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            vital.label,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.width(12.dp))
-        Text(
-            vital.value,
-            modifier = Modifier.testTag("player.vitals.${vital.key}"),
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.End,
-        )
-    }
-}
-
-@Composable
-private fun SeasonCard(
-    profile: PlayerProfile,
-    currentSeason: Int,
-) {
-    val rows = profile.seasons.newestSeasonRows()
-    val season = rows.firstOrNull()?.season ?: return
-    val league = rows.singleOrNull()?.leagueAbbrev
-    val title =
-        when {
-            season == currentSeason -> stringResource(R.string.player_this_season)
-            league != null -> stringResource(R.string.player_season_title_league, seasonYears(season), league)
-            else -> seasonYears(season)
-        }
-    SectionCard(
-        title = title,
-        tag = "player.season",
-        loadable = loaded(rows),
-        failureLabel = "",
-    ) { current ->
-        current.forEachIndexed { index, line ->
-            SeasonLineBlock(line = line, tag = "player.season.$index")
-        }
-    }
-}
-
-@Composable
-private fun SeasonLineBlock(
-    line: PlayerSeasonLine,
-    tag: String,
-) {
+private fun seasonLabel(line: PlayerSeasonLine): String {
     val league = line.leagueAbbrev
     val team = line.teamName
-    val header =
-        when {
-            league != null && team != null -> stringResource(R.string.player_league_team, league, team)
-            else -> league ?: team
-        }
-    if (header != null) {
-        Text(
-            header,
-            modifier = Modifier.padding(top = 8.dp).testTag("$tag.header"),
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-    }
-    StatGrid(cells = statCells(line.totals), tagPrefix = tag)
-}
-
-@Composable
-private fun CareerCard(career: PlayerCareer) {
-    if (career.regularSeason == null && career.playoffs == null) return
-    SectionCard(
-        title = stringResource(R.string.player_career),
-        tag = "player.career",
-        loadable = loaded(career),
-        failureLabel = "",
-    ) { current ->
-        current.regularSeason?.let { totals ->
-            StatGrid(cells = statCells(totals), tagPrefix = "player.career")
-        }
-        current.playoffs?.let { totals ->
-            Text(
-                stringResource(R.string.player_playoffs),
-                modifier = Modifier.padding(top = 8.dp).testTag("player.playoffs.label"),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            StatGrid(cells = statCells(totals), tagPrefix = "player.playoffs")
-        }
+    return when {
+        league != null && team != null -> stringResource(R.string.player_league_team, league, team)
+        else -> league ?: team ?: ""
     }
 }
 
+/** A career row names its season and its club, so a traded season shows one row per club, each with its own club. */
 @Composable
-private fun LastFiveCard(games: List<PlayerRecentGame>) {
-    if (games.isEmpty()) return
-    SectionCard(
-        title = stringResource(R.string.player_last_five),
-        tag = "player.last5",
-        loadable = loaded(games),
-        failureLabel = "",
-    ) { current ->
-        current.forEachIndexed { index, game ->
-            RecentGameRow(game = game, tag = "player.last5.$index")
-        }
-    }
-}
+private fun careerLabel(line: PlayerSeasonLine): String =
+    listOfNotNull(line.season?.let { seasonYears(it) }, line.teamName)
+        .joinToString(separator = stringResource(R.string.player_separator))
 
 @Composable
-private fun RecentGameRow(
-    game: PlayerRecentGame,
-    tag: String,
-) {
+private fun gameLabel(game: PlayerGame): String {
     val date = game.gameDate?.let { formatDate(it) }
     val opponent = opponentLabel(game.opponentAbbrev, game.isHome)
-    val decision = (game as? PlayerRecentGame.Goalie)?.decision
-    val head = listOfNotNull(date, opponent, decision).joinToString(separator = stringResource(R.string.player_separator))
-    val line =
-        when (game) {
-            is PlayerRecentGame.Skater -> {
-                stringResource(
-                    R.string.player_recent_skater,
-                    statCount(game.goals),
-                    statCount(game.assists),
-                    statCount(game.points),
-                    formatPlusMinus(game.plusMinus),
-                    statCount(game.shots),
-                    formatStatsIceTime(game.timeOnIceSeconds),
-                )
-            }
-
-            is PlayerRecentGame.Goalie -> {
-                stringResource(
-                    R.string.player_recent_goalie,
-                    statCount(game.goalsAgainst),
-                    statCount(game.shotsAgainst),
-                    formatSavePercentage(game.savePercentage),
-                    formatStatsIceTime(game.timeOnIceSeconds),
-                )
-            }
-        }
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .testTag(tag),
-    ) {
-        Text(
-            head,
-            modifier = Modifier.testTag("$tag.head"),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            line,
-            modifier = Modifier.testTag("$tag.stats"),
-            style = MaterialTheme.typography.bodyMedium,
-        )
-    }
+    return listOfNotNull(date, opponent).joinToString(separator = stringResource(R.string.player_separator))
 }
 
 @Composable
@@ -468,83 +559,88 @@ private fun PlayerFailure(
     }
 }
 
-/** One label above a value in a stat grid. [key] names the value's test tag, so the tag never depends on the label text. */
-private data class StatCell(
+private data class InfoItem(
     val key: String,
     val label: String,
     val value: String,
 )
 
-private data class Vital(
-    val key: String,
-    val label: String,
-    val value: String,
-)
-
+/** The season or career stat columns, in one order. Headers pass `null` so they carry labels and no numbers. */
 @Composable
-private fun StatGrid(
-    cells: List<StatCell>,
-    tagPrefix: String,
-) {
-    Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
-        cells.chunked(STAT_GRID_COLUMNS).forEach { rowCells ->
-            Row(Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
-                rowCells.forEach { cell ->
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            cell.label,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Text(
-                            cell.value,
-                            modifier = Modifier.testTag("$tagPrefix.${cell.key}"),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                    }
-                }
-                repeat(STAT_GRID_COLUMNS - rowCells.size) { Spacer(Modifier.weight(1f)) }
-            }
-        }
+private fun statCells(
+    isGoalie: Boolean,
+    totals: PlayerTotals?,
+): List<StatCell> =
+    if (isGoalie) {
+        goalieStats(totals as? PlayerTotals.Goalie)
+    } else {
+        skaterStats(totals as? PlayerTotals.Skater)
     }
-}
 
 @Composable
-private fun statCells(totals: PlayerTotals): List<StatCell> =
-    when (totals) {
-        is PlayerTotals.Skater -> {
-            listOf(
-                StatCell("gp", stringResource(R.string.player_stat_gp), statCount(totals.gamesPlayed)),
-                StatCell("g", stringResource(R.string.player_stat_g), statCount(totals.goals)),
-                StatCell("a", stringResource(R.string.player_stat_a), statCount(totals.assists)),
-                StatCell("pts", stringResource(R.string.player_stat_pts), statCount(totals.points)),
-                StatCell("pm", stringResource(R.string.player_stat_pm), formatPlusMinus(totals.plusMinus)),
-                StatCell("pim", stringResource(R.string.player_stat_pim), statCount(totals.penaltyMinutes)),
-                StatCell("ppg", stringResource(R.string.player_stat_ppg), statCount(totals.powerPlayGoals)),
-                StatCell("shg", stringResource(R.string.player_stat_shg), statCount(totals.shorthandedGoals)),
-                StatCell("s", stringResource(R.string.player_stat_s), statCount(totals.shots)),
-                StatCell("shpct", stringResource(R.string.player_stat_shpct), formatShootingPercentage(totals.shootingPctg)),
-                StatCell("fopct", stringResource(R.string.player_stat_fopct), formatShootingPercentage(totals.faceoffWinningPctg)),
-                StatCell("toi", stringResource(R.string.player_stat_toi_per_game), formatStatsIceTime(totals.avgTimeOnIceSeconds)),
-            )
-        }
+private fun skaterStats(totals: PlayerTotals.Skater?): List<StatCell> =
+    listOf(
+        StatCell("gp", stringResource(R.string.player_stat_gp), statCount(totals?.gamesPlayed)),
+        StatCell("g", stringResource(R.string.player_stat_g), statCount(totals?.goals)),
+        StatCell("ast", stringResource(R.string.player_stat_a), statCount(totals?.assists)),
+        StatCell("pts", stringResource(R.string.player_stat_pts), statCount(totals?.points)),
+        StatCell("pm", stringResource(R.string.player_stat_pm), formatPlusMinus(totals?.plusMinus)),
+        StatCell("pim", stringResource(R.string.player_stat_pim), statCount(totals?.penaltyMinutes)),
+        StatCell("ppg", stringResource(R.string.player_stat_ppg), statCount(totals?.powerPlayGoals)),
+        StatCell("shg", stringResource(R.string.player_stat_shg), statCount(totals?.shorthandedGoals)),
+        StatCell("sog", stringResource(R.string.player_stat_s), statCount(totals?.shots)),
+        StatCell("shpct", stringResource(R.string.player_stat_shpct), formatShootingPercentage(totals?.shootingPctg)),
+        StatCell("fopct", stringResource(R.string.player_stat_fopct), formatShootingPercentage(totals?.faceoffWinningPctg)),
+        StatCell("toi", stringResource(R.string.player_stat_toi_per_game), formatStatsIceTime(totals?.avgTimeOnIceSeconds)),
+    )
 
-        is PlayerTotals.Goalie -> {
-            listOf(
-                StatCell("gp", stringResource(R.string.player_stat_gp), statCount(totals.gamesPlayed)),
-                StatCell("gs", stringResource(R.string.player_stat_gs), statCount(totals.gamesStarted)),
-                StatCell("w", stringResource(R.string.player_stat_w), statCount(totals.wins)),
-                StatCell("l", stringResource(R.string.player_stat_l), statCount(totals.losses)),
-                StatCell("otl", stringResource(R.string.player_stat_otl), statCount(totals.overtimeLosses)),
-                StatCell("gaa", stringResource(R.string.player_stat_gaa), formatGoalsAgainstAverage(totals.goalsAgainstAverage)),
-                StatCell("sv", stringResource(R.string.player_stat_sv), formatSavePercentage(totals.savePercentage)),
-                StatCell("so", stringResource(R.string.player_stat_so), statCount(totals.shutouts)),
-                StatCell("ga", stringResource(R.string.player_stat_ga), statCount(totals.goalsAgainst)),
-                StatCell("sa", stringResource(R.string.player_stat_sa), statCount(totals.shotsAgainst)),
-                StatCell("toi", stringResource(R.string.player_stat_toi), formatStatsIceTime(totals.timeOnIceSeconds)),
-                StatCell("pim", stringResource(R.string.player_stat_pim), statCount(totals.penaltyMinutes)),
-            )
-        }
+@Composable
+private fun goalieStats(totals: PlayerTotals.Goalie?): List<StatCell> =
+    listOf(
+        StatCell("gp", stringResource(R.string.player_stat_gp), statCount(totals?.gamesPlayed)),
+        StatCell("gs", stringResource(R.string.player_stat_gs), statCount(totals?.gamesStarted)),
+        StatCell("w", stringResource(R.string.player_stat_w), statCount(totals?.wins)),
+        StatCell("l", stringResource(R.string.player_stat_l), statCount(totals?.losses)),
+        StatCell("otl", stringResource(R.string.player_stat_otl), statCount(totals?.overtimeLosses)),
+        StatCell("gaa", stringResource(R.string.player_stat_gaa), formatGoalsAgainstAverage(totals?.goalsAgainstAverage)),
+        StatCell("sv", stringResource(R.string.player_stat_sv), formatSavePercentage(totals?.savePercentage)),
+        StatCell("so", stringResource(R.string.player_stat_so), statCount(totals?.shutouts)),
+        StatCell("ga", stringResource(R.string.player_stat_ga), statCount(totals?.goalsAgainst)),
+        StatCell("sa", stringResource(R.string.player_stat_sa), statCount(totals?.shotsAgainst)),
+        StatCell("toi", stringResource(R.string.player_stat_toi), formatStatsIceTime(totals?.timeOnIceSeconds)),
+        StatCell("pim", stringResource(R.string.player_stat_pim), statCount(totals?.penaltyMinutes)),
+    )
+
+/** A skater's game: the columns the Game log tab shows for a skater. */
+@Composable
+private fun skaterLogCells(game: PlayerGame.Skater?): List<StatCell> =
+    listOf(
+        StatCell("g", stringResource(R.string.player_stat_g), statCount(game?.goals)),
+        StatCell("ast", stringResource(R.string.player_stat_a), statCount(game?.assists)),
+        StatCell("pts", stringResource(R.string.player_stat_pts), statCount(game?.points)),
+        StatCell("pm", stringResource(R.string.player_stat_pm), formatPlusMinus(game?.plusMinus)),
+        StatCell("sog", stringResource(R.string.player_stat_s), statCount(game?.shots)),
+        StatCell("toi", stringResource(R.string.player_stat_toi), formatStatsIceTime(game?.timeOnIceSeconds)),
+    )
+
+/** A goalie's game: the decision, not goals or assists, which a goalie does not have. */
+@Composable
+private fun goalieLogCells(game: PlayerGame.Goalie?): List<StatCell> =
+    listOf(
+        StatCell("dec", stringResource(R.string.player_stat_dec), decisionLabel(game?.decision)),
+        StatCell("sa", stringResource(R.string.player_stat_sa), statCount(game?.shotsAgainst)),
+        StatCell("ga", stringResource(R.string.player_stat_ga), statCount(game?.goalsAgainst)),
+        StatCell("sv", stringResource(R.string.player_stat_sv), formatSavePercentage(game?.savePercentage)),
+        StatCell("toi", stringResource(R.string.player_stat_toi), formatStatsIceTime(game?.timeOnIceSeconds)),
+    )
+
+@Composable
+private fun decisionLabel(decision: GoalieDecision?): String =
+    when (decision) {
+        GoalieDecision.Win -> stringResource(R.string.player_decision_win)
+        GoalieDecision.Loss -> stringResource(R.string.player_decision_loss)
+        GoalieDecision.OvertimeLoss -> stringResource(R.string.player_decision_overtime)
+        null -> statCount(null)
     }
 
 /** A count in a stat cell. An absent count prints the em dash; the feed's zero prints as zero. */
@@ -553,7 +649,7 @@ private fun statCount(value: Int?): String = formatStatNumber(value)
 /** A card's data is already in hand, so it is handed over as fresh rather than fetched. */
 private fun <T> loaded(value: T): Loadable<T> = Loadable(value, Freshness.Fresh, null)
 
-/** The season as the card and the header name it: "This season" for the current one, otherwise `2026-27`. */
+/** The season as the header names it: "This season" for the current one, otherwise `2026-27`. */
 @Composable
 private fun seasonHeading(
     season: Int,
@@ -579,5 +675,3 @@ private fun formatDate(iso: String): String =
     } catch (_: DateTimeParseException) {
         iso
     }
-
-private const val STAT_GRID_COLUMNS = 4

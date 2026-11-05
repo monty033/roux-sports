@@ -3,12 +3,10 @@ package net.montycasa.roux.data.nhl
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import net.montycasa.roux.data.nhl.dto.PlayerLandingDto
-import net.montycasa.roux.data.nhl.dto.PlayerRecentGameDto
 import net.montycasa.roux.data.nhl.dto.PlayerStatsDto
 import net.montycasa.roux.domain.model.PlayerCareer
 import net.montycasa.roux.domain.model.PlayerDraft
 import net.montycasa.roux.domain.model.PlayerProfile
-import net.montycasa.roux.domain.model.PlayerRecentGame
 import net.montycasa.roux.domain.model.PlayerSeasonLine
 import net.montycasa.roux.domain.model.PlayerTotals
 
@@ -62,7 +60,7 @@ internal object PlayerProfileAdapter {
                 birthDate = landing.birthDate?.takeIf { it.isNotBlank() },
                 birthCity = landing.birthCity?.default?.takeIf { it.isNotBlank() },
                 birthCountry = landing.birthCountry?.takeIf { it.isNotBlank() },
-                shootsCatches = landing.shootsCatches?.takeIf { it.isNotBlank() },
+                shoots = landing.shoots?.takeIf { it.isNotBlank() },
                 draft =
                     landing.draftDetails?.let { draft ->
                         PlayerDraft(
@@ -89,11 +87,6 @@ internal object PlayerProfileAdapter {
                             totals = row.totals(isGoalie),
                         )
                     },
-                lastFive =
-                    landing.last5Games
-                        .orEmpty()
-                        .filterNotNull()
-                        .map { it.toRecentGame(isGoalie) },
             ),
         )
     }
@@ -137,44 +130,6 @@ internal object PlayerProfileAdapter {
             assists = assists,
             penaltyMinutes = pim,
         )
-
-    private fun PlayerRecentGameDto.toRecentGame(isGoalie: Boolean): PlayerRecentGame {
-        val home =
-            when (homeRoadFlag) {
-                "H" -> true
-                "R" -> false
-                else -> null
-            }
-        return if (isGoalie) {
-            PlayerRecentGame.Goalie(
-                gameDate = gameDate,
-                opponentAbbrev = opponentAbbrev,
-                isHome = home,
-                decision = decision,
-                gamesStarted = gamesStarted,
-                goalsAgainst = goalsAgainst,
-                shotsAgainst = shotsAgainst,
-                savePercentage = savePctg,
-                penaltyMinutes = penaltyMins,
-                timeOnIceSeconds = parseIceTime(toi),
-            )
-        } else {
-            PlayerRecentGame.Skater(
-                gameDate = gameDate,
-                opponentAbbrev = opponentAbbrev,
-                isHome = home,
-                goals = goals,
-                assists = assists,
-                points = points,
-                plusMinus = plusMinus,
-                penaltyMinutes = pim,
-                shots = shots,
-                powerPlayGoals = powerPlayGoals,
-                shorthandedGoals = shorthandedGoals,
-                timeOnIceSeconds = parseIceTime(toi),
-            )
-        }
-    }
 
     /**
      * `MM:SS` as whole seconds: `11:12` is 672. Anything else, including seconds of 60 or more, is absent rather than a

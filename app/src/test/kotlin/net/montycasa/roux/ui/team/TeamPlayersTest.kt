@@ -108,7 +108,7 @@ class TeamPlayersTest {
         showPlayers()
 
         rule.onNodeWithTag("team.players.player.12.name", useUnmergedTree = true).assertTextEquals("Sam Colangelo")
-        listOf("gp", "g", "a", "pts", "+/-", "pim").forEach { column ->
+        listOf("gp", "g", "ast", "pts", "+/-", "pim").forEach { column ->
             rule.onNodeWithTag("team.players.player.12.$column", useUnmergedTree = true).assertTextEquals("—")
         }
     }
@@ -129,7 +129,7 @@ class TeamPlayersTest {
 
         rule.onNodeWithTag("team.players.player.12.name", useUnmergedTree = true).assertTextEquals("Sam Colangelo")
         rule.onNodeWithTag("team.players.player.12.headshot", useUnmergedTree = true).assertExists()
-        listOf("gp", "g", "a", "pts", "+/-", "pim").forEach { column ->
+        listOf("gp", "g", "ast", "pts", "+/-", "pim").forEach { column ->
             rule.onNodeWithTag("team.players.player.12.$column", useUnmergedTree = true).assertTextEquals("—")
         }
     }
@@ -248,6 +248,14 @@ class TeamPlayersTest {
                 .boundsInRoot.top
         assertTrue("12 must precede 91", twelve < ninetyOne)
         assertTrue("a numberless player sorts last", numberless > ninetyOne)
+    }
+
+    @Test
+    fun theSkaterHeadersSayAstNotA() {
+        showPlayers()
+
+        rule.onNodeWithTag("team.players.group.forwards.header.AST").assertExists()
+        rule.onNodeWithTag("team.players.group.forwards.header.A").assertDoesNotExist()
     }
 
     @Test

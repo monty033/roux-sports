@@ -135,7 +135,7 @@ private fun goalieRow(
     )
 
 private val GOALIE_COLUMNS = listOf("SA", "SV", "SV%", "GAA")
-private val SKATER_COLUMNS = listOf("G", "A", "P", "+/-", "SOG", "PIM", "TOI", "FO%")
+private val SKATER_COLUMNS = listOf("G", "AST", "P", "+/-", "SOG", "PIM", "TOI", "FO%")
 
 @Composable
 private fun RosterTable(

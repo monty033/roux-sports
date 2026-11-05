@@ -94,7 +94,7 @@ class PlayerTablesTest {
             compose.onAllNodesWithText(code).assertCountEquals(0)
         }
 
-        val skaterHeaders = listOf("G", "A", "P", "+/-", "SOG", "PIM", "TOI", "FO%")
+        val skaterHeaders = listOf("G", "AST", "P", "+/-", "SOG", "PIM", "TOI", "FO%")
         val lefts = skaterHeaders.map { headerBounds("detail.section.forwards", it).left.value }
         assertTrue(
             "skater headers are not G, A, P, +/-, SOG, PIM, TOI, FO% in order",

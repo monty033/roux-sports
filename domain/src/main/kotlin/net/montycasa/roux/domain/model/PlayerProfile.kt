@@ -1,7 +1,8 @@
 package net.montycasa.roux.domain.model
 
 /**
- * A player's landing page: who the player is, what the feed says they have done, and their last five games.
+ * A player's landing page: who the player is and what the feed says they have done, season by season and in career
+ * totals. The game log is a separate request and lives in [PlayerGame].
  *
  * Every stat the feed can omit is nullable. Absence means the feed did not send the number, and it prints as an em
  * dash. A real zero is data and prints as zero, so no adapter may turn a missing number into `0`.
@@ -20,14 +21,21 @@ data class PlayerProfile(
     val birthDate: String? = null,
     val birthCity: String? = null,
     val birthCountry: String? = null,
-    val shootsCatches: String? = null,
+    /** The hand the player shoots with, as the feed words it. Every position reads "Shoots", goalies included. */
+    val shoots: String? = null,
     /** Null when the feed carries no draft record, which is different from a draft record with empty fields. */
     val draft: PlayerDraft? = null,
     val career: PlayerCareer = PlayerCareer(),
     /** Every season row the feed sent, across leagues. One season can hold several rows. */
     val seasons: List<PlayerSeasonLine> = emptyList(),
-    val lastFive: List<PlayerRecentGame> = emptyList(),
-)
+) {
+    /** True for a goalie, whose stat set and game log differ from a skater's. */
+    val isGoalie: Boolean get() = position == GOALIE_POSITION
+
+    private companion object {
+        const val GOALIE_POSITION = "G"
+    }
+}
 
 data class PlayerDraft(
     val year: Int? = null,
@@ -106,12 +114,15 @@ data class PlayerSeasonLine(
     val totals: PlayerTotals,
 )
 
+/** The newest season any row carries, or null when no row says which season it is. */
+fun List<PlayerSeasonLine>.newestSeason(): Int? = mapNotNull { it.season }.maxOrNull()
+
 /**
  * The rows of the newest season the feed carries, in reading order: the NHL regular-season row first, then the rest by
  * descending sequence. A player whose current hockey is not NHL keeps their own season here rather than a blank card.
  */
 fun List<PlayerSeasonLine>.newestSeasonRows(): List<PlayerSeasonLine> {
-    val newest = mapNotNull { it.season }.maxOrNull() ?: return emptyList()
+    val newest = newestSeason() ?: return emptyList()
     return filter { it.season == newest }
         .sortedWith(
             compareBy<PlayerSeasonLine> { if (it.leagueAbbrev == NHL_LEAGUE && it.gameTypeId == REGULAR_SEASON) 0 else 1 }
@@ -119,46 +130,8 @@ fun List<PlayerSeasonLine>.newestSeasonRows(): List<PlayerSeasonLine> {
         )
 }
 
-private const val NHL_LEAGUE = "NHL"
-private const val REGULAR_SEASON = 2
+/** The feed's league code for the NHL. */
+internal const val NHL_LEAGUE = "NHL"
 
-/**
- * A skater's or goalie's game from the last five. The two shapes differ, so each has its own variant.
- */
-sealed interface PlayerRecentGame {
-    /** `YYYY-MM-DD` as the feed sends it. */
-    val gameDate: String?
-    val opponentAbbrev: String?
-
-    /** True for a home game, false for a road game, null when the feed does not say. */
-    val isHome: Boolean?
-
-    data class Skater(
-        override val gameDate: String?,
-        override val opponentAbbrev: String?,
-        override val isHome: Boolean?,
-        val goals: Int? = null,
-        val assists: Int? = null,
-        val points: Int? = null,
-        val plusMinus: Int? = null,
-        val penaltyMinutes: Int? = null,
-        val shots: Int? = null,
-        val powerPlayGoals: Int? = null,
-        val shorthandedGoals: Int? = null,
-        val timeOnIceSeconds: Long? = null,
-    ) : PlayerRecentGame
-
-    data class Goalie(
-        override val gameDate: String?,
-        override val opponentAbbrev: String?,
-        override val isHome: Boolean?,
-        /** The feed's decision code: W, L or OTL. */
-        val decision: String? = null,
-        val gamesStarted: Int? = null,
-        val goalsAgainst: Int? = null,
-        val shotsAgainst: Int? = null,
-        val savePercentage: Double? = null,
-        val penaltyMinutes: Int? = null,
-        val timeOnIceSeconds: Long? = null,
-    ) : PlayerRecentGame
-}
+/** The feed's game-type id for the regular season; the playoffs are 3. */
+internal const val REGULAR_SEASON = 2

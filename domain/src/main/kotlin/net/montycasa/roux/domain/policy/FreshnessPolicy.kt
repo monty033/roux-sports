@@ -100,6 +100,12 @@ object FreshnessPolicy {
     val playerProfileAge: Duration = 6.hours
 
     /**
+     * A player's game log gains a row after every game, so the six-hour profile window would miss last night's game
+     * for most of a day. One hour keeps the log current without asking the feed on every tab switch.
+     */
+    val playerGameLogAge: Duration = 1.hours
+
+    /**
      * A finished day does not change; polling it would be pure cost.
      *
      * `startTimeUtc` is the *scheduled* start, which for the NHL precedes the actual puck drop by
@@ -148,6 +154,8 @@ object FreshnessPolicy {
     fun leagueStatsMaxAge(): Duration = leagueStatsAge
 
     fun playerProfileMaxAge(): Duration = playerProfileAge
+
+    fun playerGameLogMaxAge(): Duration = playerGameLogAge
 
     /**
      * A live detail gets the short lifetime; a scheduled one changes at puck drop; a final one is
