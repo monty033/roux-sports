@@ -23,6 +23,7 @@ internal data class LeagueStatsDto(
 @Serializable
 internal data class LeagueStatsRowDto(
     val teamFullName: String? = null,
+    val teamId: Int? = null,
     val gamesPlayed: Int? = null,
     val wins: Int? = null,
     val losses: Int? = null,

@@ -1,9 +1,9 @@
 <resources>
     <string name="team_loading_record">Loading record…</string>
     <string name="team_no_record">The standings table doesn’t have this team’s record yet.</string>
-    <string name="team_rank_conference">%1$s in conference</string>
-    <string name="team_rank_league">%1$s in league</string>
-    <string name="team_division_line">%1$s Conference · %2$s Division</string>
+    <string name="team_place_division">%1$s in %2$s</string>
+    <string name="team_place_conference">%1$s in %2$s</string>
+    <string name="team_place_league">%1$s in League</string>
     <string name="team_tab_schedule">Schedule</string>
     <string name="team_tab_players">Players</string>
     <string name="team_tab_team_stats">Team Stats</string>
@@ -26,6 +26,7 @@
     <string name="team_stats_metric_points">Points</string>
     <string name="team_stats_metric_point_pct">Point %</string>
     <string name="team_stats_metric_shutouts">Shutouts</string>
+    <string name="team_stats_metric_penalty_minutes">Penalty minutes</string>
     <string name="team_stats_rank_spoken">%1$s, %2$s, %3$s of %4$d</string>
     <string name="team_stats_rank_missing">%1$s, no rank</string>
     <string name="team_stats_absent">There are no league stats for this club yet.</string>

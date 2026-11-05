@@ -1,6 +1,7 @@
 package net.montycasa.roux.ui.team
 
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -21,11 +22,14 @@ import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.domain.policy.LeagueMetric
 import net.montycasa.roux.ui.theme.RouxTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import kotlin.math.abs
 import kotlin.time.Instant
 
 /**
@@ -44,7 +48,7 @@ class TeamStatsTest {
     private val now = Instant.parse("2026-11-03T12:00:00Z")
 
     @Test
-    fun theTenRowsShowAnasValuesAndRanksInTheBriefsOrder() {
+    fun theElevenRowsShowAnasValuesAndRanksInTheTabsOrder() {
         showTab()
 
         rule.onNodeWithTag("team.stats.header", useUnmergedTree = true).assertTextEquals("14 GP · 6-7-1 · 13 pts")
@@ -161,6 +165,110 @@ class TeamStatsTest {
         assertEquals(1, retries)
     }
 
+    /** Fewest penalty minutes is first: the metric counts in the lower-is-better direction. */
+    @Test
+    fun theFewestPenaltyMinutesRanksFirst() {
+        showTab(league = Loadable(leagueWith(ana.copy(penaltyMinutes = 1)), Freshness.Fresh, null))
+
+        rule
+            .onNodeWithTag("team.stats.rank.PenaltyMinutes", useUnmergedTree = true)
+            .assertTextEquals("1st")
+    }
+
+    /** The most penalty minutes is last, so the lower-is-better direction is not inverted for the whole league. */
+    @Test
+    fun theMostPenaltyMinutesRanksLast() {
+        showTab(league = Loadable(leagueWith(ana.copy(penaltyMinutes = 999)), Freshness.Fresh, null))
+
+        rule
+            .onNodeWithTag("team.stats.rank.PenaltyMinutes", useUnmergedTree = true)
+            .assertTextEquals("32nd")
+    }
+
+    /**
+     * Each bar is the club's share of the league: rank 1 fills its track and the last place fills 1 / clubs. The
+     * tolerance is one dp, measured against the track the bar sits in.
+     */
+    @Test
+    fun eachRankBarFillsItsShareOfTheTrack() {
+        showTab()
+
+        expectedRows.forEach { row ->
+            val rank = row.rank.takeWhile { it.isDigit() }.toInt()
+            val expected = (CLUB_COUNT - rank + 1).toFloat() / CLUB_COUNT
+            val track = barNode(row.metric, "team.stats.bar.")
+            val fill = barNode(row.metric, "team.stats.barFill.")
+            val ratio = fill.width / track.width
+            assertTrue(
+                "${row.label} filled $ratio of its track, expected $expected",
+                abs(ratio - expected) <= TOLERANCE_DP * DENSITY / track.width,
+            )
+        }
+    }
+
+    /** The last place fills exactly 1 / clubs of the track, which is the floor a bar can reach. */
+    @Test
+    fun theLastPlaceBarFillsOneClubsShareOfTheTrack() {
+        showTab(league = Loadable(leagueWith(ana.copy(penaltyMinutes = 999)), Freshness.Fresh, null))
+
+        val track = barNode(LeagueMetric.PenaltyMinutes, "team.stats.bar.")
+        val fill = barNode(LeagueMetric.PenaltyMinutes, "team.stats.barFill.")
+        assertTrue(
+            "last place filled ${fill.width / track.width}, expected ${1f / CLUB_COUNT}",
+            abs(fill.width / track.width - 1f / CLUB_COUNT) <= TOLERANCE_DP * DENSITY / track.width,
+        )
+    }
+
+    /** The bar is decoration: the rank cell already says the rank, so the bar must not add a second spoken copy. */
+    @Test
+    fun theBarHasNoContentDescription() {
+        showTab()
+
+        listOf("team.stats.bar.GoalsForPerGame", "team.stats.barFill.GoalsForPerGame").forEach { tag ->
+            val node = rule.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode()
+            assertFalse("$tag has a content description", node.config.contains(SemanticsProperties.ContentDescription))
+        }
+    }
+
+    /** A stat with no rank has no share to draw, so its row has no bar; every other row keeps its bar. */
+    @Test
+    fun aStatWithNoRankDrawsNoBarAndTheOtherRowsStillDo() {
+        showTab(league = Loadable(leagueWith(ana.copy(penaltyMinutes = null)), Freshness.Fresh, null))
+
+        rule.onAllNodesWithTag("team.stats.bar.PenaltyMinutes", useUnmergedTree = true).assertCountEquals(0)
+        rule.onAllNodesWithTag("team.stats.barFill.PenaltyMinutes", useUnmergedTree = true).assertCountEquals(0)
+        expectedRows.filter { it.metric != LeagueMetric.PenaltyMinutes }.forEach { row ->
+            rule.onNodeWithTag("team.stats.bar.${row.metric.name}", useUnmergedTree = true).assertExists()
+        }
+    }
+
+    /**
+     * With the penalties table down, every club's penalty minutes are null. The penalty row shows a dash and no bar,
+     * and every other row still renders its value and rank.
+     */
+    @Test
+    fun withPenaltiesFailingTheOtherRanksStillRender() {
+        val withoutPenalties =
+            LeagueSummary(
+                listOf(ana.copy(penaltyMinutes = null)) + rivals.map { it.copy(penaltyMinutes = null) },
+            )
+        showTab(league = Loadable(withoutPenalties, Freshness.Fresh, null))
+
+        rule
+            .onNodeWithTag("team.stats.rank.PenaltyMinutes", useUnmergedTree = true)
+            .assertTextEquals("—")
+        expectedRows.filter { it.metric != LeagueMetric.PenaltyMinutes }.forEach { row ->
+            rule
+                .onNodeWithTag("team.stats.rank.${row.metric.name}", useUnmergedTree = true)
+                .assertTextEquals(row.rank)
+        }
+    }
+
+    private fun barNode(
+        metric: LeagueMetric,
+        prefix: String,
+    ) = rule.onNodeWithTag("$prefix${metric.name}", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+
     private fun showTab(
         league: Loadable<LeagueSummary>? = Loadable(leagueWith(ana), Freshness.Fresh, null),
         onRetry: () -> Unit = {},
@@ -225,13 +333,16 @@ class TeamStatsTest {
             powerPlayPct = 0.340425,
             penaltyKillPct = 0.763637,
             teamShutouts = 0,
+            teamId = 24,
+            penaltyMinutes = 205,
         )
 
     /**
      * Written out here rather than read from [LeagueMetric.higherIsBetter]: if the app flipped a direction, a fixture
      * that followed it would hide the flip from this screen, so the screen pins the direction on its own.
      */
-    private val lowerIsBetter = setOf(LeagueMetric.GoalsAgainstPerGame, LeagueMetric.ShotsAgainstPerGame)
+    private val lowerIsBetter =
+        setOf(LeagueMetric.GoalsAgainstPerGame, LeagueMetric.ShotsAgainstPerGame, LeagueMetric.PenaltyMinutes)
 
     /** How many rivals beat Anaheim on each metric. Anaheim's rank is one plus this count. */
     private val beaters =
@@ -243,6 +354,7 @@ class TeamStatsTest {
             LeagueMetric.FaceoffWinPct to 0,
             LeagueMetric.PowerPlayPct to 1,
             LeagueMetric.PenaltyKillPct to 2,
+            LeagueMetric.PenaltyMinutes to 3,
             LeagueMetric.Points to 3,
             LeagueMetric.PointPct to 0,
             LeagueMetric.TeamShutouts to 1,
@@ -270,6 +382,7 @@ class TeamStatsTest {
             faceoffWinPct = better(LeagueMetric.FaceoffWinPct, ana.faceoffWinPct!!, 0.01),
             powerPlayPct = better(LeagueMetric.PowerPlayPct, ana.powerPlayPct!!, 0.01),
             penaltyKillPct = better(LeagueMetric.PenaltyKillPct, ana.penaltyKillPct!!, 0.01),
+            penaltyMinutes = better(LeagueMetric.PenaltyMinutes, ana.penaltyMinutes!!.toDouble(), 1.0).toInt(),
             points = better(LeagueMetric.Points, ana.points!!.toDouble(), 1.0).toInt(),
             pointPct = better(LeagueMetric.PointPct, ana.pointPct!!, 0.01),
             teamShutouts = better(LeagueMetric.TeamShutouts, ana.teamShutouts!!.toDouble(), 1.0).toInt(),
@@ -292,8 +405,17 @@ class TeamStatsTest {
             ExpectedRow(LeagueMetric.FaceoffWinPct, "Faceoff win %", "47.0%", "1st"),
             ExpectedRow(LeagueMetric.PowerPlayPct, "Power play %", "34.0%", "2nd"),
             ExpectedRow(LeagueMetric.PenaltyKillPct, "Penalty kill %", "76.4%", "3rd"),
+            ExpectedRow(LeagueMetric.PenaltyMinutes, "Penalty minutes", "205", "4th"),
             ExpectedRow(LeagueMetric.Points, "Points", "13", "4th"),
             ExpectedRow(LeagueMetric.PointPct, "Point %", "46.4%", "1st"),
             ExpectedRow(LeagueMetric.TeamShutouts, "Shutouts", "0", "2nd"),
         )
+
+    private companion object {
+        const val CLUB_COUNT = 32
+
+        /** The Robolectric qualifier above is 420 dpi, which is 2.625 pixels per dp. */
+        const val DENSITY = 420f / 160f
+        const val TOLERANCE_DP = 1f
+    }
 }

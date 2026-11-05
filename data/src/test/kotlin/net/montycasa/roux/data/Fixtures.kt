@@ -12,6 +12,9 @@ object Fixtures {
     /** Club statistics arrived in the same later capture as the schedule and roster. */
     const val CLUB_STATS_CAPTURE = CLUB_SCHEDULE_CAPTURE
 
+    /** The league penalties table was captured a day after the club corpus, on 4 November 2026. */
+    const val LEAGUE_PENALTIES_CAPTURE = "2026-11-04"
+
     fun bytes(name: String): ByteArray = bytes(CURRENT, name)
 
     fun bytes(

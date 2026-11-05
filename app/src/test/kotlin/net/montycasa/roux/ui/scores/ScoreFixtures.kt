@@ -148,6 +148,7 @@ class ScoresIntegrationApp : RouxApp() {
                             respond(
                                 when (request.url.encodedPath) {
                                     "/stats/rest/en/team/summary" -> ScoreFixture.leagueSummary()
+                                    "/stats/rest/en/team/penalties" -> ScoreFixture.leaguePenalties()
                                     else -> error("Unexpected stats path: ${request.url.encodedPath}")
                                 },
                                 HttpStatusCode.OK,
@@ -207,5 +208,11 @@ internal object ScoreFixture {
     fun leagueSummary(): ByteArray =
         requireNotNull(javaClass.getResourceAsStream("/fx/2026-11-03/league-team-summary-20262027.json")) {
             "Missing captured league fixture"
+        }.use { it.readBytes() }
+
+    /** The captured 32-club penalties table, from the 4 November 2026 capture that the summary is joined onto. */
+    fun leaguePenalties(): ByteArray =
+        requireNotNull(javaClass.getResourceAsStream("/fx/2026-11-04/league-team-penalties-20262027.json")) {
+            "Missing captured league penalties fixture"
         }.use { it.readBytes() }
 }

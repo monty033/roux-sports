@@ -71,15 +71,63 @@ class LeagueRankingTest {
         assertNull(LeagueRanking.forClub(league, "Not in the league"))
     }
 
+    /** Fewest penalty minutes is first: the metric counts in the lower-is-better direction. */
+    @Test
+    fun theFewestPenaltyMinutesRanksFirstAndTheMostRanksLast() {
+        val league =
+            league(
+                club("Fewest", penaltyMinutes = 100),
+                club("Middle", penaltyMinutes = 200),
+                club("Most", penaltyMinutes = 300),
+            )
+
+        assertEquals(1, LeagueRanking.forClub(league, "Fewest")!!.rankOf(LeagueMetric.PenaltyMinutes))
+        assertEquals(3, LeagueRanking.forClub(league, "Most")!!.rankOf(LeagueMetric.PenaltyMinutes))
+    }
+
+    /** Rank 1 fills the track, the last place fills 1 / clubs, and tied clubs share one length. */
+    @Test
+    fun aRankBarIsTheClubsShareOfTheLeagueAndTiesShareALength() {
+        val league =
+            league(
+                club("A", penaltyMinutes = 10),
+                club("B", penaltyMinutes = 20),
+                club("C", penaltyMinutes = 20),
+                club("D", penaltyMinutes = 40),
+            )
+
+        val fractions =
+            listOf("A", "B", "C", "D").map { name ->
+                LeagueRanking.forClub(league, name)!!.barFractionOf(LeagueMetric.PenaltyMinutes)
+            }
+
+        assertEquals(listOf(1f, 0.75f, 0.75f, 0.25f), fractions)
+    }
+
+    /** A club with no value has no rank, so it has no bar, and it does not count against the other clubs. */
+    @Test
+    fun aClubWithNoValueHasNoBar() {
+        val league =
+            league(
+                club("Has value", penaltyMinutes = 10),
+                club("Missing", penaltyMinutes = null),
+            )
+
+        assertNull(LeagueRanking.forClub(league, "Missing")!!.barFractionOf(LeagueMetric.PenaltyMinutes))
+        assertEquals(1f, LeagueRanking.forClub(league, "Has value")!!.barFractionOf(LeagueMetric.PenaltyMinutes))
+    }
+
     private fun league(vararg clubs: LeagueClub) = LeagueSummary(clubs.toList())
 
     private fun club(
         name: String,
         goalsForPerGame: Double? = null,
         goalsAgainstPerGame: Double? = null,
+        penaltyMinutes: Int? = null,
     ) = LeagueClub(
         teamName = name,
         goalsForPerGame = goalsForPerGame,
         goalsAgainstPerGame = goalsAgainstPerGame,
+        penaltyMinutes = penaltyMinutes,
     )
 }

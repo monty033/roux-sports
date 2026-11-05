@@ -1,6 +1,8 @@
 package net.montycasa.roux.data.repo
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.TimeZone
 import net.montycasa.roux.data.cache.CacheKey
@@ -10,6 +12,7 @@ import net.montycasa.roux.data.net.ApiResult
 import net.montycasa.roux.data.net.HostNotAllowedException
 import net.montycasa.roux.data.net.NhlApi
 import net.montycasa.roux.data.net.RateLimited
+import net.montycasa.roux.data.nhl.LeaguePenaltiesAdapter
 import net.montycasa.roux.data.nhl.LeagueStatsAdapter
 import net.montycasa.roux.data.nhl.ParseResult
 import net.montycasa.roux.domain.Cached
@@ -17,6 +20,9 @@ import net.montycasa.roux.domain.FetchOutcome
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
+import net.montycasa.roux.domain.model.ClubPenalties
+import net.montycasa.roux.domain.model.LeagueClub
+import net.montycasa.roux.domain.model.LeaguePenalties
 import net.montycasa.roux.domain.model.LeagueSummary
 import net.montycasa.roux.domain.policy.FreshnessPolicy
 import net.montycasa.roux.domain.policy.LeagueCalendar
@@ -41,15 +47,35 @@ internal class LeagueStatsRepositoryImpl(
     private val zone: TimeZone = TimeZone.currentSystemDefault(),
     private val ioDispatcher: CoroutineContext = Dispatchers.IO,
 ) : LeagueStatsRepository {
-    override suspend fun summary(): Loadable<LeagueSummary> {
-        val season = LeagueCalendar.seasonId(clock.now(), zone)
-        return load(
-            key = CacheKey(CacheKind.LeagueStats, "$season-$GAME_TYPE"),
-            maxAge = FreshnessPolicy.leagueStatsMaxAge(),
-            fetch = { api.leagueSummary(season, GAME_TYPE) },
-            parse = LeagueStatsAdapter::parse,
-        )
-    }
+    /**
+     * The table and its penalty minutes are two requests, started together. The table alone decides freshness and
+     * the error, so a penalties failure leaves the table fresh and shows only as a dash on the penalty row.
+     */
+    override suspend fun summary(): Loadable<LeagueSummary> =
+        coroutineScope {
+            val season = LeagueCalendar.seasonId(clock.now(), zone)
+            val table =
+                async {
+                    load(
+                        key = CacheKey(CacheKind.LeagueStats, "$season-$GAME_TYPE"),
+                        maxAge = FreshnessPolicy.leagueStatsMaxAge(),
+                        fetch = { api.leagueSummary(season, GAME_TYPE) },
+                        parse = LeagueStatsAdapter::parse,
+                    )
+                }
+            val penalties =
+                async {
+                    load(
+                        key = CacheKey(CacheKind.LeaguePenaltyTable, "$season-$GAME_TYPE"),
+                        maxAge = FreshnessPolicy.leagueStatsMaxAge(),
+                        fetch = { api.leaguePenalties(season, GAME_TYPE) },
+                        parse = LeaguePenaltiesAdapter::parse,
+                    )
+                }
+            val summary = table.await()
+            val penaltyTable = penalties.await()
+            Loadable(summary.data?.let { joinPenalties(it, penaltyTable.data) }, summary.freshness, summary.error)
+        }
 
     private suspend fun <T> load(
         key: CacheKey,
@@ -130,6 +156,37 @@ internal class LeagueStatsRepositoryImpl(
         const val GAME_TYPE = 2
     }
 }
+
+/**
+ * Puts each club's penalty minutes onto its summary line.
+ *
+ * A pair is matched by club id when both sides carry one, and by exact club name only when a side has no id. The
+ * name is never normalised, so a spelling that differs between the two feeds is a miss rather than a silent match.
+ * A club with no penalties row keeps null minutes, which prints as a dash and earns no rank.
+ */
+internal fun joinPenalties(
+    summary: LeagueSummary,
+    penalties: LeaguePenalties?,
+): LeagueSummary {
+    if (penalties == null) return summary
+    return LeagueSummary(
+        clubs =
+            summary.clubs.map { club ->
+                val match = penalties.clubs.firstOrNull { row -> sameClub(club, row) }
+                club.copy(penaltyMinutes = match?.penaltyMinutes)
+            },
+    )
+}
+
+private fun sameClub(
+    club: LeagueClub,
+    row: ClubPenalties,
+): Boolean =
+    if (club.teamId != null && row.teamId != null) {
+        club.teamId == row.teamId
+    } else {
+        club.teamName == row.teamName
+    }
 
 /** Builds the league-table repository. */
 fun leagueStatsRepository(

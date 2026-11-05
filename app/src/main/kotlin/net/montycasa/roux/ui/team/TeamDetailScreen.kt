@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,6 +34,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import net.montycasa.roux.R
@@ -106,14 +108,6 @@ fun TeamDetailScreen(
                 row = row,
                 isLoading = state.isLoading,
             )
-            if (row != null) {
-                Text(
-                    divisionLine(row),
-                    modifier = Modifier.padding(top = 12.dp).testTag("team.division"),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             tabState.SaveableStateProvider(selectedTab) {
@@ -306,30 +300,58 @@ private fun TeamCard(
             }
         }
         if (row != null) {
-            Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text(
-                    rankLabel(row.conferenceSequence, R.string.team_rank_conference),
-                    modifier = Modifier.testTag("team.rank.conference"),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    rankLabel(row.leagueSequence, R.string.team_rank_league),
-                    modifier = Modifier.testTag("team.rank.league"),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            TeamPlaces(row)
+        }
+    }
+}
+
+/**
+ * The club's place in its division, conference and league, from the row's own sequences, on one centred line.
+ *
+ * A place the feed did not number (a sequence of zero or less) is left out rather than printed as "0th". Each place
+ * is its own text so a phrase never splits, and the line wraps onto a new centred line instead of truncating.
+ */
+@Composable
+private fun TeamPlaces(row: StandingRow) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+    ) {
+        if (row.divisionSequence > 0) {
+            PlaceText(
+                stringResource(R.string.team_place_division, ordinal(row.divisionSequence), divisionName(row.division)),
+                "team.place.division",
+            )
+        }
+        if (row.conferenceSequence > 0) {
+            PlaceText(
+                stringResource(
+                    R.string.team_place_conference,
+                    ordinal(row.conferenceSequence),
+                    conferenceShortName(row.conference),
+                ),
+                "team.place.conference",
+            )
+        }
+        if (row.leagueSequence > 0) {
+            PlaceText(stringResource(R.string.team_place_league, ordinal(row.leagueSequence)), "team.place.league")
         }
     }
 }
 
 @Composable
-private fun rankLabel(
-    rank: Int,
-    @androidx.annotation.StringRes label: Int,
-): String = stringResource(label, ordinal(rank))
+private fun PlaceText(
+    text: String,
+    tag: String,
+) {
+    Text(
+        text,
+        modifier = Modifier.testTag(tag),
+        style = MaterialTheme.typography.bodyMedium,
+        textAlign = TextAlign.Center,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
 
 /** A rank of zero means the feed did not place the club, so the page says nothing rather than "0th". */
 internal fun ordinal(rank: Int): String {
@@ -351,19 +373,11 @@ internal fun fullTeamName(team: TeamRef): String {
     return if (city.isNullOrBlank()) name else "$city $name"
 }
 
-/** The feed's conference and division, kept as words rather than abbreviations. */
-@Composable
-internal fun divisionLine(row: StandingRow): String =
-    stringResource(
-        R.string.team_division_line,
-        conferenceName(row.conference),
-        divisionName(row.division),
-    )
-
-internal fun conferenceName(conference: Conference): String =
+/** The conference as the places line prints it: East or West, or the feed's own word when it is neither. */
+internal fun conferenceShortName(conference: Conference): String =
     when (conference) {
-        Conference.Eastern -> "Eastern"
-        Conference.Western -> "Western"
+        Conference.Eastern -> "East"
+        Conference.Western -> "West"
         is Conference.Unknown -> conference.raw.trim()
     }
 
