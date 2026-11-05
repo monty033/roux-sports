@@ -769,6 +769,7 @@ STEP P5: Contrast and minimum type-size assertions
 STEP P6: Screenshot matrix and baseline policy
 - Files: test only; `README.md` section on baselines
 - Depends on: N9
+- Coverage: the player and club pages are in the matrix; their non-opening tabs are recorded by `DetailTabsScreenshotTest`.
 - Acceptance test (file + assertion):
   - `appT/ui/ScreenshotMatrixTest.kt` verify passes in both themes
   - `grep -q 'baseline changes need diff images' README.md`

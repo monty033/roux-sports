@@ -41,12 +41,14 @@ import net.montycasa.roux.domain.policy.StandingsView
 import net.montycasa.roux.ui.detail.DetailUiState
 import net.montycasa.roux.ui.detail.GameDetailScreen
 import net.montycasa.roux.ui.drawer.LeaguesPanel
+import net.montycasa.roux.ui.player.PlayerDetailScreen
 import net.montycasa.roux.ui.scores.DrawerUi
 import net.montycasa.roux.ui.scores.ScoresScreen
 import net.montycasa.roux.ui.scores.ScoresUiState
 import net.montycasa.roux.ui.standings.StandingsScreen
 import net.montycasa.roux.ui.standings.StandingsUiState
 import net.montycasa.roux.ui.standings.capturedStandings
+import net.montycasa.roux.ui.team.TeamDetailScreen
 import net.montycasa.roux.ui.teams.TeamAlerts
 import net.montycasa.roux.ui.teams.TeamsScreen
 import net.montycasa.roux.ui.teams.TeamsUiState
@@ -500,6 +502,26 @@ internal object AuditStates {
             },
             ContentCase("detail.partial") {
                 GameDetailScreen(detailGame, DetailUiState(detail = partialDetail, refreshing = false, unexpectedFailure = false), {}, {})
+            },
+            // The two newest pages, built from the domain types rather than from JSON. The pager's chosen tab is
+            // internal view state, so this state photographs the tab each page opens on; the other tabs are covered
+            // by DetailTabsScreenshotTest, which taps them into view.
+            ContentCase("player.season") {
+                PlayerDetailScreen(
+                    state = DetailPageFixtures.playerState,
+                    currentSeason = DetailPageFixtures.CURRENT_SEASON,
+                    today = DetailPageFixtures.TODAY,
+                    onBack = {},
+                    onRetry = {},
+                    onGameClick = {},
+                )
+            },
+            ContentCase("team.schedule") {
+                TeamDetailScreen(
+                    state = DetailPageFixtures.teamState,
+                    onBack = {},
+                    now = DetailPageFixtures.NOW,
+                )
             },
             ContentCase("drawer.leagues") {
                 LeaguesPanel(

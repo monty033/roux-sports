@@ -43,9 +43,38 @@ class ScreenshotMatrixTest {
     /** States with a penalties summary: the same between-cards problem, directly below the scoring summary. */
     private val penaltyStates = listOf("detail.full", "detail.live")
 
+    /**
+     * The states the matrix is contracted to photograph. A state list that silently shrinks is the failure mode this
+     * audit exists to prevent, so the set and its size are pinned rather than derived from the list itself.
+     */
+    private val expectedStates =
+        setOf(
+            "settings",
+            "scores.data",
+            "scores.empty",
+            "scores.stale",
+            "standings.eastPlayoffs",
+            "standings.eastDivision",
+            "standings.westPlayoffs",
+            "standings.league",
+            "teams.list",
+            "teams.favourites",
+            "teams.alerts",
+            "teams.alerts.off",
+            "detail.full",
+            "detail.live",
+            "detail.scheduled",
+            "detail.partial",
+            "player.season",
+            "team.schedule",
+            "drawer.leagues",
+        )
+
     @Test
     fun everyAuditStateInBothThemes() {
         val screens = AuditStates.screens()
+        assertEquals("audited state count", expectedStates.size, screens.size)
+        assertEquals("audited states", expectedStates, screens.map { it.name }.toSet())
         val index = mutableIntStateOf(0)
         val dark = mutableStateOf(false)
         rule.setContent {
