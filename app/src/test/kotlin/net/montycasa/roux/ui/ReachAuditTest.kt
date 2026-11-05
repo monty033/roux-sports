@@ -16,7 +16,10 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import net.montycasa.roux.domain.Freshness
@@ -43,13 +46,16 @@ import net.montycasa.roux.domain.policy.StandingsMode
 import net.montycasa.roux.domain.policy.StandingsView
 import net.montycasa.roux.ui.detail.DetailUiState
 import net.montycasa.roux.ui.detail.GameDetailScreen
+import net.montycasa.roux.ui.player.PlayerDetailScreen
 import net.montycasa.roux.ui.reach.assertPrimaryControlsReachable
 import net.montycasa.roux.ui.reach.primaryControl
+import net.montycasa.roux.ui.reach.reachTargets
 import net.montycasa.roux.ui.scores.ScoresScreen
 import net.montycasa.roux.ui.scores.ScoresUiState
 import net.montycasa.roux.ui.standings.StandingsScreen
 import net.montycasa.roux.ui.standings.StandingsUiState
 import net.montycasa.roux.ui.standings.capturedStandings
+import net.montycasa.roux.ui.team.TeamDetailScreen
 import net.montycasa.roux.ui.teams.TeamAlerts
 import net.montycasa.roux.ui.teams.TeamsScreen
 import net.montycasa.roux.ui.teams.TeamsUiState
@@ -203,6 +209,48 @@ class ReachAuditTest {
             rightRail = Loadable(GameRightRail(shots = ShotTotals(awayShots = 21, homeShots = 28)), Freshness.Fresh, null),
         )
 
+    // ----- Player and club ------------------------------------------------------------------------------------------
+
+    private val playerTabTags =
+        listOf(
+            "player.tab",
+            "player.tab.Season",
+            "player.tab.Career",
+            "player.tab.GameLog",
+            "player.tab.Info",
+        )
+    private val playerBackTags = listOf("player.back")
+    private val gameLogRowTags = DetailPageFixtures.playerGameLog.indices.map { "player.gamelog.row.$it" }
+    private val teamTabTags =
+        listOf(
+            "team.tab",
+            "team.tab.Schedule",
+            "team.tab.Players",
+            "team.tab.TeamStats",
+        )
+    private val teamBackTags = listOf("team.back")
+
+    @Composable
+    private fun PlayerAuditScreen() {
+        PlayerDetailScreen(
+            state = DetailPageFixtures.playerState,
+            currentSeason = DetailPageFixtures.CURRENT_SEASON,
+            today = DetailPageFixtures.TODAY,
+            onBack = {},
+            onRetry = {},
+            onGameClick = {},
+        )
+    }
+
+    @Composable
+    private fun TeamAuditScreen() {
+        TeamDetailScreen(
+            state = DetailPageFixtures.teamAuditState,
+            onBack = {},
+            now = DetailPageFixtures.NOW,
+        )
+    }
+
     // ----- The matrix -----------------------------------------------------------------------------------------------
 
     private class AuditCase(
@@ -213,6 +261,12 @@ class ReachAuditTest {
         // are not reachable controls; declaring them here is what stops the audit measuring the sheet
         // against them.
         val covered: List<String> = emptyList(),
+        // The controls this page promises are reachable. They are not primaryControl()-tagged because these pages'
+        // tab row and back row are 48 dp, not the 56 dp a primary must be; declaring them here makes a missing
+        // control a failure rather than a clickable that quietly stopped existing.
+        val reachable: List<String> = emptyList(),
+        // Local view state a state list cannot carry: a tab the test has to tap into view before measuring it.
+        val prepare: (ComposeTestRule) -> Unit = {},
     )
 
     private fun auditCases(): List<AuditCase> =
@@ -312,7 +366,39 @@ class ReachAuditTest {
                     )
                 },
             ),
+            AuditCase(
+                "player.season",
+                emptyList(),
+                { PlayerAuditScreen() },
+                reachable = playerBackTags + playerTabTags,
+            ),
+            AuditCase(
+                "player.gamelog",
+                emptyList(),
+                { PlayerAuditScreen() },
+                reachable = playerBackTags + playerTabTags + gameLogRowTags,
+                prepare = { rule -> rule.onNodeWithTag("player.tab.GameLog").performClick() },
+            ),
+            AuditCase(
+                "team.schedule",
+                emptyList(),
+                { TeamAuditScreen() },
+                reachable = teamBackTags + teamTabTags,
+            ),
         )
+
+    /** Insists every control a case declares is actually in the tree; a declaration the audit cannot find is a bug. */
+    private fun ComposeTestRule.assertDeclaredReachable(
+        caseName: String,
+        tags: List<String>,
+    ) {
+        if (tags.isEmpty()) return
+        val found = reachTargets().map { it.tag }.toSet()
+        val missing = tags.filterNot { it in found }
+        if (missing.isNotEmpty()) {
+            throw AssertionError("case=$caseName declares reachable $tags but the tree has no $missing")
+        }
+    }
 
     private fun audit(
         size: String,
@@ -346,6 +432,9 @@ class ReachAuditTest {
                     rule.waitForIdle()
                     combinations++
                     try {
+                        case.prepare(rule)
+                        rule.waitForIdle()
+                        rule.assertDeclaredReachable(case.name, case.reachable)
                         rule.assertPrimaryControlsReachable(*case.primaries.toTypedArray(), coveredTags = case.covered)
                     } catch (failure: Throwable) {
                         failures += prefix + (failure.message ?: failure.toString())
@@ -364,9 +453,9 @@ class ReachAuditTest {
 
     @Test
     @Config(qualifiers = "en-rUS-w411dp-h923dp-420dpi")
-    fun assertPrimaryControlsReachableAt411x923() = audit(size = "w411dp-h923dp-420dpi", expectedCombinations = 56)
+    fun assertPrimaryControlsReachableAt411x923() = audit(size = "w411dp-h923dp-420dpi", expectedCombinations = 68)
 
     @Test
     @Config(qualifiers = "en-rUS-w360dp-h780dp")
-    fun assertPrimaryControlsReachableAt360x780() = audit(size = "w360dp-h780dp", expectedCombinations = 56)
+    fun assertPrimaryControlsReachableAt360x780() = audit(size = "w360dp-h780dp", expectedCombinations = 68)
 }
