@@ -12,6 +12,7 @@ import net.montycasa.roux.data.Fixtures
 import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.PeriodInfo
+import net.montycasa.roux.domain.model.SeriesStatus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -367,6 +368,100 @@ class ScoreAdapterTest {
         assertTrue(NhlAdapter.parseScore("""{"currentDate": null}""") is ParseResult.Failure)
     }
 
+    @Test
+    fun darkDayCarriesTheFeedPreviousAndNextGameDates() {
+        val day = successOfFixture(DARK_DAY_FIXTURE)
+
+        assertEquals("2026-07-20", day.date)
+        assertEquals("2026-06-14", day.previousGameDate)
+        assertEquals("2026-09-19", day.nextGameDate)
+        assertTrue(day.games.isEmpty())
+        assertEquals(7, day.dateIndex.size)
+        assertEquals(0, day.droppedCount)
+    }
+
+    @Test
+    fun playoffDayMapsEverySeriesStatusAndOvertimePeriods() {
+        val day = successOfFixture(PLAYOFF_DAY_FIXTURE)
+
+        assertEquals(4, day.games.size)
+        assertEquals(0, day.droppedCount)
+        assertEquals(
+            listOf(
+                SeriesStatus(
+                    round = 1,
+                    seriesTitle = "1st Round",
+                    neededToWin = 4,
+                    topSeedTeamAbbrev = "COL",
+                    topSeedWins = 1,
+                    bottomSeedTeamAbbrev = "LAK",
+                    bottomSeedWins = 0,
+                    gameNumberOfSeries = 1,
+                ),
+                SeriesStatus(
+                    round = 1,
+                    seriesTitle = "1st Round",
+                    neededToWin = 4,
+                    topSeedTeamAbbrev = "TBL",
+                    topSeedWins = 0,
+                    bottomSeedTeamAbbrev = "MTL",
+                    bottomSeedWins = 1,
+                    gameNumberOfSeries = 1,
+                ),
+                SeriesStatus(
+                    round = 1,
+                    seriesTitle = "1st Round",
+                    neededToWin = 4,
+                    topSeedTeamAbbrev = "BUF",
+                    topSeedWins = 1,
+                    bottomSeedTeamAbbrev = "BOS",
+                    bottomSeedWins = 0,
+                    gameNumberOfSeries = 1,
+                ),
+                SeriesStatus(
+                    round = 1,
+                    seriesTitle = "1st Round",
+                    neededToWin = 4,
+                    topSeedTeamAbbrev = "VGK",
+                    topSeedWins = 1,
+                    bottomSeedTeamAbbrev = "UTA",
+                    bottomSeedWins = 0,
+                    gameNumberOfSeries = 1,
+                ),
+            ),
+            day.games.map { it.series },
+        )
+        // Only the TBL-MTL game went to overtime, and only it carries otPeriods.
+        assertEquals(listOf(null, 1, null, null), day.games.map { it.otPeriods })
+    }
+
+    @Test
+    fun malformedSeriesStatusKeepsTheGameWithNoSeries() {
+        val malformedObjects =
+            listOf(
+                "wrongly typed field" to JsonObject(mapOf("round" to JsonPrimitive("first"))),
+                "not an object" to JsonPrimitive("R1"),
+                "empty array" to JsonArray(emptyList()),
+            )
+
+        malformedObjects.forEach { (label, malformed) ->
+            val json =
+                mutateFixtureGame(PLAYOFF_DAY_FIXTURE, 0) { game ->
+                    JsonObject(game + ("seriesStatus" to malformed))
+                }
+            val day = (NhlAdapter.parseScore(json) as ParseResult.Success).value
+
+            assertEquals(label, 4, day.games.size)
+            assertEquals(label, 0, day.droppedCount)
+            assertEquals(label, PLAYOFF_GAME_IDS, day.games.map { it.id.value })
+            assertNull(label, day.games.first().series)
+            assertTrue(label, day.games.drop(1).all { it.series != null })
+        }
+    }
+
+    private fun successOfFixture(name: String) =
+        (NhlAdapter.parseScore(Fixtures.text(SEASON_WINDOW_CAPTURE, name)) as ParseResult.Success).value
+
     private fun withShots(shots: JsonElement?): String {
         val score = Json.parseToJsonElement(Fixtures.text("score-gameday.json")).jsonObject
         val games =
@@ -385,6 +480,17 @@ class ScoreAdapterTest {
     private fun mutateGameday(transform: (JsonObject) -> JsonObject): String =
         transform(Json.parseToJsonElement(Fixtures.text("score-gameday.json")).jsonObject).toString()
 
+    private fun mutateFixtureGame(
+        fixture: String,
+        index: Int,
+        transform: (JsonObject) -> JsonObject,
+    ): String {
+        val score = Json.parseToJsonElement(Fixtures.text(SEASON_WINDOW_CAPTURE, fixture)).jsonObject
+        val games = score.getValue("games").jsonArray
+        val mutatedGames = games.mapIndexed { current, game -> if (current == index) transform(game.jsonObject) else game }
+        return JsonObject(score + ("games" to JsonArray(mutatedGames))).toString()
+    }
+
     private fun mutateGame(
         index: Int,
         transform: (JsonObject) -> JsonObject,
@@ -398,3 +504,9 @@ class ScoreAdapterTest {
 
 // Taken with jq '.games|length' at capture time.
 private const val EXPECTED_GAMES = 12
+
+// Captured on 5 November 2026 for the season-window work.
+private const val SEASON_WINDOW_CAPTURE = "2026-11-05"
+private const val DARK_DAY_FIXTURE = "score-20260720.json"
+private const val PLAYOFF_DAY_FIXTURE = "score-20260419.json"
+private val PLAYOFF_GAME_IDS = listOf("2025030151", "2025030121", "2025030111", "2025030171")

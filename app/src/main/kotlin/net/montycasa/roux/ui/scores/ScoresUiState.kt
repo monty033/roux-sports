@@ -7,6 +7,27 @@ import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.policy.FavoritesHint
 import net.montycasa.roux.domain.policy.LeagueOrder
 
+/**
+ * The off-season window a scores page is showing.
+ *
+ * [lastGameDate] is the feed's previous game day, where a dark launch lands when opening night is
+ * unknown. [nextGameDate] is the first game of the coming season, when the feed supplied one.
+ * [seasonLabel] is the season those last games belong to, such as `2025–26`. [openingNight] is the
+ * resolved first regular-season night, when the schedule has one.
+ */
+data class OffSeasonUi(
+    val lastGameDate: String,
+    val nextGameDate: String?,
+    val seasonLabel: String,
+    val openingNight: OpeningNightUi? = null,
+)
+
+/** The resolved first regular-season night and the season it opens. */
+data class OpeningNightUi(
+    val date: String,
+    val seasonLabel: String,
+)
+
 data class ScoresUiState(
     val selectedDate: String,
     /** Current day from the polling clock in the existing league zone. */
@@ -29,6 +50,13 @@ data class ScoresUiState(
     val selectedLeagueId: String = "nhl",
     /** Feed day in the league zone; null until a day has actually loaded. */
     val loadedDate: String? = null,
+    /**
+     * The off-season window when this page is the last game day or a dark day in the gap.
+     *
+     * Non-null means the card is shown and the favourites filter is bypassed: the off-season rule is
+     * that every game of the day is visible, even when neither club is a favourite.
+     */
+    val offSeason: OffSeasonUi? = null,
     /**
      * Rows for every day the screen knows, already filtered and ordered like [rows].
      *

@@ -27,6 +27,8 @@ object FavoritesOrdering {
      * With favourites selected, an empty filtered result yields [FavoritesHint.NoFavouriteGames],
      * including an empty day, because team selection cannot fix the day's lack of favourite games.
      * With the toggle off, selected favourites never hide rows or produce an absence hint.
+     * [allGames] is the off-season rule: the last games of the season are shown even when the
+     * favourites filter is on, so a fan whose teams are not in the Final still sees the games.
      * An empty day with no favourites still yields PickTeams; missing selection takes precedence.
      * Filtering does not order rows; callers apply [ScoresOrdering] in either toggle state.
      */
@@ -34,9 +36,10 @@ object FavoritesOrdering {
         games: List<Game>,
         favorites: Set<TeamKey>,
         favoritesOnly: Boolean,
+        allGames: Boolean = false,
     ): FavoritesResult {
         if (favorites.isEmpty()) return FavoritesResult(games, FavoritesHint.PickTeams)
-        if (!favoritesOnly) return FavoritesResult(games, null)
+        if (allGames || !favoritesOnly) return FavoritesResult(games, null)
         val rows = games.filter { it.involves(favorites) }
         return FavoritesResult(rows, if (rows.isEmpty()) FavoritesHint.NoFavouriteGames else null)
     }

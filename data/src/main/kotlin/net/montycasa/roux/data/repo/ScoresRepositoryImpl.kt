@@ -20,10 +20,13 @@ import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.ScheduleBlock
 import net.montycasa.roux.domain.model.ScoreDay
 import net.montycasa.roux.domain.policy.DayRelation
 import net.montycasa.roux.domain.policy.DaySlate
 import net.montycasa.roux.domain.policy.FreshnessPolicy
+import net.montycasa.roux.domain.policy.LeagueCalendar
+import net.montycasa.roux.domain.policy.OpeningNight
 import net.montycasa.roux.domain.repo.ScoresRepository
 import okio.IOException
 import kotlin.coroutines.CoroutineContext
@@ -139,6 +142,91 @@ internal class ScoresRepositoryImpl(
         date: String,
         today: String,
     ): ScoreDay? = withContext(ioDispatcher) { readCached(date, today)?.day }
+
+    /**
+     * Walks the weekly schedule until a regular-season game appears.
+     *
+     * The walk follows the feed's own `nextStartDate`, not a guessed date, and stops after six blocks.
+     * Every layer below is deliberately lossy: any failure, a missing next date, or an exhausted cap
+     * returns null, because opening night is optional off-season information and must never become a
+     * Scores error. A resolved answer is cached per season for a week.
+     */
+    override suspend fun openingNight(startDate: String): String? =
+        withContext(ioDispatcher) {
+            val season =
+                try {
+                    LeagueCalendar.seasonId(startDate)
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Exception) {
+                    return@withContext null
+                }
+            val key = CacheKey(CacheKind.OpeningNight, season)
+            readCachedOpeningNight(key)?.let { return@withContext it }
+
+            val blocks = mutableListOf<ScheduleBlock>()
+            var cursor: String? = startDate
+            var hops = 0
+            while (cursor != null && hops < MAX_OPENING_NIGHT_HOPS) {
+                hops += 1
+                val block = fetchScheduleBlock(cursor) ?: return@withContext null
+                blocks += block
+                OpeningNight.from(blocks)?.let { opening ->
+                    cacheOpeningNight(key, opening)
+                    return@withContext opening
+                }
+                // A repeated next date cannot make progress; treating it as exhausted beats asking
+                // the same block six times.
+                cursor = block.nextStartDate?.takeIf { it != cursor }
+            }
+            null
+        }
+
+    /** A schedule block, or null for any HTTP, network, or parse failure. */
+    private suspend fun fetchScheduleBlock(date: String): ScheduleBlock? {
+        val result =
+            try {
+                api.schedule(date)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                return null
+            }
+        if (result !is ApiResult.Success) return null
+        return when (val parsed = adapter.parseSchedule(result.bytes.decodeToString())) {
+            is ParseResult.Success -> parsed.value
+            is ParseResult.Failure -> null
+        }
+    }
+
+    /** A fresh resolved date; stale or unreadable entries are treated as absent and the walk retries. */
+    private suspend fun readCachedOpeningNight(key: CacheKey): String? {
+        val entry =
+            try {
+                cache.get(key)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                return null
+            } ?: return null
+        if (FreshnessPolicy.isStale(entry.fetchedAt, clock.now(), FreshnessPolicy.openingNightMaxAge())) return null
+        val candidate = entry.bytes.decodeToString().trim()
+        return runCatching { IsoDate.shift(candidate, 0) }.getOrNull()
+    }
+
+    /** A disk failure must not hide a date the feed just gave us. */
+    private suspend fun cacheOpeningNight(
+        key: CacheKey,
+        date: String,
+    ) {
+        try {
+            cache.put(key, date.encodeToByteArray(), clock.now())
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Exception) {
+            // The answer is still usable; the next launch simply walks again.
+        }
+    }
 
     override suspend fun prefetchAdjacent(
         date: String,
@@ -301,6 +389,11 @@ internal class ScoresRepositoryImpl(
             cached?.let { Cached(it.data, it.fetchedAt) },
             FetchOutcome.Failed(error),
         )
+
+    private companion object {
+        /** Six weekly blocks cover a month and a half; beyond that the schedule is not the answer. */
+        const val MAX_OPENING_NIGHT_HOPS = 6
+    }
 }
 
 /**

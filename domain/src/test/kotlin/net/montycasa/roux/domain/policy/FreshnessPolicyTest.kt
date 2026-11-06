@@ -138,6 +138,11 @@ class FreshnessPolicyTest {
     }
 
     @Test
+    fun openingNightExpiresAfterSevenDays() {
+        assertEquals(7.days, FreshnessPolicy.openingNightMaxAge())
+    }
+
+    @Test
     fun liveDetailExpiresAfterThirtySeconds() {
         assertEquals(30.seconds, FreshnessPolicy.detailMaxAge(isLive = true, isFinal = false))
     }

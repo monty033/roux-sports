@@ -65,4 +65,17 @@ interface ScoresRepository {
         date: String,
         today: String,
     ): ScoreDay? = null
+
+    /**
+     * The first regular-season game at or after [startDate], or null when it is not known yet.
+     *
+     * Walks the weekly schedule from [startDate], following each block's `nextStartDate`, and stops at
+     * the earliest date carrying a `gameType 2` game. Preseason games never count. The answer is cached
+     * per season for seven days, so a later launch does not walk the schedule again.
+     *
+     * This is speculative off-season information: a 404, a network failure, an unreadable body, an
+     * exhausted walk or any other failure returns null. It never throws and never turns into an error
+     * on Scores. The default answers null so simple implementations and test doubles stay honest.
+     */
+    suspend fun openingNight(startDate: String): String? = null
 }

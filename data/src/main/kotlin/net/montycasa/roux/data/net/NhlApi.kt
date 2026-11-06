@@ -48,6 +48,9 @@ class NhlApi(
 ) {
     suspend fun score(date: String): ApiResult = get(datedPath("/v1/score", date))
 
+    /** A week's schedule, walked by the opening-night resolver. Dated like the score and standings forms. */
+    suspend fun schedule(date: String): ApiResult = get(datedPath("/v1/schedule", date))
+
     /** Always uses the dated standings form, as required by the caching and freshness policy. */
     suspend fun standings(date: String): ApiResult = get(datedPath("/v1/standings", date))
 

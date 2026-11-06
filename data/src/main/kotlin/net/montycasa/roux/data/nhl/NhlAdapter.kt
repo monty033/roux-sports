@@ -8,9 +8,11 @@ import kotlinx.serialization.json.intOrNull
 import net.montycasa.roux.data.nhl.dto.ClubScheduleDto
 import net.montycasa.roux.data.nhl.dto.ClubScheduleGameDto
 import net.montycasa.roux.data.nhl.dto.GameDto
+import net.montycasa.roux.data.nhl.dto.ScheduleDto
 import net.montycasa.roux.data.nhl.dto.ScheduleTeamDto
 import net.montycasa.roux.data.nhl.dto.ScoreDto
 import net.montycasa.roux.data.nhl.dto.SeasonsDto
+import net.montycasa.roux.data.nhl.dto.SeriesStatusDto
 import net.montycasa.roux.data.nhl.dto.StandingsDto
 import net.montycasa.roux.data.nhl.dto.TeamDto
 import net.montycasa.roux.domain.model.Broadcast
@@ -24,8 +26,11 @@ import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.PeriodInfo
+import net.montycasa.roux.domain.model.ScheduleBlock
+import net.montycasa.roux.domain.model.ScheduleDay
 import net.montycasa.roux.domain.model.ScoreDay
 import net.montycasa.roux.domain.model.Season
+import net.montycasa.roux.domain.model.SeriesStatus
 import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
@@ -93,6 +98,10 @@ internal object NhlAdapter {
                 games = games,
                 dateIndex = dateIndex,
                 droppedCount = wireGames.size - games.size,
+                // Absent or blank navigation dates are absence, not an invented day: the off-season
+                // rule reads them as "no next game" rather than comparing against an empty string.
+                previousGameDate = score.prevDate?.takeIf { it.isNotBlank() },
+                nextGameDate = score.nextDate?.takeIf { it.isNotBlank() },
             ),
         )
     }
@@ -104,6 +113,33 @@ internal object NhlAdapter {
      * use `NhlAdapter.parse…` do not need a second vocabulary.
      */
     fun parseClubStats(json: String): ParseResult<ClubStats> = ClubStatsAdapter.parse(json)
+
+    /**
+     * One week of the league schedule, reduced to the dates and game types opening night needs.
+     *
+     * A missing `gameWeek` is a failure; an individual day without a usable date is skipped, because
+     * the walk only needs the days that can be placed on the calendar.
+     */
+    fun parseSchedule(json: String): ParseResult<ScheduleBlock> {
+        val schedule =
+            try {
+                feedJson.decodeFromString<ScheduleDto>(json)
+            } catch (exception: SerializationException) {
+                return ParseResult.Failure("NHL schedule decoding failed: ${exception.message}")
+            }
+        val wireDays = schedule.gameWeek ?: return ParseResult.Failure("NHL schedule mapping failed: missing gameWeek field")
+        val days =
+            wireDays.mapNotNull { day ->
+                val date = day?.date?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                ScheduleDay(date, day.games.orEmpty().mapNotNull { it?.gameType })
+            }
+        return ParseResult.Success(
+            ScheduleBlock(
+                days = days,
+                nextStartDate = schedule.nextStartDate?.takeIf { it.isNotBlank() },
+            ),
+        )
+    }
 
     /**
      * A club's season schedule.
@@ -344,7 +380,26 @@ internal object NhlAdapter {
                         )
                     }
                 },
+            otPeriods = gameOutcome?.otPeriods,
+            // A malformed status was already decoded to null at the optional-object boundary.
+            series = seriesStatus?.toSeriesStatus(),
         )
+    }
+
+    /** An all-null status object says nothing about a series, so it is absent rather than an empty value. */
+    private fun SeriesStatusDto.toSeriesStatus(): SeriesStatus? {
+        val status =
+            SeriesStatus(
+                round = round,
+                seriesTitle = seriesTitle?.takeIf { it.isNotBlank() },
+                neededToWin = neededToWin,
+                topSeedTeamAbbrev = topSeedTeamAbbrev?.takeIf { it.isNotBlank() },
+                topSeedWins = topSeedWins,
+                bottomSeedTeamAbbrev = bottomSeedTeamAbbrev?.takeIf { it.isNotBlank() },
+                bottomSeedWins = bottomSeedWins,
+                gameNumberOfSeries = gameNumberOfSeries,
+            )
+        return status.takeIf { it != SeriesStatus() }
     }
 
     /** An absent abbreviation must be visible as a dropped game rather than a broken team row. */

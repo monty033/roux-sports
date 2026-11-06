@@ -1,0 +1,5 @@
+Capture label: 2026-11-05
+score-20260720.json stored_bytes=2498 url=https://api-web.nhle.com/v1/score/2026-07-20
+score-20260419.json stored_bytes=34183 url=https://api-web.nhle.com/v1/score/2026-04-19
+player-8470151-game-log-20262027-empty.json stored_bytes=60 url=https://api-web.nhle.com/v1/player/8470151/game-log/20262027/2
+player-8478402-game-log-20262027.json stored_bytes=1220 url=copied from fx/2026-11-04 (same URL: /v1/player/8478402/game-log/20262027/2)

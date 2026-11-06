@@ -88,6 +88,21 @@ class FavoritesOrderingTest {
     }
 
     @Test
+    fun offSeasonAllGamesIgnoresFavoritesAndHidesTheAbsenceHint() {
+        // A fan whose teams are not in the Final must still see the last games of the season.
+        val result = FavoritesOrdering.filter(games, setOf(TeamKey("SEA")), favoritesOnly = true, allGames = true)
+        assertEquals(games, result.rows)
+        assertNull(result.hint)
+    }
+
+    @Test
+    fun offSeasonAllGamesStillInvitesUnconfiguredTeamSelection() {
+        val result = FavoritesOrdering.filter(games, emptySet(), favoritesOnly = true, allGames = true)
+        assertEquals(games, result.rows)
+        assertEquals(FavoritesHint.PickTeams, result.hint)
+    }
+
+    @Test
     fun emptyDayWithFilteringOffAndSelectedFavoritesNeedsNoHint() {
         val result = FavoritesOrdering.filter(emptyList(), setOf(tor), favoritesOnly = false)
         assertEquals(emptyList<Game>(), result.rows)

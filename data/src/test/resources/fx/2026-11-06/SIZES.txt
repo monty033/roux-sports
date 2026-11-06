@@ -1,0 +1,4 @@
+Capture label: 2026-11-06
+schedule-2026-09-19.json stored_bytes=85805 url=https://api-web.nhle.com/v1/schedule/2026-09-19
+schedule-2026-09-26.json stored_bytes=62374 url=https://api-web.nhle.com/v1/schedule/2026-09-26
+schedule-2026-09-29.json stored_bytes=78687 url=https://api-web.nhle.com/v1/schedule/2026-09-29

@@ -7,6 +7,8 @@ import kotlinx.serialization.json.JsonElement
 @Serializable
 internal data class ScoreDto(
     val currentDate: String? = null,
+    val prevDate: String? = null,
+    val nextDate: String? = null,
     val gameWeek: List<DateIndexDto?>? = null,
     val games: List<JsonElement?>? = null,
 )
@@ -33,6 +35,9 @@ internal data class GameDto(
     val periodDescriptor: PeriodDescriptorDto? = null,
     @Serializable(with = ClockSerializer::class)
     val clock: ClockDto? = null,
+    // A playoff series snapshot; a malformed object must not cost the game its score.
+    @Serializable(with = SeriesStatusSerializer::class)
+    val seriesStatus: SeriesStatusDto? = null,
     // The day feed carries broadcast listings beside the score; the same shape the landing page uses.
     val tvBroadcasts: List<LandingBroadcastDto?>? = null,
 )
@@ -59,6 +64,24 @@ internal data class NameDto(
 @Serializable
 internal data class GameOutcomeDto(
     val lastPeriodType: String? = null,
+    val otPeriods: Int? = null,
+)
+
+/**
+ * A playoff game's series snapshot, from the score feed's `seriesStatus`.
+ *
+ * Only the fields the app words are modelled; unmodelled keys are ignored like every other feed node.
+ */
+@Serializable
+internal data class SeriesStatusDto(
+    val round: Int? = null,
+    val seriesTitle: String? = null,
+    val neededToWin: Int? = null,
+    val topSeedTeamAbbrev: String? = null,
+    val topSeedWins: Int? = null,
+    val bottomSeedTeamAbbrev: String? = null,
+    val bottomSeedWins: Int? = null,
+    val gameNumberOfSeries: Int? = null,
 )
 
 /** Future games need not supply a period descriptor. */

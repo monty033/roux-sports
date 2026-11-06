@@ -43,6 +43,7 @@ import net.montycasa.roux.domain.policy.LeagueCalendar
 import net.montycasa.roux.domain.policy.LeagueOrder
 import net.montycasa.roux.domain.policy.PollPolicy
 import net.montycasa.roux.domain.policy.ScoresOrdering
+import net.montycasa.roux.domain.policy.SeasonWindow
 import net.montycasa.roux.domain.repo.PreferencesRepository
 import net.montycasa.roux.domain.repo.ScoresRepository
 import kotlin.random.Random
@@ -66,6 +67,16 @@ class ScoresViewModel(
     private val jitter: () -> Double = { Random.Default.nextDouble() },
 ) : ViewModel() {
     private val selectedDate = MutableStateFlow(DateStrip.defaultSelection(emptyList(), leagueDay()))
+
+    // The off-season card's window, discovered from the dark day's feed and kept for this session.
+    private val offSeason = MutableStateFlow<OffSeasonUi?>(null)
+
+    // The default switch is a launch decision, not a property of every reload. Once this session has
+    // resolved a day, midnight or a refresh must not move the selection again.
+    private var offSeasonDefaultApplied = false
+
+    // A date the viewer chose, including one chosen before the first load lands; it is never overridden.
+    private var userPickedDate = false
 
     // The trigger carries whether this upstream start was the user asking. A pull must reach the network even when
     // the cache is fresh, which is exactly what loadDay refuses to do; everything else keeps the cache-aware load.
@@ -118,36 +129,54 @@ class ScoresViewModel(
                 Request(date, today, trigger)
             }.flatMapLatest { request -> pollDay(request) },
             settings(),
-        ) { load, settings ->
+            offSeason,
+        ) { load, settings, season ->
+            val day = load.value.data
+            // Re-evaluate the selected day's own window. The off-season copy is kept only while the
+            // page is the last game day or a dark day: moving to the regular season removes the card
+            // and restores the favourites filter.
+            val window =
+                day?.let {
+                    SeasonWindow.of(
+                        hasGames = it.games.isNotEmpty(),
+                        previousGameDate = it.previousGameDate,
+                        nextGameDate = it.nextGameDate,
+                    )
+                }
+            val showingOffSeason =
+                season != null &&
+                    (
+                        window is SeasonWindow.Dark ||
+                            load.date == season.lastGameDate ||
+                            load.date == season.openingNight?.date
+                    )
+            val viewedSeason = season.takeIf { showingOffSeason }
+            // The favourites rule belongs to the finals landing, not opening night: the opener is a
+            // regular-season day, so the filter applies there exactly as it does in October.
+            val finalsWindow = season != null && (window is SeasonWindow.Dark || load.date == season.lastGameDate)
+            val games = day?.games.orEmpty()
             val filtered =
                 FavoritesOrdering.filter(
-                    load.value.data
-                        ?.games
-                        .orEmpty(),
+                    games,
                     settings.favourites,
                     settings.only,
+                    allGames = finalsWindow,
                 )
             ScoresUiState(
                 selectedDate = load.date,
                 today = load.today,
-                liveCount =
-                    load.value.data
-                        ?.games
-                        .orEmpty()
-                        .count { it.isLive },
+                liveCount = games.count { it.isLive },
                 favouriteCount = settings.favourites.size,
                 leagueOrder = settings.order,
-                loadedDate = load.value.data?.date,
+                loadedDate = day?.date,
                 rows = ScoresOrdering.order(filtered.rows, settings.favourites),
                 favoritesHint = filtered.hint,
                 favouritesOnly = settings.only,
                 isRefreshing = load.refreshing,
                 error = load.value.error,
                 freshness = load.value.freshness,
-                dateIndex =
-                    load.value.data
-                        ?.dateIndex
-                        .orEmpty(),
+                dateIndex = day?.dateIndex.orEmpty(),
+                offSeason = viewedSeason,
             )
         }.stateIn(
             viewModelScope,
@@ -183,10 +212,18 @@ class ScoresViewModel(
                 if (wanted.isEmpty()) return@transformLatest
                 val today = leagueDay()
                 val settings = settings().first()
+                val season = offSeason.value
                 val fresh =
                     wanted.associateWith { date ->
                         val games = scores.cachedDay(date, today)?.games.orEmpty()
-                        val filtered = FavoritesOrdering.filter(games, settings.favourites, settings.only)
+                        // The off-season last games are shown in full, exactly as on the selected day.
+                        val filtered =
+                            FavoritesOrdering.filter(
+                                games,
+                                settings.favourites,
+                                settings.only,
+                                allGames = season?.lastGameDate == date,
+                            )
                         ScoresOrdering.order(filtered.rows, settings.favourites)
                     }
                 // Accumulated, not replaced: the day you settle on is no longer beside the selection, so replacing the
@@ -220,6 +257,7 @@ class ScoresViewModel(
     fun onPullToRefresh() = refresh()
 
     fun selectDate(date: String) {
+        userPickedDate = true
         selectedDate.value = date
     }
 
@@ -296,6 +334,78 @@ class ScoresViewModel(
             }
     }
 
+    /**
+     * Applies the off-season default once per session.
+     *
+     * A dark day's opening night is resolved from the feed's next game date. Only when the selection is
+     * still the loaded "today" and the viewer has not picked a date may the resolver move it; a date
+     * picked before this load completed therefore survives, and the check is repeated after the
+     * resolver returns because the viewer may have picked while it ran. When opening night is unknown
+     * the previous game date is the landing, exactly as before. The once-per-session flag is set by the
+     * first successful load, so a refresh or the midnight rollover cannot move the selection or ask
+     * the schedule walk again.
+     *
+     * Returns true when the selection moved; the current poll should end so the new day's load begins.
+     */
+    private suspend fun applyOffSeasonDefault(
+        request: Request,
+        day: ScoreDay?,
+    ): Boolean {
+        if (day == null) return false
+        val window =
+            SeasonWindow.of(
+                hasGames = day.games.isNotEmpty(),
+                previousGameDate = day.previousGameDate,
+                nextGameDate = day.nextGameDate,
+            )
+        val darkDay = window as? SeasonWindow.Dark
+        val lastGameDate = darkDay?.lastGameDate
+        val nextGameDate = day.nextGameDate
+        val stillToday =
+            request.date == request.today &&
+                selectedDate.value == request.today &&
+                !userPickedDate
+
+        // Opening night is resolved once per session, on the launch dark day only. A null answer is a
+        // normal "not known yet" and never becomes an error on this screen.
+        val knownOpening = offSeason.value?.openingNight
+        val opening =
+            if (!offSeasonDefaultApplied && darkDay != null && stillToday && nextGameDate != null) {
+                scores.openingNight(nextGameDate)?.let { OpeningNightUi(it, seasonLabel(it)) }
+            } else {
+                knownOpening
+            }
+
+        if (lastGameDate != null) {
+            offSeason.value =
+                OffSeasonUi(
+                    lastGameDate = lastGameDate,
+                    nextGameDate = nextGameDate,
+                    seasonLabel = seasonLabel(lastGameDate),
+                    openingNight = opening,
+                )
+        }
+        // A dark feed with no previous date has no finals landing; the session is still resolved.
+        if (offSeasonDefaultApplied) return false
+        offSeasonDefaultApplied = true
+        // The resolver suspends; re-check that the viewer has not picked a date in the meantime.
+        val stillSelectable =
+            request.date == request.today &&
+                selectedDate.value == request.today &&
+                !userPickedDate
+        if (!stillSelectable) return false
+        val target = opening?.date ?: lastGameDate ?: return false
+        if (target == request.date) return false
+        selectedDate.value = target
+        return true
+    }
+
+    /** `20252026` becomes the card's `2025–26`. */
+    private fun seasonLabel(day: String): String {
+        val season = LeagueCalendar.seasonId(day)
+        return "${season.take(4)}–${season.takeLast(2)}"
+    }
+
     private fun pollDay(request: Request): Flow<DayLoad> =
         flow {
             var value: Loadable<ScoreDay> =
@@ -324,6 +434,7 @@ class ScoresViewModel(
                     } else {
                         scores.loadDay(request.date, request.today)
                     }
+                if (applyOffSeasonDefault(request, value.data)) return@flow
                 val loaded = DayLoad(request.date, request.today, value, refreshing = false)
                 retained = loaded
                 schedulePrefetch(request.date, request.today, hasSlate = value.data != null)
