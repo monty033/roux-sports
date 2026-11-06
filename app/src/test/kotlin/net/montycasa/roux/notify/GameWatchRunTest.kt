@@ -13,11 +13,14 @@ import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.ScoreDay
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.domain.notify.GameWatchScheduler
 import net.montycasa.roux.domain.policy.Alert
+import net.montycasa.roux.domain.repo.NotificationLedgerEntry
+import net.montycasa.roux.domain.repo.PreferencesRepository
 import net.montycasa.roux.domain.repo.ScoresRepository
 import net.montycasa.roux.domain.repo.TeamAlertPreferences
 import okio.Path.Companion.toPath
@@ -61,6 +64,7 @@ class GameWatchRunTest {
         away: Int? = 1,
         home: Int? = 0,
         finalKind: FinalKind? = null,
+        period: PeriodInfo? = null,
     ) = Game(
         id = GameId(gameId),
         date = "2025-01-01",
@@ -71,7 +75,23 @@ class GameWatchRunTest {
         awayScore = away,
         homeScore = home,
         finalKind = finalKind,
+        period = period,
     )
+
+    private fun period(
+        ordinal: Int,
+        inIntermission: Boolean = true,
+    ) = PeriodInfo(ordinal = ordinal, periodType = "REG", clock = "00:00", inIntermission = inIntermission)
+
+    private fun intermission(period: Int = 1) =
+        Alert.Intermission(
+            gameId = GameId(gameId),
+            period = period,
+            awayAbbrev = "TOR",
+            homeAbbrev = "MTL",
+            awayScore = 1,
+            homeScore = 0,
+        )
 
     private fun day(game: Game) =
         ScoreDay(
@@ -148,7 +168,7 @@ class GameWatchRunTest {
         scores: ScoresRepository,
         scheduler: GameWatchScheduler,
         poster: AlertPoster,
-        preferences: DataStorePreferencesRepository,
+        preferences: PreferencesRepository,
     ) = GameWatchRun(
         preferences = preferences,
         scores = scores,
@@ -518,5 +538,122 @@ class GameWatchRunTest {
             val after = run(FakeScores { Loadable(day(current), Freshness.Fresh, null) }, scheduler, allAllowed, preferences).run(gameId)
             assertEquals(1, after.posted)
             assertEquals(Alert.Goal(GameId(gameId), goalCount = 2, awayScore = 2, homeScore = 0), allAllowed.posted.single())
+        }
+
+    @Test
+    fun anIntermissionIsPostedOnceForTwoPollsAndClaimedForItsPeriod() =
+        runBlocking {
+            val preferences = preferences()
+            preferences.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(intermission = true))
+            val poster = RecordingPoster()
+            val scheduler = RecordingScheduler()
+            val current = game(period = period(1))
+            val pass = run(FakeScores { Loadable(day(current), Freshness.Fresh, null) }, scheduler, poster, preferences)
+
+            val first = pass.run(gameId)
+            val second = pass.run(gameId)
+
+            assertEquals("the break is announced", 1, first.posted)
+            assertEquals("the next poll inside it is silent", 0, second.posted)
+            assertEquals(listOf<Alert>(intermission(period = 1)), poster.posted.toList())
+            assertEquals(
+                "the claim records which period was announced",
+                1,
+                preferences.getNotificationLedgerEntry(gameId)!!.lastIntermissionNotified,
+            )
+        }
+
+    @Test
+    fun theSecondPeriodsIntermissionIsASeparateAlert() =
+        runBlocking {
+            val preferences = preferences()
+            preferences.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(intermission = true))
+            val poster = RecordingPoster()
+            val scheduler = RecordingScheduler()
+            var current = game(period = period(1))
+            val pass = run(FakeScores { Loadable(day(current), Freshness.Fresh, null) }, scheduler, poster, preferences)
+
+            assertEquals(1, pass.run(gameId).posted)
+            current = game(period = period(2))
+            assertEquals("the next break is news again", 1, pass.run(gameId).posted)
+            assertEquals("but not twice", 0, pass.run(gameId).posted)
+
+            assertEquals(listOf<Alert>(intermission(period = 1), intermission(period = 2)), poster.posted.toList())
+            assertEquals(2, preferences.getNotificationLedgerEntry(gameId)!!.lastIntermissionNotified)
+        }
+
+    @Test
+    fun aGameAlreadyBackInPlayOnFirstSightGetsNoRetroactiveIntermission() =
+        runBlocking {
+            val preferences = preferences()
+            preferences.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(intermission = true))
+            val poster = RecordingPoster()
+            val scheduler = RecordingScheduler()
+            val current = game(period = period(2, inIntermission = false))
+            val pass = run(FakeScores { Loadable(day(current), Freshness.Fresh, null) }, scheduler, poster, preferences)
+
+            assertEquals(0, pass.run(gameId).posted)
+            assertEquals("only the score baseline is written", emptyList<Alert>(), poster.posted.toList())
+            assertEquals(0, preferences.getNotificationLedgerEntry(gameId)?.lastIntermissionNotified ?: 0)
+        }
+
+    @Test
+    fun theIntermissionSwitchOffPostsNothingEvenWhenGoalsAreOn() =
+        runBlocking {
+            val preferences = preferences()
+            preferences.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(goals = true))
+            val poster = RecordingPoster()
+            val scheduler = RecordingScheduler()
+            val current = game(period = period(1))
+            val pass = run(FakeScores { Loadable(day(current), Freshness.Fresh, null) }, scheduler, poster, preferences)
+
+            assertEquals(0, pass.run(gameId).posted)
+            assertEquals("goals being on is not permission for an intermission", emptyList<Alert>(), poster.posted.toList())
+            assertEquals(0, preferences.getNotificationLedgerEntry(gameId)?.lastIntermissionNotified ?: 0)
+        }
+
+    @Test
+    fun anIntermissionThatCannotBePostedIsNotClaimed() =
+        runBlocking {
+            val preferences = preferences()
+            preferences.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(intermission = true))
+            val scheduler = RecordingScheduler()
+            val current = game(period = period(1))
+            val blocked = RecordingPoster { false }
+            val pass = run(FakeScores { Loadable(day(current), Freshness.Fresh, null) }, scheduler, blocked, preferences)
+
+            assertEquals(0, pass.run(gameId).posted)
+            assertEquals(
+                "a silenced channel does not spend the break",
+                0,
+                preferences.getNotificationLedgerEntry(gameId)?.lastIntermissionNotified ?: 0,
+            )
+
+            val allowed = RecordingPoster()
+            val after = run(FakeScores { Loadable(day(current), Freshness.Fresh, null) }, scheduler, allowed, preferences).run(gameId)
+            assertEquals(1, after.posted)
+            assertEquals(listOf<Alert>(intermission(period = 1)), allowed.posted.toList())
+        }
+
+    @Test
+    fun theClaimStopsTwoPollsThatBothSawTheBreakFromPostingTwice() =
+        runBlocking {
+            val backing = preferences()
+            backing.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(intermission = true))
+            // Both passes decide from a ledger that has not yet seen the other's claim. The decider cannot tell them
+            // apart; only the atomic claim can, which is why the claim is the rule that makes the alert at-most-once.
+            val staleLedger =
+                object : PreferencesRepository by backing {
+                    override suspend fun getNotificationLedgerEntry(gameId: String): NotificationLedgerEntry? = null
+                }
+            val poster = RecordingPoster()
+            val scheduler = RecordingScheduler()
+            val current = game(period = period(1))
+            val pass = run(FakeScores { Loadable(day(current), Freshness.Fresh, null) }, scheduler, poster, staleLedger)
+
+            assertEquals(1, pass.run(gameId).posted)
+            assertEquals(0, pass.run(gameId).posted)
+            assertEquals("the same break is posted once", listOf<Alert>(intermission(period = 1)), poster.posted.toList())
+            assertEquals(1, backing.getNotificationLedgerEntry(gameId)!!.lastIntermissionNotified)
         }
 }

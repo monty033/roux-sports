@@ -48,6 +48,22 @@ sealed interface Alert {
     ) : Alert
 
     /**
+     * The game has reached an intermission and the score can be stated.
+     *
+     * [period] is the period that just ended, and it is also what makes the alert claimable once: the store records
+     * the highest period announced, so the same break cannot be announced twice and the next period's break is new.
+     * Both scores are non-null for the same reason as a final: a break whose score is unknown is not announced.
+     */
+    data class Intermission(
+        override val gameId: GameId,
+        val period: Int,
+        val awayAbbrev: String,
+        val homeAbbrev: String,
+        val awayScore: Int,
+        val homeScore: Int,
+    ) : Alert
+
+    /**
      * The game has ended and the final score can be stated.
      *
      * Both scores are non-null on purpose: an alert that cannot state a score is worse than no alert, so a final
@@ -98,7 +114,11 @@ sealed interface Alert {
  *    duplicates. A lower total is the feed correcting itself and is deliberately not announced, because
  *    dragging the ledger back would let the correction be announced again when the score returns; the
  *    recorded total therefore keeps its high-water mark.
- *  - A missing score is unknown, not zero, so it announces no goal.
+ *  - An intermission alert needs the intermission preference, `clock.inIntermission` true on a game that is
+ *    not final, both scores, and a period above the last one announced. It is independent of the start and
+ *    goal rules: a first sight of a game already at a break still announces the break once, and a game already
+ *    back in play announces nothing retroactively.
+ *  - A missing score is unknown, not zero, so it announces no goal and no intermission.
  */
 class NotificationDecider {
     fun decide(
@@ -115,16 +135,20 @@ class NotificationDecider {
         val home = game.homeScore
         val goalCount = if (away != null && home != null) away + home else null
 
+        val intermission = decideIntermission(game, ledger, preferences)
+
         if (ledger == null) {
-            return when {
+            val alerts = mutableListOf<Alert>()
+            when {
                 // With no score there is no safe baseline: treating it as zero would let the first score the feed
                 // supplies later be announced as a goal nobody saw. Record it as unknown instead.
-                preferences.start -> listOf(Alert.GameStart(game.id, goalBaseline = goalCount ?: UNKNOWN_GOAL_COUNT))
+                preferences.start -> alerts += Alert.GameStart(game.id, goalBaseline = goalCount ?: UNKNOWN_GOAL_COUNT)
 
-                goalCount != null -> listOf(Alert.Baseline(game.id, goalCount))
-
-                else -> emptyList()
+                goalCount != null -> alerts += Alert.Baseline(game.id, goalCount)
             }
+            // A game first observed at a break has still reached one, so the break is new even without a record.
+            intermission?.let { alerts += it }
+            return alerts
         }
 
         val alerts = mutableListOf<Alert>()
@@ -135,6 +159,7 @@ class NotificationDecider {
         // baseline silently; announcing it would claim a goal that was never seen happen.
         if (ledger.goalCountIsUnknown && goalCount != null) {
             alerts += Alert.Baseline(game.id, goalCount)
+            intermission?.let { alerts += it }
             return alerts
         }
         if (preferences.goals && goalCount != null && goalCount > ledger.lastNotifiedGoalCount) {
@@ -146,7 +171,36 @@ class NotificationDecider {
                     homeScore = home,
                 )
         }
+        intermission?.let { alerts += it }
         return alerts
+    }
+
+    /**
+     * The break the game is at right now, or null.
+     *
+     * The store's claim is what makes this at-most-once; the check here is what keeps the decider from asking for a
+     * period whose claim is already known to be refused. A game that is back in play, or that this app first sees
+     * after the break, has `inIntermission` false and therefore produces nothing retroactively.
+     */
+    private fun decideIntermission(
+        game: Game,
+        ledger: NotificationLedgerEntry?,
+        preferences: TeamAlertPreferences,
+    ): Alert.Intermission? {
+        if (!preferences.intermission) return null
+        val period = game.period ?: return null
+        if (!period.inIntermission) return null
+        if (ledger != null && period.ordinal <= ledger.lastIntermissionNotified) return null
+        val away = game.awayScore ?: return null
+        val home = game.homeScore ?: return null
+        return Alert.Intermission(
+            gameId = game.id,
+            period = period.ordinal,
+            awayAbbrev = game.away.key.abbrev,
+            homeAbbrev = game.home.key.abbrev,
+            awayScore = away,
+            homeScore = home,
+        )
     }
 
     private fun decideFinal(

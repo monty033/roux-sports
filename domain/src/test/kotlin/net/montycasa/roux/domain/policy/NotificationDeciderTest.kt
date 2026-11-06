@@ -4,6 +4,7 @@ import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.domain.repo.NotificationLedgerEntry
@@ -33,6 +34,7 @@ class NotificationDeciderTest {
         homeScore: Int? = 0,
         start: Instant? = null,
         finalKind: FinalKind? = null,
+        period: PeriodInfo? = null,
     ) = Game(
         id = gameId,
         date = "2025-02-01",
@@ -43,6 +45,7 @@ class NotificationDeciderTest {
         homeScore = homeScore,
         startTimeUtc = start,
         finalKind = finalKind,
+        period = period,
     )
 
     private fun ledger(
@@ -50,7 +53,35 @@ class NotificationDeciderTest {
         startNotified: Boolean = false,
         updatedAt: Instant = now,
         finalNotified: Boolean = false,
-    ) = NotificationLedgerEntry(goalCount, startNotified, updatedAt, finalNotified = finalNotified)
+        lastIntermission: Int = 0,
+    ) = NotificationLedgerEntry(
+        goalCount,
+        startNotified,
+        updatedAt,
+        finalNotified = finalNotified,
+        lastIntermissionNotified = lastIntermission,
+    )
+
+    private fun period(
+        ordinal: Int,
+        inIntermission: Boolean = true,
+    ) = PeriodInfo(ordinal = ordinal, periodType = "REG", clock = "00:00", inIntermission = inIntermission)
+
+    private fun intermission(
+        period: Int = 1,
+        awayScore: Int? = 2,
+        homeScore: Int? = 1,
+    ) = game(awayScore = awayScore, homeScore = homeScore, period = period(period))
+
+    private fun intermissionAlert(period: Int = 1) =
+        Alert.Intermission(
+            gameId = gameId,
+            period = period,
+            awayAbbrev = "TOR",
+            homeAbbrev = "MTL",
+            awayScore = 2,
+            homeScore = 1,
+        )
 
     private val finalOn = TeamAlertPreferences(final = true)
 
@@ -474,6 +505,116 @@ class NotificationDeciderTest {
                 TeamAlertPreferences(start = true, goals = true),
                 now,
             ),
+        )
+    }
+
+    @Test
+    fun anIntermissionIsAnnouncedOnceForItsOwnPeriod() {
+        val preferences = TeamAlertPreferences(intermission = true)
+
+        assertEquals(
+            listOf<Alert>(intermissionAlert(period = 1)),
+            decider.decide(intermission(period = 1), ledger(lastIntermission = 0), preferences, now),
+        )
+        assertEquals(
+            "the same break seen by a second poll is not announced again",
+            emptyList<Alert>(),
+            decider.decide(intermission(period = 1), ledger(lastIntermission = 1), preferences, now),
+        )
+        assertEquals(
+            "the next period's break is separate news",
+            listOf<Alert>(intermissionAlert(period = 2)),
+            decider.decide(intermission(period = 2), ledger(lastIntermission = 1), preferences, now),
+        )
+    }
+
+    @Test
+    fun anIntermissionNeedsItsOwnSwitchEvenWhenAnotherAlertIsOn() {
+        assertEquals(
+            emptyList<Alert>(),
+            decider.decide(
+                intermission(),
+                ledger(goalCount = 3, startNotified = true),
+                TeamAlertPreferences(goals = true, intermission = false),
+                now,
+            ),
+        )
+    }
+
+    @Test
+    fun aLiveGameThatIsNotAtABreakGetsNoIntermission() {
+        val preferences = TeamAlertPreferences(intermission = true)
+
+        assertEquals(
+            emptyList<Alert>(),
+            decider.decide(
+                game(awayScore = 2, homeScore = 1, period = period(2, inIntermission = false)),
+                ledger(lastIntermission = 1),
+                preferences,
+                now,
+            ),
+        )
+    }
+
+    @Test
+    fun aGameAlreadyBackInPlayOnFirstSightGetsNoRetroactiveBreak() {
+        // No ledger means this app never saw the break. The feed says play is under way, so the only safe thing to
+        // write is the score baseline; announcing the period that already ended would be inventing history.
+        assertEquals(
+            listOf<Alert>(Alert.Baseline(gameId, goalCount = 3)),
+            decider.decide(
+                game(awayScore = 2, homeScore = 1, period = period(2, inIntermission = false)),
+                ledger = null,
+                TeamAlertPreferences(intermission = true),
+                now,
+            ),
+        )
+    }
+
+    @Test
+    fun aFirstSightAtABreakStillAnnouncesTheBreakAlongsideItsBaseline() {
+        assertEquals(
+            listOf<Alert>(
+                Alert.GameStart(gameId, goalBaseline = 3),
+                intermissionAlert(period = 1),
+            ),
+            decider.decide(
+                intermission(period = 1),
+                ledger = null,
+                TeamAlertPreferences(start = true, intermission = true),
+                now,
+            ),
+        )
+    }
+
+    @Test
+    fun aFinishedGameIsNeverAnIntermission() {
+        val ended =
+            game(
+                GameState.Final,
+                awayScore = 2,
+                homeScore = 1,
+                start = now - 3.hours,
+                period = period(3),
+            )
+
+        assertEquals(
+            listOf<Alert>(Alert.Final(gameId, awayScore = 2, homeScore = 1, finalKind = null)),
+            decider.decide(ended, ledger(), TeamAlertPreferences(intermission = true, final = true), now),
+        )
+    }
+
+    @Test
+    fun anIntermissionWithAMissingScoreGetsNothingRatherThanAZero() {
+        val preferences = TeamAlertPreferences(intermission = true)
+
+        assertEquals(
+            emptyList<Alert>(),
+            decider.decide(intermission(awayScore = null, homeScore = 1), ledger(), preferences, now),
+        )
+        assertEquals(
+            emptyList<Alert>(),
+            decider.decide(intermission(awayScore = 2, homeScore = null), ledger(), preferences, now),
         )
     }
 }
