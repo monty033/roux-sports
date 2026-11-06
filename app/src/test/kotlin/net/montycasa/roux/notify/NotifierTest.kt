@@ -245,7 +245,7 @@ class NotifierTest {
             mapOf(
                 "TOR at MTL" to "game_start",
                 "TOR 2 – 1 MTL" to "goals",
-                "End of the 1st · TOR 2 – 1 MTL" to "intermissions",
+                "1st Intermission · TOR 2 – 1 MTL" to "intermissions",
                 "Final: Maple Leafs 3, Canadiens 2" to "final_scores",
             ),
             channelByTitle,
@@ -268,8 +268,8 @@ class NotifierTest {
         notifier.post(intermission(period = 1), game)
 
         val notification = posted().single()
-        assertEquals("End of the 1st · TOR 2 – 1 MTL", titleOf(notification))
-        assertEquals("Intermission", notification.extras.getString(Notification.EXTRA_TEXT))
+        assertEquals("1st Intermission · TOR 2 – 1 MTL", titleOf(notification))
+        assertEquals("End of the 1st period.", notification.extras.getString(Notification.EXTRA_TEXT))
         assertEquals(Notifier.INTERMISSION_CHANNEL, notification.channelId)
     }
 
@@ -279,7 +279,7 @@ class NotifierTest {
         val second = notifier.post(intermission(period = 2), game) as NotificationOutcome.Posted
 
         assertEquals("the break is the news, not the history of breaks", first.id, second.id)
-        assertEquals("End of the 2nd · TOR 2 – 1 MTL", titleOf(posted().single()))
+        assertEquals("2nd Intermission · TOR 2 – 1 MTL", titleOf(posted().single()))
         assertTrue(notifier.canPost(intermission(period = 3)))
     }
 

@@ -158,10 +158,11 @@ class Notifier(
                 }
 
                 is Alert.Intermission -> {
+                    val ordinal = periodOrdinal(alert.period)
                     val title =
                         context.getString(
                             R.string.notify_intermission_title,
-                            periodOrdinal(alert.period),
+                            ordinal,
                             alert.awayAbbrev,
                             alert.awayScore,
                             alert.homeScore,
@@ -169,7 +170,7 @@ class Notifier(
                         )
                     base(id, channel, alert.gameId.value)
                         .setContentTitle(title)
-                        .setContentText(context.getString(R.string.notify_intermission_text))
+                        .setContentText(context.getString(R.string.notify_intermission_text, ordinal))
                         .build()
                 }
 
