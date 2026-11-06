@@ -42,6 +42,7 @@ class NetworkHostAuditTest {
                     "data/src/main/kotlin/Foo.kt" to
                         """
                         val standings = "https://api-web.nhle.com/v1/standings/now"
+                        val schedule = "https://api-web.nhle.com/v1/schedule/2026-09-19"
                         val crest = "https://assets.nhle.com/logos/nhl/svg/ANA_light.svg"
                         val stats = "https://api.nhle.com/stats/rest/en/team/summary"
                         """.trimIndent(),

@@ -74,6 +74,38 @@ class ScoresScreenTest {
             rows = listOf(game),
             freshness = Freshness.Stale(Instant.parse("2025-10-25T23:42:00Z")),
         )
+    private val offSeasonCard =
+        ScoresUiState(
+            selectedDate = "2026-06-14",
+            today = "2026-07-20",
+            rows = listOf(game.copy(id = GameId("2025030411"), date = "2026-06-14", state = GameState.Final)),
+            freshness = Freshness.Fresh,
+            dateIndex = listOf(DateIndexEntry("2026-06-14", 1), DateIndexEntry("2026-07-20", 0)),
+            offSeason = OffSeasonUi("2026-06-14", "2026-09-19", "2025–26"),
+        )
+    private val offSeasonDark =
+        ScoresUiState(
+            selectedDate = "2026-07-20",
+            today = "2026-07-20",
+            freshness = Freshness.Fresh,
+            dateIndex = listOf(DateIndexEntry("2026-06-14", 1), DateIndexEntry("2026-07-20", 0)),
+            offSeason = OffSeasonUi("2026-06-14", "2026-09-19", "2025–26"),
+        )
+    private val offSeasonOpener =
+        ScoresUiState(
+            selectedDate = "2026-09-29",
+            today = "2026-07-20",
+            rows = listOf(game.copy(id = GameId("2026020001"), date = "2026-09-29", state = GameState.Final)),
+            freshness = Freshness.Fresh,
+            dateIndex = listOf(DateIndexEntry("2026-06-14", 1), DateIndexEntry("2026-09-29", 1)),
+            offSeason =
+                OffSeasonUi(
+                    "2026-06-14",
+                    "2026-09-19",
+                    "2025–26",
+                    openingNight = OpeningNightUi("2026-09-29", "2026–27"),
+                ),
+        )
     private val suppliedState = mutableStateOf(fresh)
     private val fontScale = mutableStateOf(1f)
 
@@ -160,6 +192,65 @@ class ScoresScreenTest {
 
         assertEquals(emptyList<String>(), picked)
         rule.onNodeWithTag("scores.game.${game.id.value}").assertExists()
+    }
+
+    @Test
+    fun offSeasonCardNamesTheSeasonAndTheNextGamesAboveTheLastGames() {
+        launchScreen(offSeasonCard)
+
+        rule.onNodeWithTag("scores.offseason").assertIsDisplayed()
+        rule
+            .onNodeWithText("Off-season · Last games of 2025–26 · Next games Sat, Sep 19")
+            .assertIsDisplayed()
+        rule.onNodeWithTag("scores.game.2025030411").assertIsDisplayed()
+        rule.onNodeWithText("Show last games").assertDoesNotExist()
+    }
+
+    @Test
+    @Config(qualifiers = "en-rUS-w411dp-h923dp-420dpi")
+    fun openerCardNamesTheSeasonAndShowsLastGamesOnOneLine() {
+        val selected = mutableListOf<String>()
+        launchScreen(offSeasonOpener, onSelectDate = { selected += it })
+
+        val copy = "Off-season · 2026–27 opens Tue, Sep 29"
+        rule.onNodeWithText(copy).assertIsDisplayed()
+        val copyBounds = rule.onNodeWithText(copy).getUnclippedBoundsInRoot()
+        val copyHeight = copyBounds.bottom - copyBounds.top
+        assertTrue("opener copy must fit one line, height was $copyHeight", copyHeight.value <= 32f)
+        rule.onNodeWithText("No games until Sat, Sep 19").assertDoesNotExist()
+        rule.onNodeWithText("Show last games").assertIsDisplayed().performClick()
+        assertEquals(listOf("2026-06-14"), selected)
+        assertReach(offSeasonOpener, "scores.showLastGames")
+    }
+
+    @Test
+    fun emptyDarkDayShowsNoGamesUntilAndA56DpShowLastGamesButton() {
+        val selected = mutableListOf<String>()
+        launchScreen(offSeasonDark, onSelectDate = { selected += it })
+
+        rule.onNodeWithText("No games until Sat, Sep 19").assertIsDisplayed()
+        rule.onNodeWithText("No games on Mon, Jul 20").assertDoesNotExist()
+        rule
+            .onNodeWithText("Show last games")
+            .assertIsDisplayed()
+            .assertHeightIsEqualTo(56.dp)
+            .performClick()
+        assertEquals(listOf("2026-06-14"), selected)
+        assertReach(offSeasonDark, "scores.showLastGames")
+    }
+
+    @Test
+    @Config(qualifiers = "en-rUS-w360dp-h780dp-420dpi")
+    fun offSeasonCopyWrapsAtDoubleTypeOnTheSmallPhone() {
+        launchScreen(offSeasonCard)
+        rule.runOnIdle { fontScale.value = 2f }
+        rule
+            .onNodeWithText("Off-season · Last games of 2025–26 · Next games Sat, Sep 19")
+            .assertIsDisplayed()
+
+        rule.runOnIdle { suppliedState.value = offSeasonDark }
+        rule.onNodeWithText("No games until Sat, Sep 19").assertIsDisplayed()
+        rule.onNodeWithText("Show last games").assertIsDisplayed()
     }
 
     @Test
@@ -391,6 +482,9 @@ class ScoresScreenTest {
                     stale.copy(error = LoadError.Network) to "scores.retry",
                     ScoresUiState(date, today = date, error = LoadError.Network) to "scores.retry",
                     fresh.copy(rows = listOf(game)) to null,
+                    offSeasonCard to null,
+                    offSeasonDark to "scores.showLastGames",
+                    offSeasonOpener to "scores.showLastGames",
                     fresh.copy(favoritesHint = FavoritesHint.PickTeams) to "scores.nextGames",
                     fresh.copy(favoritesHint = FavoritesHint.NoFavouriteGames) to null,
                 )

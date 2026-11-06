@@ -43,6 +43,8 @@ import net.montycasa.roux.ui.detail.GameDetailScreen
 import net.montycasa.roux.ui.drawer.LeaguesPanel
 import net.montycasa.roux.ui.player.PlayerDetailScreen
 import net.montycasa.roux.ui.scores.DrawerUi
+import net.montycasa.roux.ui.scores.OffSeasonUi
+import net.montycasa.roux.ui.scores.OpeningNightUi
 import net.montycasa.roux.ui.scores.ScoresScreen
 import net.montycasa.roux.ui.scores.ScoresUiState
 import net.montycasa.roux.ui.standings.StandingsScreen
@@ -79,6 +81,52 @@ internal object AuditStates {
     private val scoresData = scoresFresh.copy(rows = listOf(scoreGame))
     private val scoresStale =
         scoresData.copy(freshness = Freshness.Stale(Instant.parse("2025-10-25T23:42:00Z")))
+
+    // The off-season landing: the last game day of 2025–26, with the card naming the next games.
+    private val scoresOffSeason =
+        ScoresUiState(
+            selectedDate = "2026-06-14",
+            today = "2026-07-20",
+            rows =
+                listOf(
+                    scoreGame.copy(
+                        id = GameId("2025030411"),
+                        date = "2026-06-14",
+                        state = GameState.Final,
+                        homeScore = 2,
+                        awayScore = 1,
+                    ),
+                ),
+            freshness = Freshness.Fresh,
+            dateIndex = listOf(DateIndexEntry("2026-06-14", 1), DateIndexEntry("2026-07-20", 0)),
+            offSeason = OffSeasonUi("2026-06-14", "2026-09-19", "2025–26"),
+        )
+
+    // The same window with opening night resolved: the card names the coming season instead of the finals.
+    private val scoresOffSeasonOpener =
+        ScoresUiState(
+            selectedDate = "2026-09-29",
+            today = "2026-07-20",
+            rows =
+                listOf(
+                    scoreGame.copy(
+                        id = GameId("2026020001"),
+                        date = "2026-09-29",
+                        state = GameState.Final,
+                        homeScore = 4,
+                        awayScore = 2,
+                    ),
+                ),
+            freshness = Freshness.Fresh,
+            dateIndex = listOf(DateIndexEntry("2026-06-14", 1), DateIndexEntry("2026-09-29", 1)),
+            offSeason =
+                OffSeasonUi(
+                    "2026-06-14",
+                    "2026-09-19",
+                    "2025–26",
+                    openingNight = OpeningNightUi("2026-09-29", "2026–27"),
+                ),
+        )
 
     // No crest URLs, as with the teams fixture: a real logo URL lets Coil load (or not) depending on what ran earlier
     // in the JVM, which swaps the crest's abbreviation fallback in and out of the frame and flakes the golden.
@@ -373,6 +421,8 @@ internal object AuditStates {
             ContentCase("scores.data") { ScoresScreen(scoresData, {}, {}, {}) },
             ContentCase("scores.empty") { ScoresScreen(scoresFresh, {}, {}, {}) },
             ContentCase("scores.stale") { ScoresScreen(scoresStale, {}, {}, {}) },
+            ContentCase("scores.offseason") { ScoresScreen(scoresOffSeason, {}, {}, {}) },
+            ContentCase("scores.offseason.opener") { ScoresScreen(scoresOffSeasonOpener, {}, {}, {}) },
             ContentCase("standings.eastPlayoffs") { StandingsAuditScreen(standings(StandingsView.Eastern, StandingsMode.Playoffs)) },
             ContentCase("standings.eastDivision") { StandingsAuditScreen(standings(StandingsView.Eastern, StandingsMode.Division)) },
             ContentCase("standings.westPlayoffs") { StandingsAuditScreen(standings(StandingsView.Western, StandingsMode.Playoffs)) },

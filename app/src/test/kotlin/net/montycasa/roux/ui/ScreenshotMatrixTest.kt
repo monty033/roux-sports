@@ -53,6 +53,8 @@ class ScreenshotMatrixTest {
             "scores.data",
             "scores.empty",
             "scores.stale",
+            "scores.offseason",
+            "scores.offseason.opener",
             "standings.eastPlayoffs",
             "standings.eastDivision",
             "standings.westPlayoffs",

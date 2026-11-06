@@ -50,6 +50,8 @@ import net.montycasa.roux.ui.player.PlayerDetailScreen
 import net.montycasa.roux.ui.reach.assertPrimaryControlsReachable
 import net.montycasa.roux.ui.reach.primaryControl
 import net.montycasa.roux.ui.reach.reachTargets
+import net.montycasa.roux.ui.scores.OffSeasonUi
+import net.montycasa.roux.ui.scores.OpeningNightUi
 import net.montycasa.roux.ui.scores.ScoresScreen
 import net.montycasa.roux.ui.scores.ScoresUiState
 import net.montycasa.roux.ui.standings.StandingsScreen
@@ -107,6 +109,40 @@ class ReachAuditTest {
     private val scoresData = scoresFresh.copy(rows = listOf(scoreGame))
     private val scoresStale =
         scoresData.copy(freshness = Freshness.Stale(Instant.parse("2025-10-25T23:42:00Z")))
+    private val scoresOffSeason =
+        ScoresUiState(
+            selectedDate = "2026-07-20",
+            today = "2026-07-20",
+            freshness = Freshness.Fresh,
+            dateIndex = listOf(DateIndexEntry("2026-06-14", 1), DateIndexEntry("2026-07-20", 0)),
+            offSeason = OffSeasonUi("2026-06-14", "2026-09-19", "2025–26"),
+        )
+    private val scoresOffSeasonOpener =
+        ScoresUiState(
+            selectedDate = "2026-09-29",
+            today = "2026-07-20",
+            rows =
+                listOf(
+                    Game(
+                        id = GameId("2026020001"),
+                        date = "2026-09-29",
+                        state = GameState.Final,
+                        home = TeamRef(TeamKey("TOR"), name = "Toronto Maple Leafs"),
+                        away = TeamRef(TeamKey("MTL"), name = "Montréal Canadiens"),
+                        homeScore = 4,
+                        awayScore = 2,
+                    ),
+                ),
+            freshness = Freshness.Fresh,
+            dateIndex = listOf(DateIndexEntry("2026-06-14", 1), DateIndexEntry("2026-09-29", 1)),
+            offSeason =
+                OffSeasonUi(
+                    "2026-06-14",
+                    "2026-09-19",
+                    "2025–26",
+                    openingNight = OpeningNightUi("2026-09-29", "2026–27"),
+                ),
+        )
 
     /** The date chips the screen draws for this state, from the same policy call the screen makes. */
     private fun scoreChips(state: ScoresUiState): List<String> = listOf("scores.previous", "scores.next", "scores.dateLabel")
@@ -274,6 +310,16 @@ class ReachAuditTest {
             AuditCase("scores.data", scoreChips(scoresData), { ScoresScreen(scoresData, {}, {}, {}) }),
             AuditCase("scores.empty", scoreChips(scoresFresh) + "scores.nextGames", { ScoresScreen(scoresFresh, {}, {}, {}) }),
             AuditCase("scores.stale", scoreChips(scoresStale) + "scores.retry", { ScoresScreen(scoresStale, {}, {}, {}) }),
+            AuditCase(
+                "scores.offseason",
+                scoreChips(scoresOffSeason) + "scores.showLastGames",
+                { ScoresScreen(scoresOffSeason, {}, {}, {}) },
+            ),
+            AuditCase(
+                "scores.offseason.opener",
+                scoreChips(scoresOffSeasonOpener) + "scores.showLastGames",
+                { ScoresScreen(scoresOffSeasonOpener, {}, {}, {}) },
+            ),
             AuditCase(
                 "standings.eastPlayoffs",
                 navTags + "standings.view",
@@ -453,9 +499,9 @@ class ReachAuditTest {
 
     @Test
     @Config(qualifiers = "en-rUS-w411dp-h923dp-420dpi")
-    fun assertPrimaryControlsReachableAt411x923() = audit(size = "w411dp-h923dp-420dpi", expectedCombinations = 68)
+    fun assertPrimaryControlsReachableAt411x923() = audit(size = "w411dp-h923dp-420dpi", expectedCombinations = 76)
 
     @Test
     @Config(qualifiers = "en-rUS-w360dp-h780dp")
-    fun assertPrimaryControlsReachableAt360x780() = audit(size = "w360dp-h780dp", expectedCombinations = 68)
+    fun assertPrimaryControlsReachableAt360x780() = audit(size = "w360dp-h780dp", expectedCombinations = 76)
 }

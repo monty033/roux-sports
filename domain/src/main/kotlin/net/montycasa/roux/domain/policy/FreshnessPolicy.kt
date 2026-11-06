@@ -1,6 +1,7 @@
 package net.montycasa.roux.domain.policy
 
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -56,6 +57,12 @@ object FreshnessPolicy {
     val liveStandingsAge: Duration = 10.minutes
     val idleStandingsAge: Duration = 1.hours
     val seasonsAge: Duration = 24.hours
+
+    /**
+     * Opening night is a season fact, not a live result. A week is long enough that a launch does
+     * not re-walk the schedule, while a correction or a late-published game is picked up quickly.
+     */
+    val openingNightAge: Duration = 7.days
     val liveDetailAge: Duration = 30.seconds
     val scheduledDetailAge: Duration = 5.minutes
 
@@ -140,6 +147,9 @@ object FreshnessPolicy {
 
     /** The season list changes once a season, so a daily check is sufficient. */
     fun seasonsMaxAge(): Duration = seasonsAge
+
+    /** The resolved opening night is cached for a week, so a launch does not re-walk the schedule. */
+    fun openingNightMaxAge(): Duration = openingNightAge
 
     /** Start times and broadcasts move; final results do not. Six hours is the schedule's starting point. */
     fun clubScheduleMaxAge(): Duration = clubScheduleAge

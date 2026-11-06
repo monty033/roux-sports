@@ -4,6 +4,7 @@ package net.montycasa.roux.ui.scores
 
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -32,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -83,8 +86,25 @@ fun ScoresScreen(
     // swapped them for "Loading scores..." the instant the selection moved - two frames of an empty page in the
     // recording. The copy is decided per page below, where "does this page have anything to draw" is known.
     val missing = state.freshness == Freshness.Missing && state.rows.isEmpty()
+    val offSeason = state.offSeason
+    val atLastGameDate = offSeason != null && state.selectedDate == offSeason.lastGameDate
+    val atOpeningNight = offSeason?.openingNight?.date == state.selectedDate
+    // An empty date inside the off-season window, but not the two days the card exists to name.
+    val emptyDark =
+        offSeason != null &&
+            !missing &&
+            state.rows.isEmpty() &&
+            !atLastGameDate &&
+            !atOpeningNight &&
+            state.favoritesHint != FavoritesHint.NoFavouriteGames
     val emptyDate = !missing && state.rows.isEmpty() && state.favoritesHint != FavoritesHint.NoFavouriteGames
-    val nextDate = if (emptyDate) DateStrip.nextGameDate(state.dateIndex, state.selectedDate) else null
+    val nextDate =
+        if (emptyDate && !emptyDark && offSeason == null) {
+            DateStrip.nextGameDate(state.dateIndex, state.selectedDate)
+        } else {
+            null
+        }
+    val offSeasonNextLabel = offSeason?.nextGameDate?.let { LocalDate.parse(it).format(formatter) }
     // The plan's window is a week either way; the strip scrolls, so a partially visible chip is the
     // affordance, not a defect to be designed away.
     val dates =
@@ -229,6 +249,9 @@ fun ScoresScreen(
                                         }
                                     }
                                 } else {
+                                    offSeason?.let { season ->
+                                        item { OffSeasonCard(season, formatter) }
+                                    }
                                     state.favoritesHint?.let { hint ->
                                         item {
                                             Text(
@@ -243,7 +266,20 @@ fun ScoresScreen(
                                             )
                                         }
                                     }
-                                    if (emptyDate) {
+                                    if (emptyDark) {
+                                        item {
+                                            Text(
+                                                offSeasonNextLabel?.let {
+                                                    stringResource(R.string.scores_offseason_no_games, it)
+                                                } ?: stringResource(R.string.scores_empty_date, dateLabel),
+                                                modifier =
+                                                    Modifier
+                                                        .padding(Reach.EDGE_INSET_DP.dp)
+                                                        .testTag("scores.offseason.empty"),
+                                                style = MaterialTheme.typography.titleMedium,
+                                            )
+                                        }
+                                    } else if (emptyDate) {
                                         item {
                                             Text(
                                                 stringResource(R.string.scores_empty_date, dateLabel),
@@ -295,7 +331,20 @@ fun ScoresScreen(
                         }
                     }
                     // Recovery takes priority over date navigation so a dead screen has one clear exit.
-                    if (nextDate != null && stale == null && state.error == null) {
+                    val lastGameDate = offSeason?.lastGameDate
+                    val showLastGames = lastGameDate != null && state.selectedDate != lastGameDate
+                    if (showLastGames && stale == null && state.error == null) {
+                        Button(
+                            onClick = { onSelectDate(lastGameDate) },
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 56.dp)
+                                    .primaryControl("scores.showLastGames"),
+                        ) {
+                            Text(stringResource(R.string.scores_show_last_games))
+                        }
+                    } else if (nextDate != null && stale == null && state.error == null) {
                         Button(
                             onClick = { onSelectDate(nextDate) },
                             modifier =
@@ -316,6 +365,42 @@ fun ScoresScreen(
         if (calendarOpen) {
             CalendarMonthSheet(state.selectedDate, state.today, state.dateIndex, onSelectDate, { calendarOpen = false })
         }
+    }
+}
+
+@Composable
+private fun OffSeasonCard(
+    season: OffSeasonUi,
+    formatter: DateTimeFormatter,
+) {
+    val nextGameLabel = season.nextGameDate?.let { LocalDate.parse(it).format(formatter) }
+    val opening = season.openingNight
+    val openingLabel = opening?.date?.let { LocalDate.parse(it).format(formatter) }
+    Column(
+        Modifier
+            .padding(horizontal = 12.dp)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(14.dp)
+            .testTag("scores.offseason"),
+    ) {
+        Text(
+            when {
+                opening != null && openingLabel != null -> {
+                    stringResource(R.string.scores_offseason_opening, opening.seasonLabel, openingLabel)
+                }
+
+                nextGameLabel != null -> {
+                    stringResource(R.string.scores_offseason_card, season.seasonLabel, nextGameLabel)
+                }
+
+                else -> {
+                    stringResource(R.string.scores_offseason_card_no_next, season.seasonLabel)
+                }
+            },
+            style = MaterialTheme.typography.bodyLarge,
+        )
     }
 }
 

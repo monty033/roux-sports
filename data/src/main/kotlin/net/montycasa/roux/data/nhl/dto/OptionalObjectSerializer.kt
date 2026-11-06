@@ -33,6 +33,8 @@ internal abstract class OptionalObjectSerializer<T : Any>(
 
 internal object GameOutcomeSerializer : OptionalObjectSerializer<GameOutcomeDto>(GameOutcomeDto.serializer())
 
+internal object SeriesStatusSerializer : OptionalObjectSerializer<SeriesStatusDto>(SeriesStatusDto.serializer())
+
 internal object PeriodDescriptorSerializer : OptionalObjectSerializer<PeriodDescriptorDto>(PeriodDescriptorDto.serializer())
 
 internal object ClockSerializer : OptionalObjectSerializer<ClockDto>(ClockDto.serializer())

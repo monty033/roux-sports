@@ -25,6 +25,9 @@ class NhlApiTest {
     fun scoreUsesExactDatedPath() = assertPath("/v1/score/2026-10-25") { score("2026-10-25") }
 
     @Test
+    fun scheduleUsesExactDatedPath() = assertPath("/v1/schedule/2026-09-19") { schedule("2026-09-19") }
+
+    @Test
     fun seasonsUsesExactPath() = assertPath("/v1/standings-season") { seasons() }
 
     @Test
@@ -105,6 +108,7 @@ class NhlApiTest {
     fun everyPublicMethodAvoidsNowPath() =
         withResponse { api, engine ->
             api.score("2026-10-25")
+            api.schedule("2026-09-19")
             api.standings("2026-10-25")
             api.seasons()
             api.roster("ANA")
@@ -113,7 +117,7 @@ class NhlApiTest {
             api.gamecenterRightRail(GameId("2026020123"))
 
             val paths = engine.requestHistory.map { it.url.encodedPath }
-            assertEquals(7, paths.size)
+            assertEquals(8, paths.size)
             assertTrue(paths.toString(), paths.none { it.contains("now") })
         }
 

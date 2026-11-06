@@ -76,6 +76,23 @@ data class PeriodInfo(
     val running: Boolean? = null,
 )
 
+/**
+ * A playoff series' state after this game, from the score feed's `seriesStatus`.
+ *
+ * Only the score feed carries it, and only for playoff games; a regular-season game has none. A malformed
+ * `seriesStatus` is treated as absent rather than dropping the game it belongs to.
+ */
+data class SeriesStatus(
+    val round: Int? = null,
+    val seriesTitle: String? = null,
+    val neededToWin: Int? = null,
+    val topSeedTeamAbbrev: String? = null,
+    val topSeedWins: Int? = null,
+    val bottomSeedTeamAbbrev: String? = null,
+    val bottomSeedWins: Int? = null,
+    val gameNumberOfSeries: Int? = null,
+)
+
 /** A day's matchup, with optional scores and progress details from the NHL feed. */
 data class Game(
     val id: GameId,
@@ -97,6 +114,10 @@ data class Game(
      * shot count; a finished one has no use for them, so they ride along rather than being fetched.
      */
     val broadcasts: List<Broadcast> = emptyList(),
+    /** Overtime periods played, from `gameOutcome.otPeriods`; null when the feed omits it. */
+    val otPeriods: Int? = null,
+    /** Playoff series standing after this game; null outside the playoffs or when it did not decode. */
+    val series: SeriesStatus? = null,
 ) {
     // Validation of feed identifiers, dates, and missing or unexpected values belongs
     // to the adapter layer; these value types do not reject messy NHL data.
@@ -115,4 +136,8 @@ data class ScoreDay(
     val games: List<Game>,
     val dateIndex: List<DateIndexEntry>,
     val droppedCount: Int,
+    /** The feed's previous game date, which may be weeks earlier in the off-season. */
+    val previousGameDate: String? = null,
+    /** The feed's next game date, which is the first preseason game in the off-season. */
+    val nextGameDate: String? = null,
 )

@@ -37,6 +37,10 @@ enum class CacheKind(
     // freshness and failure, so a penalties refresh can never evict or overwrite the table it is joined onto.
     LeaguePenaltyTable(2, "league-penalties"),
 
+    // One resolved opening night per season. Two entries cover the season boundary: the night being
+    // walked now and the one still shown while the next schedule is being published.
+    OpeningNight(2, "opening-night"),
+
     // One entry per player. A club's roster has at most a few dozen players, and a fan who opens several profiles in a
     // session should not evict another club's stats, so the player kind gets its own cap.
     PlayerProfile(32, "player-profile"),

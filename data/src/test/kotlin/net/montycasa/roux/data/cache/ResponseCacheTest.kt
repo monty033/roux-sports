@@ -73,6 +73,9 @@ class ResponseCacheTest {
     fun standingsKeepsLatestThree() = assertCap(CacheKind.Standings, 3)
 
     @Test
+    fun openingNightKeepsTheCurrentAndNextSeason() = assertCap(CacheKind.OpeningNight, 2)
+
+    @Test
     fun eachDetailEndpointKeepsItsLatestTwenty() {
         assertCap(CacheKind.DetailLanding, 20)
         assertCap(CacheKind.DetailBoxscore, 20)

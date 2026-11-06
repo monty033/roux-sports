@@ -38,6 +38,7 @@ import okio.IOException
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -491,6 +492,215 @@ class ScoresViewModelTest {
         }
 
     @Test
+    fun darkLaunchSelectsOpeningNightAndNamesTheSeasonThatOpens() =
+        runTest {
+            val scores = FakeScoresRepository(testScheduler)
+            val opener = game(id = "opener", date = "2026-09-29")
+            scores.respond = { date, _ ->
+                when (date) {
+                    "2026-07-20" -> offSeasonDay(date)
+                    else -> freshDay(date, listOf(opener))
+                }
+            }
+            scores.resolveOpeningNight = { "2026-09-29" }
+            val viewModel =
+                viewModel(
+                    scores,
+                    clock = FixedClock(Instant.parse("2026-07-20T16:00:00Z")),
+                )
+
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+
+                assertEquals(listOf("2026-07-20", "2026-09-29"), scores.calls.map { it.date })
+                assertEquals(listOf("2026-09-19"), scores.openingNightCalls)
+                val state = expectMostRecentItem()
+                assertEquals("2026-09-29", state.selectedDate)
+                assertEquals("2026-06-14", state.offSeason?.lastGameDate)
+                assertEquals("2026-09-19", state.offSeason?.nextGameDate)
+                assertEquals("2025–26", state.offSeason?.seasonLabel)
+                assertEquals("2026-09-29", state.offSeason?.openingNight?.date)
+                assertEquals("2026–27", state.offSeason?.openingNight?.seasonLabel)
+                assertEquals(listOf(opener), state.rows)
+                assertNull(state.error)
+                assertFalse(state.isRefreshing)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun anUnknownOpeningNightFallsBackToTheLastGameDayAndShowsEveryGameDespiteFavourites() =
+        runTest {
+            val scores = FakeScoresRepository(testScheduler)
+            val favourite = game(id = "favourite", home = "MTL")
+            val other =
+                game(id = "final", home = "FLA").copy(away = TeamRef(TeamKey("EDM")))
+            scores.respond = { date, _ ->
+                when (date) {
+                    "2026-07-20" -> offSeasonDay(date)
+                    else -> freshDay(date, listOf(favourite, other))
+                }
+            }
+            scores.resolveOpeningNight = { null }
+            val preferences = FakePreferencesRepository(teams = setOf(TeamKey("MTL")))
+            val viewModel =
+                viewModel(
+                    scores,
+                    preferences,
+                    clock = FixedClock(Instant.parse("2026-07-20T16:00:00Z")),
+                )
+
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+
+                assertEquals(listOf("2026-07-20", "2026-06-14"), scores.calls.map { it.date })
+                assertEquals(listOf("2026-09-19"), scores.openingNightCalls)
+                val state = expectMostRecentItem()
+                assertEquals("2026-06-14", state.selectedDate)
+                assertEquals("2026-06-14", state.offSeason?.lastGameDate)
+                assertEquals("2026-09-19", state.offSeason?.nextGameDate)
+                assertEquals("2025–26", state.offSeason?.seasonLabel)
+                assertNull(state.offSeason?.openingNight)
+                // The card's rule: the Final is shown even though MTL is the only favourite.
+                assertEquals(listOf(favourite, other), state.rows)
+                assertNull(state.favoritesHint)
+                assertNull(state.error)
+                assertFalse(state.isRefreshing)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun aDateChosenBeforeTheFirstLoadCompletesBeatsTheOpener() =
+        runTest {
+            val scores = FakeScoresRepository(testScheduler)
+            scores.respond = { date, _ ->
+                delay(1_000)
+                offSeasonDay(date)
+            }
+            scores.resolveOpeningNight = { "2026-09-29" }
+            val viewModel =
+                viewModel(
+                    scores,
+                    clock = FixedClock(Instant.parse("2026-07-20T16:00:00Z")),
+                )
+
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                // The first load is still asleep when the viewer picks a day.
+                viewModel.selectDate("2026-07-21")
+                runCurrent()
+                advanceTimeBy(1_000)
+                runCurrent()
+
+                assertEquals("2026-07-21", viewModel.uiState.value.selectedDate)
+                assertEquals("2026-07-21", expectMostRecentItem().selectedDate)
+                assertEquals(emptyList<String>(), scores.openingNightCalls)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun openingNightIsResolvedOnlyOncePerSession() =
+        runTest {
+            val scores = FakeScoresRepository(testScheduler)
+            scores.respond = { date, _ ->
+                when (date) {
+                    "2026-07-20" -> offSeasonDay(date)
+                    else -> offSeasonDay(date)
+                }
+            }
+            scores.resolveOpeningNight = { "2026-09-29" }
+            val viewModel =
+                viewModel(
+                    scores,
+                    clock = FixedClock(Instant.parse("2026-07-20T16:00:00Z")),
+                )
+
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                assertEquals("2026-09-29", expectMostRecentItem().selectedDate)
+                assertEquals(1, scores.openingNightCalls.size)
+
+                // A later dark day in the same session must not ask the schedule walk again.
+                viewModel.selectDate("2026-07-21")
+                runCurrent()
+
+                assertEquals("2026-07-21", expectMostRecentItem().selectedDate)
+                assertEquals(1, scores.openingNightCalls.size)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun midnightDoesNotRunTheOffSeasonSwitchAgain() =
+        runTest {
+            val scores = FakeScoresRepository(testScheduler)
+            scores.respond = { date, _ ->
+                when (date) {
+                    // The launch's dark day lands on 14 June.
+                    "2026-07-20" -> offSeasonDay(date)
+
+                    // Make the landed day's feed dark too: a re-run of the switch would move it to 13 June.
+                    "2026-06-14" -> offSeasonDay(date, previous = "2026-06-13")
+
+                    else -> offSeasonDay(date)
+                }
+            }
+            val clock = SchedulerClock(testScheduler, Instant.parse("2026-07-21T03:59:59Z"))
+            val viewModel = viewModel(scores, clock = clock)
+
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                assertEquals("2026-06-14", expectMostRecentItem().selectedDate)
+
+                advanceTimeBy(1_000)
+                runCurrent()
+
+                val afterMidnight = expectMostRecentItem()
+                assertEquals("2026-06-14", afterMidnight.selectedDate)
+                assertEquals("2026-07-21", afterMidnight.today)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun aMidnightReloadDoesNotOverrideADatePickedAfterTheLaunch() =
+        runTest {
+            val scores = FakeScoresRepository(testScheduler)
+            scores.respond = { date, _ ->
+                when (date) {
+                    "2026-07-20" -> offSeasonDay(date)
+                    "2026-06-14" -> freshDay(date, listOf(game(date = date)))
+                    else -> offSeasonDay(date)
+                }
+            }
+            val clock = SchedulerClock(testScheduler, Instant.parse("2026-07-21T03:59:59Z"))
+            val viewModel = viewModel(scores, clock = clock)
+
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                assertEquals("2026-06-14", expectMostRecentItem().selectedDate)
+                viewModel.selectDate("2026-06-15")
+                runCurrent()
+
+                advanceTimeBy(1_000)
+                runCurrent()
+
+                val afterMidnight = expectMostRecentItem()
+                assertEquals("2026-06-15", afterMidnight.selectedDate)
+                assertEquals("2026-07-21", afterMidnight.today)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
     fun newYorkMidnightRestartsAStoppedLoop() =
         runTest {
             val scores = FakeScoresRepository(testScheduler)
@@ -878,6 +1088,15 @@ private class FakeScoresRepository(
     ) {
         prefetchCalls += Call(scheduler.currentTime, date, today)
     }
+
+    /** The opener the repository would walk to; null models "not known yet". */
+    var resolveOpeningNight: suspend (String) -> String? = { null }
+    val openingNightCalls = mutableListOf<String>()
+
+    override suspend fun openingNight(startDate: String): String? {
+        openingNightCalls += startDate
+        return resolveOpeningNight(startDate)
+    }
 }
 
 private class FakePreferencesRepository(
@@ -1030,6 +1249,25 @@ private fun freshDay(
     date: String,
     games: List<Game> = listOf(game(date)),
 ): Loadable<ScoreDay> = Loadable(ScoreDay(date, games, emptyList(), 0), Freshness.Fresh, null)
+
+/** A captured off-season day: the feed's previous and next game days are in different seasons. */
+private fun offSeasonDay(
+    date: String,
+    previous: String? = "2026-06-14",
+    next: String? = "2026-09-19",
+): Loadable<ScoreDay> =
+    Loadable(
+        ScoreDay(
+            date = date,
+            games = emptyList(),
+            dateIndex = emptyList(),
+            droppedCount = 0,
+            previousGameDate = previous,
+            nextGameDate = next,
+        ),
+        Freshness.Fresh,
+        null,
+    )
 
 /** A clock pinned to one instant: these tests are about which day that instant falls on, not about the passage of time. */
 private class FixedClock(
