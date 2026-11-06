@@ -295,7 +295,13 @@ private fun StateRail(
         } else {
             when (game.state) {
                 GameState.Scheduled, GameState.Pre -> {
-                    StateClock(startTimeLabel(game), live = false)
+                    StateClock(
+                        startTimeLabel(game),
+                        live = false,
+                        style = Roux.cardTypography.startTime,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                    )
                     // A game that has not started has no shots to report, so the second line is the one thing
                     // a viewer wants before it does: where it will be shown.
                     // The line is given the rail's inner width so it can wrap down the card rather than push the
@@ -377,10 +383,11 @@ private fun WatchChannels(
     Text(
         line,
         Modifier.width(maxWidth).testTag(WATCH_TAG),
-        style = Roux.cardTypography.shots,
+        style = Roux.cardTypography.networks,
         color = Roux.accents.muted,
         textAlign = TextAlign.Start,
-        maxLines = 3,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
     )
 }
 
