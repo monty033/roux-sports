@@ -124,6 +124,7 @@ class GameWatchRun(
         when (alert) {
             is Alert.GameStart -> preferences.claimStart(gameId, alert.goalBaseline, now)
             is Alert.Goal -> preferences.claimGoal(gameId, alert.goalCount, now)
+            is Alert.Intermission -> preferences.claimIntermission(gameId, alert.period, now)
             is Alert.Final -> preferences.claimFinal(gameId, now)
             is Alert.Baseline -> preferences.claimBaseline(gameId, alert.goalCount, now)
         }

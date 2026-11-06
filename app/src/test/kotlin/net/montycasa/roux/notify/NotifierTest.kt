@@ -69,6 +69,16 @@ class NotifierTest {
         home: Int = 1,
     ) = Alert.Goal(GameId(gameId), away + home, away, home)
 
+    private fun intermission(period: Int = 1) =
+        Alert.Intermission(
+            gameId = GameId(gameId),
+            period = period,
+            awayAbbrev = "TOR",
+            homeAbbrev = "MTL",
+            awayScore = 2,
+            homeScore = 1,
+        )
+
     @Test
     fun bothChannelsExistAfterSetup() {
         val start = manager.getNotificationChannel(Notifier.GAME_START_CHANNEL)
@@ -227,6 +237,7 @@ class NotifierTest {
     fun eachAlertTypeLandsOnItsOwnChannel() {
         notifier.post(Alert.GameStart(GameId(gameId), goalBaseline = 0), shortNamed)
         notifier.post(goal(), shortNamed)
+        notifier.post(intermission(), shortNamed)
         notifier.post(final(FinalKind.REG), shortNamed)
 
         val channelByTitle = posted().associate { titleOf(it) to it.channelId }
@@ -234,10 +245,42 @@ class NotifierTest {
             mapOf(
                 "TOR at MTL" to "game_start",
                 "TOR 2 – 1 MTL" to "goals",
+                "End of the 1st · TOR 2 – 1 MTL" to "intermissions",
                 "Final: Maple Leafs 3, Canadiens 2" to "final_scores",
             ),
             channelByTitle,
         )
+    }
+
+    @Test
+    fun theIntermissionChannelIsItsOwnPromise() {
+        val channel = manager.getNotificationChannel("intermissions")
+
+        assertNotNull("an intermissions channel, so breaks can be silenced on their own", channel)
+        assertEquals("intermissions", Notifier.INTERMISSION_CHANNEL)
+        assertEquals("Intermissions", channel.name)
+        assertEquals(NotificationManager.IMPORTANCE_DEFAULT, channel.importance)
+        assertEquals("When a game you follow reaches an intermission.", channel.description)
+    }
+
+    @Test
+    fun anIntermissionStatesThePeriodAndScoreOnItsOwnChannel() {
+        notifier.post(intermission(period = 1), game)
+
+        val notification = posted().single()
+        assertEquals("End of the 1st · TOR 2 – 1 MTL", titleOf(notification))
+        assertEquals("Intermission", notification.extras.getString(Notification.EXTRA_TEXT))
+        assertEquals(Notifier.INTERMISSION_CHANNEL, notification.channelId)
+    }
+
+    @Test
+    fun theNextIntermissionReplacesTheLastOneForTheSameGame() {
+        val first = notifier.post(intermission(period = 1), game) as NotificationOutcome.Posted
+        val second = notifier.post(intermission(period = 2), game) as NotificationOutcome.Posted
+
+        assertEquals("the break is the news, not the history of breaks", first.id, second.id)
+        assertEquals("End of the 2nd · TOR 2 – 1 MTL", titleOf(posted().single()))
+        assertTrue(notifier.canPost(intermission(period = 3)))
     }
 
     @Test

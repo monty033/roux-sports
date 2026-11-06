@@ -5,6 +5,8 @@
     <string name="notify_channel_start_description">When a game you follow begins.</string>
     <string name="notify_channel_goals">Goals</string>
     <string name="notify_channel_goals_description">When a game you follow has a new goal.</string>
+    <string name="notify_channel_intermission">Intermissions</string>
+    <string name="notify_channel_intermission_description">When a game you follow reaches an intermission.</string>
     <string name="notify_channel_final">Final scores</string>
     <string name="notify_channel_final_description">When a game you follow ends</string>
 
@@ -21,4 +23,7 @@
     <string name="notify_final_so_title">Final/SO: %1$s</string>
     <string name="notify_start_title">%1$s at %2$s</string>
     <string name="notify_start_text">The game has started.</string>
+    <!-- Period ordinal, away abbreviation, away score, home score, home abbreviation: "End of the 1st · TOR 2 – 1 MTL". -->
+    <string name="notify_intermission_title">End of the %1$s · %2$s %3$d – %4$d %5$s</string>
+    <string name="notify_intermission_text">Intermission</string>
 </resources>

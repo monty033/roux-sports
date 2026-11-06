@@ -89,6 +89,15 @@ class Notifier(
                 description = context.getString(R.string.notify_channel_final_description)
             },
         )
+        notificationManager.createNotificationChannel(
+            NotificationChannel(
+                INTERMISSION_CHANNEL,
+                context.getString(R.string.notify_channel_intermission),
+                NotificationManager.IMPORTANCE_DEFAULT,
+            ).apply {
+                description = context.getString(R.string.notify_channel_intermission_description)
+            },
+        )
     }
 
     /**
@@ -148,6 +157,22 @@ class Notifier(
                         .build()
                 }
 
+                is Alert.Intermission -> {
+                    val title =
+                        context.getString(
+                            R.string.notify_intermission_title,
+                            periodOrdinal(alert.period),
+                            alert.awayAbbrev,
+                            alert.awayScore,
+                            alert.homeScore,
+                            alert.homeAbbrev,
+                        )
+                    base(id, channel, alert.gameId.value)
+                        .setContentTitle(title)
+                        .setContentText(context.getString(R.string.notify_intermission_text))
+                        .build()
+                }
+
                 is Alert.Final -> {
                     val teams =
                         context.getString(
@@ -200,6 +225,8 @@ class Notifier(
 
                 is Alert.Goal -> GOAL_KIND
 
+                is Alert.Intermission -> INTERMISSION_KIND
+
                 is Alert.Final -> FINAL_KIND
 
                 // Never posted, so the id is only asked for by the exhaustive when; it shares the goal's, as it always did.
@@ -245,6 +272,7 @@ class Notifier(
         when (alert) {
             is Alert.GameStart -> GAME_START_CHANNEL
             is Alert.Goal -> GOALS_CHANNEL
+            is Alert.Intermission -> INTERMISSION_CHANNEL
             is Alert.Final -> FINAL_CHANNEL
             is Alert.Baseline -> error("a baseline is not news and has no channel")
         }
@@ -276,12 +304,14 @@ class Notifier(
     companion object {
         const val GAME_START_CHANNEL = "game_start"
         const val GOALS_CHANNEL = "goals"
+        const val INTERMISSION_CHANNEL = "intermissions"
         const val FINAL_CHANNEL = "final_scores"
         const val EXTRA_GAME_ID = "net.montycasa.roux.extra.GAME_ID"
 
         private const val START_KIND = 0
         private const val GOAL_KIND = 1
-        private const val FINAL_KIND = 2
-        private const val KINDS = 3
+        private const val INTERMISSION_KIND = 2
+        private const val FINAL_KIND = 3
+        private const val KINDS = 4
     }
 }
