@@ -19,10 +19,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import net.montycasa.roux.R
@@ -35,6 +37,9 @@ internal fun StateClock(
     live: Boolean,
     intermission: Boolean = false,
     inline: Boolean = false,
+    style: TextStyle = Roux.cardTypography.clock,
+    color: Color = if (live) Roux.accents.signature else MaterialTheme.colorScheme.onSurfaceVariant,
+    maxLines: Int = Int.MAX_VALUE,
 ) {
     val breakDescription = if (intermission) stringResource(R.string.game_row_intermission) else null
     Text(
@@ -45,9 +50,10 @@ internal fun StateClock(
         modifier =
             (if (inline) Modifier.width(IntrinsicSize.Max) else Modifier.fillMaxWidth())
                 .semantics { if (breakDescription != null) contentDescription = "$text, $breakDescription" },
-        style = Roux.cardTypography.clock,
-        color = if (live) Roux.accents.signature else MaterialTheme.colorScheme.onSurfaceVariant,
+        style = style,
+        color = color,
         textAlign = TextAlign.Start,
+        maxLines = maxLines,
     )
 }
 

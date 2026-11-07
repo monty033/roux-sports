@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
+import net.montycasa.roux.domain.model.Broadcast
 import net.montycasa.roux.domain.model.DateIndexEntry
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameBoxscore
@@ -76,6 +77,13 @@ internal object AuditStates {
             home = TeamRef(TeamKey("TOR"), name = "Toronto Maple Leafs"),
             away = TeamRef(TeamKey("MTL"), name = "Montréal Canadiens"),
             startTimeUtc = Instant.parse("2025-10-25T23:00:00Z"),
+            // The audit needs a real networks line so the rail's supporting type is measured too, not only
+            // the start time above it.
+            broadcasts =
+                listOf(
+                    Broadcast("NHLN", "US", "N"),
+                    Broadcast("SN", "CA", "N"),
+                ),
         )
     private val scoresFresh = ScoresUiState(scoreDate, today = scoreDate, freshness = Freshness.Fresh, dateIndex = scoreIndex)
     private val scoresData = scoresFresh.copy(rows = listOf(scoreGame))

@@ -22,6 +22,10 @@ data class GameCardTypography(
     val clubName: TextStyle,
     val score: TextStyle,
     val clock: TextStyle,
+    /** The scheduled start time: the strongest line in an upcoming card's rail. */
+    val startTime: TextStyle,
+    /** Broadcast networks under an upcoming start time: supporting detail, never competing with it. */
+    val networks: TextStyle,
     val finalState: TextStyle,
     val shots: TextStyle,
 )
@@ -31,6 +35,8 @@ val RouxCardTypography =
         clubName = cardText.copy(fontSize = 15.sp, fontWeight = FontWeight.SemiBold, lineHeight = 20.sp, letterSpacing = (-0.005).em),
         score = cardText.copy(fontSize = 22.sp, fontWeight = FontWeight.Medium, lineHeight = 22.sp, letterSpacing = (-0.02).em),
         clock = cardText.copy(fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 16.sp),
+        startTime = cardText.copy(fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 18.sp),
+        networks = cardText.copy(fontSize = 12.sp, fontWeight = FontWeight.Medium, lineHeight = 14.sp),
         finalState =
             cardText.copy(
                 fontSize = 12.sp,

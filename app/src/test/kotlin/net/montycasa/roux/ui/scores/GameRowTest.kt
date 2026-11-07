@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalDensity
@@ -54,6 +55,7 @@ import net.montycasa.roux.ui.theme.RouxDarkColors
 import net.montycasa.roux.ui.theme.RouxLightAccents
 import net.montycasa.roux.ui.theme.RouxLightColors
 import net.montycasa.roux.ui.theme.RouxTheme
+import net.montycasa.roux.ui.theme.contrastRatio
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -697,6 +699,7 @@ class GameRowTest {
         val rail = rule.onNodeWithTag(STATE_RAIL_TAG, useUnmergedTree = true).fetchSemanticsNode()
         assertEquals("scheduled rail contains only the time", listOf(time.fetchSemanticsNode().id), rail.children.map { it.id })
         assertEquals("tnum", textLayout(time).layoutInput.style.fontFeatureSettings)
+        assertEquals("the start time is one line", 1, textLayout(time).lineCount)
         assertStartAlignedStack(listOf(time))
     }
 
@@ -708,6 +711,90 @@ class GameRowTest {
 
     @Test
     fun pregameShowsDashesToo() = assertUpcoming(dark = false, state = GameState.Pre)
+
+    /**
+     * The rail has two lines before puck drop and they are not equals: the start time is the strongest thing in
+     * it, the networks are supporting detail. This compares the two rendered lines with each other - never a
+     * hard-coded size - so a palette or type-scale change that inverted the hierarchy fails here even if both
+     * lines still fit.
+     */
+    private fun assertScheduledRailHierarchy(dark: Boolean) {
+        launch(
+            scheduled.copy(
+                broadcasts =
+                    listOf(
+                        Broadcast("MSG", "US", "H"),
+                        Broadcast("NHLN", "US", "N"),
+                        Broadcast("SN", "CA", "N"),
+                    ),
+            ),
+            dark = dark,
+        )
+        val time = rule.onNodeWithText("7:00 PM", useUnmergedTree = true)
+        val networks = rule.onNodeWithTag(WATCH_TAG, useUnmergedTree = true)
+        val timeStyle = textLayout(time).layoutInput.style
+        val networkStyle = textLayout(networks).layoutInput.style
+        val timeWeight = timeStyle.fontWeight ?: FontWeight.Normal
+        val networkWeight = networkStyle.fontWeight ?: FontWeight.Normal
+
+        assertTrue(
+            "start time size ${timeStyle.fontSize} must exceed networks size ${networkStyle.fontSize}",
+            timeStyle.fontSize.value > networkStyle.fontSize.value,
+        )
+        assertTrue(
+            "start time weight ${timeWeight.weight} must exceed networks weight ${networkWeight.weight}",
+            timeWeight.weight > networkWeight.weight,
+        )
+        val background = if (dark) RouxDarkColors.surfaceVariant else RouxLightColors.surfaceVariant
+        val timeContrast = strongestContrast(time, background)
+        val networkContrast = strongestContrast(networks, background)
+        assertTrue(
+            "start time contrast $timeContrast must exceed the networks' $networkContrast",
+            timeContrast > networkContrast,
+        )
+        assertEquals("the start time stays on one line", 1, textLayout(time).lineCount)
+        val networkLayout = textLayout(networks)
+        assertTrue("the networks stay within two lines", networkLayout.lineCount <= 2)
+        assertFalse("a representative networks line is not clipped", networkLayout.hasVisualOverflow)
+        println(
+            "Measured ${if (dark) "dark" else "light"} scheduled rail: " +
+                "time ${timeStyle.fontSize}/${timeWeight.weight} contrast=$timeContrast; " +
+                "networks ${networkStyle.fontSize}/${networkWeight.weight} contrast=$networkContrast; " +
+                "networks lines=${networkLayout.lineCount} overflow=${networkLayout.hasVisualOverflow}",
+        )
+    }
+
+    private fun strongestContrast(
+        node: SemanticsNodeInteraction,
+        background: Color,
+    ): Float {
+        val pixels = node.captureToImage().toPixelMap()
+        var strongest = 0f
+        for (y in 0 until pixels.height) {
+            for (x in 0 until pixels.width) {
+                strongest = maxOf(strongest, contrastRatio(pixels[x, y], background))
+            }
+        }
+        return strongest
+    }
+
+    @Test
+    fun scheduledStartTimeStaysOneLineAtDoubleTypeOnTheNinetyTwoDpRail() {
+        launch(scheduled, fontScale = 2f)
+        val rail = rule.onNodeWithTag(STATE_RAIL_TAG).getUnclippedBoundsInRoot()
+        val time = textLayout(rule.onNodeWithText("7:00 PM", useUnmergedTree = true))
+
+        assertTrue("the rail starts at its 92 dp floor, was ${rail.width}", rail.width >= 92.dp)
+        assertEquals("the start time stays on one line at 2x type", 1, time.lineCount)
+        assertFalse("the start time clips at 2x type", time.hasVisualOverflow)
+        println("Measured 2x start time: rail=${rail.width}, lines=${time.lineCount}, overflow=${time.hasVisualOverflow}")
+    }
+
+    @Test
+    fun scheduledTimeIsStrongerThanTheNetworksLineLight() = assertScheduledRailHierarchy(dark = false)
+
+    @Test
+    fun scheduledTimeIsStrongerThanTheNetworksLineDark() = assertScheduledRailHierarchy(dark = true)
 
     @Test
     fun anUpcomingGameNamesItsNetworksNationalFirst() {
@@ -752,6 +839,15 @@ class GameRowTest {
         assertTrue(
             "the channel line (${watch.width}) runs past the rail's insets",
             watch.width.value <= rail.width.value - 19f + 1f,
+        )
+        val watchLayout = textLayout(rule.onNodeWithTag(WATCH_TAG))
+        assertTrue(
+            "the network line is allowed two lines, not a third",
+            watchLayout.lineCount <= 2,
+        )
+        println(
+            "Measured long network list: ${watchLayout.lineCount} lines, " +
+                "overflow=${watchLayout.hasVisualOverflow}",
         )
     }
 
