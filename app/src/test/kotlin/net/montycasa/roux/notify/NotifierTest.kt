@@ -269,7 +269,10 @@ class NotifierTest {
 
         val notification = posted().single()
         assertEquals("1st Intermission · TOR 2 – 1 MTL", titleOf(notification))
-        assertEquals("End of the 1st period.", notification.extras.getString(Notification.EXTRA_TEXT))
+        assertNull(
+            "the title carries the whole message, so a body line would only repeat it",
+            notification.extras.getCharSequence(Notification.EXTRA_TEXT),
+        )
         assertEquals(Notifier.INTERMISSION_CHANNEL, notification.channelId)
     }
 

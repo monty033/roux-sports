@@ -25,6 +25,4 @@
     <string name="notify_start_text">The game has started.</string>
     <!-- Period ordinal, away abbreviation, away score, home score, home abbreviation: "1st Intermission · TOR 2 – 1 MTL". -->
     <string name="notify_intermission_title">%1$s Intermission · %2$s %3$d – %4$d %5$s</string>
-    <!-- The ordinal is in the title already, so the body names the period without repeating the score. -->
-    <string name="notify_intermission_text">End of the %1$s period.</string>
 </resources>
