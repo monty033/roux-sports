@@ -168,9 +168,10 @@ class Notifier(
                             alert.homeScore,
                             alert.homeAbbrev,
                         )
+                    // Title only: the break and the score are the whole message, so a second line would
+                    // only repeat the ordinal.
                     base(id, channel, alert.gameId.value)
                         .setContentTitle(title)
-                        .setContentText(context.getString(R.string.notify_intermission_text, ordinal))
                         .build()
                 }
 
