@@ -7,10 +7,13 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import net.montycasa.roux.data.nhl.dto.PeriodShotsDto
 import net.montycasa.roux.data.nhl.dto.RightRailDto
+import net.montycasa.roux.data.nhl.dto.SeasonSeriesGameDto
 import net.montycasa.roux.data.nhl.dto.TeamStatRowDto
 import net.montycasa.roux.domain.model.GameRightRail
+import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.PeriodShots
 import net.montycasa.roux.domain.model.PowerPlaySummary
+import net.montycasa.roux.domain.model.SeasonSeriesGame
 import net.montycasa.roux.domain.model.ShotTotals
 import net.montycasa.roux.domain.model.TeamStat
 
@@ -50,6 +53,7 @@ internal object RightRailAdapter {
                 shots = rows.shots(periodShots),
                 shotsByPeriod = periodShots.periodShots(),
                 powerPlay = rows.powerPlay(),
+                seasonSeries = rail.seasonSeries.orEmpty().mapNotNull { it?.toSeasonSeriesGame() },
                 // Every remaining row is passed through in the notation the league used, so the page can decide how to
                 // draw it. Dropping the rows the page has no typed field for is how eight of ten stats went missing.
                 teamStats =
@@ -64,6 +68,20 @@ internal object RightRailAdapter {
     }
 
     private fun List<TeamStatRowDto>.row(category: String): TeamStatRowDto? = firstOrNull { it.category == category }
+
+    /** A season-series game without an id cannot be placed in the series, so it is dropped rather than numbered. */
+    private fun SeasonSeriesGameDto.toSeasonSeriesGame(): SeasonSeriesGame? {
+        val gameId = id ?: return null
+        return SeasonSeriesGame(
+            gameId = gameId,
+            gameType = gameType,
+            state = GameState.fromFeed(gameState ?: ""),
+            awayAbbrev = awayTeam?.abbrev,
+            awayScore = awayTeam?.score,
+            homeAbbrev = homeTeam?.abbrev,
+            homeScore = homeTeam?.score,
+        )
+    }
 
     /**
      * The per-period detail, kept as the page reads it: period order, both sides present.
