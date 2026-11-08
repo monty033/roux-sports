@@ -219,7 +219,8 @@ private fun PlayerBody(
             onSelect = { tab -> scope.launch { pager.animateScrollToPage(tab.ordinal) } },
             tagPrefix = "player.tab",
             wrapLabels = true,
-            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp),
+            // 8 dp above the bar keeps a scrolled row that is cut off at the pager's edge 8 dp clear of it (R4 gap).
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
             label = { tab -> tabLabel(tab) },
         )
     }
