@@ -11,6 +11,7 @@ import kotlinx.coroutines.test.setMain
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import net.montycasa.roux.domain.Freshness
+import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.PlayerCareer
 import net.montycasa.roux.domain.model.PlayerGame
@@ -20,6 +21,7 @@ import net.montycasa.roux.domain.model.PlayerTotals
 import net.montycasa.roux.domain.repo.PlayerProfileRepository
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import kotlin.time.Clock
@@ -54,22 +56,63 @@ class PlayerDetailViewModelTest {
             viewModel(repository)
             runCurrent()
 
-            assertEquals(listOf(20262027), repository.requestedSeasons)
+            assertEquals(20262027, repository.requestedSeasons.first())
         }
 
-    /** The 2025-26 games are there, but the player has none yet in 2026-27: the log is empty, not last season's games. */
+    /**
+     * The season being played has no games yet, and the profile has a 2025-26 NHL regular season: the log shows those
+     * games instead, names the season, and makes exactly one extra request.
+     */
     @Test
-    fun aPlayerWithNoGamesThisSeasonGetsAnEmptyLogAndNeverLastSeasonsGames() =
+    fun anEmptySeasonBeingPlayedFallsBackToTheNewestNhlRegularSeasonOnce() =
         runTest {
+            val older = game(gameId = 1L)
             val repository =
                 FakeRepository(
                     profile(newestSeason = 20252026),
-                    gamesBySeason = mapOf(20252026 to listOf(game(gameId = 1L))),
+                    gamesBySeason = mapOf(20252026 to listOf(older)),
                 )
 
             val viewModel = viewModel(repository)
             runCurrent()
 
+            assertEquals(listOf(20262027, 20252026), repository.requestedSeasons)
+            assertEquals(20252026, viewModel.uiState.value.gameLogFallbackSeason)
+            assertEquals(
+                listOf(older),
+                viewModel.uiState.value.gameLog
+                    ?.data,
+            )
+        }
+
+    /** A newer AHL season is another league's games, so the NHL season before it is the one the log falls back to. */
+    @Test
+    fun aNewerAhlSeasonIsIgnoredWhenChoosingTheFallback() =
+        runTest {
+            val repository =
+                FakeRepository(
+                    profileWith(listOf(seasonLine(20242025), seasonLine(20252026, league = "AHL"))),
+                    gamesBySeason = mapOf(20242025 to listOf(game(gameId = 1L))),
+                )
+
+            val viewModel = viewModel(repository)
+            runCurrent()
+
+            assertEquals(listOf(20262027, 20242025), repository.requestedSeasons)
+            assertEquals(20242025, viewModel.uiState.value.gameLogFallbackSeason)
+        }
+
+    /** A player with no NHL regular-season row at all gets the empty log and no second request. */
+    @Test
+    fun aPlayerWithNoNhlRegularSeasonGetsNoFallbackRequest() =
+        runTest {
+            val repository = FakeRepository(profileWith(listOf(seasonLine(20252026, league = "AHL"))))
+
+            val viewModel = viewModel(repository)
+            runCurrent()
+
+            assertEquals(listOf(20262027), repository.requestedSeasons)
+            assertNull(viewModel.uiState.value.gameLogFallbackSeason)
             assertEquals(
                 emptyList<PlayerGame>(),
                 viewModel.uiState.value.gameLog
@@ -77,7 +120,52 @@ class PlayerDetailViewModelTest {
             )
         }
 
-    /** The season being played has games, and they are the log that is shown. */
+    /** A failed season being played is a failure on screen, not an empty season to be replaced by an older one. */
+    @Test
+    fun aFailedCurrentSeasonIsNeverReplacedByAnOlderSeason() =
+        runTest {
+            val repository =
+                FakeRepository(
+                    profile(newestSeason = 20252026),
+                    gamesBySeason = mapOf(20252026 to listOf(game(gameId = 1L))),
+                    failingSeasons = setOf(20262027),
+                )
+
+            val viewModel = viewModel(repository)
+            runCurrent()
+
+            assertEquals(listOf(20262027), repository.requestedSeasons)
+            assertNull(viewModel.uiState.value.gameLogFallbackSeason)
+            assertEquals(
+                LoadError.Local,
+                viewModel.uiState.value.gameLog
+                    ?.error,
+            )
+        }
+
+    /** When the fallback season cannot be read, the empty season being played stays on screen and names no season. */
+    @Test
+    fun aFailedFallbackKeepsTheEmptySeasonBeingPlayed() =
+        runTest {
+            val repository =
+                FakeRepository(
+                    profile(newestSeason = 20252026),
+                    failingSeasons = setOf(20252026),
+                )
+
+            val viewModel = viewModel(repository)
+            runCurrent()
+
+            assertEquals(listOf(20262027, 20252026), repository.requestedSeasons)
+            assertNull(viewModel.uiState.value.gameLogFallbackSeason)
+            assertEquals(
+                emptyList<PlayerGame>(),
+                viewModel.uiState.value.gameLog
+                    ?.data,
+            )
+        }
+
+    /** The season being played has games, and they are the log that is shown, from exactly one request. */
     @Test
     fun theCurrentSeasonsGamesAreTheLogThatIsShown() =
         runTest {
@@ -87,6 +175,8 @@ class PlayerDetailViewModelTest {
             val viewModel = viewModel(repository)
             runCurrent()
 
+            assertEquals(listOf(20262027), repository.requestedSeasons)
+            assertNull(viewModel.uiState.value.gameLogFallbackSeason)
             assertEquals(
                 listOf(current),
                 viewModel.uiState.value.gameLog
@@ -132,25 +222,29 @@ class PlayerDetailViewModelTest {
         zone = zone,
     )
 
-    private fun profile(newestSeason: Int) =
+    private fun profile(newestSeason: Int) = profileWith(listOf(seasonLine(newestSeason)))
+
+    private fun profileWith(seasons: List<PlayerSeasonLine>) =
         PlayerProfile(
             playerId = PLAYER_ID,
             firstName = "Aleksi",
             lastName = "Heponiemi",
             position = "C",
             career = PlayerCareer(),
-            seasons =
-                listOf(
-                    PlayerSeasonLine(
-                        season = newestSeason,
-                        gameTypeId = 2,
-                        leagueAbbrev = "NHL",
-                        teamName = "Carolina Hurricanes",
-                        sequence = 1,
-                        totals = PlayerTotals.Skater(gamesPlayed = 60),
-                    ),
-                ),
+            seasons = seasons,
         )
+
+    private fun seasonLine(
+        season: Int,
+        league: String = "NHL",
+    ) = PlayerSeasonLine(
+        season = season,
+        gameTypeId = 2,
+        leagueAbbrev = league,
+        teamName = "Carolina Hurricanes",
+        sequence = 1,
+        totals = PlayerTotals.Skater(gamesPlayed = 60),
+    )
 
     private fun game(gameId: Long) =
         PlayerGame.Skater(
@@ -161,10 +255,14 @@ class PlayerDetailViewModelTest {
             goals = 1,
         )
 
-    /** Answers a game-log request from [gamesBySeason] and records each season asked for. */
+    /**
+     * Answers a game-log request from [gamesBySeason] and records each season asked for. A season in [failingSeasons]
+     * answers with a local failure instead.
+     */
     private class FakeRepository(
         private val profile: PlayerProfile,
         private val gamesBySeason: Map<Int, List<PlayerGame>> = emptyMap(),
+        private val failingSeasons: Set<Int> = emptySet(),
     ) : PlayerProfileRepository {
         val requestedSeasons = mutableListOf<Int>()
 
@@ -174,8 +272,10 @@ class PlayerDetailViewModelTest {
             playerId: Long,
             season: Int,
             isGoalie: Boolean,
+            gameType: Int,
         ): Loadable<List<PlayerGame>> {
             requestedSeasons += season
+            if (season in failingSeasons) return Loadable(null, Freshness.Missing, LoadError.Local)
             return Loadable(gamesBySeason[season].orEmpty(), Freshness.Fresh, null)
         }
     }

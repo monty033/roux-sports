@@ -31,7 +31,8 @@
     <string name="player_playoffs">Playoffs</string>
     <string name="player_gamelog_title">Game log %1$s season</string>
     <string name="player_gamelog_error">The game log could not be loaded.</string>
-    <string name="player_gamelog_empty">No games yet this season.</string>
+    <string name="player_gamelog_fallback_title">%1$s regular season · no games yet this season</string>
+    <string name="player_gamelog_empty">No NHL games yet</string>
     <string name="player_home_opponent">vs %1$s</string>
     <string name="player_away_opponent">@ %1$s</string>
     <string name="player_decision_win">W</string>

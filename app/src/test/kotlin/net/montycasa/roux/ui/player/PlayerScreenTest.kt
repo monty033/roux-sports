@@ -596,13 +596,29 @@ class PlayerScreenTest {
         show(loaded(skaterProfile(), gameLog = Loadable(emptyList(), Freshness.Fresh, null)))
         selectTab("GameLog")
 
-        rule.onNodeWithTag("player.gamelog.empty").assertTextEquals("No games yet this season.")
+        rule.onNodeWithTag("player.gamelog.empty").assertTextEquals("No NHL games yet")
         selectTab("Career")
         rule.onNodeWithTag("player.career.total.g").assertTextEquals("24")
         selectTab("Info")
         rule.onNodeWithTag("player.info.shoots").assertTextEquals("L")
         selectTab("Season")
         rule.onNodeWithTag("player.season.row.0.ast.label").assertTextEquals("AST")
+    }
+
+    /** The season being played had no games, so the log names the older regular season its rows come from. */
+    @Test
+    fun aFallbackLogNamesTheOlderRegularSeasonItShows() {
+        show(
+            loaded(
+                skaterProfile(seasons = listOf(line(20252026, "NHL", "Carolina Hurricanes", 1, skaterTotals(gamesPlayed = 60)))),
+                gameLog = Loadable(listOf(skaterGame(day = 1, isHome = false)), Freshness.Fresh, null),
+                gameLogFallbackSeason = 20252026,
+            ),
+        )
+        selectTab("GameLog")
+
+        rule.onNodeWithText("2025–26 REGULAR SEASON · NO GAMES YET THIS SEASON").assertExists()
+        rule.onNodeWithTag("player.gamelog.row.0.label", useUnmergedTree = true).assertTextEquals("Nov 1 · @ OTT")
     }
 
     @Test
@@ -876,7 +892,13 @@ class PlayerScreenTest {
     private fun loaded(
         profile: PlayerProfile,
         gameLog: Loadable<List<PlayerGame>>? = null,
-    ) = PlayerDetailUiState(isLoading = false, profile = Loadable(profile, Freshness.Fresh, null), gameLog = gameLog)
+        gameLogFallbackSeason: Int? = null,
+    ) = PlayerDetailUiState(
+        isLoading = false,
+        profile = Loadable(profile, Freshness.Fresh, null),
+        gameLog = gameLog,
+        gameLogFallbackSeason = gameLogFallbackSeason,
+    )
 
     private fun skaterProfile(
         seasons: List<PlayerSeasonLine> = skaterSeasons,

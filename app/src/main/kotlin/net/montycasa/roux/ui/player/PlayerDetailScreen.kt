@@ -127,6 +127,7 @@ fun PlayerDetailScreen(
                     currentSeason = currentSeason,
                     today = today,
                     gameLog = state.gameLog,
+                    gameLogFallbackSeason = state.gameLogFallbackSeason,
                     onRetry = onRetry,
                     onGameClick = onGameClick,
                     modifier = Modifier.weight(1f),
@@ -172,6 +173,7 @@ private fun PlayerBody(
     currentSeason: Int,
     today: LocalDate,
     gameLog: Loadable<List<PlayerGame>>?,
+    gameLogFallbackSeason: Int?,
     onRetry: () -> Unit,
     onGameClick: (Long) -> Unit,
     modifier: Modifier = Modifier,
@@ -206,6 +208,7 @@ private fun PlayerBody(
                 currentSeason = currentSeason,
                 today = today,
                 gameLog = gameLog,
+                gameLogFallbackSeason = gameLogFallbackSeason,
                 onRetry = onRetry,
                 onGameClick = onGameClick,
             )
@@ -229,6 +232,7 @@ private fun PlayerTabPage(
     currentSeason: Int,
     today: LocalDate,
     gameLog: Loadable<List<PlayerGame>>?,
+    gameLogFallbackSeason: Int?,
     onRetry: () -> Unit,
     onGameClick: (Long) -> Unit,
 ) {
@@ -252,6 +256,7 @@ private fun PlayerTabPage(
                     profile = profile,
                     currentSeason = currentSeason,
                     gameLog = gameLog,
+                    gameLogFallbackSeason = gameLogFallbackSeason,
                     onRetry = onRetry,
                     onGameClick = onGameClick,
                 )
@@ -480,13 +485,20 @@ private fun GameLogTab(
     profile: PlayerProfile,
     currentSeason: Int,
     gameLog: Loadable<List<PlayerGame>>?,
+    gameLogFallbackSeason: Int?,
     onRetry: () -> Unit,
     onGameClick: (Long) -> Unit,
 ) {
     // A log that has not arrived yet reads as loading; the page's retry reloads it along with the profile.
     val loadable = gameLog ?: Loadable(null, Freshness.Missing, null)
-    // The season being played now, whatever the profile's newest season is: a log is never last season's games.
-    val title = stringResource(R.string.player_gamelog_title, seasonFullYears(currentSeason))
+    // The season being played now, whatever the profile's newest season is: a log is never last season's games. When
+    // that season is empty, the title names the older regular season the rows below come from instead.
+    val title =
+        if (gameLogFallbackSeason != null) {
+            stringResource(R.string.player_gamelog_fallback_title, seasonEnDashYears(gameLogFallbackSeason))
+        } else {
+            stringResource(R.string.player_gamelog_title, seasonFullYears(currentSeason))
+        }
     val measurer = rememberTextMeasurer()
     val lineStyle = MaterialTheme.typography.bodySmall
     SectionCard(
@@ -830,6 +842,9 @@ private fun seasonYears(season: Int): String {
 
 /** The feed's `20262027` as `2026-2027`, the form the game log heading uses. */
 private fun seasonFullYears(season: Int): String = "${season / 10_000}-${season % 10_000}"
+
+/** The feed's `20252026` as `2025–26`, with an en dash, the form the fallback label uses. */
+private fun seasonEnDashYears(season: Int): String = seasonYears(season).replace('-', '–')
 
 /** An ISO `YYYY-MM-DD` day as the locale prints a date. A value that does not parse is shown as the feed sent it. */
 private fun formatDate(iso: String): String =

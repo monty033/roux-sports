@@ -27,6 +27,10 @@ class PlayerProfileRepositoryImplTest {
     private val payload = Fixtures.text("2026-11-03", "player-8476316-landing.json").toByteArray()
     private val gameLogPayload = Fixtures.text("2026-11-04", "player-8476316-game-log-20262027.json").toByteArray()
 
+    /** A playoff game log with one row the regular-season payload does not have, so the two can be told apart. */
+    private val playoffPayload =
+        """{"gameLog":[{"gameId":2025030111,"gameDate":"2026-04-19","homeRoadFlag":"R","decision":"L"}]}""".toByteArray()
+
     @Test
     fun theRequestAsksForThatPlayersLanding() =
         runBlocking {
@@ -121,7 +125,7 @@ class PlayerProfileRepositoryImplTest {
         }
 
     @Test
-    fun theGameLogIsItsOwnCacheEntryKeyedByPlayerAndSeason() =
+    fun theGameLogIsItsOwnCacheEntryKeyedByPlayerSeasonAndGameType() =
         runBlocking {
             val harness = Harness()
 
@@ -132,7 +136,52 @@ class PlayerProfileRepositoryImplTest {
                     .list("/cache".toPath())
                     .map { it.name }
                     .filter { it.endsWith(".roux") }
-            assertEquals(listOf("player-game-log-8476316-20262027.roux"), entries)
+            assertEquals(listOf("player-game-log-8476316-20262027-2.roux"), entries)
+        }
+
+    /** The playoff log is its own request, and it is never the regular-season log for the same season. */
+    @Test
+    fun aPlayoffGameLogAsksForGameTypeThreeAndIsItsOwnEntry() =
+        runBlocking {
+            val harness = Harness()
+
+            val playoffs = harness.repository.gameLog(PLAYER_ID, season = 20262027, isGoalie = true, gameType = 3)
+
+            assertEquals(listOf("/v1/player/8476316/game-log/20262027/3"), harness.requests)
+            assertEquals(listOf(2025030111L), playoffs.data?.map { it.gameId })
+            val entries =
+                harness.fileSystem
+                    .list("/cache".toPath())
+                    .map { it.name }
+                    .filter { it.endsWith(".roux") }
+            assertEquals(listOf("player-game-log-8476316-20262027-3.roux"), entries)
+        }
+
+    /**
+     * A cached playoff log must not answer a regular-season request for the same season: the second read asks the feed
+     * for game type 2 and gets the regular-season rows back.
+     */
+    @Test
+    fun aCachedPlayoffLogNeverAnswersTheRegularSeasonRequest() =
+        runBlocking {
+            val harness = Harness()
+            harness.repository.gameLog(PLAYER_ID, season = 20262027, isGoalie = true, gameType = 3)
+
+            val regular = harness.repository.gameLog(PLAYER_ID, season = 20262027, isGoalie = true, gameType = 2)
+
+            assertEquals(listOf("/v1/player/8476316/game-log/20262027/3", "/v1/player/8476316/game-log/20262027/2"), harness.requests)
+            assertEquals(listOf(2026020246L, 2026020231L), regular.data?.map { it.gameId })
+        }
+
+    /** The fallback season is an ordinary request for an earlier season, with the same regular-season game type. */
+    @Test
+    fun anEarlierSeasonsGameLogAsksForThatSeason() =
+        runBlocking {
+            val harness = Harness()
+
+            harness.repository.gameLog(PLAYER_ID, season = 20252026, isGoalie = true)
+
+            assertEquals(listOf("/v1/player/8476316/game-log/20252026/2"), harness.requests)
         }
 
     @Test
@@ -177,6 +226,7 @@ class PlayerProfileRepositoryImplTest {
                     val isGameLog = path.contains("/game-log/")
                     when {
                         isGameLog && gameLogFailing -> respond("upstream error", HttpStatusCode.InternalServerError)
+                        isGameLog && path.endsWith("/3") -> respond(playoffPayload, HttpStatusCode.OK, jsonHeaders())
                         isGameLog -> respond(gameLogPayload, HttpStatusCode.OK, jsonHeaders())
                         failing -> respond("upstream error", HttpStatusCode.InternalServerError)
                         else -> respond(payload, HttpStatusCode.OK, jsonHeaders())
