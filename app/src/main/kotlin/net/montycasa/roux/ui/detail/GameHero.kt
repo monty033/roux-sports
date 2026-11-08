@@ -34,6 +34,7 @@ import net.montycasa.roux.R
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.TeamRef
+import net.montycasa.roux.domain.policy.SeriesLine
 import net.montycasa.roux.ui.common.LiveCapsule
 import net.montycasa.roux.ui.common.StateClock
 import net.montycasa.roux.ui.common.TeamNames
@@ -48,6 +49,8 @@ internal fun GameHero(
     game: Game,
     zone: ZoneId,
     onTeamClick: (TeamRef) -> Unit = {},
+    /** The playoff series line, or null for a game that is not in a series. */
+    series: SeriesLine? = null,
 ) {
     Column(
         Modifier
@@ -87,6 +90,14 @@ internal fun GameHero(
         } else {
             Text(
                 heroStatus(game, zone),
+                style = MaterialTheme.typography.labelSmall,
+                color = LocalRouxAccents.current.muted,
+            )
+        }
+        series?.let {
+            Text(
+                seriesText(it),
+                modifier = Modifier.testTag("detail.hero.series"),
                 style = MaterialTheme.typography.labelSmall,
                 color = LocalRouxAccents.current.muted,
             )

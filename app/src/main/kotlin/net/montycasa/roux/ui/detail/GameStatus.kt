@@ -5,8 +5,24 @@ package net.montycasa.roux.ui.detail
 import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.policy.SeriesLine
+import net.montycasa.roux.domain.policy.SeriesStanding
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+
+/**
+ * The playoff series line: the round and game number when there are any, then the standing. The round is absent on the
+ * right-rail path, and the game number is absent only when the feed did not send one.
+ */
+internal fun seriesText(line: SeriesLine): String {
+    val standing =
+        when (val standing = line.standing) {
+            is SeriesStanding.Leads -> "${standing.abbrev} leads ${standing.wins}–${standing.losses}"
+            is SeriesStanding.Tied -> "Series tied ${standing.wins}–${standing.wins}"
+            is SeriesStanding.Wins -> "${standing.abbrev} wins ${standing.wins}–${standing.losses}"
+        }
+    return (listOfNotNull(line.round, line.gameNumber?.let { "Game $it" }) + standing).joinToString(" · ")
+}
 
 internal fun heroStatus(
     game: Game,
@@ -16,8 +32,11 @@ internal fun heroStatus(
     return when (state) {
         GameState.Final -> {
             when (game.finalKind) {
-                FinalKind.OT -> "Final/OT"
+                // Two or more overtime periods name their count, as the feed gave it; a single one stays Final/OT.
+                FinalKind.OT -> game.otPeriods?.takeIf { it >= 2 }?.let { "Final/${it}OT" } ?: "Final/OT"
+
                 FinalKind.SO -> "Final/SO"
+
                 else -> "Final"
             }
         }

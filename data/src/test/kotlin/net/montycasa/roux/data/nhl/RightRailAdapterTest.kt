@@ -11,8 +11,10 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import net.montycasa.roux.data.Fixtures
 import net.montycasa.roux.domain.model.GameRightRail
+import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.PeriodShots
 import net.montycasa.roux.domain.model.PowerPlaySummary
+import net.montycasa.roux.domain.model.SeasonSeriesGame
 import net.montycasa.roux.domain.model.ShotTotals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -199,6 +201,16 @@ class RightRailAdapterTest {
     @Test
     fun malformedJsonFailsWithoutThrowing() {
         assertTrue(RightRailAdapter.parse("""{"teamGameStats":""") is ParseResult.Failure)
+    }
+
+    /** The season series is the head-to-head games in feed order, each with its game type, state and both scores. */
+    @Test
+    fun seasonSeriesListsEachHeadToHeadGameWithItsScores() {
+        val games = successOf(Fixtures.text("2026-11-06", "right-rail-2025030111.json")).seasonSeries
+
+        assertEquals(6, games.size)
+        assertEquals(SeasonSeriesGame(2025030111L, 3, GameState.Final, "BOS", 3, "BUF", 4), games.first())
+        assertEquals(SeasonSeriesGame(2025030116L, 3, GameState.Final, "BUF", 4, "BOS", 1), games.last())
     }
 
     private fun successOf(json: String): GameRightRail {

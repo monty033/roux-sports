@@ -31,6 +31,7 @@ import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.PeriodScoring
 import net.montycasa.roux.domain.model.PeriodShots
 import net.montycasa.roux.domain.model.PlayerRef
+import net.montycasa.roux.domain.model.SeriesStatus
 import net.montycasa.roux.domain.model.ShotTotals
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
@@ -184,6 +185,23 @@ internal object AuditStates {
             away = TeamRef(TeamKey("UTA"), name = "Mammoth"),
             homeScore = 6,
             awayScore = 3,
+        )
+
+    // Game 4 of a first-round series tied 2–2: the hero's line is the standing after this game, not a finished series.
+    private val playoffGame =
+        detailGame.copy(
+            id = GameId("2026030104"),
+            series =
+                SeriesStatus(
+                    round = 1,
+                    seriesTitle = "1st Round",
+                    neededToWin = 4,
+                    topSeedTeamAbbrev = "PHI",
+                    topSeedWins = 2,
+                    bottomSeedTeamAbbrev = "UTA",
+                    bottomSeedWins = 2,
+                    gameNumberOfSeries = 4,
+                ),
         )
 
     // Real landing data for UTA @ PHI, 2026-11-01, final 3-6. The feed's clocks are elapsed time and the card prints
@@ -414,8 +432,13 @@ internal object AuditStates {
             rightRail = Loadable(GameRightRail(shots = ShotTotals(awayShots = 21, homeShots = 28)), Freshness.Fresh, null),
         )
 
+    /**
+     * One audited state. [tab] is a tab a sweep taps into view before it measures the state, for a page whose content
+     * sits behind a tab. A state that opens on its first tab leaves it null.
+     */
     internal class ContentCase(
         val name: String,
+        val tab: String? = null,
         val content: @Composable () -> Unit,
     )
 
@@ -561,12 +584,26 @@ internal object AuditStates {
             ContentCase("detail.partial") {
                 GameDetailScreen(detailGame, DetailUiState(detail = partialDetail, refreshing = false, unexpectedFailure = false), {}, {})
             },
+            ContentCase("detail.playoff") {
+                GameDetailScreen(playoffGame, DetailUiState(detail = fullDetail, refreshing = false, unexpectedFailure = false), {}, {})
+            },
             // The two newest pages, built from the domain types rather than from JSON. The pager's chosen tab is
             // internal view state, so this state photographs the tab each page opens on; the other tabs are covered
             // by DetailTabsScreenshotTest, which taps them into view.
             ContentCase("player.season") {
                 PlayerDetailScreen(
                     state = DetailPageFixtures.playerState,
+                    currentSeason = DetailPageFixtures.CURRENT_SEASON,
+                    today = DetailPageFixtures.TODAY,
+                    onBack = {},
+                    onRetry = {},
+                    onGameClick = {},
+                )
+            },
+            // A season with no games yet: the log is the 2025–26 regular season, behind the Game log tab.
+            ContentCase("player.gamelog.fallback", tab = "player.tab.GameLog") {
+                PlayerDetailScreen(
+                    state = DetailPageFixtures.playerState.copy(gameLogFallbackSeason = 20252026),
                     currentSeason = DetailPageFixtures.CURRENT_SEASON,
                     today = DetailPageFixtures.TODAY,
                     onBack = {},

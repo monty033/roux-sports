@@ -13,7 +13,9 @@ import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Density
@@ -259,6 +261,11 @@ class ContrastAndTypeTest {
                     dark.value = isDark
                 }
                 rule.waitForIdle()
+                // A state whose content sits behind a tab is measured with that tab open.
+                case.tab?.let { tab ->
+                    rule.onNodeWithTag(tab).performClick()
+                    rule.waitForIdle()
+                }
                 val nodes = textNodes(rule.onRoot(useUnmergedTree = true).fetchSemanticsNode())
                 assertTrue(prefix + "rendered no text nodes - the walk saw nothing", nodes.isNotEmpty())
                 nodesSeen += nodes.size

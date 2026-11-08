@@ -2,11 +2,13 @@ package net.montycasa.roux.ui
 
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import com.github.takahirom.roborazzi.captureRoboImage
 import net.montycasa.roux.ui.theme.RouxTheme
 import org.junit.Assert.assertEquals
@@ -30,6 +32,9 @@ import org.robolectric.annotation.GraphicsMode
 class ScreenshotMatrixTest {
     @get:Rule
     val rule = createComposeRule()
+
+    /** Long enough for the tab selection animation to reach rest before a state is photographed. */
+    private val animationSettleMillis = 1_000L
 
     /** States whose page is longer than the viewport, so the last card needs its own image. */
     private val scrolledStates = listOf("detail.full", "detail.live", "detail.scheduled")
@@ -67,7 +72,9 @@ class ScreenshotMatrixTest {
             "detail.live",
             "detail.scheduled",
             "detail.partial",
+            "detail.playoff",
             "player.season",
+            "player.gamelog.fallback",
             "team.schedule",
             "drawer.leagues",
         )
@@ -94,6 +101,14 @@ class ScreenshotMatrixTest {
                     dark.value = isDark
                 }
                 rule.waitForIdle()
+                // A state whose content sits behind a tab is photographed with that tab open, as the audit states say.
+                screen.tab?.let { tab ->
+                    // The click action, not a touch: a touch starts a ripple on the tab, and its frames run on the wall
+                    // clock, so the photograph would differ between runs. The page's own scroll still needs its time.
+                    rule.onNodeWithTag(tab).performSemanticsAction(SemanticsActions.OnClick)
+                    rule.mainClock.advanceTimeBy(animationSettleMillis)
+                    rule.waitForIdle()
+                }
                 val file = screen.name.replace('.', '-') + "-" + theme
                 // Always start from the top. The scrolled captures below leave the list where they finished, so without
                 // this the dark pass photographed the light pass's scroll position and the "unscrolled" image was not.

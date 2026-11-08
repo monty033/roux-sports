@@ -296,6 +296,23 @@ data class GameRightRail(
     val shotsByPeriod: List<PeriodShots> = emptyList(),
     val powerPlay: PowerPlaySummary? = null,
     val teamStats: List<TeamStat> = emptyList(),
+    /** The head-to-head games the rail lists for this matchup, in feed order. Empty when the feed omitted them. */
+    val seasonSeries: List<SeasonSeriesGame> = emptyList(),
+)
+
+/**
+ * One game of the season series, as the right rail lists it: its game type, its state and each club's score. A playoff
+ * series reads its standing from the finished games in this list.
+ */
+data class SeasonSeriesGame(
+    val gameId: Long,
+    /** The feed's game type: 2 for the regular season, 3 for the playoffs. */
+    val gameType: Int?,
+    val state: GameState,
+    val awayAbbrev: String?,
+    val awayScore: Int?,
+    val homeAbbrev: String?,
+    val homeScore: Int?,
 )
 
 /** One labelled team total. */

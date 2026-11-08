@@ -51,11 +51,13 @@ internal class PlayerProfileRepositoryImpl(
         playerId: Long,
         season: Int,
         isGoalie: Boolean,
+        gameType: Int,
     ): Loadable<List<PlayerGame>> =
         load(
-            key = CacheKey(CacheKind.PlayerGameLog, "$playerId-$season"),
+            // The game type is part of the key: a playoff log and a regular-season log for one season are two entries.
+            key = CacheKey(CacheKind.PlayerGameLog, "$playerId-$season-$gameType"),
             maxAge = FreshnessPolicy.playerGameLogMaxAge(),
-            fetch = { api.playerGameLog(playerId, season.toString()) },
+            fetch = { api.playerGameLog(playerId, season.toString(), gameType) },
             parse = { json -> PlayerGameLogAdapter.parse(json, isGoalie) },
         )
 

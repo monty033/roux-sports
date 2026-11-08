@@ -189,6 +189,63 @@ class PlayerCareerTableTest {
         assertEquals(900L, total.avgTimeOnIceSeconds)
     }
 
+    /** The newest NHL regular season before the one being played: the 2025-26 row, not an older one. */
+    @Test
+    fun theFallbackIsTheNewestNhlRegularSeasonBeforeTheCurrentOne() {
+        val seasons =
+            listOf(
+                line(20232024, "NHL", "Carolina Hurricanes", 1, skater()),
+                line(20252026, "NHL", "Carolina Hurricanes", 1, skater()),
+            )
+
+        assertEquals(20252026, PlayerCareerTable.gameLogFallbackSeason(seasons, currentSeason = 20262027))
+    }
+
+    /** A newer AHL row is another league's season, so the NHL row older than it is the one the log falls back to. */
+    @Test
+    fun aNewerAhlRowIsIgnoredWhenFindingTheFallback() {
+        val seasons =
+            listOf(
+                line(20242025, "NHL", "Carolina Hurricanes", 1, skater()),
+                line(20252026, "AHL", "Charlotte Checkers", 1, skater()),
+            )
+
+        assertEquals(20242025, PlayerCareerTable.gameLogFallbackSeason(seasons, currentSeason = 20262027))
+    }
+
+    /** A playoff-only season is not a regular season, so it never becomes the fallback. */
+    @Test
+    fun aPlayoffOnlySeasonIsNotTheFallback() {
+        val seasons =
+            listOf(
+                line(20242025, "NHL", "Carolina Hurricanes", 1, skater()),
+                line(20252026, "NHL", "Carolina Hurricanes", 1, skater(), gameType = 3),
+            )
+
+        assertEquals(20242025, PlayerCareerTable.gameLogFallbackSeason(seasons, currentSeason = 20262027))
+    }
+
+    /** The season being played is never its own fallback: only a season before it can stand in. */
+    @Test
+    fun theCurrentSeasonIsNeverItsOwnFallback() {
+        val seasons =
+            listOf(
+                line(20242025, "NHL", "Carolina Hurricanes", 1, skater()),
+                line(20262027, "NHL", "Carolina Hurricanes", 1, skater()),
+            )
+
+        assertEquals(20242025, PlayerCareerTable.gameLogFallbackSeason(seasons, currentSeason = 20262027))
+    }
+
+    /** A player with no NHL regular-season row at all has no fallback, so the log says so rather than inventing one. */
+    @Test
+    fun noNhlRegularSeasonRowMeansNoFallback() {
+        val seasons = listOf(line(20252026, "AHL", "Charlotte Checkers", 1, skater()))
+
+        assertNull(PlayerCareerTable.gameLogFallbackSeason(seasons, currentSeason = 20262027))
+        assertNull(PlayerCareerTable.gameLogFallbackSeason(emptyList(), currentSeason = 20262027))
+    }
+
     private fun line(
         season: Int?,
         league: String?,

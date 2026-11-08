@@ -63,6 +63,21 @@ object PlayerCareerTable {
         playoffs: PlayerTotals?,
     ): PlayerTotals? = total(rows.filter { it.isPlayoffs }, playoffs)
 
+    /**
+     * The season the Game log tab shows when [currentSeason] has no games yet: the newest NHL regular-season season
+     * before it, read from the same rows the Career tab shows, so both tabs name the same season. Other leagues and
+     * playoff rows never stand in for it. Null when the player has no such row.
+     */
+    fun gameLogFallbackSeason(
+        seasons: List<PlayerSeasonLine>,
+        currentSeason: Int,
+    ): Int? =
+        rows(seasons)
+            .filter { it.isRegularSeason }
+            .mapNotNull { it.season }
+            .filter { it < currentSeason }
+            .maxOrNull()
+
     private fun skaterTotal(
         rows: List<PlayerTotals.Skater>,
         rates: PlayerTotals.Skater?,

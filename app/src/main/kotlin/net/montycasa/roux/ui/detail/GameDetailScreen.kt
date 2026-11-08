@@ -37,6 +37,7 @@ import kotlinx.coroutines.launch
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.PlayerMugshot
 import net.montycasa.roux.domain.model.TeamRef
+import net.montycasa.roux.domain.policy.PlayoffSeries
 import net.montycasa.roux.ui.common.TeamNames
 import net.montycasa.roux.ui.reach.reachTarget
 import net.montycasa.roux.ui.theme.LocalRouxAccents
@@ -74,6 +75,13 @@ fun GameDetailScreen(
             period = landing?.period ?: game.period,
             finalKind = landing?.finalKind ?: game.finalKind,
         )
+    val series =
+        PlayoffSeries.forGame(
+            heroGame,
+            detail.rightRail.data
+                ?.seasonSeries
+                .orEmpty(),
+        )
 
     Column(
         modifier
@@ -94,7 +102,7 @@ fun GameDetailScreen(
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp),
             ) {
-                GameHero(game = heroGame, zone = zone, onTeamClick = onTeamClick)
+                GameHero(game = heroGame, zone = zone, onTeamClick = onTeamClick, series = series)
 
                 when (page) {
                     0 -> {

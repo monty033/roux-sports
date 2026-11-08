@@ -413,6 +413,11 @@ class ReachAuditTest {
                 },
             ),
             AuditCase(
+                "detail.playoff",
+                emptyList(),
+                AuditStates.screens().single { it.name == "detail.playoff" }.content,
+            ),
+            AuditCase(
                 "player.season",
                 emptyList(),
                 { PlayerAuditScreen() },
@@ -422,6 +427,13 @@ class ReachAuditTest {
                 "player.gamelog",
                 emptyList(),
                 { PlayerAuditScreen() },
+                reachable = playerBackTags + playerTabTags + gameLogRowTags,
+                prepare = { rule -> rule.onNodeWithTag("player.tab.GameLog").performClick() },
+            ),
+            AuditCase(
+                "player.gamelog.fallback",
+                emptyList(),
+                AuditStates.screens().single { it.name == "player.gamelog.fallback" }.content,
                 reachable = playerBackTags + playerTabTags + gameLogRowTags,
                 prepare = { rule -> rule.onNodeWithTag("player.tab.GameLog").performClick() },
             ),
@@ -499,9 +511,9 @@ class ReachAuditTest {
 
     @Test
     @Config(qualifiers = "en-rUS-w411dp-h923dp-420dpi")
-    fun assertPrimaryControlsReachableAt411x923() = audit(size = "w411dp-h923dp-420dpi", expectedCombinations = 76)
+    fun assertPrimaryControlsReachableAt411x923() = audit(size = "w411dp-h923dp-420dpi", expectedCombinations = 84)
 
     @Test
     @Config(qualifiers = "en-rUS-w360dp-h780dp")
-    fun assertPrimaryControlsReachableAt360x780() = audit(size = "w360dp-h780dp", expectedCombinations = 76)
+    fun assertPrimaryControlsReachableAt360x780() = audit(size = "w360dp-h780dp", expectedCombinations = 84)
 }

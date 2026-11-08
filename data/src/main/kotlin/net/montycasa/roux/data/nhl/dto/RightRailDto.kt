@@ -15,6 +15,7 @@ internal data class RightRailDto(
     val linescore: LinescoreDto? = null,
     val shotsByPeriod: List<PeriodShotsDto?>? = null,
     val teamGameStats: List<TeamStatRowDto?>? = null,
+    val seasonSeries: List<SeasonSeriesGameDto?>? = null,
 )
 
 @Serializable
@@ -54,4 +55,23 @@ internal data class TeamStatRowDto(
     val category: String? = null,
     val awayValue: JsonElement? = null,
     val homeValue: JsonElement? = null,
+)
+
+/**
+ * One game of the season series: the head-to-head games the rail lists for this matchup. A game that has not started
+ * carries no scores, so each score stays optional.
+ */
+@Serializable
+internal data class SeasonSeriesGameDto(
+    val id: Long? = null,
+    val gameType: Int? = null,
+    val gameState: String? = null,
+    val awayTeam: SeasonSeriesTeamDto? = null,
+    val homeTeam: SeasonSeriesTeamDto? = null,
+)
+
+@Serializable
+internal data class SeasonSeriesTeamDto(
+    val abbrev: String? = null,
+    val score: Int? = null,
 )
