@@ -37,7 +37,13 @@ class ScreenshotMatrixTest {
     private val animationSettleMillis = 1_000L
 
     /** States whose page is longer than the viewport, so the last card needs its own image. */
-    private val scrolledStates = listOf("detail.full", "detail.live", "detail.scheduled")
+    private val scrolledStates = listOf("detail.full", "detail.live", "detail.scheduled", "detail.pregame")
+
+    /**
+     * States with pre-game cards between the hero and Game info. Season stats and Season series sit between the top and
+     * the info image, so neither shows them: each gets its own capture.
+     */
+    private val preGameStates = listOf("detail.pregame")
 
     /** States with a shots card: it sits between two cards, so neither the top nor the info image can show it. */
     private val shotsStates = listOf("detail.full", "detail.live")
@@ -71,6 +77,7 @@ class ScreenshotMatrixTest {
             "detail.full",
             "detail.live",
             "detail.scheduled",
+            "detail.pregame",
             "detail.partial",
             "detail.playoff",
             "player.season",
@@ -162,6 +169,17 @@ class ScreenshotMatrixTest {
                         rule.onRoot().captureRoboImage("src/test/screenshots/matrix/$file-shots.png")
                     } catch (failure: AssertionError) {
                         failures += failure
+                    }
+                }
+                if (screen.name in preGameStates) {
+                    for ((suffix, anchor) in listOf("stats" to "detail.section.season-stats", "series" to "detail.section.season-series")) {
+                        rule.onNodeWithTag(anchor).performScrollTo()
+                        rule.waitForIdle()
+                        try {
+                            rule.onRoot().captureRoboImage("src/test/screenshots/matrix/$file-$suffix.png")
+                        } catch (failure: AssertionError) {
+                            failures += failure
+                        }
                     }
                 }
                 if (screen.name in scoringStates) {
