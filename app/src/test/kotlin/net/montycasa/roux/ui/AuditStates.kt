@@ -468,6 +468,7 @@ internal object AuditStates {
                                     "A. Vanecek",
                                     sweaterNumber = 41,
                                     gamesPlayed = 14,
+                                    record = SeasonRecord(8, 4, 2),
                                     goalsAgainstAverage = 2.71,
                                     savePercentage = 0.906,
                                 ),
@@ -484,6 +485,7 @@ internal object AuditStates {
                                     "C. Talbot",
                                     sweaterNumber = 31,
                                     gamesPlayed = 15,
+                                    record = SeasonRecord(10, 4, 1),
                                     goalsAgainstAverage = 2.58,
                                     savePercentage = 0.914,
                                 ),
@@ -492,6 +494,7 @@ internal object AuditStates {
                                     "S. Ersson",
                                     sweaterNumber = 90,
                                     gamesPlayed = 4,
+                                    record = SeasonRecord(2, 2, 0),
                                     goalsAgainstAverage = 3.40,
                                     savePercentage = 0.879,
                                 ),
@@ -506,15 +509,15 @@ internal object AuditStates {
                     GameRightRail(
                         awayForm =
                             ClubForm(
-                                record = SeasonRecord(9, 7, 2),
+                                record = SeasonRecord(6, 3, 1),
                                 results = listOf("W", "L", "OTL", "W", "W", "L", "W", "L", "W", "W"),
                                 streakType = "W",
                                 streak = 2,
                             ),
                         homeForm =
                             ClubForm(
-                                record = SeasonRecord(11, 5, 1),
-                                results = listOf("W", "W", "L", "W", "OTL", "W", "W", "L", "W", "L"),
+                                record = SeasonRecord(5, 4, 1),
+                                results = listOf("W", "W", "L", "W", "OTL", "W", "L", "L", "W", "L"),
                                 streakType = "L",
                                 streak = 1,
                             ),

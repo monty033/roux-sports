@@ -55,6 +55,7 @@ class PreGameDetailScreenTest {
         compose.onNodeWithTag("detail.pregame.stat.Power play").assertExists()
         compose.onNodeWithTag("detail.pregame.series.standing").assertTextEquals("TOR leads 1–0")
         compose.onNodeWithText("M. Blackwood #30").assertExists()
+        compose.onNodeWithText("12 GP · 9–3–1").assertExists()
 
         val tops =
             listOf(
@@ -154,7 +155,16 @@ class PreGameDetailScreenTest {
                 homeRecord = SeasonRecord(12, 4, 1),
                 awayTeamId = 21L,
                 homeTeamId = 10L,
-                goalies = listOf(GoalieSeason(teamId = 21L, name = "M. Blackwood", sweaterNumber = 30, gamesPlayed = 12)),
+                goalies =
+                    listOf(
+                        GoalieSeason(
+                            teamId = 21L,
+                            name = "M. Blackwood",
+                            sweaterNumber = 30,
+                            gamesPlayed = 12,
+                            record = SeasonRecord(9, 3, 1),
+                        ),
+                    ),
             )
 
         val preGameRail =

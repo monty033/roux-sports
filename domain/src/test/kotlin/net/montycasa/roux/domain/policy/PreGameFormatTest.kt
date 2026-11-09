@@ -117,6 +117,13 @@ class PreGameFormatTest {
     }
 
     @Test
+    fun aGoalieWithoutARecordPrintsGamesAverageAndSavePercentageWithNoPlaceholder() {
+        val noRecord = BLACKWOOD.copy(record = null)
+
+        assertEquals("14 GP · 2.60 GAA · 90.1%", PreGameFormat.goalieStats(noRecord))
+    }
+
+    @Test
     fun aGoalieWithNoSeasonHasNoStatsLineAndNoStarterLabel() {
         assertNull(PreGameFormat.goalieStats(AKHTYAMOV))
         assertEquals("A. Akhtyamov #70", PreGameFormat.goalieHeading(AKHTYAMOV))
