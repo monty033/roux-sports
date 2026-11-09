@@ -121,7 +121,7 @@ class TeamStatsTest {
 
     @Test
     fun aClubMissingFromTheLeagueShowsTheAbsentLineAndNoTable() {
-        showTab(league = Loadable(LeagueSummary(rivals), Freshness.Fresh, null))
+        showTab(league = Loadable(LeagueSummary(season = "20262027", clubs = rivals), Freshness.Fresh, null))
 
         rule.onNodeWithText("There are no league stats for this club yet.").assertIsDisplayed()
         rule.onNodeWithTag("team.stats.table", useUnmergedTree = true).assertDoesNotExist()
@@ -251,7 +251,8 @@ class TeamStatsTest {
     fun withPenaltiesFailingTheOtherRanksStillRender() {
         val withoutPenalties =
             LeagueSummary(
-                listOf(ana.copy(penaltyMinutes = null)) + rivals.map { it.copy(penaltyMinutes = null) },
+                season = "20262027",
+                clubs = listOf(ana.copy(penaltyMinutes = null)) + rivals.map { it.copy(penaltyMinutes = null) },
             )
         showTab(league = Loadable(withoutPenalties, Freshness.Fresh, null))
 
@@ -297,7 +298,7 @@ class TeamStatsTest {
     }
 
     /** The 32-club league with [club] as Anaheim's line. */
-    private fun leagueWith(club: LeagueClub) = LeagueSummary(listOf(club) + rivals)
+    private fun leagueWith(club: LeagueClub) = LeagueSummary(season = "20262027", clubs = listOf(club) + rivals)
 
     private val anaRow =
         StandingRow(

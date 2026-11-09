@@ -21,7 +21,18 @@ internal object LeagueStatsAdapter {
             explicitNulls = false
         }
 
-    fun parse(json: String): ParseResult<LeagueSummary> {
+    /**
+     * Parses one season's league table and stamps it with [season], the season the request asked for.
+     *
+     * A reply with no usable club is an empty season: the feed answered with the right shape and nothing in it,
+     * which is what a season that has not started looks like. It is flagged [ParseResult.Failure.emptyPayload],
+     * because an empty table would rank every club as first. A missing `data` array is a broken reply, not an
+     * empty season, and is not flagged.
+     */
+    fun parse(
+        json: String,
+        season: String,
+    ): ParseResult<LeagueSummary> {
         val wire =
             try {
                 feedJson.decodeFromString<LeagueStatsDto>(json)
@@ -33,11 +44,10 @@ internal object LeagueStatsAdapter {
 
         val rows = wire.data ?: return ParseResult.Failure("NHL league stats mapping failed: missing data")
         val clubs = rows.mapNotNull { it?.toClub() }
-        // A league with no clubs is not a real state, and an empty table would rank every club as first.
         if (clubs.isEmpty()) {
-            return ParseResult.Failure("NHL league stats mapping failed: no usable clubs")
+            return ParseResult.Failure("NHL league stats mapping failed: no clubs", emptyPayload = true)
         }
-        return ParseResult.Success(LeagueSummary(clubs = clubs))
+        return ParseResult.Success(LeagueSummary(season = season, clubs = clubs))
     }
 
     /** A blank name is the only reason to drop a row; the name is kept exactly as the feed spells it. */

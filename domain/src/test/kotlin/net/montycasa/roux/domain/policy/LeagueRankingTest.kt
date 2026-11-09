@@ -117,7 +117,7 @@ class LeagueRankingTest {
         assertEquals(1f, LeagueRanking.forClub(league, "Has value")!!.barFractionOf(LeagueMetric.PenaltyMinutes))
     }
 
-    private fun league(vararg clubs: LeagueClub) = LeagueSummary(clubs.toList())
+    private fun league(vararg clubs: LeagueClub) = LeagueSummary(season = "20262027", clubs = clubs.toList())
 
     private fun club(
         name: String,

@@ -530,6 +530,7 @@ internal object DetailPageFixtures {
 
     val leagueSummary =
         LeagueSummary(
+            season = CLUB_SEASON,
             clubs =
                 leagueClubNames.mapIndexed { index, name ->
                     LeagueClub(
