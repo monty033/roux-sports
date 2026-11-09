@@ -35,9 +35,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import net.montycasa.roux.domain.model.Game
+import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.PlayerMugshot
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.domain.policy.PlayoffSeries
+import net.montycasa.roux.domain.policy.PreGameFormat
 import net.montycasa.roux.ui.common.TeamNames
 import net.montycasa.roux.ui.reach.reachTarget
 import net.montycasa.roux.ui.theme.LocalRouxAccents
@@ -82,6 +84,10 @@ fun GameDetailScreen(
                 ?.seasonSeries
                 .orEmpty(),
         )
+    // The pre-game cards and the hero's records exist only before puck drop. A started game keeps its existing page.
+    val preGame = heroGame.state == GameState.Scheduled || heroGame.state == GameState.Pre
+    val awayRecord = if (preGame) landing?.awayRecord?.let { PreGameFormat.clubRecordText(game.away.abbrev, it) } else null
+    val homeRecord = if (preGame) landing?.homeRecord?.let { PreGameFormat.clubRecordText(game.home.abbrev, it) } else null
 
     Column(
         modifier
@@ -102,7 +108,14 @@ fun GameDetailScreen(
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp),
             ) {
-                GameHero(game = heroGame, zone = zone, onTeamClick = onTeamClick, series = series)
+                GameHero(
+                    game = heroGame,
+                    zone = zone,
+                    onTeamClick = onTeamClick,
+                    series = series,
+                    awayRecord = awayRecord,
+                    homeRecord = homeRecord,
+                )
 
                 when (page) {
                     0 -> {
@@ -111,6 +124,7 @@ fun GameDetailScreen(
                             detail = detail,
                             staleSince = staleSince,
                             onRetry = onRetry,
+                            preGame = preGame,
                         )
                     }
 
