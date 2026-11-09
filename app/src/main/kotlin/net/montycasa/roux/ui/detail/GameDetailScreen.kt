@@ -32,6 +32,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -164,8 +166,9 @@ fun GameDetailScreen(
  *
  * A rounded rectangle rather than a folder tab, so it cannot be read as part of the app's own navigation bar sitting
  * directly beneath it. The three pills are equal width and fill the strip; each centres its crest and label as one pair.
- * A label is 14 sp, and when it cannot fit its pill it shrinks in half-point steps, but never below 12 sp. Only a label
- * that still does not fit at 12 sp ends in an ellipsis. The strip does not scroll sideways.
+ * A label is 14 sp, and when it cannot fit its pill it shrinks in half-point steps, but never below 12 sp. A club whose
+ * nickname still does not fit at 12 sp shows its three-letter abbreviation instead; the test sweep checks that every
+ * league club's label is drawn whole. The strip does not scroll sideways.
  */
 @Composable
 internal fun DetailTabStrip(
@@ -185,11 +188,16 @@ internal fun DetailTabStrip(
             .testTag("detail.tab.strip"),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        // The club pills carry the real crest and the club's own name: an abbreviation on a tab asks the reader to
-        // decode it, which is the same mistake the scoreboard had.
+        // The club pills carry the real crest and the club's nickname. The abbreviation replaces the nickname only when
+        // the nickname cannot fit even at the 12 sp floor, and a screen reader always hears the full club name.
         listOf<TeamRef?>(null, away, home).forEachIndexed { index, team ->
-            val label = team?.let { TeamNames.cityAndName(it).second } ?: "Game"
             val tag = team?.abbrev ?: "Game"
+            val fullName =
+                team?.let {
+                    TeamNames.cityAndName(it).let { (city, nickname) ->
+                        listOfNotNull(city, nickname).joinToString(" ")
+                    }
+                }
             val isSelected = index == selected
             BoxWithConstraints(
                 Modifier
@@ -205,6 +213,7 @@ internal fun DetailTabStrip(
                             Modifier
                         },
                     ).selectable(selected = isSelected, role = Role.Tab, onClick = { onSelect(index) })
+                    .then(if (fullName != null) Modifier.semantics { contentDescription = fullName } else Modifier)
                     .testTag("detail.tab.$tag")
                     .reachTarget("detail.tab.$tag"),
                 contentAlignment = Alignment.Center,
@@ -216,7 +225,7 @@ internal fun DetailTabStrip(
                 // What the label may take: the pill less its side padding, and less the crest and its gap when there is one.
                 val crestAndGap = if (team != null) PILL_CREST + TAB_CREST_GAP else 0.dp
                 val roomPx = with(density) { (maxWidth - TAB_PADDING * 2 - crestAndGap).toPx() }
-                val labelSize = tabLabelSize(measurer, label, style, roomPx)
+                val label = tabLabel(measurer, team, style, roomPx)
                 Row(
                     Modifier.padding(horizontal = TAB_PADDING),
                     verticalAlignment = Alignment.CenterVertically,
@@ -228,9 +237,9 @@ internal fun DetailTabStrip(
                         Spacer(Modifier.width(TAB_CREST_GAP))
                     }
                     Text(
-                        label,
+                        label.text,
                         modifier = Modifier.testTag("detail.tab.$tag.label"),
-                        style = style.copy(fontSize = labelSize.sp),
+                        style = style.copy(fontSize = label.sp.sp),
                         color = if (isSelected) MaterialTheme.colorScheme.onSurface else accents.muted,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -242,25 +251,49 @@ internal fun DetailTabStrip(
     }
 }
 
+/** What a pill shows: its text and the size it is drawn at. */
+private data class TabLabel(
+    val text: String,
+    val sp: Float,
+)
+
 /**
- * The largest size a tab label can take in [roomPx]: 14 sp, stepping down by half a point to 12 sp. A label that does not
- * fit even at 12 sp is returned at 12 sp, where it ellipsizes; the floor is never broken.
+ * The label for a pill. The "Game" pill keeps its word. A club shows its nickname at the largest size that fits; when
+ * the nickname cannot fit even at the 12 sp floor, the club shows its abbreviation instead, at the largest size that
+ * fits it. The ellipsis on the Text is only a backstop for a label that cannot fit at all; no league club reaches it.
  */
-private fun tabLabelSize(
+private fun tabLabel(
     measurer: TextMeasurer,
-    label: String,
+    team: TeamRef?,
     style: TextStyle,
     roomPx: Float,
-): Float {
+): TabLabel {
+    if (team == null) return TabLabel("Game", fitSize(measurer, "Game", style, roomPx) ?: TAB_LABEL_MIN_SP)
+    val nickname = TeamNames.cityAndName(team).second
+    fitSize(measurer, nickname, style, roomPx)?.let { return TabLabel(nickname, it) }
+    return TabLabel(team.abbrev, fitSize(measurer, team.abbrev, style, roomPx) ?: TAB_LABEL_MIN_SP)
+}
+
+/**
+ * The largest size, from 14 sp down by half a point, at which [text] fits in [roomPx]. Null when it does not fit even at
+ * the 12 sp floor.
+ */
+private fun fitSize(
+    measurer: TextMeasurer,
+    text: String,
+    style: TextStyle,
+    roomPx: Float,
+): Float? {
     var size = TAB_LABEL_SP
-    while (size > TAB_LABEL_MIN_SP && measurer.measure(label, style.copy(fontSize = size.sp)).size.width > roomPx) {
+    while (size >= TAB_LABEL_MIN_SP) {
+        if (measurer.measure(text, style.copy(fontSize = size.sp)).size.width <= roomPx) return size
         size -= 0.5f
     }
-    return size
+    return null
 }
 
 private val PILL_CREST = 32.dp
-private val TAB_PADDING = 12.dp
+private val TAB_PADDING = 6.dp
 private val TAB_CREST_GAP = 6.dp
 private const val TAB_LABEL_SP = 14f
 private const val TAB_LABEL_MIN_SP = 12f
