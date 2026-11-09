@@ -846,8 +846,6 @@ private fun PlayerRow(
     alignEnd: Boolean,
     onPlayerClick: (Long) -> Unit,
 ) {
-    val reserve = photoReserve()
-    val indent = Modifier.padding(start = if (alignEnd) 0.dp else reserve, end = if (alignEnd) reserve else 0.dp)
     val align = if (alignEnd) TextAlign.End else TextAlign.Start
     // Without an id there is no page to open, so the line stays plain text rather than a dead control.
     val id = line.playerId
@@ -860,34 +858,45 @@ private fun PlayerRow(
                 .listRow()
                 .clickable(role = Role.Button) { onPlayerClick(id) }
         }
-    Column(
+    Row(
         Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start,
+            .padding(vertical = 4.dp)
+            .heightIn(min = PLAYER_TARGET_HEIGHT)
+            .testTag("${line.photoTag}.row")
+            .then(action),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .heightIn(min = PLAYER_TARGET_HEIGHT)
-                .testTag("${line.photoTag}.row")
-                .then(action),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (alignEnd) {
-                PlayerName(line = line, align = align, modifier = Modifier.weight(1f))
-                Spacer(Modifier.width(6.dp))
-                PlayerMugshotImage(url = line.photoUrl, name = line.name, tag = line.photoTag, baseDp = CARD_MUGSHOT_BASE_DP)
-            } else {
-                PlayerMugshotImage(url = line.photoUrl, name = line.name, tag = line.photoTag, baseDp = CARD_MUGSHOT_BASE_DP)
-                Spacer(Modifier.width(6.dp))
-                PlayerName(line = line, align = align, modifier = Modifier.weight(1f))
-            }
+        // The photo is centred against the name and every figure line under it, so it sits beside the middle of the
+        // block instead of hanging off the name with dead space below.
+        if (alignEnd) {
+            PlayerFigures(line = line, align = align, modifier = Modifier.weight(1f))
+            Spacer(Modifier.width(6.dp))
+            PlayerMugshotImage(url = line.photoUrl, name = line.name, tag = line.photoTag, baseDp = CARD_MUGSHOT_BASE_DP)
+        } else {
+            PlayerMugshotImage(url = line.photoUrl, name = line.name, tag = line.photoTag, baseDp = CARD_MUGSHOT_BASE_DP)
+            Spacer(Modifier.width(6.dp))
+            PlayerFigures(line = line, align = align, modifier = Modifier.weight(1f))
         }
+    }
+}
+
+/** One player's name over its figure lines, aligned to the side its column sits on. */
+@Composable
+private fun PlayerFigures(
+    line: PlayerLine,
+    align: TextAlign,
+    modifier: Modifier,
+) {
+    Column(
+        modifier,
+        horizontalAlignment = if (align == TextAlign.End) Alignment.End else Alignment.Start,
+    ) {
+        PlayerName(line = line, align = align, modifier = Modifier.fillMaxWidth())
         line.figures.forEachIndexed { index, figure ->
             Text(
                 figure,
-                modifier = indent.fillMaxWidth().testTag("${line.photoTag}.figure.$index"),
+                modifier = Modifier.fillMaxWidth().testTag("${line.photoTag}.figure.$index"),
                 style = MaterialTheme.typography.labelMedium,
                 color = LocalRouxAccents.current.muted,
                 textAlign = align,
