@@ -6,8 +6,13 @@ package net.montycasa.roux.domain.model
  * Both lists are already in leaderboard order when they arrive from the adapter. That ordering is
  * deliberately not the feed's: the wire order is not documented as meaningful, so the page sorts by
  * the numbers a reader compares first.
+ *
+ * [season] is the feed's eight-digit season id, such as `20252026`, and names the season these numbers
+ * belong to. It is the season the page asked for unless that season had no rows for the club yet, in
+ * which case the page shows the season before and this names that one, so the UI can say so.
  */
 data class ClubStats(
+    val season: String,
     val skaters: List<SkaterStat> = emptyList(),
     val goalies: List<GoalieStat> = emptyList(),
 )

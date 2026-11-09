@@ -35,6 +35,7 @@ import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.ClubGame
+import net.montycasa.roux.domain.model.ClubSchedule
 import net.montycasa.roux.domain.model.Conference
 import net.montycasa.roux.domain.model.Division
 import net.montycasa.roux.domain.model.GameId
@@ -112,7 +113,7 @@ class TeamScheduleListTest {
                     zone = TimeZone.of("America/Toronto"),
                     ioDispatcher = Dispatchers.Unconfined,
                 )
-            val games = requireNotNull(runBlocking { repository.schedule(TeamKey("ANA")).data })
+            val games = requireNotNull(runBlocking { repository.schedule(TeamKey("ANA")).data }).games
             val rows =
                 scheduleListModel(games, Locale.US)
                     .entries
@@ -274,7 +275,7 @@ class TeamScheduleListTest {
 
     @Test
     fun theTabsShowScheduleSelectedPlayersAndTeamStatsAllAvailable() {
-        showScreen(schedule = Loadable(listOf(game("next", "2026-11-05T20:00:00Z", GameState.Scheduled)), Freshness.Fresh, null))
+        showScreen(schedule = scheduled(listOf(game("next", "2026-11-05T20:00:00Z", GameState.Scheduled))))
 
         rule.onNodeWithTag("team.tab.Schedule").assertIsSelected().assertIsEnabled()
         rule
@@ -292,7 +293,7 @@ class TeamScheduleListTest {
 
     @Test
     fun theTabsSitAtTheBottomOfThePageUnderTheList() {
-        showScreen(schedule = Loadable(seasonAroundNext(), Freshness.Fresh, null))
+        showScreen(schedule = scheduled(seasonAroundNext()))
 
         val list = rule.onNodeWithTag("team.schedule.list").fetchSemanticsNode().boundsInRoot
         val tabs = rule.onNodeWithTag("team.tab.Schedule").fetchSemanticsNode().boundsInRoot
@@ -326,7 +327,7 @@ class TeamScheduleListTest {
         var route: String? = null
         val games = seasonAroundNext()
         showScreen(
-            schedule = Loadable(games, Freshness.Fresh, null),
+            schedule = scheduled(games),
             onGameClick = { game -> route = detailRoute(game) },
         )
         rule.waitUntil(5_000) {
@@ -340,13 +341,15 @@ class TeamScheduleListTest {
         assertTrue(route.orEmpty().startsWith("detail/next"))
     }
 
+    private fun scheduled(games: List<ClubGame>) = Loadable(ClubSchedule(season = "20262027", games = games), Freshness.Fresh, null)
+
     private fun showList(games: List<ClubGame>) {
         rule.setContent {
             RouxTheme {
                 Box(Modifier.fillMaxWidth().height(360.dp)) {
                     TeamScheduleList(
                         teamKey = TeamKey("TOR"),
-                        schedule = Loadable(games, Freshness.Fresh, null),
+                        schedule = scheduled(games),
                         isRefreshing = false,
                         onRetry = {},
                         onGameClick = {},
@@ -358,7 +361,7 @@ class TeamScheduleListTest {
     }
 
     private fun showScreen(
-        schedule: Loadable<List<ClubGame>>,
+        schedule: Loadable<ClubSchedule>,
         onGameClick: (ClubGame) -> Unit = {},
     ) {
         rule.setContent {

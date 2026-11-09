@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performClick
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
+import net.montycasa.roux.domain.model.ClubSchedule
 import net.montycasa.roux.domain.model.Conference
 import net.montycasa.roux.domain.model.Division
 import net.montycasa.roux.domain.model.LeagueClub
@@ -281,7 +282,7 @@ class TeamStatsTest {
                             teamKey = TeamKey("ANA"),
                             row = anaRow,
                             isLoading = false,
-                            schedule = Loadable(emptyList(), Freshness.Fresh, null),
+                            schedule = Loadable(ClubSchedule(season = "20262027", games = emptyList()), Freshness.Fresh, null),
                             leagueStats = league,
                         ),
                     onBack = {},

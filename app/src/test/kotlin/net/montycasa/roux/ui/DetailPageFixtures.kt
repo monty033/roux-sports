@@ -5,6 +5,7 @@ import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.ClubGame
 import net.montycasa.roux.domain.model.ClubRoster
+import net.montycasa.roux.domain.model.ClubSchedule
 import net.montycasa.roux.domain.model.ClubStats
 import net.montycasa.roux.domain.model.Conference
 import net.montycasa.roux.domain.model.Division
@@ -426,6 +427,7 @@ internal object DetailPageFixtures {
 
     val clubStats =
         ClubStats(
+            season = CLUB_SEASON,
             skaters =
                 listOf(
                     SkaterStat(
@@ -558,7 +560,7 @@ internal object DetailPageFixtures {
             teamKey = TeamKey("TOR"),
             row = clubRow,
             isLoading = false,
-            schedule = Loadable(clubSchedule, Freshness.Fresh, null),
+            schedule = clubSeason(clubSchedule),
             roster = Loadable(clubRoster, Freshness.Fresh, null),
             stats = Loadable(clubStats, Freshness.Fresh, null),
             leagueStats = Loadable(leagueSummary, Freshness.Fresh, null),
@@ -571,5 +573,10 @@ internal object DetailPageFixtures {
      * rendering the Schedule tab's own rows.
      */
     val teamAuditState: TeamDetailUiState
-        get() = teamState.copy(schedule = Loadable(listOf(clubSchedule[3], clubSchedule[5]), Freshness.Fresh, null))
+        get() = teamState.copy(schedule = clubSeason(listOf(clubSchedule[3], clubSchedule[5])))
+
+    /** The fixtures' club is the 2026-27 season, the one the page asks for on the fixed clock. */
+    const val CLUB_SEASON = "20262027"
+
+    private fun clubSeason(games: List<ClubGame>) = Loadable(ClubSchedule(season = CLUB_SEASON, games = games), Freshness.Fresh, null)
 }

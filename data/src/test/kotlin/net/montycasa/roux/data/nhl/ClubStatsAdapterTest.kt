@@ -8,6 +8,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import net.montycasa.roux.data.Fixtures
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -108,7 +109,7 @@ class ClubStatsAdapterTest {
                 JsonObject(root + ("skaters" to JsonArray(listOf(first) + skaters.drop(1))))
             }
 
-        val result = ClubStatsAdapter.parse(json)
+        val result = ClubStatsAdapter.parse(json, SEASON)
 
         assertTrue("A missing number must not discard the payload: $result", result is ParseResult.Success)
         val stats = (result as ParseResult.Success).value
@@ -125,7 +126,7 @@ class ClubStatsAdapterTest {
                 JsonObject(root + ("goalies" to JsonArray(listOf(first) + goalies.drop(1))))
             }
 
-        val result = ClubStatsAdapter.parse(json)
+        val result = ClubStatsAdapter.parse(json, SEASON)
 
         assertTrue("An absent number must not discard the payload: $result", result is ParseResult.Success)
         val goalie = (result as ParseResult.Success).value.goalies.first { it.playerId == 8476316L }
@@ -137,7 +138,7 @@ class ClubStatsAdapterTest {
     fun aMissingGroupIsAFailureRatherThanAnEmptySuccess() {
         val json = mutate { root -> JsonObject(root - "goalies") }
 
-        val result = ClubStatsAdapter.parse(json)
+        val result = ClubStatsAdapter.parse(json, SEASON)
 
         assertTrue("A missing group must fail: $result", result is ParseResult.Failure)
         assertTrue((result as ParseResult.Failure).reason.contains("goalies"))
@@ -147,7 +148,7 @@ class ClubStatsAdapterTest {
     fun aMalformedGroupIsAFailure() {
         val json = mutate { root -> JsonObject(root + ("skaters" to JsonPrimitive("not a list"))) }
 
-        val result = ClubStatsAdapter.parse(json)
+        val result = ClubStatsAdapter.parse(json, SEASON)
 
         assertTrue("A malformed group must fail: $result", result is ParseResult.Failure)
         assertTrue((result as ParseResult.Failure).reason.contains("decoding failed"))
@@ -157,7 +158,7 @@ class ClubStatsAdapterTest {
     fun anEmptyGroupIsNotAnHonestEmptySuccess() {
         val json = mutate { root -> JsonObject(root + ("goalies" to JsonArray(emptyList()))) }
 
-        val result = ClubStatsAdapter.parse(json)
+        val result = ClubStatsAdapter.parse(json, SEASON)
 
         assertTrue("An empty group must not masquerade as data: $result", result is ParseResult.Failure)
     }
@@ -171,17 +172,55 @@ class ClubStatsAdapterTest {
                 JsonObject(root + ("skaters" to JsonArray(listOf(first) + skaters.drop(1))))
             }
 
-        val stats = (ClubStatsAdapter.parse(json) as ParseResult.Success).value
+        val stats = (ClubStatsAdapter.parse(json, SEASON) as ParseResult.Success).value
 
         assertEquals(22, stats.skaters.size)
         assertNull(stats.skaters.firstOrNull { it.playerId == 8473986L })
     }
 
-    private fun parsed() = (ClubStatsAdapter.parse(fixture) as ParseResult.Success).value
+    @Test
+    fun theParsedValueNamesTheSeasonItWasAskedFor() {
+        assertEquals(SEASON, parsed().season)
+
+        val earlier = (ClubStatsAdapter.parse(fixture, "20252026") as ParseResult.Success).value
+
+        assertEquals("20252026", earlier.season)
+    }
+
+    @Test
+    fun bothGroupsWithNoRowsIsAnEmptySeasonThatMayRollBack() {
+        val json = mutate { root -> JsonObject(root + mapOf("skaters" to JsonArray(emptyList()), "goalies" to JsonArray(emptyList()))) }
+
+        val result = ClubStatsAdapter.parse(json, SEASON)
+
+        assertTrue("An empty season must not masquerade as data: $result", result is ParseResult.Failure)
+        assertTrue("An empty season must be flagged so the repository can roll back", (result as ParseResult.Failure).emptyPayload)
+    }
+
+    @Test
+    fun oneEmptyGroupIsAFailureButNotAnEmptySeason() {
+        val json = mutate { root -> JsonObject(root + ("goalies" to JsonArray(emptyList()))) }
+
+        val result = ClubStatsAdapter.parse(json, SEASON)
+
+        assertTrue("One empty group beside rows is a broken reply: $result", result is ParseResult.Failure)
+        assertFalse((result as ParseResult.Failure).emptyPayload)
+    }
+
+    @Test
+    fun aMalformedReplyIsNotAnEmptySeason() {
+        val result = ClubStatsAdapter.parse("""{"skaters":"nope"}""", SEASON)
+
+        assertTrue(result is ParseResult.Failure)
+        assertFalse((result as ParseResult.Failure).emptyPayload)
+    }
+
+    private fun parsed() = (ClubStatsAdapter.parse(fixture, SEASON) as ParseResult.Success).value
 
     private fun mutate(transform: (JsonObject) -> JsonObject): String = transform(Json.parseToJsonElement(fixture).jsonObject).toString()
 
     private companion object {
+        const val SEASON = "20262027"
         val fixture = Fixtures.clubStats("club-stats-ana-20262027.json")
     }
 }

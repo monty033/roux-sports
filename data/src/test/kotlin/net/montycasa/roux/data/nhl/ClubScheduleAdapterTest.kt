@@ -73,6 +73,24 @@ class ClubScheduleAdapterTest {
     }
 
     @Test
+    fun anEmptyGamesArrayIsFlaggedSoTheRepositoryCanRollBack() {
+        val result = NhlAdapter.parseClubSchedule(mutate { root -> JsonObject(root + ("games" to JsonArray(emptyList()))) })
+
+        assertTrue("An empty season must be a failure: $result", result is ParseResult.Failure)
+        assertTrue((result as ParseResult.Failure).emptyPayload)
+    }
+
+    @Test
+    fun theCapturedUpcomingTorontoSeasonIsAFlaggedEmptyPayload() {
+        val upcoming = Fixtures.rollover("club-schedule-TOR-20272028-empty.json")
+
+        val result = NhlAdapter.parseClubSchedule(upcoming)
+
+        assertTrue("The captured empty season must be a flagged failure: $result", result is ParseResult.Failure)
+        assertTrue((result as ParseResult.Failure).emptyPayload)
+    }
+
+    @Test
     fun aFinishedGameWithAMissingScoreKeepsItNullRatherThanInventingZero() {
         val json =
             mutate { root ->

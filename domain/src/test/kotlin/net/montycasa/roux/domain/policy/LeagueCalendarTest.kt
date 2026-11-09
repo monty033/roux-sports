@@ -2,6 +2,7 @@ package net.montycasa.roux.domain.policy
 
 import kotlinx.datetime.TimeZone
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.time.Instant
 
@@ -72,5 +73,25 @@ class LeagueCalendarTest {
         val instant = Instant.parse("2026-07-01T06:30:00Z")
         assertEquals("20252026", LeagueCalendar.seasonId(instant, vancouver))
         assertEquals("20262027", LeagueCalendar.seasonId(instant, toronto))
+    }
+
+    @Test
+    fun thePreviousSeasonIsTheOneImmediatelyBefore() {
+        assertEquals("20252026", LeagueCalendar.previousSeasonId("20262027"))
+        assertEquals("19992000", LeagueCalendar.previousSeasonId("20002001"))
+    }
+
+    @Test
+    fun aMalformedSeasonIsRejectedRatherThanInventingOne() {
+        listOf("2026", "202620270", "2026-27", "2026202a").forEach { bad ->
+            val thrown = runCatching { LeagueCalendar.previousSeasonId(bad) }.exceptionOrNull()
+            assertTrue("'$bad' must be rejected, got $thrown", thrown is IllegalArgumentException)
+        }
+    }
+
+    @Test
+    fun aSeasonWhoseYearsAreNotConsecutiveIsRejected() {
+        val thrown = runCatching { LeagueCalendar.previousSeasonId("20262029") }.exceptionOrNull()
+        assertTrue("20262029 is not a season, got $thrown", thrown is IllegalArgumentException)
     }
 }

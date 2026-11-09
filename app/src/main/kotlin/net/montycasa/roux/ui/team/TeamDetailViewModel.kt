@@ -11,8 +11,8 @@ import kotlinx.coroutines.launch
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
-import net.montycasa.roux.domain.model.ClubGame
 import net.montycasa.roux.domain.model.ClubRoster
+import net.montycasa.roux.domain.model.ClubSchedule
 import net.montycasa.roux.domain.model.ClubStats
 import net.montycasa.roux.domain.model.LeagueSummary
 import net.montycasa.roux.domain.model.StandingRow
@@ -43,7 +43,7 @@ data class TeamDetailUiState(
      * Kept separate from [row] on purpose: the header reads the standings row and the section reads
      * this, so one request failing cannot take the other's content away.
      */
-    val schedule: Loadable<List<ClubGame>>? = null,
+    val schedule: Loadable<ClubSchedule>? = null,
     /** The current roster, with its own cache entry and failure. */
     val roster: Loadable<ClubRoster>? = null,
     /**
@@ -160,7 +160,7 @@ class TeamDetailViewModel(
             TableResult(Loadable(null, Freshness.Missing, LoadError.Local), null)
         }
 
-    private suspend fun readSchedule(): Loadable<List<ClubGame>> =
+    private suspend fun readSchedule(): Loadable<ClubSchedule> =
         try {
             schedule?.schedule(teamKey) ?: Loadable(null, Freshness.Missing, null)
         } catch (cancelled: CancellationException) {

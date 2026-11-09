@@ -13,7 +13,9 @@ import net.montycasa.roux.domain.model.TeamKey
  */
 interface ClubStatsRepository {
     /**
-     * The club's statistics for the season containing the current league day.
+     * The club's statistics for the season containing the current league day, or for the season before
+     * it when the current season has no skater or goalie rows for the club yet. [ClubStats.season]
+     * names whichever season the numbers came from.
      *
      * A failure is reported inside the [Loadable] alongside any cached copy, so the club page can
      * keep its header and tab row and offer retry in the tab.

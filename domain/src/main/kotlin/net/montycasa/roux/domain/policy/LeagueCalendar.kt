@@ -32,6 +32,21 @@ object LeagueCalendar {
     /** The season identifier for an ISO `YYYY-MM-DD` day. */
     fun seasonId(day: String): String = seasonId(LocalDate.parse(day))
 
+    /**
+     * The season immediately before [seasonId]: `20252026` for `20262027`.
+     *
+     * Used once, when the requested season has no rows for a club yet. Callers never walk further back
+     * than this one step. A malformed id is rejected rather than turned into a request for a made-up season.
+     */
+    fun previousSeasonId(seasonId: String): String {
+        require(SEASON_ID.matches(seasonId)) { "Season must be eight digits, was '$seasonId'" }
+        val start = seasonId.take(4).toInt()
+        require(seasonId.substring(4).toInt() == start + 1) { "Season must be two consecutive years, was '$seasonId'" }
+        return "${start - 1}$start"
+    }
+
+    private val SEASON_ID = Regex("[0-9]{8}")
+
     /** The season identifier for [instant]'s civil date in [zone]. */
     fun seasonId(
         instant: Instant,

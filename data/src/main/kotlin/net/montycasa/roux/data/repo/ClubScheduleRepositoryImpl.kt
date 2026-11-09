@@ -17,7 +17,7 @@ import net.montycasa.roux.domain.FetchOutcome
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
-import net.montycasa.roux.domain.model.ClubGame
+import net.montycasa.roux.domain.model.ClubSchedule
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.policy.FreshnessPolicy
 import net.montycasa.roux.domain.policy.LeagueCalendar
@@ -35,6 +35,9 @@ import kotlin.time.Instant
  * early July asks for the coming season rather than the one that just ended. The cache key carries
  * both the club and the season: a season boundary must never serve last year's fixtures under this
  * year's request.
+ *
+ * A season with no games for the club yet rolls back once, to the season before it, and the value
+ * names the season its games came from. Only an empty reply rolls back; an error keeps its own handling.
  */
 internal class ClubScheduleRepositoryImpl(
     private val api: NhlApi,
@@ -44,38 +47,57 @@ internal class ClubScheduleRepositoryImpl(
     private val zone: TimeZone = TimeZone.currentSystemDefault(),
     private val ioDispatcher: CoroutineContext = Dispatchers.IO,
 ) : ClubScheduleRepository {
-    override suspend fun schedule(teamKey: TeamKey): Loadable<List<ClubGame>> {
+    override suspend fun schedule(teamKey: TeamKey): Loadable<ClubSchedule> {
         val abbrev = teamKey.abbrev.uppercase()
         val season = LeagueCalendar.seasonId(clock.now(), zone)
-        return load(
+        val requested = read(abbrev, season)
+        if (!requested.emptySeason) return requested.loadable
+        // The requested season has no games for this club yet. Roll back once; the season before is read
+        // exactly like any other, and if it is empty or fails too, its own answer is what the page shows.
+        return read(abbrev, LeagueCalendar.previousSeasonId(season)).loadable
+    }
+
+    private suspend fun read(
+        abbrev: String,
+        season: String,
+    ): SeasonRead<ClubSchedule> =
+        load(
             key = CacheKey(CacheKind.ClubSchedule, "$abbrev-$season"),
             maxAge = FreshnessPolicy.clubScheduleMaxAge(),
             fetch = { api.clubSchedule(abbrev, season) },
-            parse = { adapter.parseClubSchedule(it) },
+            parse = { parseSchedule(it, season) },
         )
-    }
+
+    private fun parseSchedule(
+        json: String,
+        season: String,
+    ): ParseResult<ClubSchedule> =
+        when (val parsed = adapter.parseClubSchedule(json)) {
+            is ParseResult.Success -> ParseResult.Success(ClubSchedule(season = season, games = parsed.value))
+            is ParseResult.Failure -> parsed
+        }
 
     private suspend fun <T> load(
         key: CacheKey,
         maxAge: Duration,
         fetch: suspend () -> ApiResult,
         parse: (String) -> ParseResult<T>,
-    ): Loadable<T> =
+    ): SeasonRead<T> =
         withContext(ioDispatcher) {
             val cached = readCached(key, parse)
             if (cached != null &&
                 !FreshnessPolicy.isStale(fetchedAt = cached.fetchedAt, now = clock.now(), maxAge = maxAge)
             ) {
-                return@withContext Loadable(cached.value, Freshness.Fresh, null)
+                return@withContext SeasonRead(Loadable(cached.value, Freshness.Fresh, null))
             }
 
             val result =
                 try {
                     fetch()
                 } catch (limited: RateLimited) {
-                    return@withContext fallBack(cached, LoadError.Http(status = 429, retryAfter = limited.retryAfter))
+                    return@withContext SeasonRead(fallBack(cached, LoadError.Http(status = 429, retryAfter = limited.retryAfter)))
                 } catch (blocked: HostNotAllowedException) {
-                    return@withContext fallBack(cached, LoadError.Blocked(blocked.host))
+                    return@withContext SeasonRead(fallBack(cached, LoadError.Blocked(blocked.host)))
                 }
 
             when (result) {
@@ -86,26 +108,26 @@ internal class ClubScheduleRepositoryImpl(
                                 // The whole-season payload is stamped when it arrives, so a slow
                                 // response cannot install an entry that is already past its lifetime.
                                 cache.put(key, result.bytes, clock.now())
-                                Loadable(parsed.value, Freshness.Fresh, null)
+                                SeasonRead(Loadable(parsed.value, Freshness.Fresh, null))
                             } catch (_: IOException) {
                                 // The feed answered; the disk is what failed. A usable list still
                                 // renders, and Local names the actual problem.
-                                Loadable(parsed.value, Freshness.Fresh, LoadError.Local)
+                                SeasonRead(Loadable(parsed.value, Freshness.Fresh, LoadError.Local))
                             }
                         }
 
                         is ParseResult.Failure -> {
-                            fallBack(cached, LoadError.Parse)
+                            SeasonRead(fallBack(cached, LoadError.Parse), emptySeason = parsed.emptyPayload)
                         }
                     }
                 }
 
                 is ApiResult.HttpError -> {
-                    fallBack(cached, LoadError.Http(result.status))
+                    SeasonRead(fallBack(cached, LoadError.Http(result.status)))
                 }
 
                 is ApiResult.NetworkError -> {
-                    fallBack(cached, LoadError.Network)
+                    SeasonRead(fallBack(cached, LoadError.Network))
                 }
             }
         }
@@ -128,6 +150,15 @@ internal class ClubScheduleRepositoryImpl(
             cached?.let { Cached(it.value, it.fetchedAt) },
             FetchOutcome.Failed(error),
         )
+
+    /**
+     * One season's read. [emptySeason] is true only when the feed answered with a well-formed reply that had no games
+     * for the club, the one outcome that justifies asking for the season before.
+     */
+    private class SeasonRead<T>(
+        val loadable: Loadable<T>,
+        val emptySeason: Boolean = false,
+    )
 
     private class CachedValue<T>(
         val value: T,

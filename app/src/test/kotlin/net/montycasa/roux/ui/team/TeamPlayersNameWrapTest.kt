@@ -7,6 +7,7 @@ import androidx.compose.ui.test.performClick
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.ClubRoster
+import net.montycasa.roux.domain.model.ClubSchedule
 import net.montycasa.roux.domain.model.ClubStats
 import net.montycasa.roux.domain.model.GoalieStat
 import net.montycasa.roux.domain.model.RosterPlayer
@@ -45,7 +46,7 @@ class TeamPlayersNameWrapTest {
                             TeamDetailUiState(
                                 teamKey = TeamKey("TOR"),
                                 isLoading = false,
-                                schedule = Loadable(emptyList(), Freshness.Fresh, null),
+                                schedule = Loadable(ClubSchedule(season = "20262027", games = emptyList()), Freshness.Fresh, null),
                                 roster = Loadable(roster, Freshness.Fresh, null),
                                 stats = Loadable(stats, Freshness.Fresh, null),
                             ),
@@ -79,6 +80,7 @@ class TeamPlayersNameWrapTest {
 
     private val stats =
         ClubStats(
+            season = "20262027",
             skaters =
                 listOf(
                     SkaterStat(playerId = 91, name = "Leo Carlsson", positionCode = "C", gamesPlayed = 14),

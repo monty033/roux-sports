@@ -19,6 +19,7 @@ import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.ClubGame
 import net.montycasa.roux.domain.model.ClubRoster
+import net.montycasa.roux.domain.model.ClubSchedule
 import net.montycasa.roux.domain.model.ClubStats
 import net.montycasa.roux.domain.model.Conference
 import net.montycasa.roux.domain.model.Division
@@ -408,7 +409,7 @@ class TeamPlayersTest {
                             teamKey = TeamKey("TOR"),
                             row = toronto,
                             isLoading = false,
-                            schedule = Loadable(listOf(game), Freshness.Fresh, null),
+                            schedule = Loadable(ClubSchedule(season = "20262027", games = listOf(game)), Freshness.Fresh, null),
                             roster = roster,
                             stats = stats,
                         ),
@@ -438,6 +439,7 @@ class TeamPlayersTest {
 
     private val sampleStats =
         ClubStats(
+            season = "20262027",
             skaters =
                 listOf(
                     SkaterStat(
