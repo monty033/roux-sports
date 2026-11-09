@@ -185,7 +185,7 @@ class PreGameDetailScreenTest {
     }
 
     @Test
-    fun `a player row is at least 48 dp tall, its photo is 36 dp at normal scale, and the card headers carry 26 dp crests`() {
+    fun `a player row is at least 48 dp tall, its photo is 44 dp at normal scale, and the card headers carry 26 dp crests`() {
         show(scheduled, landing = preGameLanding, rail = preGameRail)
 
         val row = compose.onNodeWithTag("detail.pregame.performers.away.N. MacKinnon.row").getUnclippedBoundsInRoot()
@@ -193,7 +193,7 @@ class PreGameDetailScreenTest {
         assertTrue("the row is $rowHeight tall, under 48 dp", rowHeight >= 48.dp)
         val photo = compose.onNodeWithTag("detail.pregame.performers.away.N. MacKinnon.mugshot", useUnmergedTree = true)
         val photoBounds = photo.getUnclippedBoundsInRoot()
-        assertEquals("the photo is not 36 dp", 36f, (photoBounds.right - photoBounds.left).value, 0.5f)
+        assertEquals("the photo is not 44 dp", 44f, (photoBounds.right - photoBounds.left).value, 0.5f)
         listOf("detail.pregame.last10", "detail.pregame.season", "detail.pregame.performers", "detail.pregame.goalies").forEach { block ->
             listOf("away", "home").forEach { side ->
                 val crest = compose.onNodeWithTag("$block.club.$side.crest").getUnclippedBoundsInRoot()

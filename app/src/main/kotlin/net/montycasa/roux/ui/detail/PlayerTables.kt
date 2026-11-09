@@ -213,8 +213,11 @@ private const val MUGSHOT_BASE_DP = 28f
 private const val MUGSHOT_MAX_DP = 56f
 private val MUGSHOT_GAP = 6.dp
 
-/** A mugshot on a pre-game card's Top Performers and Goaltenders rows, at the normal scale. */
-internal const val CARD_MUGSHOT_BASE_DP = 36f
+/**
+ * A mugshot on a pre-game card's Top Performers and Goaltenders rows, at the normal scale. The photo is centred against
+ * the name and both figure lines, so it can carry more size than the in-game tables without adding height.
+ */
+internal const val CARD_MUGSHOT_BASE_DP = 44f
 
 /**
  * A mugshot's diameter at the current font scale. It grows with the text so the initials keep their room: [baseDp] at
