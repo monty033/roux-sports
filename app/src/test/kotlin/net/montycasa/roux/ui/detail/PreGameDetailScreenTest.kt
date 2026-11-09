@@ -4,6 +4,7 @@ package net.montycasa.roux.ui.detail
 
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -24,6 +25,7 @@ import net.montycasa.roux.domain.model.GoalieSeason
 import net.montycasa.roux.domain.model.RankedStat
 import net.montycasa.roux.domain.model.SeasonRecord
 import net.montycasa.roux.domain.model.SeasonSeriesGame
+import net.montycasa.roux.domain.model.SkaterSeason
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.domain.model.Venue
@@ -46,15 +48,15 @@ class PreGameDetailScreenTest {
     val compose = createComposeRule()
 
     @Test
-    fun `a scheduled game shows both records in the hero and the four cards in page order`() {
+    fun `a scheduled game shows both records in the hero and the cards in page order`() {
         show(scheduled, landing = preGameLanding, rail = preGameRail)
 
         compose.onNodeWithTag("detail.hero.away.record", useUnmergedTree = true).assertTextEquals("COL 10–6–2")
         compose.onNodeWithTag("detail.hero.home.record", useUnmergedTree = true).assertTextEquals("TOR 12–4–1")
-        compose.onNodeWithTag("detail.pregame.last10.away").assertExists()
+        compose.onNodeWithText("LAST TEN GAMES").assertExists()
         compose.onNodeWithTag("detail.pregame.stat.Power play").assertExists()
         compose.onNodeWithTag("detail.pregame.series.standing").assertTextEquals("TOR leads 1–0")
-        compose.onNodeWithText("M. Blackwood #30").assertExists()
+        compose.onNodeWithText("M. Blackwood").assertExists()
         compose.onNodeWithText("12 GP · 9–3–1").assertExists()
 
         val tops =
@@ -62,6 +64,7 @@ class PreGameDetailScreenTest {
                 "detail.section.last10",
                 "detail.section.season-stats",
                 "detail.section.season-series",
+                "detail.section.top-performers",
                 "detail.section.goaltenders",
                 "detail.section.info",
             ).map { tag ->
@@ -78,6 +81,48 @@ class PreGameDetailScreenTest {
         show(scheduled, landing = preGameLanding, rail = preGameRail)
 
         compose.onAllNodesWithText("starter", substring = true, ignoreCase = true).assertCountEquals(0)
+    }
+
+    @Test
+    fun `the two-club cards put the away club on the left and the home club on the right`() {
+        show(scheduled, landing = preGameLanding, rail = preGameRail)
+
+        listOf("detail.pregame.last10", "detail.pregame.season", "detail.pregame.performers", "detail.pregame.goalies").forEach { block ->
+            assertLeftOf("$block.club.away.name", "$block.club.home.name")
+        }
+        assertLeftOf("detail.pregame.last10.away", "detail.pregame.last10.home")
+        assertLeftOf("detail.pregame.performers.away", "detail.pregame.performers.home")
+        assertLeftOf("detail.pregame.goalies.away", "detail.pregame.goalies.home")
+    }
+
+    @Test
+    fun `the last ten card prints each record and streak in its own half, with no result chips`() {
+        show(scheduled, landing = preGameLanding, rail = preGameRail)
+
+        compose.onNodeWithTag("detail.pregame.last10.away").assertTextEquals("6–3–1 (L1)")
+        compose.onNodeWithTag("detail.pregame.last10.home").assertTextEquals("7–2–1 (W2)")
+        compose.onAllNodesWithText("W").assertCountEquals(0)
+        compose.onAllNodesWithText("L").assertCountEquals(0)
+    }
+
+    @Test
+    fun `the top performers are the three highest point scorers for each club, in points order`() {
+        show(scheduled, landing = preGameLanding, rail = preGameRail)
+
+        compose.onNodeWithText("10 G · 20 A · 30 PTS").assertExists()
+        compose.onNodeWithText("11 G · 16 A · 27 PTS").assertExists()
+        // Lehkonen has the most goals for COL, so a card ranked by goals would list him ahead of Makar. He is fourth on points.
+        compose.onNodeWithText("A. Lehkonen").assertDoesNotExist()
+        assertAbove("N. MacKinnon", "M. Necas")
+        assertAbove("M. Necas", "C. Makar")
+    }
+
+    @Test
+    fun `a goaltender with no games played is not listed on his club's card`() {
+        show(scheduled, landing = preGameLanding, rail = preGameRail)
+
+        compose.onNodeWithText("A. Stolarz").assertExists()
+        compose.onNodeWithText("Z. Benched").assertDoesNotExist()
     }
 
     @Test
@@ -99,6 +144,7 @@ class PreGameDetailScreenTest {
         compose.onNodeWithTag("detail.section.last10").assertDoesNotExist()
         compose.onNodeWithTag("detail.section.season-stats").assertDoesNotExist()
         compose.onNodeWithTag("detail.section.season-series").assertDoesNotExist()
+        compose.onNodeWithTag("detail.section.top-performers").assertDoesNotExist()
         compose.onNodeWithTag("detail.section.goaltenders").assertDoesNotExist()
     }
 
@@ -110,7 +156,35 @@ class PreGameDetailScreenTest {
         compose.onNodeWithTag("detail.section.last10").assertDoesNotExist()
         compose.onNodeWithTag("detail.section.season-stats").assertDoesNotExist()
         compose.onNodeWithTag("detail.section.season-series").assertDoesNotExist()
+        compose.onNodeWithTag("detail.section.top-performers").assertDoesNotExist()
         compose.onNodeWithTag("detail.section.goaltenders").assertDoesNotExist()
+    }
+
+    /** Asserts the node tagged [left] starts to the left of the node tagged [right], by the centre of each. */
+    private fun assertLeftOf(
+        left: String,
+        right: String,
+    ) {
+        val l = compose.onNodeWithTag(left).getUnclippedBoundsInRoot().let { it.left + it.right }
+        val r = compose.onNodeWithTag(right).getUnclippedBoundsInRoot().let { it.left + it.right }
+        assertTrue("$left should sit left of $right: $l against $r", l < r)
+    }
+
+    private fun assertAbove(
+        upper: String,
+        lower: String,
+    ) {
+        val u =
+            compose
+                .onNodeWithText(upper)
+                .fetchSemanticsNode()
+                .positionInRoot.y
+        val d =
+            compose
+                .onNodeWithText(lower)
+                .fetchSemanticsNode()
+                .positionInRoot.y
+        assertTrue("$upper should sit above $lower: $u against $d", u < d)
     }
 
     private fun show(
@@ -164,6 +238,24 @@ class PreGameDetailScreenTest {
                             gamesPlayed = 12,
                             record = SeasonRecord(9, 3, 1),
                         ),
+                        GoalieSeason(teamId = 21L, name = "Z. Benched", sweaterNumber = 35, gamesPlayed = 0),
+                        GoalieSeason(
+                            teamId = 10L,
+                            name = "A. Stolarz",
+                            sweaterNumber = 41,
+                            gamesPlayed = 8,
+                            record = SeasonRecord(5, 2, 1),
+                        ),
+                    ),
+                skaters =
+                    listOf(
+                        SkaterSeason(21L, "N. MacKinnon", goals = 10, assists = 20, points = 30),
+                        SkaterSeason(21L, "M. Necas", goals = 9, assists = 14, points = 23),
+                        SkaterSeason(21L, "C. Makar", goals = 5, assists = 16, points = 21),
+                        SkaterSeason(21L, "A. Lehkonen", goals = 12, assists = 5, points = 17),
+                        SkaterSeason(10L, "A. Matthews", goals = 11, assists = 16, points = 27),
+                        SkaterSeason(10L, "W. Nylander", goals = 11, assists = 11, points = 22),
+                        SkaterSeason(10L, "J. Roslovic", goals = 8, assists = 10, points = 18),
                     ),
             )
 

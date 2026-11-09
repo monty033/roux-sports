@@ -39,6 +39,7 @@ import net.montycasa.roux.domain.model.SeasonRecord
 import net.montycasa.roux.domain.model.SeasonSeriesGame
 import net.montycasa.roux.domain.model.SeriesStatus
 import net.montycasa.roux.domain.model.ShotTotals
+import net.montycasa.roux.domain.model.SkaterSeason
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.domain.model.ThemeMode
@@ -498,6 +499,17 @@ internal object AuditStates {
                                     goalsAgainstAverage = 3.40,
                                     savePercentage = 0.879,
                                 ),
+                            ),
+                        // Four skaters for the home club and three for the away club, so the audit draws the three-player cut.
+                        skaters =
+                            listOf(
+                                SkaterSeason(68L, "J. Kessel", goals = 16, assists = 19, points = 35),
+                                SkaterSeason(68L, "C. Hayes", goals = 12, assists = 22, points = 34),
+                                SkaterSeason(68L, "N. Schmidt", goals = 4, assists = 17, points = 21),
+                                SkaterSeason(4L, "T. Konecny", goals = 11, assists = 15, points = 26),
+                                SkaterSeason(4L, "S. Couturier", goals = 9, assists = 13, points = 22),
+                                SkaterSeason(4L, "J. Foote", goals = 3, assists = 6, points = 9),
+                                SkaterSeason(4L, "M. Kanzig", goals = 2, assists = 5, points = 7),
                             ),
                     ),
                     Freshness.Fresh,

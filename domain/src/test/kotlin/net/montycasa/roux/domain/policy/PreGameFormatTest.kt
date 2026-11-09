@@ -180,9 +180,8 @@ class PreGameFormatTest {
     }
 
     @Test
-    fun aGoalieWithNoSeasonHasNoStatsLineAndNoStarterLabel() {
+    fun aGoalieWithNoSeasonHasNoStatsLine() {
         assertNull(PreGameFormat.goalieStats(AKHTYAMOV))
-        assertEquals("A. Akhtyamov #70", PreGameFormat.goalieHeading(AKHTYAMOV))
     }
 
     @Test

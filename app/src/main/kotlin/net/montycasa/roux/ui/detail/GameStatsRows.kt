@@ -115,8 +115,8 @@ internal fun GameStatsRows(
                 )
             }
             SplitBar(
-                awayValue = row.awayValue,
-                homeValue = row.homeValue,
+                awayValue = row.awayValue.toDouble(),
+                homeValue = row.homeValue.toDouble(),
                 modifier =
                     Modifier
                         .fillMaxWidth()
@@ -214,12 +214,22 @@ internal fun barShares(
     homeValue: Int,
     trackDp: Float,
     minSideDp: Float = MIN_BAR_SIDE_DP,
+): Pair<Float, Float> = barShares(awayValue.toDouble(), homeValue.toDouble(), trackDp, minSideDp)
+
+/** The same split for values that are not whole numbers, such as a goals-against average. */
+internal fun barShares(
+    awayValue: Double,
+    homeValue: Double,
+    trackDp: Float,
+    minSideDp: Float = MIN_BAR_SIDE_DP,
 ): Pair<Float, Float> {
-    if (awayValue <= 0 && homeValue <= 0) return 0f to 0f
+    if (awayValue <= 0.0 && homeValue <= 0.0) return 0f to 0f
     if (trackDp <= 0f) return 0f to 0f
-    val total = (awayValue.coerceAtLeast(0) + homeValue.coerceAtLeast(0)).toFloat()
-    var away = awayValue.coerceAtLeast(0) / total * trackDp
-    var home = homeValue.coerceAtLeast(0) / total * trackDp
+    val awayPart = awayValue.coerceAtLeast(0.0).toFloat()
+    val homePart = homeValue.coerceAtLeast(0.0).toFloat()
+    val total = awayPart + homePart
+    var away = awayPart / total * trackDp
+    var home = homePart / total * trackDp
     val floor = minOf(minSideDp, trackDp / 2f)
     if (away < floor) {
         away = floor
@@ -233,9 +243,9 @@ internal fun barShares(
 }
 
 @Composable
-private fun SplitBar(
-    awayValue: Int,
-    homeValue: Int,
+internal fun SplitBar(
+    awayValue: Double,
+    homeValue: Double,
     modifier: Modifier = Modifier,
 ) {
     val accents = LocalRouxAccents.current

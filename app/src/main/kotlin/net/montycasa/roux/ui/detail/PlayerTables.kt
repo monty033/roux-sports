@@ -227,7 +227,7 @@ private fun initialsOf(name: String): String {
  * The image is decoration: the name beside it is the content, so it carries no description of its own.
  */
 @Composable
-private fun PlayerMugshotImage(
+internal fun PlayerMugshotImage(
     url: String?,
     name: String,
     tag: String,

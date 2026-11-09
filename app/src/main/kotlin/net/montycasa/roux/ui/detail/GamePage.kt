@@ -2,35 +2,34 @@
 
 package net.montycasa.roux.ui.detail
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import net.montycasa.roux.domain.model.ClubForm
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameDetail
 import net.montycasa.roux.domain.model.GameLanding
 import net.montycasa.roux.domain.model.GameRightRail
-import net.montycasa.roux.domain.model.GoalieSeason
+import net.montycasa.roux.domain.model.PlayerMugshot
+import net.montycasa.roux.domain.model.SkaterSeason
+import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.domain.policy.PreGameFormat
 import net.montycasa.roux.domain.policy.SeasonSeries
 import net.montycasa.roux.domain.policy.SeasonStatRow
+import net.montycasa.roux.ui.common.TeamNames
 import net.montycasa.roux.ui.theme.LocalRouxAccents
 import kotlin.time.Instant
 
@@ -42,6 +41,8 @@ internal fun GameDestination(
     onRetry: () -> Unit,
     /** True for a game that has not started. Only then do the pre-game cards exist; a started game renders as it always did. */
     preGame: Boolean = false,
+    /** The season the game belongs to, which names the players' mugshots. Null leaves every photo to its initials. */
+    seasonStartYear: Int? = null,
 ) {
     SectionCard(
         title = "Scoring by period",
@@ -112,7 +113,7 @@ internal fun GameDestination(
     }
 
     if (preGame) {
-        PreGameCards(game = game, detail = detail, onRetry = onRetry)
+        PreGameCards(game = game, detail = detail, seasonStartYear = seasonStartYear, onRetry = onRetry)
     }
 
     SectionCard(
@@ -206,10 +207,11 @@ private fun InfoRow(
 private fun PreGameCards(
     game: Game,
     detail: GameDetail,
+    seasonStartYear: Int?,
     onRetry: () -> Unit,
 ) {
     SectionCard(
-        title = "Last 10",
+        title = "Last Ten Games",
         tag = "detail.section.last10",
         loadable = detail.rightRail,
         failureLabel = "Last 10 could not be loaded",
@@ -242,6 +244,20 @@ private fun PreGameCards(
     }
 
     SectionCard(
+        title = "Top Performers",
+        tag = "detail.section.top-performers",
+        loadable = detail.landing,
+        failureLabel = "Top Performers could not be loaded",
+        onRetry = onRetry,
+        hideWhenEmpty = {
+            PreGameFormat.topPerformers(it.awayTeamId, it.skaters).isEmpty() &&
+                PreGameFormat.topPerformers(it.homeTeamId, it.skaters).isEmpty()
+        },
+    ) { landing ->
+        TopPerformerRows(game = game, landing = landing, seasonStartYear = seasonStartYear)
+    }
+
+    SectionCard(
         title = "Goaltenders",
         tag = "detail.section.goaltenders",
         loadable = detail.landing,
@@ -252,8 +268,115 @@ private fun PreGameCards(
                 PreGameFormat.goaliesFor(it.homeTeamId, it.goalies).isEmpty()
         },
     ) { landing ->
-        GoaltenderRows(game = game, landing = landing)
+        GoaltenderRows(game = game, landing = landing, seasonStartYear = seasonStartYear)
     }
+}
+
+/** The gap between the two clubs' columns, the same in the header and in every row beneath it. */
+private val HALF_GAP = 12.dp
+
+/** A club's crest on the header of a two-club card. */
+private val HEADER_CREST = 24.dp
+
+/**
+ * The block the four two-club cards share: each club's crest and nickname over its own half, the away club hard left and
+ * the home club hard right, then the card's rows beneath. A club is named once, here; the rows carry values only.
+ */
+@Composable
+private fun TwoClubBlock(
+    game: Game,
+    tag: String,
+    content: @Composable () -> Unit,
+) {
+    Column(Modifier.fillMaxWidth()) {
+        TwoClubHalves(
+            away = { ClubHeader(team = game.away, tag = "$tag.club.away", alignEnd = false) },
+            home = { ClubHeader(team = game.home, tag = "$tag.club.home", alignEnd = true) },
+        )
+        content()
+    }
+}
+
+/**
+ * Two equal columns with the same gap the header uses, so each card's rows sit under the club they belong to. The away
+ * column starts at the left edge and the home column ends at the right edge.
+ */
+@Composable
+private fun TwoClubHalves(
+    away: @Composable ColumnScope.() -> Unit,
+    home: @Composable ColumnScope.() -> Unit,
+) {
+    Row(Modifier.fillMaxWidth()) {
+        Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start, content = away)
+        Spacer(Modifier.width(HALF_GAP))
+        Column(Modifier.weight(1f), horizontalAlignment = Alignment.End, content = home)
+    }
+}
+
+/**
+ * One club's crest and nickname. The nickname is the same word the tab pills use, on one line: a name that does not fit
+ * its half is clipped by the layout rather than wrapped, and the audit measures that it fits.
+ */
+@Composable
+private fun ClubHeader(
+    team: TeamRef,
+    tag: String,
+    alignEnd: Boolean,
+) {
+    val crest: @Composable () -> Unit = {
+        TeamLogo(team = team, crestSize = HEADER_CREST, imageTag = "$tag.logo")
+    }
+    val nickname: @Composable () -> Unit = {
+        Text(
+            TeamNames.cityAndName(team).second,
+            modifier = Modifier.testTag("$tag.name"),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+        )
+    }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .testTag(tag),
+        horizontalArrangement = if (alignEnd) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (alignEnd) {
+            nickname()
+            Spacer(Modifier.width(6.dp))
+            crest()
+        } else {
+            crest()
+            Spacer(Modifier.width(6.dp))
+            nickname()
+        }
+    }
+}
+
+/**
+ * One club's value on a two-club card: the record and streak, printed in the club's own half. A club the feed sent no
+ * value for has an empty half.
+ */
+@Composable
+private fun ClubValue(
+    text: String?,
+    tag: String,
+    alignEnd: Boolean,
+) {
+    if (text == null) return
+    Text(
+        text,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp)
+                .testTag(tag),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurface,
+        textAlign = if (alignEnd) TextAlign.End else TextAlign.Start,
+    )
 }
 
 @Composable
@@ -261,117 +384,70 @@ private fun LastTenRows(
     game: Game,
     rail: GameRightRail,
 ) {
-    Column {
-        rail.awayForm?.let { FormRows(abbrev = game.away.abbrev, form = it, side = "away") }
-        rail.homeForm?.let { FormRows(abbrev = game.home.abbrev, form = it, side = "home") }
+    TwoClubBlock(game = game, tag = "detail.pregame.last10") {
+        TwoClubHalves(
+            away = {
+                ClubValue(
+                    text = rail.awayForm?.let { PreGameFormat.lastTenText(it) },
+                    tag = "detail.pregame.last10.away",
+                    alignEnd = false,
+                )
+            },
+            home = {
+                ClubValue(
+                    text = rail.homeForm?.let { PreGameFormat.lastTenText(it) },
+                    tag = "detail.pregame.last10.home",
+                    alignEnd = true,
+                )
+            },
+        )
     }
 }
 
 /**
- * One club's last ten: its record and streak on one line, then its results as chips in the order the feed lists them.
- *
- * Wins read in the primary colour and everything else in the muted one. The colour is about the result, not the score,
- * so a loss in a shootout reads the same as any other loss.
+ * The season statistics, one row each: the away value and its rank on the left, the label between, the home rank and value
+ * on the right, then the comparison bar drawn from the values. The bar is the same split the completed game's stats draw.
  */
-@Composable
-private fun FormRows(
-    abbrev: String,
-    form: ClubForm,
-    side: String,
-) {
-    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp).testTag("detail.pregame.last10.$side")) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                abbrev,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            form.record?.let { record ->
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    PreGameFormat.recordText(record),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
-            Spacer(Modifier.weight(1f))
-            PreGameFormat.streakText(form)?.let { streak ->
-                Text(
-                    streak,
-                    modifier = Modifier.testTag("detail.pregame.last10.$side.streak"),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = LocalRouxAccents.current.muted,
-                )
-            }
-        }
-        Spacer(Modifier.height(4.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-            form.results.forEach { result ->
-                Text(
-                    result,
-                    modifier =
-                        Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(MaterialTheme.colorScheme.background)
-                            .padding(vertical = 2.dp),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (result == "W") MaterialTheme.colorScheme.onSurface else LocalRouxAccents.current.muted,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                )
-            }
-        }
-    }
-}
-
 @Composable
 private fun SeasonStatRows(
     game: Game,
     rows: List<SeasonStatRow>,
 ) {
-    Column {
-        Row(Modifier.fillMaxWidth()) {
-            Text(
-                game.away.abbrev,
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.labelMedium,
-                color = LocalRouxAccents.current.muted,
-            )
-            Text(
-                game.home.abbrev,
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.labelMedium,
-                color = LocalRouxAccents.current.muted,
-                textAlign = TextAlign.End,
-            )
-        }
+    TwoClubBlock(game = game, tag = "detail.pregame.season") {
         rows.forEach { row ->
-            Row(
+            Column(
                 Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 4.dp)
+                    .padding(top = 10.dp)
                     .testTag("detail.pregame.stat.${row.label}"),
-                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                    Text(row.awayValue, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                    Spacer(Modifier.width(6.dp))
-                    Text(row.awayRank, style = MaterialTheme.typography.labelMedium, color = LocalRouxAccents.current.muted)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                        Text(row.awayValue, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                        Spacer(Modifier.width(6.dp))
+                        Text(row.awayRank, style = MaterialTheme.typography.labelMedium, color = LocalRouxAccents.current.muted)
+                    }
+                    Text(
+                        row.label,
+                        modifier = Modifier.weight(1.2f),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = LocalRouxAccents.current.muted,
+                        textAlign = TextAlign.Center,
+                    )
+                    Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                        Text(row.homeRank, style = MaterialTheme.typography.labelMedium, color = LocalRouxAccents.current.muted)
+                        Spacer(Modifier.width(6.dp))
+                        Text(row.homeValue, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    }
                 }
-                Text(
-                    row.label,
-                    modifier = Modifier.weight(1.2f),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = LocalRouxAccents.current.muted,
-                    textAlign = TextAlign.Center,
+                SplitBar(
+                    awayValue = row.awayBar,
+                    homeValue = row.homeBar,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
                 )
-                Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                    Text(row.homeRank, style = MaterialTheme.typography.labelMedium, color = LocalRouxAccents.current.muted)
-                    Spacer(Modifier.width(6.dp))
-                    Text(row.homeValue, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                }
             }
         }
     }
@@ -411,57 +487,170 @@ private fun SeasonSeriesRows(
     }
 }
 
+/** One player's line on a two-club card: the photo, the name, and the figures printed under the name when there are any. */
+private data class PlayerLine(
+    val name: String,
+    val photoUrl: String?,
+    val photoTag: String,
+    val figures: String?,
+)
+
+/** A club's top skaters as card lines, in the order they are given. Each reads its figures as goals, assists, points. */
+private fun skaterLines(
+    club: TeamRef,
+    skaters: List<SkaterSeason>,
+    seasonStartYear: Int?,
+    side: String,
+): List<PlayerLine> =
+    skaters.map { skater ->
+        PlayerLine(
+            name = skater.name,
+            photoUrl = PlayerMugshot.url(skater.playerId, club.abbrev, seasonStartYear),
+            photoTag = "detail.pregame.performers.$side.${skater.name}",
+            figures = "${skater.goals} G · ${skater.assists} A · ${skater.points} PTS",
+        )
+    }
+
 @Composable
-private fun GoaltenderRows(
+private fun TopPerformerRows(
     game: Game,
     landing: GameLanding,
+    seasonStartYear: Int?,
 ) {
-    Column {
-        GoalieBlock(
-            abbrev = game.away.abbrev,
-            side = "away",
-            goalies = PreGameFormat.goaliesFor(landing.awayTeamId, landing.goalies),
-        )
-        GoalieBlock(
-            abbrev = game.home.abbrev,
-            side = "home",
-            goalies = PreGameFormat.goaliesFor(landing.homeTeamId, landing.goalies),
+    val away = PreGameFormat.topPerformers(landing.awayTeamId, landing.skaters)
+    val home = PreGameFormat.topPerformers(landing.homeTeamId, landing.skaters)
+    TwoClubBlock(game = game, tag = "detail.pregame.performers") {
+        TwoClubHalves(
+            away = {
+                PlayerColumn(
+                    tag = "detail.pregame.performers.away",
+                    lines = skaterLines(game.away, away, seasonStartYear, side = "away"),
+                    alignEnd = false,
+                )
+            },
+            home = {
+                PlayerColumn(
+                    tag = "detail.pregame.performers.home",
+                    lines = skaterLines(game.home, home, seasonStartYear, side = "home"),
+                    alignEnd = true,
+                )
+            },
         )
     }
 }
 
 /**
- * One club's goaltenders, most games first. The list is never labelled with a starter: the feed names none.
- * A club with no goaltenders has no block at all.
+ * One club's goaltenders, most games first, at most three. A goaltender with no games played is not on the card. Nobody
+ * is marked as the starter: the feed names none. A club with no goaltenders has no column at all.
  */
 @Composable
-private fun GoalieBlock(
-    abbrev: String,
-    side: String,
-    goalies: List<GoalieSeason>,
+private fun GoaltenderRows(
+    game: Game,
+    landing: GameLanding,
+    seasonStartYear: Int?,
 ) {
-    if (goalies.isEmpty()) return
-    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp).testTag("detail.pregame.goalies.$side")) {
-        Text(
-            abbrev,
-            style = MaterialTheme.typography.labelMedium,
-            color = LocalRouxAccents.current.muted,
-        )
-        goalies.forEach { goalie ->
-            Column(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-                Text(
-                    PreGameFormat.goalieHeading(goalie),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
+    val away = PreGameFormat.goaliesFor(landing.awayTeamId, landing.goalies)
+    val home = PreGameFormat.goaliesFor(landing.homeTeamId, landing.goalies)
+    TwoClubBlock(game = game, tag = "detail.pregame.goalies") {
+        TwoClubHalves(
+            away = {
+                PlayerColumn(
+                    tag = "detail.pregame.goalies.away",
+                    lines =
+                        away.map { goalie ->
+                            PlayerLine(
+                                name = goalie.name,
+                                photoUrl = PlayerMugshot.url(goalie.playerId, game.away.abbrev, seasonStartYear),
+                                photoTag = "detail.pregame.goalies.away.${goalie.name}",
+                                figures = PreGameFormat.goalieStats(goalie),
+                            )
+                        },
+                    alignEnd = false,
                 )
-                PreGameFormat.goalieStats(goalie)?.let { stats ->
-                    Text(
-                        stats,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = LocalRouxAccents.current.muted,
-                    )
-                }
-            }
+            },
+            home = {
+                PlayerColumn(
+                    tag = "detail.pregame.goalies.home",
+                    lines =
+                        home.map { goalie ->
+                            PlayerLine(
+                                name = goalie.name,
+                                photoUrl = PlayerMugshot.url(goalie.playerId, game.home.abbrev, seasonStartYear),
+                                photoTag = "detail.pregame.goalies.home.${goalie.name}",
+                                figures = PreGameFormat.goalieStats(goalie),
+                            )
+                        },
+                    alignEnd = true,
+                )
+            },
+        )
+    }
+}
+
+/**
+ * One club's players in its half of a two-club card. The home column reads its photos and names mirrored, so each
+ * player's photo stays on the outer edge, the same side as the club's crest in the header.
+ */
+@Composable
+private fun PlayerColumn(
+    tag: String,
+    lines: List<PlayerLine>,
+    alignEnd: Boolean,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .testTag(tag),
+        horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start,
+    ) {
+        lines.forEach { line -> PlayerRow(line = line, alignEnd = alignEnd) }
+    }
+}
+
+@Composable
+private fun PlayerRow(
+    line: PlayerLine,
+    alignEnd: Boolean,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (alignEnd) {
+            PlayerWords(line = line, alignEnd = true, modifier = Modifier.weight(1f))
+            Spacer(Modifier.width(6.dp))
+            PlayerMugshotImage(url = line.photoUrl, name = line.name, tag = line.photoTag)
+        } else {
+            PlayerMugshotImage(url = line.photoUrl, name = line.name, tag = line.photoTag)
+            Spacer(Modifier.width(6.dp))
+            PlayerWords(line = line, alignEnd = false, modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun PlayerWords(
+    line: PlayerLine,
+    alignEnd: Boolean,
+    modifier: Modifier,
+) {
+    val align = if (alignEnd) TextAlign.End else TextAlign.Start
+    Column(modifier, horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start) {
+        Text(
+            line.name,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            textAlign = align,
+        )
+        line.figures?.let { figures ->
+            Text(
+                figures,
+                style = MaterialTheme.typography.labelMedium,
+                color = LocalRouxAccents.current.muted,
+                textAlign = align,
+            )
         }
     }
 }

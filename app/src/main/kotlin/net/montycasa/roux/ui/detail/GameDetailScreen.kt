@@ -33,6 +33,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameState
@@ -125,6 +126,7 @@ fun GameDetailScreen(
                             staleSince = staleSince,
                             onRetry = onRetry,
                             preGame = preGame,
+                            seasonStartYear = PlayerMugshot.seasonStartYear(game),
                         )
                     }
 
@@ -158,7 +160,7 @@ fun GameDetailScreen(
  * directly beneath it.
  */
 @Composable
-private fun DetailTabStrip(
+internal fun DetailTabStrip(
     away: TeamRef,
     home: TeamRef,
     selected: Int,
@@ -208,7 +210,7 @@ private fun DetailTabStrip(
                     Text(
                         label,
                         modifier = Modifier.testTag("detail.tab.$tag.label"),
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                         color = if (isSelected) MaterialTheme.colorScheme.onSurface else accents.muted,
                         maxLines = 1,
@@ -220,4 +222,4 @@ private fun DetailTabStrip(
     }
 }
 
-private val PILL_CREST = 26.dp
+private val PILL_CREST = 32.dp

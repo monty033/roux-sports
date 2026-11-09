@@ -196,9 +196,6 @@ object PreGameFormat {
             ).take(TOP_PERFORMERS_PER_CLUB)
     }
 
-    /** The goaltender's name and sweater number: `A. Akhtyamov #70`. The number is left out when the feed omits it. */
-    fun goalieHeading(goalie: GoalieSeason): String = listOfNotNull(goalie.name, goalie.sweaterNumber?.let { "#$it" }).joinToString(" ")
-
     /**
      * The goaltender's season line: `14 GP · 9–3–1 · 2.60 GAA · 90.1%`. Null when the feed sent no games played, which is
      * how a goaltender with no season is told apart from one with a bad one.
