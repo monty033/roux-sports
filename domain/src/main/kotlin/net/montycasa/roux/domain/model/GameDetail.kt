@@ -92,6 +92,56 @@ data class GameLanding(
     val goals: List<GoalEvent> = emptyList(),
     /** Every penalty the feed named, in arrival order. Empty blocks contribute nothing. */
     val penalties: List<PenaltyEvent> = emptyList(),
+    /** Each club's season record as the landing payload prints it; null when the feed omits it. */
+    val awayRecord: SeasonRecord? = null,
+    val homeRecord: SeasonRecord? = null,
+    /** The league's club ids, which are how the flat [goalies] list is split between the two clubs. */
+    val awayTeamId: Long? = null,
+    val homeTeamId: Long? = null,
+    /** Both clubs' goaltenders from the matchup, in feed order. Empty when the feed omits the matchup. */
+    val goalies: List<GoalieSeason> = emptyList(),
+    /** Both clubs' skaters from the matchup, in feed order. Empty when the feed omits the skater table. */
+    val skaters: List<SkaterSeason> = emptyList(),
+)
+
+/** A club's season record: wins, regulation losses and overtime losses. */
+data class SeasonRecord(
+    val wins: Int,
+    val losses: Int,
+    val overtimeLosses: Int,
+)
+
+/**
+ * A goaltender's season line from the matchup.
+ *
+ * Every statistic is optional because the feed lists a goaltender who has not played this season with a name and a
+ * sweater number and nothing else. Nothing here says who starts: the feed sends no probable or projected starter.
+ */
+data class GoalieSeason(
+    val teamId: Long,
+    val name: String,
+    val sweaterNumber: Int? = null,
+    val gamesPlayed: Int? = null,
+    val record: SeasonRecord? = null,
+    /** Goals allowed per 60 minutes, as the feed publishes it. */
+    val goalsAgainstAverage: Double? = null,
+    /** Save percentage as a fraction 0..1. */
+    val savePercentage: Double? = null,
+    /** The player's id, which is what their mugshot is named by. Null when the feed omits it. */
+    val playerId: Long? = null,
+)
+
+/**
+ * A skater's season line from the matchup's skater table: the club, the player and the three counts the Top Performers
+ * card ranks by. The feed's own row is dropped rather than shown with a guessed count when any of them is missing.
+ */
+data class SkaterSeason(
+    val teamId: Long,
+    val name: String,
+    val goals: Int,
+    val assists: Int,
+    val points: Int,
+    val playerId: Long? = null,
 )
 
 data class Venue(
@@ -298,11 +348,46 @@ data class GameRightRail(
     val teamStats: List<TeamStat> = emptyList(),
     /** The head-to-head games the rail lists for this matchup, in feed order. Empty when the feed omitted them. */
     val seasonSeries: List<SeasonSeriesGame> = emptyList(),
+    /** Each club's last ten games, from the rail's `last10Record`. Null when the feed omits that club. */
+    val awayForm: ClubForm? = null,
+    val homeForm: ClubForm? = null,
+    /** Each club's league-ranked season statistics, from the rail's `teamSeasonStats`. */
+    val awaySeasonStats: ClubSeasonStats? = null,
+    val homeSeasonStats: ClubSeasonStats? = null,
+)
+
+/** A club's last ten games: its record, its results in the order the feed lists them, and its current streak. */
+data class ClubForm(
+    val record: SeasonRecord? = null,
+    /** The feed's result codes as sent: `W`, `L`, `OTL` or `SOL`. */
+    val results: List<String> = emptyList(),
+    val streakType: String? = null,
+    val streak: Int? = null,
+)
+
+/** One season statistic with the club's league rank for it. A stat without its rank is not kept. */
+data class RankedStat(
+    val value: Double,
+    val rank: Int,
+)
+
+/** A club's season statistics as the rail ranks them. Each one is absent when the feed omitted its value or rank. */
+data class ClubSeasonStats(
+    /** Power-play percentage as a fraction 0..1. */
+    val powerPlay: RankedStat? = null,
+    /** Penalty-kill percentage as a fraction 0..1. */
+    val penaltyKill: RankedStat? = null,
+    /** Face-off win percentage as a fraction 0..1. */
+    val faceoff: RankedStat? = null,
+    val goalsFor: RankedStat? = null,
+    val goalsAgainst: RankedStat? = null,
 )
 
 /**
  * One game of the season series, as the right rail lists it: its game type, its state and each club's score. A playoff
  * series reads its standing from the finished games in this list.
+ *
+ * [gameDate] is the feed's ISO `YYYY-MM-DD` date, kept so a regular-season meeting can be dated on the page.
  */
 data class SeasonSeriesGame(
     val gameId: Long,
@@ -313,6 +398,7 @@ data class SeasonSeriesGame(
     val awayScore: Int?,
     val homeAbbrev: String?,
     val homeScore: Int?,
+    val gameDate: String? = null,
 )
 
 /** One labelled team total. */

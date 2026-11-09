@@ -13,6 +13,8 @@ import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.Broadcast
+import net.montycasa.roux.domain.model.ClubForm
+import net.montycasa.roux.domain.model.ClubSeasonStats
 import net.montycasa.roux.domain.model.DateIndexEntry
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameBoxscore
@@ -26,17 +28,23 @@ import net.montycasa.roux.domain.model.GoalEvent
 import net.montycasa.roux.domain.model.GoalModifier
 import net.montycasa.roux.domain.model.GoalStrength
 import net.montycasa.roux.domain.model.GoalieLine
+import net.montycasa.roux.domain.model.GoalieSeason
 import net.montycasa.roux.domain.model.PenaltyEvent
 import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.PeriodScoring
 import net.montycasa.roux.domain.model.PeriodShots
 import net.montycasa.roux.domain.model.PlayerRef
+import net.montycasa.roux.domain.model.RankedStat
+import net.montycasa.roux.domain.model.SeasonRecord
+import net.montycasa.roux.domain.model.SeasonSeriesGame
 import net.montycasa.roux.domain.model.SeriesStatus
 import net.montycasa.roux.domain.model.ShotTotals
+import net.montycasa.roux.domain.model.SkaterSeason
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.domain.model.ThemeMode
 import net.montycasa.roux.domain.model.ThreeStar
+import net.montycasa.roux.domain.model.Venue
 import net.montycasa.roux.domain.policy.StandingsGrouping
 import net.montycasa.roux.domain.policy.StandingsMode
 import net.montycasa.roux.domain.policy.StandingsView
@@ -432,6 +440,126 @@ internal object AuditStates {
             rightRail = Loadable(GameRightRail(shots = ShotTotals(awayShots = 21, homeShots = 28)), Freshness.Fresh, null),
         )
 
+    // A game before puck drop with every pre-game card's data present, so the audit measures all four cards and the
+    // hero's two records. Two finished meetings make the series standing a tie, which is the case the card words least.
+    private val preGameGame =
+        detailGame.copy(
+            id = GameId("2026020301"),
+            date = "2026-11-10",
+            state = GameState.Scheduled,
+            homeScore = null,
+            awayScore = null,
+            startTimeUtc = Instant.parse("2026-11-11T00:00:00Z"),
+        )
+    private val preGameDetail =
+        GameDetail(
+            landing =
+                Loadable(
+                    GameLanding(
+                        state = GameState.Scheduled,
+                        venue = Venue("Xfinity Mobile Arena", "Philadelphia"),
+                        awayRecord = SeasonRecord(9, 7, 2),
+                        homeRecord = SeasonRecord(11, 5, 1),
+                        awayTeamId = 68L,
+                        homeTeamId = 4L,
+                        goalies =
+                            listOf(
+                                GoalieSeason(
+                                    68L,
+                                    "A. Vanecek",
+                                    sweaterNumber = 41,
+                                    gamesPlayed = 14,
+                                    record = SeasonRecord(8, 4, 2),
+                                    goalsAgainstAverage = 2.71,
+                                    savePercentage = 0.906,
+                                ),
+                                GoalieSeason(
+                                    68L,
+                                    "K. Kochetkov",
+                                    sweaterNumber = 29,
+                                    gamesPlayed = 9,
+                                    goalsAgainstAverage = 3.12,
+                                    savePercentage = 0.889,
+                                ),
+                                GoalieSeason(
+                                    4L,
+                                    "C. Talbot",
+                                    sweaterNumber = 31,
+                                    gamesPlayed = 15,
+                                    record = SeasonRecord(10, 4, 1),
+                                    goalsAgainstAverage = 2.58,
+                                    savePercentage = 0.914,
+                                ),
+                                GoalieSeason(
+                                    4L,
+                                    "S. Ersson",
+                                    sweaterNumber = 90,
+                                    gamesPlayed = 4,
+                                    record = SeasonRecord(2, 2, 0),
+                                    goalsAgainstAverage = 3.40,
+                                    savePercentage = 0.879,
+                                ),
+                            ),
+                        // Four skaters for the home club and three for the away club, so the audit draws the three-player cut.
+                        skaters =
+                            listOf(
+                                SkaterSeason(68L, "J. Kessel", goals = 16, assists = 19, points = 35),
+                                SkaterSeason(68L, "C. Hayes", goals = 12, assists = 22, points = 34),
+                                SkaterSeason(68L, "N. Schmidt", goals = 4, assists = 17, points = 21),
+                                SkaterSeason(4L, "T. Konecny", goals = 11, assists = 15, points = 26),
+                                SkaterSeason(4L, "S. Couturier", goals = 9, assists = 13, points = 22),
+                                SkaterSeason(4L, "J. Foote", goals = 3, assists = 6, points = 9),
+                                SkaterSeason(4L, "M. Kanzig", goals = 2, assists = 5, points = 7),
+                            ),
+                    ),
+                    Freshness.Fresh,
+                    null,
+                ),
+            boxscore = Loadable(GameBoxscore(), Freshness.Fresh, null),
+            rightRail =
+                Loadable(
+                    GameRightRail(
+                        awayForm =
+                            ClubForm(
+                                record = SeasonRecord(6, 3, 1),
+                                results = listOf("W", "L", "OTL", "W", "W", "L", "W", "L", "W", "W"),
+                                streakType = "W",
+                                streak = 2,
+                            ),
+                        homeForm =
+                            ClubForm(
+                                record = SeasonRecord(5, 4, 1),
+                                results = listOf("W", "W", "L", "W", "OTL", "W", "L", "L", "W", "L"),
+                                streakType = "L",
+                                streak = 1,
+                            ),
+                        awaySeasonStats =
+                            ClubSeasonStats(
+                                powerPlay = RankedStat(0.203, 14),
+                                penaltyKill = RankedStat(0.812, 9),
+                                faceoff = RankedStat(0.487, 21),
+                                goalsFor = RankedStat(3.12, 17),
+                                goalsAgainst = RankedStat(3.41, 26),
+                            ),
+                        homeSeasonStats =
+                            ClubSeasonStats(
+                                powerPlay = RankedStat(0.246, 4),
+                                penaltyKill = RankedStat(0.830, 6),
+                                faceoff = RankedStat(0.512, 8),
+                                goalsFor = RankedStat(3.65, 6),
+                                goalsAgainst = RankedStat(2.88, 5),
+                            ),
+                        seasonSeries =
+                            listOf(
+                                SeasonSeriesGame(2025020101L, 2, GameState.Final, "PHI", 3, "UTA", 2, "2025-12-02"),
+                                SeasonSeriesGame(2025020460L, 2, GameState.Final, "UTA", 4, "PHI", 1, "2026-03-14"),
+                            ),
+                    ),
+                    Freshness.Fresh,
+                    null,
+                ),
+        )
+
     /**
      * One audited state. [tab] is a tab a sweep taps into view before it measures the state, for a page whose content
      * sits behind a tab. A state that opens on its first tab leaves it null.
@@ -580,6 +708,9 @@ internal object AuditStates {
                     {},
                     {},
                 )
+            },
+            ContentCase("detail.pregame") {
+                GameDetailScreen(preGameGame, DetailUiState(detail = preGameDetail, refreshing = false, unexpectedFailure = false), {}, {})
             },
             ContentCase("detail.partial") {
                 GameDetailScreen(detailGame, DetailUiState(detail = partialDetail, refreshing = false, unexpectedFailure = false), {}, {})

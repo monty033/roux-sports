@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -26,9 +27,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import net.montycasa.roux.domain.model.GoalieLine
@@ -179,11 +182,11 @@ private fun RosterTable(
                     Modifier.listRow().clickable { onPlayerClick(id) }
                 } ?: Modifier
             Row(
-                Modifier.fillMaxWidth().height(ROW_HEIGHT).then(action),
+                Modifier.fillMaxWidth().heightIn(min = ROW_HEIGHT).then(action),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Row(
-                    Modifier.width(NAME_COLUMN.dp).height(ROW_HEIGHT),
+                    Modifier.width(NAME_COLUMN.dp).heightIn(min = ROW_HEIGHT),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     PlayerMugshotImage(row.mugshotUrl, name = row.name, tag = "$tag.${row.playerId ?: row.name}")
@@ -196,7 +199,7 @@ private fun RosterTable(
                     )
                 }
                 Row(
-                    Modifier.weight(1f).height(ROW_HEIGHT).horizontalScroll(scroll),
+                    Modifier.weight(1f).heightIn(min = ROW_HEIGHT).horizontalScroll(scroll),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     row.values.forEach { StatCell(it) }
@@ -206,8 +209,25 @@ private fun RosterTable(
     }
 }
 
-private val MUGSHOT_SIZE = 28.dp
+private const val MUGSHOT_BASE_DP = 28f
+private const val MUGSHOT_MAX_DP = 56f
 private val MUGSHOT_GAP = 6.dp
+
+/**
+ * A mugshot on a pre-game card's Top Performers and Goaltenders rows, at the normal scale. The photo is centred against
+ * the name and both figure lines, so it can carry more size than the in-game tables without adding height.
+ */
+internal const val CARD_MUGSHOT_BASE_DP = 44f
+
+/**
+ * A mugshot's diameter at the current font scale. It grows with the text so the initials keep their room: [baseDp] at
+ * the normal scale, up to [MUGSHOT_MAX_DP] at the largest. The cap is the same at every base, so a pre-game photo at
+ * 2.0 type takes no more width than it did before, and the figure lines under the names keep their room.
+ */
+@Composable
+internal fun mugshotSize(baseDp: Float = MUGSHOT_BASE_DP): Dp =
+    (baseDp * LocalDensity.current.fontScale).coerceIn(baseDp, MUGSHOT_MAX_DP).dp
+
 private val ROW_HEADER_HEIGHT = 22.dp
 private val ROW_HEIGHT = 48.dp
 
@@ -227,15 +247,16 @@ private fun initialsOf(name: String): String {
  * The image is decoration: the name beside it is the content, so it carries no description of its own.
  */
 @Composable
-private fun PlayerMugshotImage(
+internal fun PlayerMugshotImage(
     url: String?,
     name: String,
     tag: String,
+    baseDp: Float = MUGSHOT_BASE_DP,
 ) {
     var loaded by remember(url) { mutableStateOf(false) }
     Box(
         Modifier
-            .size(MUGSHOT_SIZE)
+            .size(mugshotSize(baseDp))
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .testTag("$tag.mugshot"),
@@ -244,7 +265,8 @@ private fun PlayerMugshotImage(
         if (!loaded) {
             Text(
                 initialsOf(name),
-                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.testTag("$tag.initials"),
+                style = MaterialTheme.typography.labelMedium,
                 color = LocalRouxAccents.current.muted,
                 maxLines = 1,
             )

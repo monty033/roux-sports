@@ -51,6 +51,10 @@ internal fun GameHero(
     onTeamClick: (TeamRef) -> Unit = {},
     /** The playoff series line, or null for a game that is not in a series. */
     series: SeriesLine? = null,
+    /** The away club's season record, already worded (`COL 10–6–2`), or null when the feed omitted it. */
+    awayRecord: String? = null,
+    /** The home club's season record, already worded, or null when the feed omitted it. */
+    homeRecord: String? = null,
 ) {
     Column(
         Modifier
@@ -103,9 +107,9 @@ internal fun GameHero(
             )
         }
         Spacer(Modifier.height(10.dp))
-        TeamScoreLine(team = game.away, score = game.awayScore, side = "away", onTeamClick = onTeamClick)
+        TeamScoreLine(team = game.away, score = game.awayScore, side = "away", onTeamClick = onTeamClick, record = awayRecord)
         Spacer(Modifier.height(6.dp))
-        TeamScoreLine(team = game.home, score = game.homeScore, side = "home", onTeamClick = onTeamClick)
+        TeamScoreLine(team = game.home, score = game.homeScore, side = "home", onTeamClick = onTeamClick, record = homeRecord)
     }
 }
 
@@ -115,6 +119,7 @@ private fun TeamScoreLine(
     score: Int?,
     side: String,
     onTeamClick: (TeamRef) -> Unit,
+    record: String?,
 ) {
     val (city, name) = TeamNames.cityAndName(team)
     val clubName = if (city != null) "$city $name" else name
@@ -153,6 +158,16 @@ private fun TeamScoreLine(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            // The record sits on the name row, to the right of the club name, and only when the feed sent one.
+            if (record != null) {
+                Text(
+                    record,
+                    modifier = Modifier.padding(start = 8.dp).testTag("detail.hero.$side.record"),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = LocalRouxAccents.current.muted,
+                    maxLines = 1,
+                )
+            }
             if (score != null) {
                 Text(
                     score.toString(),

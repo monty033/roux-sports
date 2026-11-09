@@ -401,6 +401,11 @@ class ReachAuditTest {
                 AuditStates.screens().single { it.name == "detail.scheduled" }.content,
             ),
             AuditCase(
+                "detail.pregame",
+                emptyList(),
+                AuditStates.screens().single { it.name == "detail.pregame" }.content,
+            ),
+            AuditCase(
                 "detail.partial",
                 emptyList(),
                 {
@@ -511,9 +516,9 @@ class ReachAuditTest {
 
     @Test
     @Config(qualifiers = "en-rUS-w411dp-h923dp-420dpi")
-    fun assertPrimaryControlsReachableAt411x923() = audit(size = "w411dp-h923dp-420dpi", expectedCombinations = 84)
+    fun assertPrimaryControlsReachableAt411x923() = audit(size = "w411dp-h923dp-420dpi", expectedCombinations = 88)
 
     @Test
     @Config(qualifiers = "en-rUS-w360dp-h780dp")
-    fun assertPrimaryControlsReachableAt360x780() = audit(size = "w360dp-h780dp", expectedCombinations = 84)
+    fun assertPrimaryControlsReachableAt360x780() = audit(size = "w360dp-h780dp", expectedCombinations = 88)
 }

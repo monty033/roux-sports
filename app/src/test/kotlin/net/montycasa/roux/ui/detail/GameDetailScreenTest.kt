@@ -1478,7 +1478,7 @@ class GameDetailScreenTest {
         assertEquals(24f, rowCrest.bottom.value - rowCrest.top.value, 1f)
 
         val pillCrest = compose.onNodeWithTag("detail.tab.PHI.crest", useUnmergedTree = true).getUnclippedBoundsInRoot()
-        assertEquals(26f, pillCrest.bottom.value - pillCrest.top.value, 1f)
+        assertEquals(32f, pillCrest.bottom.value - pillCrest.top.value, 1f)
     }
 
     @Test

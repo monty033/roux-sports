@@ -209,8 +209,8 @@ class RightRailAdapterTest {
         val games = successOf(Fixtures.text("2026-11-06", "right-rail-2025030111.json")).seasonSeries
 
         assertEquals(6, games.size)
-        assertEquals(SeasonSeriesGame(2025030111L, 3, GameState.Final, "BOS", 3, "BUF", 4), games.first())
-        assertEquals(SeasonSeriesGame(2025030116L, 3, GameState.Final, "BUF", 4, "BOS", 1), games.last())
+        assertEquals(SeasonSeriesGame(2025030111L, 3, GameState.Final, "BOS", 3, "BUF", 4, "2026-04-19"), games.first())
+        assertEquals(SeasonSeriesGame(2025030116L, 3, GameState.Final, "BUF", 4, "BOS", 1, "2026-05-01"), games.last())
     }
 
     private fun successOf(json: String): GameRightRail {

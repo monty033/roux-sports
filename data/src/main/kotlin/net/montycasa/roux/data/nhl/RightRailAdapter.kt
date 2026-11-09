@@ -5,14 +5,19 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import net.montycasa.roux.data.nhl.dto.Last10TeamDto
 import net.montycasa.roux.data.nhl.dto.PeriodShotsDto
 import net.montycasa.roux.data.nhl.dto.RightRailDto
 import net.montycasa.roux.data.nhl.dto.SeasonSeriesGameDto
+import net.montycasa.roux.data.nhl.dto.SeasonStatsTeamDto
 import net.montycasa.roux.data.nhl.dto.TeamStatRowDto
+import net.montycasa.roux.domain.model.ClubForm
+import net.montycasa.roux.domain.model.ClubSeasonStats
 import net.montycasa.roux.domain.model.GameRightRail
 import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.PeriodShots
 import net.montycasa.roux.domain.model.PowerPlaySummary
+import net.montycasa.roux.domain.model.RankedStat
 import net.montycasa.roux.domain.model.SeasonSeriesGame
 import net.montycasa.roux.domain.model.ShotTotals
 import net.montycasa.roux.domain.model.TeamStat
@@ -54,6 +59,10 @@ internal object RightRailAdapter {
                 shotsByPeriod = periodShots.periodShots(),
                 powerPlay = rows.powerPlay(),
                 seasonSeries = rail.seasonSeries.orEmpty().mapNotNull { it?.toSeasonSeriesGame() },
+                awayForm = rail.last10Record?.awayTeam?.toClubForm(),
+                homeForm = rail.last10Record?.homeTeam?.toClubForm(),
+                awaySeasonStats = rail.teamSeasonStats?.awayTeam?.toSeasonStats(),
+                homeSeasonStats = rail.teamSeasonStats?.homeTeam?.toSeasonStats(),
                 // Every remaining row is passed through in the notation the league used, so the page can decide how to
                 // draw it. Dropping the rows the page has no typed field for is how eight of ten stats went missing.
                 teamStats =
@@ -80,7 +89,43 @@ internal object RightRailAdapter {
             awayScore = awayTeam?.score,
             homeAbbrev = homeTeam?.abbrev,
             homeScore = homeTeam?.score,
+            gameDate = gameDate?.trim()?.takeIf { it.isNotEmpty() },
         )
+    }
+
+    /**
+     * The last ten games in the order the feed lists them. The results are kept in that order, not reversed or sorted:
+     * the card reads left to right, and the feed's order is the one the league means.
+     *
+     * A result the feed left blank is dropped, which shortens the row rather than inventing a loss.
+     */
+    private fun Last10TeamDto.toClubForm(): ClubForm =
+        ClubForm(
+            record = record.toSeasonRecord(),
+            results = pastGameResults.orEmpty().mapNotNull { it?.gameResult?.trim()?.takeIf { result -> result.isNotEmpty() } },
+            streakType = streakType?.trim()?.takeIf { it.isNotEmpty() },
+            streak = streak?.takeIf { it > 0 },
+        )
+
+    /**
+     * One club's league-ranked season statistics. A value without its rank, or a rank of zero or less, is not kept: the
+     * rank is the half of the comparison that says where the club stands, and an unranked number would print without it.
+     */
+    private fun SeasonStatsTeamDto.toSeasonStats(): ClubSeasonStats =
+        ClubSeasonStats(
+            powerPlay = ranked(ppPctg, ppPctgRank),
+            penaltyKill = ranked(pkPctg, pkPctgRank),
+            faceoff = ranked(faceoffWinningPctg, faceoffWinningPctgRank),
+            goalsFor = ranked(goalsForPerGamePlayed, goalsForPerGamePlayedRank),
+            goalsAgainst = ranked(goalsAgainstPerGamePlayed, goalsAgainstPerGamePlayedRank),
+        )
+
+    private fun ranked(
+        value: Double?,
+        rank: Int?,
+    ): RankedStat? {
+        if (value == null || rank == null || rank <= 0) return null
+        return RankedStat(value = value, rank = rank)
     }
 
     /**

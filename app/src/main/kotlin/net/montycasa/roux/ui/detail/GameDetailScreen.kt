@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -28,16 +29,25 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import net.montycasa.roux.domain.model.Game
+import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.PlayerMugshot
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.domain.policy.PlayoffSeries
+import net.montycasa.roux.domain.policy.PreGameFormat
 import net.montycasa.roux.ui.common.TeamNames
 import net.montycasa.roux.ui.reach.reachTarget
 import net.montycasa.roux.ui.theme.LocalRouxAccents
@@ -82,6 +92,10 @@ fun GameDetailScreen(
                 ?.seasonSeries
                 .orEmpty(),
         )
+    // The pre-game cards and the hero's records exist only before puck drop. A started game keeps its existing page.
+    val preGame = heroGame.state == GameState.Scheduled || heroGame.state == GameState.Pre
+    val awayRecord = if (preGame) landing?.awayRecord?.let { PreGameFormat.clubRecordText(game.away.abbrev, it) } else null
+    val homeRecord = if (preGame) landing?.homeRecord?.let { PreGameFormat.clubRecordText(game.home.abbrev, it) } else null
 
     Column(
         modifier
@@ -102,7 +116,14 @@ fun GameDetailScreen(
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp),
             ) {
-                GameHero(game = heroGame, zone = zone, onTeamClick = onTeamClick, series = series)
+                GameHero(
+                    game = heroGame,
+                    zone = zone,
+                    onTeamClick = onTeamClick,
+                    series = series,
+                    awayRecord = awayRecord,
+                    homeRecord = homeRecord,
+                )
 
                 when (page) {
                     0 -> {
@@ -111,6 +132,9 @@ fun GameDetailScreen(
                             detail = detail,
                             staleSince = staleSince,
                             onRetry = onRetry,
+                            preGame = preGame,
+                            seasonStartYear = PlayerMugshot.seasonStartYear(game),
+                            onPlayerClick = onPlayerClick,
                         )
                     }
 
@@ -141,10 +165,13 @@ fun GameDetailScreen(
  * Three destinations as tabs: neutral fill, an orange edge around the selected one, no underline.
  *
  * A rounded rectangle rather than a folder tab, so it cannot be read as part of the app's own navigation bar sitting
- * directly beneath it.
+ * directly beneath it. The three pills are equal width and fill the strip; each centres its crest and label as one pair.
+ * A label is 14 sp, and when it cannot fit its pill it shrinks in half-point steps, but never below 12 sp. A club whose
+ * nickname still does not fit at 12 sp shows its three-letter abbreviation instead; the test sweep checks that every
+ * league club's label is drawn whole. The strip does not scroll sideways.
  */
 @Composable
-private fun DetailTabStrip(
+internal fun DetailTabStrip(
     away: TeamRef,
     home: TeamRef,
     selected: Int,
@@ -157,16 +184,22 @@ private fun DetailTabStrip(
             .background(MaterialTheme.colorScheme.background)
             // The top inset is the R4 clearance between a control clipped at the page's bottom edge and the tabs.
             // The bottom inset alone places the tabs, so this shrinks the viewport rather than moving them.
-            .padding(start = 12.dp, top = 8.dp, end = 12.dp, bottom = 6.dp),
+            .padding(start = 8.dp, top = 8.dp, end = 8.dp, bottom = 6.dp)
+            .testTag("detail.tab.strip"),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        // The club pills carry the real crest and the club's own name: an abbreviation on a tab asks the reader to
-        // decode it, which is the same mistake the scoreboard had.
+        // The club pills carry the real crest and the club's nickname. The abbreviation replaces the nickname only when
+        // the nickname cannot fit even at the 12 sp floor, and a screen reader always hears the full club name.
         listOf<TeamRef?>(null, away, home).forEachIndexed { index, team ->
-            val label = team?.let { TeamNames.cityAndName(it).second } ?: "Game"
             val tag = team?.abbrev ?: "Game"
+            val fullName =
+                team?.let {
+                    TeamNames.cityAndName(it).let { (city, nickname) ->
+                        listOfNotNull(city, nickname).joinToString(" ")
+                    }
+                }
             val isSelected = index == selected
-            Box(
+            BoxWithConstraints(
                 Modifier
                     .weight(1f)
                     // 48 dp: this is a reach target, and the audit's R4 floor applies to targets, not paint.
@@ -180,25 +213,37 @@ private fun DetailTabStrip(
                             Modifier
                         },
                     ).selectable(selected = isSelected, role = Role.Tab, onClick = { onSelect(index) })
+                    .then(if (fullName != null) Modifier.semantics { contentDescription = fullName } else Modifier)
                     .testTag("detail.tab.$tag")
                     .reachTarget("detail.tab.$tag"),
                 contentAlignment = Alignment.Center,
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                val measurer = rememberTextMeasurer()
+                val density = LocalDensity.current
+                val weight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                val style = MaterialTheme.typography.bodyMedium.copy(fontWeight = weight)
+                // What the label may take: the pill less its side padding, and less the crest and its gap when there is one.
+                val crestAndGap = if (team != null) PILL_CREST + TAB_CREST_GAP else 0.dp
+                val roomPx = with(density) { (maxWidth - TAB_PADDING * 2 - crestAndGap).toPx() }
+                val label = tabLabel(measurer, team, style, roomPx)
+                Row(
+                    Modifier.padding(horizontal = TAB_PADDING),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     if (team != null) {
                         Box(Modifier.testTag("detail.tab.$tag.crest")) {
                             TeamLogo(team = team, crestSize = PILL_CREST, imageTag = "detail.logo.tab.$tag")
                         }
-                        Spacer(Modifier.width(6.dp))
+                        Spacer(Modifier.width(TAB_CREST_GAP))
                     }
                     Text(
-                        label,
+                        label.text,
                         modifier = Modifier.testTag("detail.tab.$tag.label"),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                        style = style.copy(fontSize = label.sp.sp),
                         color = if (isSelected) MaterialTheme.colorScheme.onSurface else accents.muted,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        softWrap = false,
                     )
                 }
             }
@@ -206,4 +251,49 @@ private fun DetailTabStrip(
     }
 }
 
-private val PILL_CREST = 26.dp
+/** What a pill shows: its text and the size it is drawn at. */
+private data class TabLabel(
+    val text: String,
+    val sp: Float,
+)
+
+/**
+ * The label for a pill. The "Game" pill keeps its word. A club shows its nickname at the largest size that fits; when
+ * the nickname cannot fit even at the 12 sp floor, the club shows its abbreviation instead, at the largest size that
+ * fits it. The ellipsis on the Text is only a backstop for a label that cannot fit at all; no league club reaches it.
+ */
+private fun tabLabel(
+    measurer: TextMeasurer,
+    team: TeamRef?,
+    style: TextStyle,
+    roomPx: Float,
+): TabLabel {
+    if (team == null) return TabLabel("Game", fitSize(measurer, "Game", style, roomPx) ?: TAB_LABEL_MIN_SP)
+    val nickname = TeamNames.cityAndName(team).second
+    fitSize(measurer, nickname, style, roomPx)?.let { return TabLabel(nickname, it) }
+    return TabLabel(team.abbrev, fitSize(measurer, team.abbrev, style, roomPx) ?: TAB_LABEL_MIN_SP)
+}
+
+/**
+ * The largest size, from 14 sp down by half a point, at which [text] fits in [roomPx]. Null when it does not fit even at
+ * the 12 sp floor.
+ */
+private fun fitSize(
+    measurer: TextMeasurer,
+    text: String,
+    style: TextStyle,
+    roomPx: Float,
+): Float? {
+    var size = TAB_LABEL_SP
+    while (size >= TAB_LABEL_MIN_SP) {
+        if (measurer.measure(text, style.copy(fontSize = size.sp)).size.width <= roomPx) return size
+        size -= 0.5f
+    }
+    return null
+}
+
+private val PILL_CREST = 32.dp
+private val TAB_PADDING = 6.dp
+private val TAB_CREST_GAP = 6.dp
+private const val TAB_LABEL_SP = 14f
+private const val TAB_LABEL_MIN_SP = 12f

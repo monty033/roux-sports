@@ -14,10 +14,12 @@ import net.montycasa.roux.data.nhl.dto.LandingBroadcastDto
 import net.montycasa.roux.data.nhl.dto.LandingClockDto
 import net.montycasa.roux.data.nhl.dto.LandingDto
 import net.montycasa.roux.data.nhl.dto.LandingGoalDto
+import net.montycasa.roux.data.nhl.dto.LandingGoalieDto
 import net.montycasa.roux.data.nhl.dto.LandingPenaltyDto
 import net.montycasa.roux.data.nhl.dto.LandingPenaltyPeriodDto
 import net.montycasa.roux.data.nhl.dto.LandingPeriodDescriptorDto
 import net.montycasa.roux.data.nhl.dto.LandingScoringPeriodDto
+import net.montycasa.roux.data.nhl.dto.LandingSkaterDto
 import net.montycasa.roux.data.nhl.dto.LandingStarDto
 import net.montycasa.roux.data.nhl.dto.LocalizedNameDto
 import net.montycasa.roux.domain.model.Broadcast
@@ -28,10 +30,13 @@ import net.montycasa.roux.domain.model.GoalAssist
 import net.montycasa.roux.domain.model.GoalEvent
 import net.montycasa.roux.domain.model.GoalModifier
 import net.montycasa.roux.domain.model.GoalStrength
+import net.montycasa.roux.domain.model.GoalieSeason
 import net.montycasa.roux.domain.model.PenaltyEvent
 import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.PeriodScoring
 import net.montycasa.roux.domain.model.PlayerRef
+import net.montycasa.roux.domain.model.SeasonRecord
+import net.montycasa.roux.domain.model.SkaterSeason
 import net.montycasa.roux.domain.model.ThreeStar
 import net.montycasa.roux.domain.model.Venue
 
@@ -151,6 +156,22 @@ internal object LandingAdapter {
                 threeStars = stars,
                 goals = goals,
                 penalties = penalties,
+                awayRecord = landing.awayTeam?.record.toSeasonRecord(),
+                homeRecord = landing.homeTeam?.record.toSeasonRecord(),
+                awayTeamId = landing.awayTeam?.id,
+                homeTeamId = landing.homeTeam?.id,
+                goalies =
+                    landing.matchup
+                        ?.goalieSeasonStats
+                        ?.goalies
+                        .orEmpty()
+                        .mapNotNull { it?.toGoalieSeason() },
+                skaters =
+                    landing.matchup
+                        ?.skaterSeasonStats
+                        ?.skaters
+                        .orEmpty()
+                        .mapNotNull { it?.toSkaterSeason() },
                 state = state,
                 period =
                     landing.periodDescriptor?.number?.let {
@@ -337,6 +358,51 @@ internal object LandingAdapter {
             is JsonObject -> (this["default"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
             else -> null
         }
+
+    /**
+     * One goaltender's season line from the matchup.
+     *
+     * The club id is required, because it is the only way to place the goaltender under a club, and a name is required
+     * because a row with no name has nothing to print. Every statistic stays optional: a goaltender who has not played
+     * is still listed, just without a line of numbers.
+     */
+    private fun LandingGoalieDto.toGoalieSeason(): GoalieSeason? {
+        val club = teamId ?: return null
+        val goalieName = name?.default.clean() ?: return null
+        val record =
+            if (this.wins != null && this.losses != null && this.otLosses != null) {
+                SeasonRecord(wins = this.wins, losses = this.losses, overtimeLosses = this.otLosses)
+            } else {
+                null
+            }
+        return GoalieSeason(
+            teamId = club,
+            name = goalieName,
+            sweaterNumber = sweaterNumber,
+            gamesPlayed = gamesPlayed,
+            record = record,
+            goalsAgainstAverage = goalsAgainstAvg,
+            savePercentage = savePctg,
+            playerId = playerId,
+        )
+    }
+
+    /**
+     * One skater's season line from the matchup. The club id and name are required, and so are the three counts: a row
+     * without them cannot be ranked, so it is left off rather than shown as zeros.
+     */
+    private fun LandingSkaterDto.toSkaterSeason(): SkaterSeason? {
+        val club = teamId ?: return null
+        val skaterName = name?.default.clean() ?: return null
+        return SkaterSeason(
+            teamId = club,
+            name = skaterName,
+            goals = goals ?: return null,
+            assists = assists ?: return null,
+            points = points ?: return null,
+            playerId = playerId,
+        )
+    }
 
     private fun LandingStarDto.toThreeStar(): ThreeStar? {
         val rank = star ?: return null
