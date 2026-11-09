@@ -32,6 +32,7 @@ import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameDetail
 import net.montycasa.roux.domain.model.GameLanding
 import net.montycasa.roux.domain.model.GameRightRail
+import net.montycasa.roux.domain.model.GoalieSeason
 import net.montycasa.roux.domain.model.PlayerMugshot
 import net.montycasa.roux.domain.model.SkaterSeason
 import net.montycasa.roux.domain.model.TeamRef
@@ -348,8 +349,8 @@ private fun rowsFit(
  * When a single word in either club's text is wider than its half, the halves cannot hold the text without splitting
  * the word, so each club is stacked instead: full width, its header on its own line and its rows beneath, the away club
  * first. The check is measured, so it follows the width and the font scale. [awayText] and [homeText] are every string
- * the club prints in the card; the nickname is measured here. [sideFraction] is the share of the card a club's column
- * takes side by side, and [rowReserve] is the width a row gives up beside its text, such as a photo.
+ * the club prints in the card; the nickname is measured here. A club's column is its half unless [sideFraction] gives
+ * a share of the card, and [rowReserve] is the width a row gives up beside its text, such as a photo.
  */
 @Composable
 private fun TwoClubBlock(
@@ -359,7 +360,7 @@ private fun TwoClubBlock(
     homeText: List<String>,
     awayRows: List<List<RowPiece>> = emptyList(),
     homeRows: List<List<RowPiece>> = emptyList(),
-    sideFraction: Float = 0.5f,
+    sideFraction: Float? = null,
     rowReserve: Dp = PHOTO_RESERVE,
     sideBySide: @Composable () -> Unit,
     away: @Composable () -> Unit,
@@ -372,8 +373,9 @@ private fun TwoClubBlock(
     val homeName = TeamNames.cityAndName(game.home).second
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val card = with(density) { maxWidth.toPx() }
-        val half = card * 0.5f
-        val column = card * sideFraction
+        // A half is the card less the gap between the two columns, split evenly: the width TwoClubHalves gives each club.
+        val half = (card - with(density) { HALF_GAP.toPx() }) * 0.5f
+        val column = sideFraction?.let { card * it } ?: half
         val crest = with(density) { (HEADER_CREST + HEADER_GAP).toPx() }
         val reserve = with(density) { rowReserve.toPx() }
         val gap = with(density) { ROW_PIECE_GAP.toPx() }
@@ -674,16 +676,16 @@ private fun SeasonSeriesRows(
     }
 }
 
-/** One player's line on a two-club card: the photo, the name, and the figures printed under the name when there are any. */
+/**
+ * One player's entry on a two-club card: the photo and name on one line, then each figure line beneath it, in order.
+ * Every figure is a line of its own, so no figure wraps into the next.
+ */
 private data class PlayerLine(
     val name: String,
     val photoUrl: String?,
     val photoTag: String,
-    val figures: String?,
-) {
-    /** Every string the line prints, for the width check. */
-    val words: List<String> get() = listOfNotNull(name, figures)
-}
+    val figures: List<String>,
+)
 
 /** A club's top skaters as card lines, in the order they are given. Each reads its figures as goals, assists, points. */
 private fun skaterLines(
@@ -697,7 +699,7 @@ private fun skaterLines(
             name = skater.name,
             photoUrl = PlayerMugshot.url(skater.playerId, club.abbrev, seasonStartYear),
             photoTag = "detail.pregame.performers.$side.${skater.name}",
-            figures = "${skater.goals} G · ${skater.assists} A · ${skater.points} PTS",
+            figures = listOf("${skater.goals} G · ${skater.assists} A · ${skater.points} PTS"),
         )
     }
 
@@ -728,7 +730,7 @@ private fun GoaltenderRows(
                 name = goalie.name,
                 photoUrl = PlayerMugshot.url(goalie.playerId, game.away.abbrev, seasonStartYear),
                 photoTag = "detail.pregame.goalies.away.${goalie.name}",
-                figures = PreGameFormat.goalieStats(goalie),
+                figures = goalieFigures(goalie),
             )
         }
     val home =
@@ -737,13 +739,21 @@ private fun GoaltenderRows(
                 name = goalie.name,
                 photoUrl = PlayerMugshot.url(goalie.playerId, game.home.abbrev, seasonStartYear),
                 photoTag = "detail.pregame.goalies.home.${goalie.name}",
-                figures = PreGameFormat.goalieStats(goalie),
+                figures = goalieFigures(goalie),
             )
         }
     PlayerCard(game = game, tag = "detail.pregame.goalies", away = away, home = home)
 }
 
-/** A card of player lines, one club per half, or stacked when the names will not fit the halves. */
+/** A goaltender's two figure lines: `14 GP · 8–4–2`, then `2.71 GAA · 90.6%`. Each is left out when it has no figures. */
+private fun goalieFigures(goalie: GoalieSeason): List<String> =
+    listOfNotNull(PreGameFormat.goalieGamesLine(goalie), PreGameFormat.goalieRateLine(goalie))
+
+/**
+ * A card of player lines, one club per half, or stacked when a name will not fit beside its photo in a half. Names are
+ * measured whole, since each sits on one line. The figure lines are not part of that decision: a figure line too long
+ * for its half ellipsizes in place.
+ */
 @Composable
 private fun PlayerCard(
     game: Game,
@@ -754,8 +764,10 @@ private fun PlayerCard(
     TwoClubBlock(
         game = game,
         tag = tag,
-        awayText = away.flatMap { it.words },
-        homeText = home.flatMap { it.words },
+        awayText = emptyList(),
+        homeText = emptyList(),
+        awayRows = away.map { listOf(RowPiece(it.name, MaterialTheme.typography.bodyMedium)) },
+        homeRows = home.map { listOf(RowPiece(it.name, MaterialTheme.typography.bodyMedium)) },
         sideBySide = {
             TwoClubHalves(
                 away = { PlayerColumn(tag = "$tag.away", lines = away, alignEnd = false) },
@@ -789,55 +801,62 @@ private fun PlayerColumn(
     }
 }
 
+/**
+ * One player: the photo and name on the first line, then each figure on a line of its own beneath the name. The name
+ * ellipsizes only when it cannot fit beside the photo; a figure line is never wrapped and ellipsizes in place. The
+ * figures are indented past the photo, so they sit under the name and never beside the initials.
+ */
 @Composable
 private fun PlayerRow(
     line: PlayerLine,
     alignEnd: Boolean,
 ) {
-    Row(
+    val indent = Modifier.padding(start = if (alignEnd) 0.dp else PHOTO_RESERVE, end = if (alignEnd) PHOTO_RESERVE else 0.dp)
+    val align = if (alignEnd) TextAlign.End else TextAlign.Start
+    Column(
         Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start,
     ) {
-        if (alignEnd) {
-            PlayerWords(line = line, alignEnd = true, modifier = Modifier.weight(1f))
-            Spacer(Modifier.width(6.dp))
-            PlayerMugshotImage(url = line.photoUrl, name = line.name, tag = line.photoTag)
-        } else {
-            PlayerMugshotImage(url = line.photoUrl, name = line.name, tag = line.photoTag)
-            Spacer(Modifier.width(6.dp))
-            PlayerWords(line = line, alignEnd = false, modifier = Modifier.weight(1f))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            if (alignEnd) {
+                PlayerName(line = line, align = align, modifier = Modifier.weight(1f))
+                Spacer(Modifier.width(6.dp))
+                PlayerMugshotImage(url = line.photoUrl, name = line.name, tag = line.photoTag)
+            } else {
+                PlayerMugshotImage(url = line.photoUrl, name = line.name, tag = line.photoTag)
+                Spacer(Modifier.width(6.dp))
+                PlayerName(line = line, align = align, modifier = Modifier.weight(1f))
+            }
+        }
+        line.figures.forEachIndexed { index, figure ->
+            Text(
+                figure,
+                modifier = indent.fillMaxWidth().testTag("${line.photoTag}.figure.$index"),
+                style = MaterialTheme.typography.labelMedium,
+                color = LocalRouxAccents.current.muted,
+                textAlign = align,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
 
 @Composable
-private fun PlayerWords(
+private fun PlayerName(
     line: PlayerLine,
-    alignEnd: Boolean,
+    align: TextAlign,
     modifier: Modifier,
 ) {
-    val align = if (alignEnd) TextAlign.End else TextAlign.Start
-    Column(modifier, horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start) {
-        Text(
-            line.name,
-            modifier = Modifier.testTag("${line.photoTag}.name"),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-            textAlign = align,
-            maxLines = clubMaxLines(),
-            overflow = TextOverflow.Ellipsis,
-        )
-        line.figures?.let { figures ->
-            Text(
-                figures,
-                style = MaterialTheme.typography.labelMedium,
-                color = LocalRouxAccents.current.muted,
-                textAlign = align,
-                maxLines = clubMaxLines(),
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
+    Text(
+        line.name,
+        modifier = modifier.testTag("${line.photoTag}.name"),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurface,
+        textAlign = align,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
 }

@@ -197,16 +197,24 @@ object PreGameFormat {
     }
 
     /**
-     * The goaltender's season line: `14 GP · 9–3–1 · 2.60 GAA · 90.1%`. Null when the feed sent no games played, which is
-     * how a goaltender with no season is told apart from one with a bad one.
+     * The goaltender's games and record: `14 GP · 9–3–1`, or `14 GP` when the feed sends no record. Null when the feed
+     * sent no games played, which is how a goaltender with no season is told apart from one with a bad one.
      */
-    fun goalieStats(goalie: GoalieSeason): String? {
+    fun goalieGamesLine(goalie: GoalieSeason): String? {
         val played = goalie.gamesPlayed ?: return null
         return listOfNotNull(
             "$played GP",
             goalie.record?.let { recordText(it) },
-            goalie.goalsAgainstAverage?.let { "${perGame(it)} GAA" },
-            goalie.savePercentage?.let { percent(it) },
         ).joinToString(" · ")
     }
+
+    /**
+     * The goaltender's average and save percentage: `2.60 GAA · 90.1%`, with whichever the feed sent. Null when it sent
+     * neither.
+     */
+    fun goalieRateLine(goalie: GoalieSeason): String? =
+        listOfNotNull(
+            goalie.goalsAgainstAverage?.let { "${perGame(it)} GAA" },
+            goalie.savePercentage?.let { percent(it) },
+        ).joinToString(" · ").ifEmpty { null }
 }

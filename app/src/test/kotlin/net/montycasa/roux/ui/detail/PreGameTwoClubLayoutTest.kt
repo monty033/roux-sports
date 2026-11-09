@@ -10,9 +10,11 @@ import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -41,6 +43,14 @@ private val PRE_GAME_NAMES =
     SemanticsMatcher("a pre-game name") { node ->
         node.config.getOrNull(SemanticsProperties.TestTag)?.let { tag ->
             tag.startsWith("detail.pregame.") && tag.endsWith(".name")
+        } == true
+    }
+
+/** Every figure line on a goaltender or top-performer row: each is one line under its player's name. */
+private val FIGURE_LINES =
+    SemanticsMatcher("a pre-game figure line") { node ->
+        node.config.getOrNull(SemanticsProperties.TestTag)?.let { tag ->
+            tag.startsWith("detail.pregame.") && tag.contains(".figure.")
         } == true
     }
 
@@ -91,6 +101,37 @@ private fun assertWholeName(node: SemanticsNode) {
 }
 
 /**
+ * Every figure line is one line under its own player's name. [figures] and [names] are the figure lines and the names on
+ * the page; the figure lines are the goaltenders' two each and the six top performers' one each. A figure line never
+ * wraps. When [drawnWhole] is set it also must not be cut short: a half too narrow for it ellipsizes it, and that fails.
+ */
+private fun assertFiguresUnderNames(
+    figures: List<SemanticsNode>,
+    names: List<SemanticsNode>,
+    drawnWhole: Boolean,
+) {
+    assertTrue("expected the goaltender and top-performer figure lines, found ${figures.size}", figures.size >= 14)
+    figures.forEach { figure ->
+        val tag = figure.config.getOrNull(SemanticsProperties.TestTag).orEmpty()
+        val nameTag = tag.substringBefore(".figure.") + ".name"
+        val name = names.single { it.config.getOrNull(SemanticsProperties.TestTag) == nameTag }
+        assertTrue(
+            "$tag is not under its name: name ${name.boundsInRoot}, figure ${figure.boundsInRoot}",
+            figure.boundsInRoot.top >= name.boundsInRoot.bottom - 0.5f,
+        )
+        val layout = textLayout(figure)
+        val text = layout.layoutInput.text.text
+        assertEquals("$tag wraps: '$text' (${describe(layout)})", 1, layout.lineCount)
+        if (drawnWhole) {
+            assertTrue(
+                "$tag is cut short: '$text' (${describe(layout)})",
+                layout.size.width + 1f >= layout.multiParagraph.maxIntrinsicWidth,
+            )
+        }
+    }
+}
+
+/**
  * The text's metrics, for a failure message. A single line drawn narrower than its natural width has been cut short:
  * `hasVisualOverflow` and `didOverflowWidth` both fire on whole text here, so they are not used.
  */
@@ -125,6 +166,70 @@ class PreGameTwoClubLayoutAt360Test {
         assertTrue("expected the pre-game names on the page, found ${names.size}", names.size >= 8)
         names.forEach { assertWholeName(it) }
     }
+
+    @Test
+    fun `at 360 dp and normal scale every two-club card keeps its two clubs side by side`() {
+        compose.setContent(preGameAt(1f))
+
+        TWO_CLUB_CARDS.forEach { card ->
+            val away = compose.onNodeWithTag("$card.club.away").getUnclippedBoundsInRoot()
+            val home = compose.onNodeWithTag("$card.club.home").getUnclippedBoundsInRoot()
+            assertTrue("$card: the clubs are stacked, away $away, home $home", away.right <= home.left + 0.5.dp)
+        }
+    }
+
+    @Test
+    fun `at 360 dp and normal scale no name is cut short or broken mid-word`() {
+        compose.setContent(preGameAt(1f))
+
+        val names = compose.onAllNodes(PRE_GAME_NAMES, useUnmergedTree = true).fetchSemanticsNodes()
+        assertTrue("expected the pre-game names on the page, found ${names.size}", names.size >= 8)
+        names.forEach { assertWholeName(it) }
+    }
+
+    @Test
+    fun `at 360 dp and normal scale every figure line is one line under its name and never wraps`() {
+        compose.setContent(preGameAt(1f))
+
+        // Three top-performer lines need 117.5 dp and their half leaves 110 dp, so they ellipsize here. The check holds
+        // that a figure never wraps; it does not require the ellipsized lines to be whole.
+        assertFiguresUnderNames(
+            figures = compose.onAllNodes(FIGURE_LINES, useUnmergedTree = true).fetchSemanticsNodes(),
+            names = compose.onAllNodes(PRE_GAME_NAMES, useUnmergedTree = true).fetchSemanticsNodes(),
+            drawnWhole = false,
+        )
+    }
+
+    @Test
+    fun `at 360 dp with font scale 2 every figure line is one whole line under its name`() {
+        compose.setContent(preGameAt(2f))
+
+        assertFiguresUnderNames(
+            figures = compose.onAllNodes(FIGURE_LINES, useUnmergedTree = true).fetchSemanticsNodes(),
+            names = compose.onAllNodes(PRE_GAME_NAMES, useUnmergedTree = true).fetchSemanticsNodes(),
+            drawnWhole = true,
+        )
+    }
+
+    @Test
+    fun `at 360 dp with font scale 2 the photo fallback initials of J Foote sit inside his mugshot circle`() {
+        compose.setContent(preGameAt(2f))
+
+        val circle =
+            compose
+                .onNodeWithTag(
+                    "detail.pregame.performers.home.J. Foote.mugshot",
+                    useUnmergedTree = true,
+                ).getUnclippedBoundsInRoot()
+        val initials = compose.onNodeWithText("JF", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        assertTrue(
+            "the JF initials are outside the circle: initials $initials, circle $circle",
+            initials.left >= circle.left - 0.5.dp &&
+                initials.right <= circle.right + 0.5.dp &&
+                initials.top >= circle.top - 0.5.dp &&
+                initials.bottom <= circle.bottom + 0.5.dp,
+        )
+    }
 }
 
 @RunWith(AndroidJUnit4::class)
@@ -153,5 +258,40 @@ class PreGameTwoClubLayoutAt411Test {
         val names = compose.onAllNodes(PRE_GAME_NAMES, useUnmergedTree = true).fetchSemanticsNodes()
         assertTrue("expected the pre-game names on the page, found ${names.size}", names.size >= 8)
         names.forEach { assertWholeName(it) }
+    }
+
+    @Test
+    fun `at 411 dp and normal scale every figure line is one whole line under its name`() {
+        compose.setContent(preGameAt(1f))
+
+        assertFiguresUnderNames(
+            figures = compose.onAllNodes(FIGURE_LINES, useUnmergedTree = true).fetchSemanticsNodes(),
+            names = compose.onAllNodes(PRE_GAME_NAMES, useUnmergedTree = true).fetchSemanticsNodes(),
+            drawnWhole = true,
+        )
+    }
+
+    @Test
+    fun `at 411 dp and normal scale each goaltender and top performer shows its season figures as written`() {
+        compose.setContent(preGameAt(1f))
+
+        val expected =
+            mapOf(
+                "detail.pregame.goalies.away.A. Vanecek.figure.0" to "14 GP · 8–4–2",
+                "detail.pregame.goalies.away.A. Vanecek.figure.1" to "2.71 GAA · 90.6%",
+                "detail.pregame.goalies.away.K. Kochetkov.figure.0" to "9 GP",
+                "detail.pregame.goalies.away.K. Kochetkov.figure.1" to "3.12 GAA · 88.9%",
+                "detail.pregame.goalies.home.C. Talbot.figure.0" to "15 GP · 10–4–1",
+                "detail.pregame.goalies.home.C. Talbot.figure.1" to "2.58 GAA · 91.4%",
+                "detail.pregame.goalies.home.S. Ersson.figure.0" to "4 GP · 2–2–0",
+                "detail.pregame.goalies.home.S. Ersson.figure.1" to "3.40 GAA · 87.9%",
+                "detail.pregame.performers.away.J. Kessel.figure.0" to "16 G · 19 A · 35 PTS",
+                "detail.pregame.performers.away.C. Hayes.figure.0" to "12 G · 22 A · 34 PTS",
+                "detail.pregame.performers.away.N. Schmidt.figure.0" to "4 G · 17 A · 21 PTS",
+                "detail.pregame.performers.home.T. Konecny.figure.0" to "11 G · 15 A · 26 PTS",
+                "detail.pregame.performers.home.S. Couturier.figure.0" to "9 G · 13 A · 22 PTS",
+                "detail.pregame.performers.home.J. Foote.figure.0" to "3 G · 6 A · 9 PTS",
+            )
+        expected.forEach { (tag, text) -> compose.onNodeWithTag(tag, useUnmergedTree = true).assertTextEquals(text) }
     }
 }

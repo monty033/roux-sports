@@ -168,20 +168,30 @@ class PreGameFormatTest {
     }
 
     @Test
-    fun goalieStatsReadAsGamesRecordAverageAndSavePercentage() {
-        assertEquals("14 GP · 9–3–1 · 2.60 GAA · 90.1%", PreGameFormat.goalieStats(BLACKWOOD))
+    fun goalieGamesLineReadsGamesThenRecord() {
+        assertEquals("14 GP · 9–3–1", PreGameFormat.goalieGamesLine(BLACKWOOD))
     }
 
     @Test
-    fun aGoalieWithoutARecordPrintsGamesAverageAndSavePercentageWithNoPlaceholder() {
+    fun goalieRateLineReadsAverageThenSavePercentage() {
+        assertEquals("2.60 GAA · 90.1%", PreGameFormat.goalieRateLine(BLACKWOOD))
+    }
+
+    @Test
+    fun aGoalieWithoutARecordPrintsGamesAloneWithNoPlaceholder() {
         val noRecord = BLACKWOOD.copy(record = null)
 
-        assertEquals("14 GP · 2.60 GAA · 90.1%", PreGameFormat.goalieStats(noRecord))
+        assertEquals("14 GP", PreGameFormat.goalieGamesLine(noRecord))
     }
 
     @Test
-    fun aGoalieWithNoSeasonHasNoStatsLine() {
-        assertNull(PreGameFormat.goalieStats(AKHTYAMOV))
+    fun aGoalieWithNoRateHasNoRateLine() {
+        assertNull(PreGameFormat.goalieRateLine(BLACKWOOD.copy(goalsAgainstAverage = null, savePercentage = null)))
+    }
+
+    @Test
+    fun aGoalieWithNoSeasonHasNoGamesLine() {
+        assertNull(PreGameFormat.goalieGamesLine(AKHTYAMOV))
     }
 
     @Test
