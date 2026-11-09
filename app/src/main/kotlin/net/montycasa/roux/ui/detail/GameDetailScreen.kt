@@ -4,9 +4,9 @@ package net.montycasa.roux.ui.detail
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -30,10 +29,16 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameState
@@ -127,6 +132,7 @@ fun GameDetailScreen(
                             onRetry = onRetry,
                             preGame = preGame,
                             seasonStartYear = PlayerMugshot.seasonStartYear(game),
+                            onPlayerClick = onPlayerClick,
                         )
                     }
 
@@ -157,8 +163,9 @@ fun GameDetailScreen(
  * Three destinations as tabs: neutral fill, an orange edge around the selected one, no underline.
  *
  * A rounded rectangle rather than a folder tab, so it cannot be read as part of the app's own navigation bar sitting
- * directly beneath it. Each pill is as wide as its crest and label; when the three do not fit, the strip scrolls
- * sideways, so a club name is never cut short to make room.
+ * directly beneath it. The three pills are equal width and fill the strip; each centres its crest and label as one pair.
+ * A label is 14 sp, and when it cannot fit its pill it shrinks in half-point steps, but never below 12 sp. Only a label
+ * that still does not fit at 12 sp ends in an ellipsis. The strip does not scroll sideways.
  */
 @Composable
 internal fun DetailTabStrip(
@@ -174,8 +181,7 @@ internal fun DetailTabStrip(
             .background(MaterialTheme.colorScheme.background)
             // The top inset is the R4 clearance between a control clipped at the page's bottom edge and the tabs.
             // The bottom inset alone places the tabs, so this shrinks the viewport rather than moving them.
-            .padding(start = 12.dp, top = 8.dp, end = 12.dp, bottom = 6.dp)
-            .horizontalScroll(rememberScrollState())
+            .padding(start = 8.dp, top = 8.dp, end = 8.dp, bottom = 6.dp)
             .testTag("detail.tab.strip"),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -185,9 +191,9 @@ internal fun DetailTabStrip(
             val label = team?.let { TeamNames.cityAndName(it).second } ?: "Game"
             val tag = team?.abbrev ?: "Game"
             val isSelected = index == selected
-            Box(
+            BoxWithConstraints(
                 Modifier
-                    .wrapContentWidth()
+                    .weight(1f)
                     // 48 dp: this is a reach target, and the audit's R4 floor applies to targets, not paint.
                     .heightIn(min = 48.dp)
                     .clip(RoundedCornerShape(10.dp))
@@ -203,24 +209,31 @@ internal fun DetailTabStrip(
                     .reachTarget("detail.tab.$tag"),
                 contentAlignment = Alignment.Center,
             ) {
+                val measurer = rememberTextMeasurer()
+                val density = LocalDensity.current
+                val weight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                val style = MaterialTheme.typography.bodyMedium.copy(fontWeight = weight)
+                // What the label may take: the pill less its side padding, and less the crest and its gap when there is one.
+                val crestAndGap = if (team != null) PILL_CREST + TAB_CREST_GAP else 0.dp
+                val roomPx = with(density) { (maxWidth - TAB_PADDING * 2 - crestAndGap).toPx() }
+                val labelSize = tabLabelSize(measurer, label, style, roomPx)
                 Row(
-                    Modifier.padding(horizontal = 12.dp),
+                    Modifier.padding(horizontal = TAB_PADDING),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (team != null) {
                         Box(Modifier.testTag("detail.tab.$tag.crest")) {
                             TeamLogo(team = team, crestSize = PILL_CREST, imageTag = "detail.logo.tab.$tag")
                         }
-                        Spacer(Modifier.width(6.dp))
+                        Spacer(Modifier.width(TAB_CREST_GAP))
                     }
-                    // No ellipsis: the pill has no width limit, so the label is always whole.
                     Text(
                         label,
                         modifier = Modifier.testTag("detail.tab.$tag.label"),
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                        style = style.copy(fontSize = labelSize.sp),
                         color = if (isSelected) MaterialTheme.colorScheme.onSurface else accents.muted,
                         maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                         softWrap = false,
                     )
                 }
@@ -229,4 +242,25 @@ internal fun DetailTabStrip(
     }
 }
 
+/**
+ * The largest size a tab label can take in [roomPx]: 14 sp, stepping down by half a point to 12 sp. A label that does not
+ * fit even at 12 sp is returned at 12 sp, where it ellipsizes; the floor is never broken.
+ */
+private fun tabLabelSize(
+    measurer: TextMeasurer,
+    label: String,
+    style: TextStyle,
+    roomPx: Float,
+): Float {
+    var size = TAB_LABEL_SP
+    while (size > TAB_LABEL_MIN_SP && measurer.measure(label, style.copy(fontSize = size.sp)).size.width > roomPx) {
+        size -= 0.5f
+    }
+    return size
+}
+
 private val PILL_CREST = 32.dp
+private val TAB_PADDING = 12.dp
+private val TAB_CREST_GAP = 6.dp
+private const val TAB_LABEL_SP = 14f
+private const val TAB_LABEL_MIN_SP = 12f

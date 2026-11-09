@@ -213,12 +213,17 @@ private const val MUGSHOT_BASE_DP = 28f
 private const val MUGSHOT_MAX_DP = 56f
 private val MUGSHOT_GAP = 6.dp
 
+/** A mugshot on a pre-game card's Top Performers and Goaltenders rows, at the normal scale. */
+internal const val CARD_MUGSHOT_BASE_DP = 36f
+
 /**
- * A mugshot's diameter at the current font scale. It grows with the text so the initials keep their room: 28 dp at the
- * normal scale, up to 56 dp at the largest.
+ * A mugshot's diameter at the current font scale. It grows with the text so the initials keep their room: [baseDp] at
+ * the normal scale, up to [MUGSHOT_MAX_DP] at the largest. The cap is the same at every base, so a pre-game photo at
+ * 2.0 type takes no more width than it did before, and the figure lines under the names keep their room.
  */
 @Composable
-internal fun mugshotSize(): Dp = (MUGSHOT_BASE_DP * LocalDensity.current.fontScale).coerceIn(MUGSHOT_BASE_DP, MUGSHOT_MAX_DP).dp
+internal fun mugshotSize(baseDp: Float = MUGSHOT_BASE_DP): Dp =
+    (baseDp * LocalDensity.current.fontScale).coerceIn(baseDp, MUGSHOT_MAX_DP).dp
 
 private val ROW_HEADER_HEIGHT = 22.dp
 private val ROW_HEIGHT = 48.dp
@@ -243,11 +248,12 @@ internal fun PlayerMugshotImage(
     url: String?,
     name: String,
     tag: String,
+    baseDp: Float = MUGSHOT_BASE_DP,
 ) {
     var loaded by remember(url) { mutableStateOf(false) }
     Box(
         Modifier
-            .size(mugshotSize())
+            .size(mugshotSize(baseDp))
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .testTag("$tag.mugshot"),

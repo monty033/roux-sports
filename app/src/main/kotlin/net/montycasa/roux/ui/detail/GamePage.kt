@@ -2,13 +2,16 @@
 
 package net.montycasa.roux.ui.detail
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
@@ -20,6 +23,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -40,6 +46,7 @@ import net.montycasa.roux.domain.policy.PreGameFormat
 import net.montycasa.roux.domain.policy.SeasonSeries
 import net.montycasa.roux.domain.policy.SeasonStatRow
 import net.montycasa.roux.ui.common.TeamNames
+import net.montycasa.roux.ui.reach.listRow
 import net.montycasa.roux.ui.theme.LocalRouxAccents
 import kotlin.time.Instant
 
@@ -53,6 +60,8 @@ internal fun GameDestination(
     preGame: Boolean = false,
     /** The season the game belongs to, which names the players' mugshots. Null leaves every photo to its initials. */
     seasonStartYear: Int? = null,
+    /** A tap on a player on a pre-game card opens that player's page. */
+    onPlayerClick: (Long) -> Unit = {},
 ) {
     SectionCard(
         title = "Scoring by period",
@@ -123,7 +132,13 @@ internal fun GameDestination(
     }
 
     if (preGame) {
-        PreGameCards(game = game, detail = detail, seasonStartYear = seasonStartYear, onRetry = onRetry)
+        PreGameCards(
+            game = game,
+            detail = detail,
+            seasonStartYear = seasonStartYear,
+            onRetry = onRetry,
+            onPlayerClick = onPlayerClick,
+        )
     }
 
     SectionCard(
@@ -219,6 +234,7 @@ private fun PreGameCards(
     detail: GameDetail,
     seasonStartYear: Int?,
     onRetry: () -> Unit,
+    onPlayerClick: (Long) -> Unit,
 ) {
     SectionCard(
         title = "Last Ten Games",
@@ -264,7 +280,7 @@ private fun PreGameCards(
                 PreGameFormat.topPerformers(it.homeTeamId, it.skaters).isEmpty()
         },
     ) { landing ->
-        TopPerformerRows(game = game, landing = landing, seasonStartYear = seasonStartYear)
+        TopPerformerRows(game = game, landing = landing, seasonStartYear = seasonStartYear, onPlayerClick = onPlayerClick)
     }
 
     SectionCard(
@@ -278,7 +294,7 @@ private fun PreGameCards(
                 PreGameFormat.goaliesFor(it.homeTeamId, it.goalies).isEmpty()
         },
     ) { landing ->
-        GoaltenderRows(game = game, landing = landing, seasonStartYear = seasonStartYear)
+        GoaltenderRows(game = game, landing = landing, seasonStartYear = seasonStartYear, onPlayerClick = onPlayerClick)
     }
 }
 
@@ -286,12 +302,15 @@ private fun PreGameCards(
 private val HALF_GAP = 12.dp
 
 /** A club's crest on the header of a two-club card, and the gap between it and the nickname. */
-private val HEADER_CREST = 24.dp
+private val HEADER_CREST = 26.dp
 private val HEADER_GAP = 6.dp
+
+/** The height a player's photo-and-name line is at least, so the whole line is one target a finger can hit. */
+private val PLAYER_TARGET_HEIGHT = 48.dp
 
 /** The width a player's row gives up beside its words: the photo, which grows with the font scale, and the gap after it. */
 @Composable
-private fun photoReserve(): Dp = mugshotSize() + 6.dp
+private fun photoReserve(): Dp = mugshotSize(CARD_MUGSHOT_BASE_DP) + 6.dp
 
 /** The share of a season-stats card's width each club's value takes side by side: the two values and the 1.2 label column. */
 private val SEASON_SIDE = 1f / 3.2f
@@ -452,7 +471,9 @@ private fun ClubHeader(
     alignEnd: Boolean,
 ) {
     val crest: @Composable () -> Unit = {
-        TeamLogo(team = team, crestSize = HEADER_CREST, imageTag = "$tag.logo")
+        Box(Modifier.testTag("$tag.crest")) {
+            TeamLogo(team = team, crestSize = HEADER_CREST, imageTag = "$tag.logo")
+        }
     }
     val nickname: @Composable () -> Unit = {
         Text(
@@ -684,6 +705,8 @@ private fun SeasonSeriesRows(
  */
 private data class PlayerLine(
     val name: String,
+    /** The player's id, which opens their page. Null when the feed omits it, and then the line is not tappable. */
+    val playerId: Long?,
     val photoUrl: String?,
     val photoTag: String,
     val figures: List<String>,
@@ -699,6 +722,7 @@ private fun skaterLines(
     skaters.map { skater ->
         PlayerLine(
             name = skater.name,
+            playerId = skater.playerId,
             photoUrl = PlayerMugshot.url(skater.playerId, club.abbrev, seasonStartYear),
             photoTag = "detail.pregame.performers.$side.${skater.name}",
             figures = listOf("${skater.goals} G · ${skater.assists} A · ${skater.points} PTS"),
@@ -710,10 +734,11 @@ private fun TopPerformerRows(
     game: Game,
     landing: GameLanding,
     seasonStartYear: Int?,
+    onPlayerClick: (Long) -> Unit,
 ) {
     val away = skaterLines(game.away, PreGameFormat.topPerformers(landing.awayTeamId, landing.skaters), seasonStartYear, side = "away")
     val home = skaterLines(game.home, PreGameFormat.topPerformers(landing.homeTeamId, landing.skaters), seasonStartYear, side = "home")
-    PlayerCard(game = game, tag = "detail.pregame.performers", away = away, home = home)
+    PlayerCard(game = game, tag = "detail.pregame.performers", away = away, home = home, onPlayerClick = onPlayerClick)
 }
 
 /**
@@ -725,11 +750,13 @@ private fun GoaltenderRows(
     game: Game,
     landing: GameLanding,
     seasonStartYear: Int?,
+    onPlayerClick: (Long) -> Unit,
 ) {
     val away =
         PreGameFormat.goaliesFor(landing.awayTeamId, landing.goalies).map { goalie ->
             PlayerLine(
                 name = goalie.name,
+                playerId = goalie.playerId,
                 photoUrl = PlayerMugshot.url(goalie.playerId, game.away.abbrev, seasonStartYear),
                 photoTag = "detail.pregame.goalies.away.${goalie.name}",
                 figures = goalieFigures(goalie),
@@ -739,12 +766,13 @@ private fun GoaltenderRows(
         PreGameFormat.goaliesFor(landing.homeTeamId, landing.goalies).map { goalie ->
             PlayerLine(
                 name = goalie.name,
+                playerId = goalie.playerId,
                 photoUrl = PlayerMugshot.url(goalie.playerId, game.home.abbrev, seasonStartYear),
                 photoTag = "detail.pregame.goalies.home.${goalie.name}",
                 figures = goalieFigures(goalie),
             )
         }
-    PlayerCard(game = game, tag = "detail.pregame.goalies", away = away, home = home)
+    PlayerCard(game = game, tag = "detail.pregame.goalies", away = away, home = home, onPlayerClick = onPlayerClick)
 }
 
 /** A goaltender's two figure lines: `14 GP · 8–4–2`, then `2.71 GAA · 90.6%`. Each is left out when it has no figures. */
@@ -762,6 +790,7 @@ private fun PlayerCard(
     tag: String,
     away: List<PlayerLine>,
     home: List<PlayerLine>,
+    onPlayerClick: (Long) -> Unit,
 ) {
     TwoClubBlock(
         game = game,
@@ -772,12 +801,12 @@ private fun PlayerCard(
         homeRows = home.map { listOf(RowPiece(it.name, MaterialTheme.typography.bodyMedium)) },
         sideBySide = {
             TwoClubHalves(
-                away = { PlayerColumn(tag = "$tag.away", lines = away, alignEnd = false) },
-                home = { PlayerColumn(tag = "$tag.home", lines = home, alignEnd = true) },
+                away = { PlayerColumn(tag = "$tag.away", lines = away, alignEnd = false, onPlayerClick = onPlayerClick) },
+                home = { PlayerColumn(tag = "$tag.home", lines = home, alignEnd = true, onPlayerClick = onPlayerClick) },
             )
         },
-        away = { PlayerColumn(tag = "$tag.away", lines = away, alignEnd = false) },
-        home = { PlayerColumn(tag = "$tag.home", lines = home, alignEnd = true) },
+        away = { PlayerColumn(tag = "$tag.away", lines = away, alignEnd = false, onPlayerClick = onPlayerClick) },
+        home = { PlayerColumn(tag = "$tag.home", lines = home, alignEnd = true, onPlayerClick = onPlayerClick) },
     )
 }
 
@@ -791,6 +820,7 @@ private fun PlayerColumn(
     tag: String,
     lines: List<PlayerLine>,
     alignEnd: Boolean,
+    onPlayerClick: (Long) -> Unit,
 ) {
     val end = alignEnd && !LocalClubLayout.current.stacked
     Column(
@@ -799,36 +829,57 @@ private fun PlayerColumn(
             .testTag(tag),
         horizontalAlignment = if (end) Alignment.End else Alignment.Start,
     ) {
-        lines.forEach { line -> PlayerRow(line = line, alignEnd = end) }
+        lines.forEach { line -> PlayerRow(line = line, alignEnd = end, onPlayerClick = onPlayerClick) }
     }
 }
 
 /**
- * One player: the photo and name on the first line, then each figure on a line of its own beneath the name. The name
- * ellipsizes only when it cannot fit beside the photo; a figure line is never wrapped and ellipsizes in place. The
- * figures are indented past the photo, so they sit under the name and never beside the initials.
+ * One player: the photo and name on the first line, then each figure on a line of its own beneath the name. The photo
+ * and name together are one target that opens the player's page, at least [PLAYER_TARGET_HEIGHT] tall; a player with no
+ * id has no target at all. The name ellipsizes only when it cannot fit beside the photo; a figure line is never wrapped
+ * and ellipsizes in place. The figures are indented past the photo, so they sit under the name and never beside the
+ * initials.
  */
 @Composable
 private fun PlayerRow(
     line: PlayerLine,
     alignEnd: Boolean,
+    onPlayerClick: (Long) -> Unit,
 ) {
     val reserve = photoReserve()
     val indent = Modifier.padding(start = if (alignEnd) 0.dp else reserve, end = if (alignEnd) reserve else 0.dp)
     val align = if (alignEnd) TextAlign.End else TextAlign.Start
+    // Without an id there is no page to open, so the line stays plain text rather than a dead control.
+    val id = line.playerId
+    val action =
+        if (id == null) {
+            Modifier
+        } else {
+            Modifier
+                .semantics { contentDescription = "${line.name}, opens the player page" }
+                .listRow()
+                .clickable(role = Role.Button) { onPlayerClick(id) }
+        }
     Column(
         Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
         horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start,
     ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = PLAYER_TARGET_HEIGHT)
+                .testTag("${line.photoTag}.row")
+                .then(action),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             if (alignEnd) {
                 PlayerName(line = line, align = align, modifier = Modifier.weight(1f))
                 Spacer(Modifier.width(6.dp))
-                PlayerMugshotImage(url = line.photoUrl, name = line.name, tag = line.photoTag)
+                PlayerMugshotImage(url = line.photoUrl, name = line.name, tag = line.photoTag, baseDp = CARD_MUGSHOT_BASE_DP)
             } else {
-                PlayerMugshotImage(url = line.photoUrl, name = line.name, tag = line.photoTag)
+                PlayerMugshotImage(url = line.photoUrl, name = line.name, tag = line.photoTag, baseDp = CARD_MUGSHOT_BASE_DP)
                 Spacer(Modifier.width(6.dp))
                 PlayerName(line = line, align = align, modifier = Modifier.weight(1f))
             }

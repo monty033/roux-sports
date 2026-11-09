@@ -28,11 +28,12 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import kotlin.math.abs
 
 /**
- * The sub-navigation pills. Each pill is as wide as its crest and label; the strip scrolls sideways when the three do not
- * fit, and no label is ever cut short to make room. Normal scale is checked as well as the largest font, since a label
- * clipped at normal scale is the same defect.
+ * The sub-navigation pills. The three are equal width and fill the strip, and each centres its crest and label as one
+ * pair. A label is 14 sp, shrinks by half a point toward 12 sp when it cannot fit, and ellipsizes only at 12 sp. The
+ * strip never scrolls. Normal scale and the largest font are both checked, since the floor has to hold at each.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [34], qualifiers = "w411dp-h891dp-xhdpi")
@@ -60,17 +61,19 @@ class DetailTabStripTest {
         }
     }
 
+    private val pills = listOf("Game", "CBJ", "UTA")
+
     private fun strip(): SemanticsNode = compose.onNodeWithTag("detail.tab.strip").fetchSemanticsNode()
 
     private fun pill(tag: String): SemanticsNode = compose.onNodeWithTag("detail.tab.$tag").fetchSemanticsNode()
 
-    /** How far the strip can scroll sideways, in pixels. Zero when every pill fits. */
+    /** How far the strip can scroll sideways, in pixels. Zero when it does not scroll at all. */
     private fun scrollRange(): Float = strip().config.getOrNull(SemanticsProperties.HorizontalScrollAxisRange)?.maxValue() ?: 0f
 
     private fun SemanticsNode.isWithin(outer: SemanticsNode): Boolean =
         boundsInRoot.left >= outer.boundsInRoot.left - 0.5f && boundsInRoot.right <= outer.boundsInRoot.right + 0.5f
 
-    /** The label's layout, which says whether the whole club name is on one line with nothing cut short. */
+    /** The label's layout, which holds its size, its line count and whether it was ellipsized. */
     private fun labelLayout(tag: String): TextLayoutResult {
         val node = compose.onNodeWithTag("detail.tab.$tag.label", useUnmergedTree = true).fetchSemanticsNode()
         val layouts = mutableListOf<TextLayoutResult>()
@@ -84,48 +87,95 @@ class DetailTabStripTest {
         return layouts.single()
     }
 
-    /** Names of labels that are not whole: more than one line, drawn past their box, or with the end cut off. */
-    private fun truncatedLabels(): List<String> =
-        listOf("CBJ", "UTA").mapNotNull { tag ->
-            val layout = labelLayout(tag)
-            val text = layout.layoutInput.text.text
-            // Drawn at least as wide as the label wants, on one line, with its last character present. A clipped or
-            // ellipsized label is drawn narrower than its natural width.
-            val whole =
-                layout.lineCount == 1 &&
-                    layout.size.width + 1f >= layout.multiParagraph.maxIntrinsicWidth &&
-                    layout.getLineEnd(0) == text.length
-            if (whole) {
-                null
-            } else {
-                "$tag: '$text' on ${layout.lineCount} line(s), drawn ${layout.size.width} of ${layout.multiParagraph.maxIntrinsicWidth}, " +
-                    "ends at ${layout.getLineEnd(0)}"
-            }
+    /**
+     * A label is at least 12 sp and at most 14 sp. A label drawn whole is on one line with its last character present and
+     * its full width. Any other label is ellipsized, and that is allowed only at the 12 sp floor.
+     */
+    private fun assertLabelRule(tag: String) {
+        val layout = labelLayout(tag)
+        val size = layout.layoutInput.style.fontSize.value
+        val text = layout.layoutInput.text.text
+        assertTrue("$tag is $size sp, below the 12 sp floor", size >= 12f)
+        assertTrue("$tag is $size sp, above the 14 sp label size", size <= 14f)
+        val whole =
+            layout.lineCount == 1 &&
+                layout.size.width + 1f >= layout.multiParagraph.maxIntrinsicWidth &&
+                layout.getLineEnd(0) == text.length
+        if (!whole) {
+            assertEquals("$tag ('$text') is cut short at $size sp; only 12 sp may end in an ellipsis", 12f, size, 0.01f)
         }
+    }
+
+    /** The label's centre sits on the pill's centre, with the crest, when there is one, on the label's left. */
+    private fun assertCentred(tag: String) {
+        val box = pill(tag).boundsInRoot
+        val label = compose.onNodeWithTag("detail.tab.$tag.label", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val left =
+            if (tag == "Game") {
+                label.left
+            } else {
+                compose
+                    .onNodeWithTag("detail.tab.$tag.crest", useUnmergedTree = true)
+                    .fetchSemanticsNode()
+                    .boundsInRoot.left
+            }
+        val centre = (left + label.right) / 2f
+        assertTrue("$tag's crest and label centre at $centre, not on the pill's ${box.center.x}", abs(centre - box.center.x) <= 1f)
+    }
 
     @Test
-    fun `at 411 dp and normal scale all three pills are on screen without scrolling, and no label is cut short`() {
+    fun `at 411 dp and normal scale the three pills are equal width, on screen, and the strip does not scroll`() {
         show(width = 411.dp, fontScale = 1f)
 
+        // The three share the strip's width by weight, so they can differ by a pixel of rounding and no more.
+        val widths = pills.map { pill(it).boundsInRoot.width }
+        assertTrue("the pills are not equal width: $widths", widths.max() - widths.min() <= 1f)
         assertEquals("the strip scrolls at 411 dp", 0f, scrollRange(), 0.5f)
-        val outside =
-            listOf("Game", "CBJ", "UTA").filterNot { tag -> pill(tag).isWithin(strip()) }
+        val outside = pills.filterNot { pill(it).isWithin(strip()) }
         assertTrue("pills outside the strip at 411 dp: $outside", outside.isEmpty())
-        assertTrue("labels cut short at 411 dp: ${truncatedLabels()}", truncatedLabels().isEmpty())
     }
 
     @Test
-    fun `at 360 dp and normal scale no club label is cut short`() {
-        show(width = 360.dp, fontScale = 1f)
-
-        assertTrue("labels cut short at 360 dp: ${truncatedLabels()}", truncatedLabels().isEmpty())
-    }
-
-    @Test
-    fun `at 360 dp with font scale 2 the strip scrolls and every label carries its full text`() {
+    fun `at 360 dp with font scale 2 the three pills are still equal width and the strip still does not scroll`() {
         show(width = 360.dp, fontScale = 2f)
 
-        assertTrue("the strip does not scroll at 360 dp, font scale 2", scrollRange() > 0f)
-        assertTrue("labels cut short at 360 dp, font scale 2: ${truncatedLabels()}", truncatedLabels().isEmpty())
+        val widths = pills.map { pill(it).boundsInRoot.width }
+        assertTrue("the pills are not equal width: $widths", widths.max() - widths.min() <= 1f)
+        assertEquals("the strip scrolls at 360 dp, font scale 2", 0f, scrollRange(), 0.5f)
+    }
+
+    @Test
+    fun `at 411 dp each pill centres its crest and label as one pair`() {
+        show(width = 411.dp, fontScale = 1f)
+
+        pills.forEach { assertCentred(it) }
+    }
+
+    @Test
+    fun `at 360 dp with font scale 2 each pill centres its crest and label as one pair`() {
+        show(width = 360.dp, fontScale = 2f)
+
+        pills.forEach { assertCentred(it) }
+    }
+
+    @Test
+    fun `at 411 dp and normal scale every label is 12 to 14 sp, and ellipsized only at 12 sp`() {
+        show(width = 411.dp, fontScale = 1f)
+
+        pills.forEach { assertLabelRule(it) }
+    }
+
+    @Test
+    fun `at 360 dp and normal scale every label is 12 to 14 sp, and ellipsized only at 12 sp`() {
+        show(width = 360.dp, fontScale = 1f)
+
+        pills.forEach { assertLabelRule(it) }
+    }
+
+    @Test
+    fun `at 360 dp with font scale 2 every label is 12 to 14 sp, and ellipsized only at 12 sp`() {
+        show(width = 360.dp, fontScale = 2f)
+
+        pills.forEach { assertLabelRule(it) }
     }
 }

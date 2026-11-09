@@ -2,13 +2,19 @@
 
 package net.montycasa.roux.ui.detail
 
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.Loadable
@@ -30,6 +36,7 @@ import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.domain.model.Venue
 import net.montycasa.roux.ui.theme.RouxTheme
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -126,6 +133,76 @@ class PreGameDetailScreenTest {
     }
 
     @Test
+    fun `a top performer with a known id is one click target, and a tap opens that player`() {
+        val clicked = mutableListOf<Long>()
+        show(scheduled, landing = preGameLanding, rail = preGameRail, onPlayerClick = { clicked += it })
+
+        val row = "detail.pregame.performers.away.N. MacKinnon.row"
+        compose.onNodeWithTag(row).assert(hasClickAction()).assert(hasContentDescription("N. MacKinnon, opens the player page"))
+        compose.onNodeWithTag(row).performScrollTo().performClick()
+        compose.onNodeWithTag("detail.pregame.performers.home.A. Matthews.row").performScrollTo().performClick()
+
+        assertEquals(listOf(8477492L, 8479318L), clicked)
+    }
+
+    @Test
+    fun `a goaltender with a known id is a click target that opens that goaltender`() {
+        val clicked = mutableListOf<Long>()
+        show(scheduled, landing = preGameLanding, rail = preGameRail, onPlayerClick = { clicked += it })
+
+        compose
+            .onNodeWithTag("detail.pregame.goalies.away.M. Blackwood.row")
+            .assert(hasClickAction())
+            .performScrollTo()
+            .performClick()
+        compose
+            .onNodeWithTag("detail.pregame.goalies.home.A. Stolarz.row")
+            .assert(hasClickAction())
+            .performScrollTo()
+            .performClick()
+
+        assertEquals(listOf(8478464L, 8477974L), clicked)
+    }
+
+    @Test
+    fun `a player with no id has no click action and nothing is passed on a tap`() {
+        val clicked = mutableListOf<Long>()
+        show(scheduled, landing = preGameLanding, rail = preGameRail, onPlayerClick = { clicked += it })
+
+        compose.onNodeWithTag("detail.pregame.performers.away.C. Makar.row").assert(!hasClickAction())
+        compose.onNodeWithText("C. Makar").assertExists()
+        assertTrue("a tap on a player with no id opened $clicked", clicked.isEmpty())
+    }
+
+    @Test
+    fun `the photo and the name are one target, and neither is a target of its own`() {
+        show(scheduled, landing = preGameLanding, rail = preGameRail)
+
+        val photo = "detail.pregame.performers.away.N. MacKinnon"
+        compose.onNodeWithTag("$photo.row").assert(hasClickAction())
+        compose.onNodeWithTag("$photo.mugshot", useUnmergedTree = true).assert(!hasClickAction())
+        compose.onNodeWithTag("$photo.name", useUnmergedTree = true).assert(!hasClickAction())
+    }
+
+    @Test
+    fun `a player row is at least 48 dp tall, its photo is 36 dp at normal scale, and the card headers carry 26 dp crests`() {
+        show(scheduled, landing = preGameLanding, rail = preGameRail)
+
+        val row = compose.onNodeWithTag("detail.pregame.performers.away.N. MacKinnon.row").getUnclippedBoundsInRoot()
+        val rowHeight = row.bottom - row.top
+        assertTrue("the row is $rowHeight tall, under 48 dp", rowHeight >= 48.dp)
+        val photo = compose.onNodeWithTag("detail.pregame.performers.away.N. MacKinnon.mugshot", useUnmergedTree = true)
+        val photoBounds = photo.getUnclippedBoundsInRoot()
+        assertEquals("the photo is not 36 dp", 36f, (photoBounds.right - photoBounds.left).value, 0.5f)
+        listOf("detail.pregame.last10", "detail.pregame.season", "detail.pregame.performers", "detail.pregame.goalies").forEach { block ->
+            listOf("away", "home").forEach { side ->
+                val crest = compose.onNodeWithTag("$block.club.$side.crest").getUnclippedBoundsInRoot()
+                assertEquals("$block $side crest is not 26 dp", 26f, (crest.right - crest.left).value, 0.5f)
+            }
+        }
+    }
+
+    @Test
     fun `a final game keeps its page, with no records and no pre-game cards`() {
         showStarted(GameState.Final)
     }
@@ -191,6 +268,7 @@ class PreGameDetailScreenTest {
         game: Game,
         landing: GameLanding,
         rail: GameRightRail,
+        onPlayerClick: (Long) -> Unit = {},
     ) {
         val detail =
             GameDetail(
@@ -205,6 +283,7 @@ class PreGameDetailScreenTest {
                     state = DetailUiState(detail = detail, refreshing = false, unexpectedFailure = false),
                     onBack = {},
                     onRetry = {},
+                    onPlayerClick = onPlayerClick,
                 )
             }
         }
@@ -237,25 +316,28 @@ class PreGameDetailScreenTest {
                             sweaterNumber = 30,
                             gamesPlayed = 12,
                             record = SeasonRecord(9, 3, 1),
+                            playerId = 8478464L,
                         ),
-                        GoalieSeason(teamId = 21L, name = "Z. Benched", sweaterNumber = 35, gamesPlayed = 0),
+                        GoalieSeason(teamId = 21L, name = "Z. Benched", sweaterNumber = 35, gamesPlayed = 0, playerId = 8479999L),
                         GoalieSeason(
                             teamId = 10L,
                             name = "A. Stolarz",
                             sweaterNumber = 41,
                             gamesPlayed = 8,
                             record = SeasonRecord(5, 2, 1),
+                            playerId = 8477974L,
                         ),
                     ),
                 skaters =
                     listOf(
-                        SkaterSeason(21L, "N. MacKinnon", goals = 10, assists = 20, points = 30),
-                        SkaterSeason(21L, "M. Necas", goals = 9, assists = 14, points = 23),
+                        SkaterSeason(21L, "N. MacKinnon", goals = 10, assists = 20, points = 30, playerId = 8477492L),
+                        SkaterSeason(21L, "M. Necas", goals = 9, assists = 14, points = 23, playerId = 8478398L),
+                        // No id: this performer's row has no page to open, so it is plain text.
                         SkaterSeason(21L, "C. Makar", goals = 5, assists = 16, points = 21),
-                        SkaterSeason(21L, "A. Lehkonen", goals = 12, assists = 5, points = 17),
-                        SkaterSeason(10L, "A. Matthews", goals = 11, assists = 16, points = 27),
-                        SkaterSeason(10L, "W. Nylander", goals = 11, assists = 11, points = 22),
-                        SkaterSeason(10L, "J. Roslovic", goals = 8, assists = 10, points = 18),
+                        SkaterSeason(21L, "A. Lehkonen", goals = 12, assists = 5, points = 17, playerId = 8477955L),
+                        SkaterSeason(10L, "A. Matthews", goals = 11, assists = 16, points = 27, playerId = 8479318L),
+                        SkaterSeason(10L, "W. Nylander", goals = 11, assists = 11, points = 22, playerId = 8477939L),
+                        SkaterSeason(10L, "J. Roslovic", goals = 8, assists = 10, points = 18, playerId = 8478029L),
                     ),
             )
 
