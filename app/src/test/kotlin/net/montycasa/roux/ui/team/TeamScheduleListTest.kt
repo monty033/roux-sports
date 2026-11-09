@@ -341,6 +341,23 @@ class TeamScheduleListTest {
         assertTrue(route.orEmpty().startsWith("detail/next"))
     }
 
+    @Test
+    fun aFallbackSeasonNamesItselfAboveTheListInThePastSeasonsFormat() {
+        val lastSeason =
+            ClubSchedule(season = "20252026", games = listOf(game("last", "2026-04-10T23:00:00Z", GameState.Final, finished = true)))
+        showScreen(schedule = Loadable(lastSeason, Freshness.Fresh, null))
+
+        rule.onNodeWithTag("team.schedule.season").assertIsDisplayed().assertTextEquals("2025-26 season")
+        rule.onNodeWithTag("team.schedule.list").assertIsDisplayed()
+    }
+
+    @Test
+    fun theCurrentSeasonCarriesNoSeasonLabel() {
+        showScreen(schedule = scheduled(listOf(game("next", "2026-11-05T20:00:00Z", GameState.Scheduled))))
+
+        rule.onNodeWithTag("team.schedule.season").assertDoesNotExist()
+    }
+
     private fun scheduled(games: List<ClubGame>) = Loadable(ClubSchedule(season = "20262027", games = games), Freshness.Fresh, null)
 
     private fun showList(games: List<ClubGame>) {

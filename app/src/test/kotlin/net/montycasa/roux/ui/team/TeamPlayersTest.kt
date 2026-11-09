@@ -384,6 +384,22 @@ class TeamPlayersTest {
             .assertContentDescriptionEquals("Leo Carlsson, open player details")
     }
 
+    @Test
+    fun aFallbackStatsSeasonNamesItselfAboveTheTables() {
+        showScreen(stats = Loadable(sampleStats.copy(season = "20252026"), Freshness.Fresh, null))
+        openPlayers()
+
+        rule.onNodeWithTag("team.players.season").assertIsDisplayed().assertTextEquals("2025-26 season")
+        rule.onNodeWithTag("team.players.list").assertIsDisplayed()
+    }
+
+    @Test
+    fun theCurrentStatsSeasonCarriesNoLabel() {
+        showPlayers()
+
+        rule.onNodeWithTag("team.players.season").assertDoesNotExist()
+    }
+
     private fun openPlayers() {
         rule.onNodeWithTag("team.tab.Players").performClick()
         rule.waitForIdle()

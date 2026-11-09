@@ -107,6 +107,7 @@ fun TeamDetailScreen(
                 fullName = fullName,
                 row = row,
                 isLoading = state.isLoading,
+                standingsFailed = state.error != null,
             )
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -133,6 +134,7 @@ fun TeamDetailScreen(
                             onRetry = retryPlayers,
                             onPlayerClick = onPlayerClick,
                             modifier = Modifier.fillMaxSize(),
+                            now = now,
                         )
                     }
 
@@ -235,6 +237,7 @@ private fun TeamCard(
     fullName: String,
     row: StandingRow?,
     isLoading: Boolean,
+    standingsFailed: Boolean,
 ) {
     val accents = Roux.accents
     Column(
@@ -286,6 +289,12 @@ private fun TeamCard(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                    }
+
+                    // A failed standings load says nothing about this club either way, so it must not claim the table
+                    // lacks the record. The Team Stats tab carries the error itself.
+                    standingsFailed -> {
+                        Unit
                     }
 
                     else -> {

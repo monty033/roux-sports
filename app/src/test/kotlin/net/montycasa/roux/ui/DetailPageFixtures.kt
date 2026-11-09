@@ -567,6 +567,16 @@ internal object DetailPageFixtures {
         )
 
     /**
+     * The club page on a pre-season day: the schedule and totals are last season's, and each one says so. The games are
+     * the same captured fixtures as [teamState], so only the season label differs.
+     */
+    val teamStateLastSeason =
+        teamState.copy(
+            schedule = Loadable(ClubSchedule(season = LAST_SEASON, games = clubSchedule), Freshness.Fresh, null),
+            stats = Loadable(clubStats.copy(season = LAST_SEASON), Freshness.Fresh, null),
+        )
+
+    /**
      * The reach audit's club state: the same page with a two-game schedule. The full season fills the viewport at
      * doubled type, so its last row would sit 4 dp from the tab row - a finding about a dense list, not about the
      * tab row and back control this audit declares. Two games across two months keep the list short while still
@@ -577,6 +587,9 @@ internal object DetailPageFixtures {
 
     /** The fixtures' club is the 2026-27 season, the one the page asks for on the fixed clock. */
     const val CLUB_SEASON = "20262027"
+
+    /** The season before [CLUB_SEASON], which the page falls back to while the current one has no games yet. */
+    const val LAST_SEASON = "20252026"
 
     private fun clubSeason(games: List<ClubGame>) = Loadable(ClubSchedule(season = CLUB_SEASON, games = games), Freshness.Fresh, null)
 }

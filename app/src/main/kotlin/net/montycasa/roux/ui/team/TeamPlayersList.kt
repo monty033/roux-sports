@@ -39,6 +39,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import kotlinx.datetime.TimeZone
 import net.montycasa.roux.R
 import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.ClubRoster
@@ -50,6 +51,8 @@ import net.montycasa.roux.ui.common.RetryButton
 import net.montycasa.roux.ui.detail.PeriodDivider
 import net.montycasa.roux.ui.reach.listRow
 import net.montycasa.roux.ui.theme.Roux
+import kotlin.time.Clock
+import kotlin.time.Instant
 
 private val IDENTITY_WIDTH = 168.dp
 private val HEADSHOT_SIZE = 40.dp
@@ -75,6 +78,7 @@ internal fun TeamPlayersList(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
     onPlayerClick: (Long) -> Unit = {},
+    now: Instant = Clock.System.now(),
 ) {
     val rosterData = roster?.data
     val statsData = stats?.data
@@ -108,6 +112,10 @@ internal fun TeamPlayersList(
                             onRetry = onRetry,
                         )
                     }
+                }
+                // The numbers are the stats feed's, so the season named is the stats' season, not the roster's.
+                pastSeasonLabel(statsData?.season, now, TimeZone.currentSystemDefault())?.let { label ->
+                    SeasonNote(label = label, tag = "team.players.season")
                 }
                 if (groups.all { it.rows.isEmpty() }) {
                     Text(
