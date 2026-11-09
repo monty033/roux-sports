@@ -254,7 +254,13 @@ fun findReachViolations(
                     ),
                 )
             }
-            if (control.rawRight > windowWidthDp) {
+            // The horizontal edges take the same exemption as the bottom edge above. A pill at the end of a
+            // scrolling strip is past the window until it is scrolled, and a control that can never be fully
+            // revealed is the only one that is clipped for good.
+            val canBeFullySeenAcross =
+                control.reachableWidth < 0f ||
+                    control.reachableWidth >= control.rawRight - control.rawLeft - SIZE_EPSILON_DP
+            if (control.rawRight > windowWidthDp && !canBeFullySeenAcross) {
                 add(
                     ReachViolation(
                         ReachRule.R5_CONTAINMENT,
@@ -266,7 +272,7 @@ fun findReachViolations(
             }
             // The left and top overruns matter for the same reason: the target is cut down to less than
             // it claims to be, and on the left it sits inside the back-gesture strip as well.
-            if (control.rawLeft < 0f) {
+            if (control.rawLeft < 0f && !canBeFullySeenAcross) {
                 add(
                     ReachViolation(
                         ReachRule.R5_CONTAINMENT,

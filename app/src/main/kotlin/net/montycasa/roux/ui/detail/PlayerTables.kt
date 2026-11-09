@@ -206,7 +206,7 @@ private fun RosterTable(
     }
 }
 
-private val MUGSHOT_SIZE = 28.dp
+internal val MUGSHOT_SIZE = 28.dp
 private val MUGSHOT_GAP = 6.dp
 private val ROW_HEADER_HEIGHT = 22.dp
 private val ROW_HEIGHT = 48.dp

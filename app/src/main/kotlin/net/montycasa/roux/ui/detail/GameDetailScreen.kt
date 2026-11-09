@@ -4,6 +4,7 @@ package net.montycasa.roux.ui.detail
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -31,9 +33,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameState
@@ -157,7 +157,8 @@ fun GameDetailScreen(
  * Three destinations as tabs: neutral fill, an orange edge around the selected one, no underline.
  *
  * A rounded rectangle rather than a folder tab, so it cannot be read as part of the app's own navigation bar sitting
- * directly beneath it.
+ * directly beneath it. Each pill is as wide as its crest and label; when the three do not fit, the strip scrolls
+ * sideways, so a club name is never cut short to make room.
  */
 @Composable
 internal fun DetailTabStrip(
@@ -173,7 +174,9 @@ internal fun DetailTabStrip(
             .background(MaterialTheme.colorScheme.background)
             // The top inset is the R4 clearance between a control clipped at the page's bottom edge and the tabs.
             // The bottom inset alone places the tabs, so this shrinks the viewport rather than moving them.
-            .padding(start = 12.dp, top = 8.dp, end = 12.dp, bottom = 6.dp),
+            .padding(start = 12.dp, top = 8.dp, end = 12.dp, bottom = 6.dp)
+            .horizontalScroll(rememberScrollState())
+            .testTag("detail.tab.strip"),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         // The club pills carry the real crest and the club's own name: an abbreviation on a tab asks the reader to
@@ -184,7 +187,7 @@ internal fun DetailTabStrip(
             val isSelected = index == selected
             Box(
                 Modifier
-                    .weight(1f)
+                    .wrapContentWidth()
                     // 48 dp: this is a reach target, and the audit's R4 floor applies to targets, not paint.
                     .heightIn(min = 48.dp)
                     .clip(RoundedCornerShape(10.dp))
@@ -200,21 +203,25 @@ internal fun DetailTabStrip(
                     .reachTarget("detail.tab.$tag"),
                 contentAlignment = Alignment.Center,
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     if (team != null) {
                         Box(Modifier.testTag("detail.tab.$tag.crest")) {
                             TeamLogo(team = team, crestSize = PILL_CREST, imageTag = "detail.logo.tab.$tag")
                         }
                         Spacer(Modifier.width(6.dp))
                     }
+                    // No ellipsis: the pill has no width limit, so the label is always whole.
                     Text(
                         label,
                         modifier = Modifier.testTag("detail.tab.$tag.label"),
-                        style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
+                        style = MaterialTheme.typography.bodyMedium,
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                         color = if (isSelected) MaterialTheme.colorScheme.onSurface else accents.muted,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        softWrap = false,
                     )
                 }
             }
