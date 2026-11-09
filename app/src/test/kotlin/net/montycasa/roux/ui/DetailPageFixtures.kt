@@ -575,6 +575,7 @@ internal object DetailPageFixtures {
         teamState.copy(
             schedule = Loadable(ClubSchedule(season = LAST_SEASON, games = clubSchedule), Freshness.Fresh, null),
             stats = Loadable(clubStats.copy(season = LAST_SEASON), Freshness.Fresh, null),
+            leagueStats = Loadable(leagueSummary.copy(season = LAST_SEASON), Freshness.Fresh, null),
         )
 
     /**

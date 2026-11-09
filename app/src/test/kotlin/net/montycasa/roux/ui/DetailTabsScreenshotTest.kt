@@ -83,6 +83,7 @@ class DetailTabsScreenshotTest {
 
         captureBothThemes("team-schedule-last-season")
         captureTab("team.tab.Players", "team-players-last-season")
+        captureTab("team.tab.TeamStats", "team-stats-last-season")
     }
 
     private fun captureTab(

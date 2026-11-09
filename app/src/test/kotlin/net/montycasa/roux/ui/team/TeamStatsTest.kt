@@ -127,6 +127,28 @@ class TeamStatsTest {
         rule.onNodeWithTag("team.stats.table", useUnmergedTree = true).assertDoesNotExist()
     }
 
+    /**
+     * A table that fell back to last season names that season above the table, so its numbers are not read as this
+     * season's. The note sits above the table rather than beside it.
+     */
+    @Test
+    fun aFallbackSeasonNamesItselfAboveTheTable() {
+        showTab(league = Loadable(leagueWith(ana).copy(season = "20252026"), Freshness.Fresh, null))
+
+        rule.onNodeWithTag("team.stats.season").assertIsDisplayed().assertTextEquals("2025-26 season")
+        val note = rule.onNodeWithTag("team.stats.season").fetchSemanticsNode().boundsInRoot
+        val table = rule.onNodeWithTag("team.stats.table", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertTrue(note.bottom <= table.top)
+    }
+
+    /** The current season's table carries no label, so nothing about this season's numbers changes. */
+    @Test
+    fun theCurrentSeasonsTableCarriesNoSeasonLabel() {
+        showTab()
+
+        rule.onNodeWithTag("team.stats.season").assertDoesNotExist()
+    }
+
     /** A refresh that failed keeps the last table on screen, and the failure's retry calls back once. */
     @Test
     fun aStaleTableKeepsTheRowsAndRetryCallsBack() {

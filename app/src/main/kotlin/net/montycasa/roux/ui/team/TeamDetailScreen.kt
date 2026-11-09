@@ -147,6 +147,7 @@ fun TeamDetailScreen(
                             isRefreshing = state.isLeagueStatsLoading,
                             onRetry = onLeagueStatsRetry,
                             modifier = Modifier.fillMaxSize(),
+                            now = now,
                         )
                     }
                 }

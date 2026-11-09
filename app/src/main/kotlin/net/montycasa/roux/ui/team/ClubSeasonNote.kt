@@ -2,6 +2,7 @@
 
 package net.montycasa.roux.ui.team
 
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -31,15 +32,19 @@ internal fun pastSeasonLabel(
     return "${season.take(4)}-${season.takeLast(2)}"
 }
 
-/** The muted line that names the season a list is showing, placed above the list it describes. */
+/**
+ * The muted line that names the season a list is showing, placed above the list it describes. [padding] sets the
+ * inset, so a card that is already inset can line the note up with its own edge.
+ */
 @Composable
 internal fun SeasonNote(
     label: String,
     tag: String,
+    padding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
 ) {
     Text(
         stringResource(R.string.team_season_label, label),
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).testTag(tag),
+        modifier = Modifier.padding(padding).testTag(tag),
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

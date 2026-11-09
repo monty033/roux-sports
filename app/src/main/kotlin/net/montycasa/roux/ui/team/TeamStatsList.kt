@@ -32,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.datetime.TimeZone
 import net.montycasa.roux.R
 import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.LeagueClub
@@ -42,6 +43,8 @@ import net.montycasa.roux.ui.detail.EmptySectionLine
 import net.montycasa.roux.ui.reach.reachTarget
 import net.montycasa.roux.ui.theme.LocalRouxAccents
 import net.montycasa.roux.ui.theme.Roux
+import kotlin.time.Clock
+import kotlin.time.Instant
 
 private val VALUE_WIDTH = 72.dp
 private val RANK_WIDTH = 72.dp
@@ -63,10 +66,11 @@ internal fun TeamStatsList(
     isRefreshing: Boolean,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
+    now: Instant = Clock.System.now(),
 ) {
     LazyColumn(modifier = modifier, contentPadding = PaddingValues(bottom = 16.dp)) {
         item {
-            TeamStatsCard(league, teamName, standingsLoading, standingsFailed, isRefreshing, onRetry)
+            TeamStatsCard(league, teamName, standingsLoading, standingsFailed, isRefreshing, onRetry, now)
         }
     }
 }
@@ -80,8 +84,11 @@ private fun TeamStatsCard(
     standingsFailed: Boolean,
     isRefreshing: Boolean,
     onRetry: () -> Unit,
+    now: Instant,
 ) {
     val data = league?.data
+    // The table's own season decides the note, so a table that fell back to last season says so.
+    val seasonLabel = pastSeasonLabel(data?.season, now, TimeZone.currentSystemDefault())
     val title =
         if (data == null) {
             stringResource(R.string.team_stats_title)
@@ -105,6 +112,9 @@ private fun TeamStatsCard(
             color = MaterialTheme.colorScheme.onSurface,
         )
         Spacer(Modifier.height(8.dp))
+        seasonLabel?.let { label ->
+            SeasonNote(label = label, tag = "team.stats.season", padding = PaddingValues(bottom = 8.dp))
+        }
         val stale = league?.error != null
         if (data == null) {
             if (stale) {
