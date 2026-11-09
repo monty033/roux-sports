@@ -19,6 +19,7 @@ import net.montycasa.roux.data.nhl.dto.LandingPenaltyDto
 import net.montycasa.roux.data.nhl.dto.LandingPenaltyPeriodDto
 import net.montycasa.roux.data.nhl.dto.LandingPeriodDescriptorDto
 import net.montycasa.roux.data.nhl.dto.LandingScoringPeriodDto
+import net.montycasa.roux.data.nhl.dto.LandingSkaterDto
 import net.montycasa.roux.data.nhl.dto.LandingStarDto
 import net.montycasa.roux.data.nhl.dto.LocalizedNameDto
 import net.montycasa.roux.domain.model.Broadcast
@@ -35,6 +36,7 @@ import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.PeriodScoring
 import net.montycasa.roux.domain.model.PlayerRef
 import net.montycasa.roux.domain.model.SeasonRecord
+import net.montycasa.roux.domain.model.SkaterSeason
 import net.montycasa.roux.domain.model.ThreeStar
 import net.montycasa.roux.domain.model.Venue
 
@@ -164,6 +166,12 @@ internal object LandingAdapter {
                         ?.goalies
                         .orEmpty()
                         .mapNotNull { it?.toGoalieSeason() },
+                skaters =
+                    landing.matchup
+                        ?.skaterSeasonStats
+                        ?.skaters
+                        .orEmpty()
+                        .mapNotNull { it?.toSkaterSeason() },
                 state = state,
                 period =
                     landing.periodDescriptor?.number?.let {
@@ -375,6 +383,24 @@ internal object LandingAdapter {
             record = record,
             goalsAgainstAverage = goalsAgainstAvg,
             savePercentage = savePctg,
+            playerId = playerId,
+        )
+    }
+
+    /**
+     * One skater's season line from the matchup. The club id and name are required, and so are the three counts: a row
+     * without them cannot be ranked, so it is left off rather than shown as zeros.
+     */
+    private fun LandingSkaterDto.toSkaterSeason(): SkaterSeason? {
+        val club = teamId ?: return null
+        val skaterName = name?.default.clean() ?: return null
+        return SkaterSeason(
+            teamId = club,
+            name = skaterName,
+            goals = goals ?: return null,
+            assists = assists ?: return null,
+            points = points ?: return null,
+            playerId = playerId,
         )
     }
 

@@ -5,6 +5,7 @@ import net.montycasa.roux.domain.model.ClubSeasonStats
 import net.montycasa.roux.domain.model.GoalieSeason
 import net.montycasa.roux.domain.model.RankedStat
 import net.montycasa.roux.domain.model.SeasonRecord
+import net.montycasa.roux.domain.model.SkaterSeason
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -70,6 +71,43 @@ class PreGameFormatTest {
     }
 
     @Test
+    fun lastTenPrintsTheRecordThenTheFeedsStreakInParentheses() {
+        assertEquals("5–4–1 (L1)", PreGameFormat.lastTenText(ClubForm(SeasonRecord(5, 4, 1), streakType = "L", streak = 1)))
+        assertEquals("6–3–1 (W2)", PreGameFormat.lastTenText(ClubForm(SeasonRecord(6, 3, 1), streakType = "W", streak = 2)))
+    }
+
+    @Test
+    fun anOvertimeOrShootoutStreakPrintsWithItsOwnCode() {
+        assertEquals("6–3–1 (OTL1)", PreGameFormat.lastTenText(ClubForm(SeasonRecord(6, 3, 1), streakType = "OTL", streak = 1)))
+        assertEquals("6–3–1 (SOL1)", PreGameFormat.lastTenText(ClubForm(SeasonRecord(6, 3, 1), streakType = "SOL", streak = 1)))
+    }
+
+    @Test
+    fun aClubWithNoStreakPrintsItsRecordAloneWithNoEmptyParentheses() {
+        assertEquals("6–3–1", PreGameFormat.lastTenText(ClubForm(SeasonRecord(6, 3, 1), streakType = null, streak = null)))
+        assertEquals("6–3–1", PreGameFormat.lastTenText(ClubForm(SeasonRecord(6, 3, 1), streakType = "W", streak = null)))
+    }
+
+    @Test
+    fun aClubWithNoRecordPrintsNothingForLastTen() {
+        assertNull(PreGameFormat.lastTenText(ClubForm(record = null, streakType = "W", streak = 2)))
+    }
+
+    @Test
+    fun theStreakIsTheFeedsCodeNotWorkedOutFromTheResults() {
+        // Neither end of the list is an L, so a streak read from the results could not print L1.
+        val form =
+            ClubForm(
+                record = SeasonRecord(6, 3, 1),
+                results = listOf("W", "OTL", "W", "W", "W", "W", "W", "W", "OTL", "W"),
+                streakType = "L",
+                streak = 1,
+            )
+
+        assertEquals("6–3–1 (L1)", PreGameFormat.lastTenText(form))
+    }
+
+    @Test
     fun isoDatesPrintAsShortMonthAndDayWithoutLeadingZero() {
         assertEquals("Oct 10", PreGameFormat.shortDate("2026-10-10"))
         assertEquals("Nov 5", PreGameFormat.shortDate("2026-11-05"))
@@ -93,6 +131,24 @@ class PreGameFormatTest {
         assertEquals("13th", goalsAgainst.awayRank)
         assertEquals("3.32", goalsAgainst.homeValue)
         assertEquals("20th", goalsAgainst.homeRank)
+    }
+
+    @Test
+    fun aHigherIsBetterRowSplitsItsBarByEachClubsOwnValue() {
+        val powerPlay = PreGameFormat.seasonStatRows(COL_STATS, TOR_STATS).first { it.label == "Power play" }
+
+        assertEquals(0.233333, powerPlay.awayBar, 0.0)
+        assertEquals(0.285714, powerPlay.homeBar, 0.0)
+    }
+
+    @Test
+    fun theLowerGoalsAgainstTakesTheLongerBar() {
+        // COL allows 3.06 a game and TOR 3.32, so COL's bar must be the longer one.
+        val goalsAgainst = PreGameFormat.seasonStatRows(COL_STATS, TOR_STATS).first { it.label == "Goals against / game" }
+
+        assertEquals(3.32, goalsAgainst.awayBar, 0.0)
+        assertEquals(3.06, goalsAgainst.homeBar, 0.0)
+        assertTrue(goalsAgainst.awayBar > goalsAgainst.homeBar)
     }
 
     @Test
@@ -136,25 +192,83 @@ class PreGameFormatTest {
         val torGoalies = PreGameFormat.goaliesFor(TOR_ID, ALL_GOALIES)
 
         assertEquals(listOf("M. Blackwood", "S. Wedgewood"), colGoalies.map { it.name })
-        assertEquals(listOf("S. Bobrovsky", "A. Stolarz", "A. Akhtyamov"), torGoalies.map { it.name })
+        assertEquals(listOf("S. Bobrovsky", "A. Stolarz"), torGoalies.map { it.name })
     }
 
     @Test
-    fun goaliesSortMostGamesFirstAndAnUnplayedGoalieLast() {
+    fun goaliesSortMostGamesFirst() {
         val torGoalies = PreGameFormat.goaliesFor(TOR_ID, ALL_GOALIES)
 
-        assertEquals(listOf(12, 7, null), torGoalies.map { it.gamesPlayed })
+        assertEquals(listOf(12, 7), torGoalies.map { it.gamesPlayed })
+    }
+
+    @Test
+    fun aGoalieWithNoGamesPlayedIsNotListed() {
+        // Akhtyamov has no season (the feed sends no games count) and the one here has played none: neither is on the card.
+        val unplayed = goalie(TOR_ID, "T. Unplayed", sweater = 99, gamesPlayed = 0)
+
+        val torGoalies = PreGameFormat.goaliesFor(TOR_ID, ALL_GOALIES + unplayed)
+
+        assertEquals(listOf("S. Bobrovsky", "A. Stolarz"), torGoalies.map { it.name })
     }
 
     @Test
     fun aClubShowsAtMostThreeGoalies() {
-        // One game played ranks above Akhtyamov's none, so the extra goalie takes the third place and he is the one cut.
-        val fourForOneClub = ALL_GOALIES + goalie(TOR_ID, "T. Extra", sweater = 80, gamesPlayed = 1)
+        // Four goaltenders have played, so the one with the fewest games is the one cut.
+        val fourForOneClub =
+            ALL_GOALIES +
+                goalie(TOR_ID, "T. Fourth", sweater = 80, gamesPlayed = 3) +
+                goalie(TOR_ID, "T. Extra", sweater = 81, gamesPlayed = 1)
 
         val torGoalies = PreGameFormat.goaliesFor(TOR_ID, fourForOneClub)
 
         assertEquals(PreGameFormat.GOALIES_PER_CLUB, torGoalies.size)
-        assertEquals(listOf("S. Bobrovsky", "A. Stolarz", "T. Extra"), torGoalies.map { it.name })
+        assertEquals(listOf("S. Bobrovsky", "A. Stolarz", "T. Fourth"), torGoalies.map { it.name })
+    }
+
+    @Test
+    fun topPerformersRankByPointsThenGoalsThenAssistsThenName() {
+        // Dee leads the points tie on assists over Bee; Bee and Cal tie on everything and sort by name; Ayo has fewer goals.
+        val skaters =
+            listOf(
+                skater(TOR_ID, "Ayo", goals = 4, assists = 6, points = 10),
+                skater(TOR_ID, "Bee", goals = 5, assists = 5, points = 10),
+                skater(TOR_ID, "Cal", goals = 5, assists = 5, points = 10),
+                skater(TOR_ID, "Dee", goals = 5, assists = 6, points = 10),
+            )
+
+        val top = PreGameFormat.topPerformers(TOR_ID, skaters)
+
+        assertEquals(listOf("Dee", "Bee", "Cal"), top.map { it.name })
+    }
+
+    @Test
+    fun topPerformersRankByPointsNotGoals() {
+        val skaters =
+            listOf(
+                skater(TOR_ID, "Scorer", goals = 9, assists = 0, points = 9),
+                skater(TOR_ID, "Playmaker", goals = 2, assists = 9, points = 11),
+            )
+
+        assertEquals(listOf("Playmaker", "Scorer"), PreGameFormat.topPerformers(TOR_ID, skaters).map { it.name })
+    }
+
+    @Test
+    fun topPerformersAreCutAtThreeAndOnlyFromTheClubAsked() {
+        val skaters =
+            listOf(
+                skater(TOR_ID, "T. One", goals = 1, assists = 1, points = 2),
+                skater(TOR_ID, "T. Two", goals = 2, assists = 2, points = 4),
+                skater(TOR_ID, "T. Three", goals = 3, assists = 3, points = 6),
+                skater(TOR_ID, "T. Four", goals = 4, assists = 4, points = 8),
+                skater(COL_ID, "C. Other", goals = 9, assists = 9, points = 18),
+            )
+
+        val top = PreGameFormat.topPerformers(TOR_ID, skaters)
+
+        assertEquals(PreGameFormat.TOP_PERFORMERS_PER_CLUB, top.size)
+        assertEquals(listOf("T. Four", "T. Three", "T. Two"), top.map { it.name })
+        assertTrue(PreGameFormat.topPerformers(null, skaters).isEmpty())
     }
 
     @Test
@@ -212,5 +326,13 @@ class PreGameFormatTest {
             sweater: Int,
             gamesPlayed: Int?,
         ) = GoalieSeason(teamId = teamId, name = name, sweaterNumber = sweater, gamesPlayed = gamesPlayed)
+
+        fun skater(
+            teamId: Long,
+            name: String,
+            goals: Int,
+            assists: Int,
+            points: Int,
+        ) = SkaterSeason(teamId = teamId, name = name, goals = goals, assists = assists, points = points)
     }
 }

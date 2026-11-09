@@ -37,12 +37,29 @@ internal data class LandingTeamDto(
 @Serializable
 internal data class LandingMatchupDto(
     val goalieSeasonStats: LandingGoalieSeasonStatsDto? = null,
+    val skaterSeasonStats: LandingSkaterSeasonStatsDto? = null,
 )
 
 @Serializable
 internal data class LandingGoalieSeasonStatsDto(
     /** Both clubs in one flat list; the club is named by [LandingGoalieDto.teamId], not by position. */
     val goalies: List<LandingGoalieDto?>? = null,
+)
+
+@Serializable
+internal data class LandingSkaterSeasonStatsDto(
+    /** Both clubs in one flat list; the club is named by [LandingSkaterDto.teamId], not by position. */
+    val skaters: List<LandingSkaterDto?>? = null,
+)
+
+@Serializable
+internal data class LandingSkaterDto(
+    val playerId: Long? = null,
+    val teamId: Long? = null,
+    val name: LocalizedNameDto? = null,
+    val goals: Int? = null,
+    val assists: Int? = null,
+    val points: Int? = null,
 )
 
 @Serializable

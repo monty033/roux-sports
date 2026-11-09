@@ -5,15 +5,23 @@ import net.montycasa.roux.domain.model.ClubSeasonStats
 import net.montycasa.roux.domain.model.GoalieSeason
 import net.montycasa.roux.domain.model.RankedStat
 import net.montycasa.roux.domain.model.SeasonRecord
+import net.montycasa.roux.domain.model.SkaterSeason
 import kotlin.math.roundToLong
 
-/** One season statistic as the pre-game card prints it: each club's value with its rank beside it. */
+/**
+ * One season statistic as the pre-game card prints it: each club's value with its rank beside it.
+ *
+ * [awayBar] and [homeBar] are the magnitudes the comparison bar is split from. They come from the values, never from the
+ * printed text, and a lower-is-better row carries them swapped so its lower figure takes the longer bar.
+ */
 data class SeasonStatRow(
     val label: String,
     val awayValue: String,
     val awayRank: String,
     val homeValue: String,
     val homeRank: String,
+    val awayBar: Double,
+    val homeBar: Double,
 )
 
 /**
@@ -25,6 +33,9 @@ data class SeasonStatRow(
 object PreGameFormat {
     /** A club shows at most this many goaltenders. The feed lists them all; the card does not. */
     const val GOALIES_PER_CLUB = 3
+
+    /** A club shows at most this many skaters on the Top Performers card. */
+    const val TOP_PERFORMERS_PER_CLUB = 3
 
     private const val EN_DASH = "–"
 
@@ -77,6 +88,18 @@ object PreGameFormat {
         return "$type$count"
     }
 
+    /**
+     * A club's last ten as the card prints it: the record, then the feed's streak in parentheses, `5–4–1 (L1)`.
+     *
+     * The streak is the feed's own code and count, never worked out from the results, so `OTL1` and `SOL1` print as the
+     * feed sends them. A club with no streak prints the record alone. Null when the feed sent no record.
+     */
+    fun lastTenText(form: ClubForm): String? {
+        val record = form.record ?: return null
+        val streak = streakText(form) ?: return recordText(record)
+        return "${recordText(record)} ($streak)"
+    }
+
     /** An ISO `YYYY-MM-DD` date as the card prints it: `Oct 10`. Null when the date does not parse. */
     fun shortDate(isoDate: String): String? {
         val parts = isoDate.split('-')
@@ -100,32 +123,47 @@ object PreGameFormat {
             statRow("Penalty kill", away.penaltyKill, home.penaltyKill) { percent(it) },
             statRow("Face-off", away.faceoff, home.faceoff) { percent(it) },
             statRow("Goals for / game", away.goalsFor, home.goalsFor) { perGame(it) },
-            statRow("Goals against / game", away.goalsAgainst, home.goalsAgainst) { perGame(it) },
+            statRow("Goals against / game", away.goalsAgainst, home.goalsAgainst, lowerIsBetter = true) { perGame(it) },
         )
     }
 
+    /**
+     * One comparison row. A lower-is-better row swaps the two magnitudes: the split of a bar is `away / (away + home)`, so
+     * giving the away bar the home figure and the home bar the away figure gives the lower figure the longer bar, the
+     * same as the club page draws it. Two equal figures split evenly; two zeros draw no fill at all.
+     */
     private fun statRow(
         label: String,
         awayStat: RankedStat?,
         homeStat: RankedStat?,
+        lowerIsBetter: Boolean = false,
         format: (Double) -> String,
     ): SeasonStatRow? {
         if (awayStat == null || homeStat == null) return null
+        val (awayBar, homeBar) =
+            if (lowerIsBetter) {
+                homeStat.value to awayStat.value
+            } else {
+                awayStat.value to homeStat.value
+            }
         return SeasonStatRow(
             label = label,
             awayValue = format(awayStat.value),
             awayRank = ordinal(awayStat.rank),
             homeValue = format(homeStat.value),
             homeRank = ordinal(homeStat.rank),
+            awayBar = awayBar,
+            homeBar = homeBar,
         )
     }
 
     /**
-     * One club's goaltenders for the card: the ones whose [GoalieSeason.teamId] is [teamId], most games played first, at
-     * most [GOALIES_PER_CLUB].
+     * One club's goaltenders for the card: the ones whose [GoalieSeason.teamId] is [teamId] and who have played, most games
+     * played first, at most [GOALIES_PER_CLUB].
      *
-     * A goaltender with no games played sorts last rather than first, and nobody is marked as the starter. A null
-     * [teamId] matches nobody, because a goaltender cannot be attributed to a club without its id.
+     * A goaltender with no games played is not listed, and neither is one the feed sent without a games count: there is no
+     * season to print for either. Nobody is marked as the starter. A null [teamId] matches nobody, because a goaltender
+     * cannot be attributed to a club without its id.
      */
     fun goaliesFor(
         teamId: Long?,
@@ -133,9 +171,29 @@ object PreGameFormat {
     ): List<GoalieSeason> {
         if (teamId == null) return emptyList()
         return goalies
-            .filter { it.teamId == teamId }
-            .sortedByDescending { it.gamesPlayed ?: -1 }
+            .filter { it.teamId == teamId && (it.gamesPlayed ?: 0) > 0 }
+            .sortedByDescending { it.gamesPlayed }
             .take(GOALIES_PER_CLUB)
+    }
+
+    /**
+     * One club's top skaters for the card: the ones whose [SkaterSeason.teamId] is [teamId], ranked by points, then goals,
+     * then assists, then name, so a tie always lands in the same order. At most [TOP_PERFORMERS_PER_CLUB]. A null [teamId]
+     * matches nobody.
+     */
+    fun topPerformers(
+        teamId: Long?,
+        skaters: List<SkaterSeason>,
+    ): List<SkaterSeason> {
+        if (teamId == null) return emptyList()
+        return skaters
+            .filter { it.teamId == teamId }
+            .sortedWith(
+                compareByDescending<SkaterSeason> { it.points }
+                    .thenByDescending { it.goals }
+                    .thenByDescending { it.assists }
+                    .thenBy { it.name },
+            ).take(TOP_PERFORMERS_PER_CLUB)
     }
 
     /** The goaltender's name and sweater number: `A. Akhtyamov #70`. The number is left out when the feed omits it. */

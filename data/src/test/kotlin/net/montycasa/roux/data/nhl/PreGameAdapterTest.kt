@@ -7,8 +7,10 @@ import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.GoalieSeason
 import net.montycasa.roux.domain.model.RankedStat
 import net.montycasa.roux.domain.model.SeasonRecord
+import net.montycasa.roux.domain.policy.PreGameFormat
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -54,6 +56,7 @@ class PreGameAdapterTest {
                 record = SeasonRecord(wins = 9, losses = 3, overtimeLosses = 1),
                 goalsAgainstAverage = 2.59842,
                 savePercentage = 0.90085,
+                playerId = 8478406L,
             ),
             blackwood,
         )
@@ -63,7 +66,42 @@ class PreGameAdapterTest {
     fun aGoalieWithNoSeasonIsKeptWithNameAndSweaterOnly() {
         val akhtyamov = landing().goalies.first { it.name == "A. Akhtyamov" }
 
-        assertEquals(GoalieSeason(teamId = 10L, name = "A. Akhtyamov", sweaterNumber = 70), akhtyamov)
+        assertEquals(GoalieSeason(teamId = 10L, name = "A. Akhtyamov", sweaterNumber = 70, playerId = 8482515L), akhtyamov)
+    }
+
+    @Test
+    fun aGoalieWhoHasNotPlayedIsDroppedFromEachClubsCard() {
+        // Akhtyamov is in the feed's flat list with no games count, so the card must not list him for TOR.
+        assertTrue(landing().goalies.any { it.name == "A. Akhtyamov" })
+
+        assertEquals(listOf("M. Blackwood", "S. Wedgewood"), PreGameFormat.goaliesFor(21L, landing().goalies).map { it.name })
+        assertEquals(listOf("S. Bobrovsky", "A. Stolarz"), PreGameFormat.goaliesFor(10L, landing().goalies).map { it.name })
+    }
+
+    @Test
+    fun theSkaterListSplitsByClubAndDropsOnlyTheRowWithNoCounts() {
+        // M. Wood is the one row the feed sent with no goals, assists or points, so it is the one that is not kept.
+        val skaters = landing().skaters
+
+        assertEquals(24, skaters.count { it.teamId == 10L })
+        assertEquals(20, skaters.count { it.teamId == 21L })
+        assertTrue(skaters.none { it.name == "M. Wood" })
+        assertEquals(8479318L, skaters.first { it.name == "A. Matthews" }.playerId)
+    }
+
+    @Test
+    fun theTopThreeSkatersForEachClubAreItsThreeHighestPointScorers() {
+        val skaters = landing().skaters
+
+        assertEquals(
+            listOf("A. Matthews", "W. Nylander", "J. Roslovic"),
+            PreGameFormat.topPerformers(10L, skaters).map { it.name },
+        )
+        // Lehkonen has the most goals for COL, but MacKinnon has the most points, so points decide the order.
+        assertEquals(
+            listOf("N. MacKinnon", "M. Necas", "C. Makar"),
+            PreGameFormat.topPerformers(21L, skaters).map { it.name },
+        )
     }
 
     @Test

@@ -100,6 +100,8 @@ data class GameLanding(
     val homeTeamId: Long? = null,
     /** Both clubs' goaltenders from the matchup, in feed order. Empty when the feed omits the matchup. */
     val goalies: List<GoalieSeason> = emptyList(),
+    /** Both clubs' skaters from the matchup, in feed order. Empty when the feed omits the skater table. */
+    val skaters: List<SkaterSeason> = emptyList(),
 )
 
 /** A club's season record: wins, regulation losses and overtime losses. */
@@ -125,6 +127,21 @@ data class GoalieSeason(
     val goalsAgainstAverage: Double? = null,
     /** Save percentage as a fraction 0..1. */
     val savePercentage: Double? = null,
+    /** The player's id, which is what their mugshot is named by. Null when the feed omits it. */
+    val playerId: Long? = null,
+)
+
+/**
+ * A skater's season line from the matchup's skater table: the club, the player and the three counts the Top Performers
+ * card ranks by. The feed's own row is dropped rather than shown with a guessed count when any of them is missing.
+ */
+data class SkaterSeason(
+    val teamId: Long,
+    val name: String,
+    val goals: Int,
+    val assists: Int,
+    val points: Int,
+    val playerId: Long? = null,
 )
 
 data class Venue(
