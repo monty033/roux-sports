@@ -134,21 +134,54 @@ class PreGameFormatTest {
     }
 
     @Test
-    fun aHigherIsBetterRowSplitsItsBarByEachClubsOwnValue() {
+    fun theBarSplitsOnLeagueRankNotOnTheRawValue() {
+        // COL's power play is 23.3% and 11th, TOR's 28.6% and 5th. Raw values would split 0.233 : 0.286. Ranks give 22 : 28.
         val powerPlay = PreGameFormat.seasonStatRows(COL_STATS, TOR_STATS).first { it.label == "Power play" }
 
-        assertEquals(0.233333, powerPlay.awayBar, 0.0)
-        assertEquals(0.285714, powerPlay.homeBar, 0.0)
+        assertEquals(22.0, powerPlay.awayBar, 0.0)
+        assertEquals(28.0, powerPlay.homeBar, 0.0)
     }
 
     @Test
-    fun theLowerGoalsAgainstTakesTheLongerBar() {
-        // COL allows 3.06 a game and TOR 3.32, so COL's bar must be the longer one.
+    fun goalsAgainstBarRunsOnRankWithNoInversion() {
+        // COL allows 3.06 a game and is 13th; TOR allows 3.32 and is 20th. Rank 1 is best for every statistic, so COL's
+        // better rank gives it the longer bar: 20 against 13. An inverted row would draw 13 against 20.
         val goalsAgainst = PreGameFormat.seasonStatRows(COL_STATS, TOR_STATS).first { it.label == "Goals against / game" }
 
-        assertEquals(3.32, goalsAgainst.awayBar, 0.0)
-        assertEquals(3.06, goalsAgainst.homeBar, 0.0)
+        assertEquals(20.0, goalsAgainst.awayBar, 0.0)
+        assertEquals(13.0, goalsAgainst.homeBar, 0.0)
         assertTrue(goalsAgainst.awayBar > goalsAgainst.homeBar)
+    }
+
+    @Test
+    fun rankOneAgainstRankThirtyTwoGivesTheFullBarAndTheLastSliver() {
+        // The values say the opposite of the ranks here, so the bars must follow the ranks alone.
+        val away = COL_STATS.copy(powerPlay = RankedStat(0.1, 1))
+        val home = TOR_STATS.copy(powerPlay = RankedStat(0.9, 32))
+
+        val powerPlay = PreGameFormat.seasonStatRows(away, home).first { it.label == "Power play" }
+
+        assertEquals(32.0, powerPlay.awayBar, 0.0)
+        assertEquals(1.0, powerPlay.homeBar, 0.0)
+    }
+
+    @Test
+    fun equalRanksDrawEqualBarsWhateverTheValues() {
+        val away = COL_STATS.copy(powerPlay = RankedStat(0.25, 7))
+        val home = TOR_STATS.copy(powerPlay = RankedStat(0.20, 7))
+
+        val powerPlay = PreGameFormat.seasonStatRows(away, home).first { it.label == "Power play" }
+
+        assertEquals(powerPlay.awayBar, powerPlay.homeBar, 0.0)
+    }
+
+    @Test
+    fun barQualityIsThirtyTwoLessTheRankAndNeverNegative() {
+        assertEquals(32, PreGameFormat.barQuality(1))
+        assertEquals(17, PreGameFormat.barQuality(16))
+        assertEquals(1, PreGameFormat.barQuality(32))
+        assertEquals(0, PreGameFormat.barQuality(33))
+        assertEquals(0, PreGameFormat.barQuality(40))
     }
 
     @Test

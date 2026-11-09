@@ -11,8 +11,8 @@ import kotlin.math.roundToLong
 /**
  * One season statistic as the pre-game card prints it: each club's value with its rank beside it.
  *
- * [awayBar] and [homeBar] are the magnitudes the comparison bar is split from. They come from the values, never from the
- * printed text, and a lower-is-better row carries them swapped so its lower figure takes the longer bar.
+ * [awayBar] and [homeBar] are the league-rank qualities the comparison bar is split from, see [PreGameFormat.barQuality].
+ * They come from the ranks, never from the values or the printed text.
  */
 data class SeasonStatRow(
     val label: String,
@@ -38,6 +38,9 @@ object PreGameFormat {
     const val TOP_PERFORMERS_PER_CLUB = 3
 
     private const val EN_DASH = "–"
+
+    /** The clubs in the league. A rank runs from 1 to this, so [barQuality] is one more than this, less the rank. */
+    const val LEAGUE_CLUBS = 32
 
     private val MONTHS = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
@@ -68,6 +71,14 @@ object PreGameFormat {
             }
         return "$rank$suffix"
     }
+
+    /**
+     * A club's bar quality for one statistic: `33 − rank`, so rank 1 is worth 32 and the last club is worth 1. The bars
+     * split on these rather than on the raw values, because a value says nothing about whether 20.3 % power play is good
+     * and a rank does. Every rank already runs the right way, goals against included, so no row is inverted. A rank past
+     * the last club is worth nothing, never a negative bar.
+     */
+    fun barQuality(rank: Int): Int = (LEAGUE_CLUBS + 1 - rank).coerceAtLeast(0)
 
     /** A fraction printed as a percentage with one decimal: `0.233333` is `23.3%`. */
     fun percent(fraction: Double): String {
@@ -123,37 +134,29 @@ object PreGameFormat {
             statRow("Penalty kill", away.penaltyKill, home.penaltyKill) { percent(it) },
             statRow("Face-off", away.faceoff, home.faceoff) { percent(it) },
             statRow("Goals for / game", away.goalsFor, home.goalsFor) { perGame(it) },
-            statRow("Goals against / game", away.goalsAgainst, home.goalsAgainst, lowerIsBetter = true) { perGame(it) },
+            statRow("Goals against / game", away.goalsAgainst, home.goalsAgainst) { perGame(it) },
         )
     }
 
     /**
-     * One comparison row. A lower-is-better row swaps the two magnitudes: the split of a bar is `away / (away + home)`, so
-     * giving the away bar the home figure and the home bar the away figure gives the lower figure the longer bar, the
-     * same as the club page draws it. Two equal figures split evenly; two zeros draw no fill at all.
+     * One comparison row. Each bar is its club's [barQuality], so the split is `awayQuality / (awayQuality + homeQuality)`
+     * and the better-ranked club has the longer bar. Two equal ranks split evenly.
      */
     private fun statRow(
         label: String,
         awayStat: RankedStat?,
         homeStat: RankedStat?,
-        lowerIsBetter: Boolean = false,
         format: (Double) -> String,
     ): SeasonStatRow? {
         if (awayStat == null || homeStat == null) return null
-        val (awayBar, homeBar) =
-            if (lowerIsBetter) {
-                homeStat.value to awayStat.value
-            } else {
-                awayStat.value to homeStat.value
-            }
         return SeasonStatRow(
             label = label,
             awayValue = format(awayStat.value),
             awayRank = ordinal(awayStat.rank),
             homeValue = format(homeStat.value),
             homeRank = ordinal(homeStat.rank),
-            awayBar = awayBar,
-            homeBar = homeBar,
+            awayBar = barQuality(awayStat.rank).toDouble(),
+            homeBar = barQuality(homeStat.rank).toDouble(),
         )
     }
 
