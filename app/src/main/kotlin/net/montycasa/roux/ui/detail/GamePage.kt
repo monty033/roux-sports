@@ -289,8 +289,9 @@ private val HALF_GAP = 12.dp
 private val HEADER_CREST = 24.dp
 private val HEADER_GAP = 6.dp
 
-/** The width a player's row gives up beside its words: the photo and the gap after it. */
-private val PHOTO_RESERVE = MUGSHOT_SIZE + 6.dp
+/** The width a player's row gives up beside its words: the photo, which grows with the font scale, and the gap after it. */
+@Composable
+private fun photoReserve(): Dp = mugshotSize() + 6.dp
 
 /** The share of a season-stats card's width each club's value takes side by side: the two values and the 1.2 label column. */
 private val SEASON_SIDE = 1f / 3.2f
@@ -361,13 +362,14 @@ private fun TwoClubBlock(
     awayRows: List<List<RowPiece>> = emptyList(),
     homeRows: List<List<RowPiece>> = emptyList(),
     sideFraction: Float? = null,
-    rowReserve: Dp = PHOTO_RESERVE,
+    rowReserve: Dp? = null,
     sideBySide: @Composable () -> Unit,
     away: @Composable () -> Unit,
     home: @Composable () -> Unit,
 ) {
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
+    val photo = rowReserve ?: photoReserve()
     val nameStyle = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
     val awayName = TeamNames.cityAndName(game.away).second
     val homeName = TeamNames.cityAndName(game.home).second
@@ -377,7 +379,7 @@ private fun TwoClubBlock(
         val half = (card - with(density) { HALF_GAP.toPx() }) * 0.5f
         val column = sideFraction?.let { card * it } ?: half
         val crest = with(density) { (HEADER_CREST + HEADER_GAP).toPx() }
-        val reserve = with(density) { rowReserve.toPx() }
+        val reserve = with(density) { photo.toPx() }
         val gap = with(density) { ROW_PIECE_GAP.toPx() }
         // Side by side, the headers sit in halves, so the names must fit a half less the crest. Every word of the
         // rows must fit the club's column, and each row's pieces must fit beside each other. Stacked, a club needs
@@ -811,7 +813,8 @@ private fun PlayerRow(
     line: PlayerLine,
     alignEnd: Boolean,
 ) {
-    val indent = Modifier.padding(start = if (alignEnd) 0.dp else PHOTO_RESERVE, end = if (alignEnd) PHOTO_RESERVE else 0.dp)
+    val reserve = photoReserve()
+    val indent = Modifier.padding(start = if (alignEnd) 0.dp else reserve, end = if (alignEnd) reserve else 0.dp)
     val align = if (alignEnd) TextAlign.End else TextAlign.Start
     Column(
         Modifier
