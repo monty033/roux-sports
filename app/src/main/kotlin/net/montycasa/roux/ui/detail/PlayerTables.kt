@@ -244,7 +244,8 @@ internal fun PlayerMugshotImage(
         if (!loaded) {
             Text(
                 initialsOf(name),
-                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.testTag("$tag.initials"),
+                style = MaterialTheme.typography.labelMedium,
                 color = LocalRouxAccents.current.muted,
                 maxLines = 1,
             )

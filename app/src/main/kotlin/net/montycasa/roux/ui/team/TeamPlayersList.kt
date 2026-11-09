@@ -302,7 +302,8 @@ private fun PlayerHeadshot(
         if (!loaded) {
             Text(
                 initials(row.name),
-                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.testTag("$tag.initials"),
+                style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,

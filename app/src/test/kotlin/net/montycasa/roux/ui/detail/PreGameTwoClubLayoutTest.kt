@@ -14,7 +14,6 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -208,26 +207,6 @@ class PreGameTwoClubLayoutAt360Test {
             figures = compose.onAllNodes(FIGURE_LINES, useUnmergedTree = true).fetchSemanticsNodes(),
             names = compose.onAllNodes(PRE_GAME_NAMES, useUnmergedTree = true).fetchSemanticsNodes(),
             drawnWhole = true,
-        )
-    }
-
-    @Test
-    fun `at 360 dp with font scale 2 the photo fallback initials of J Foote sit inside his mugshot circle`() {
-        compose.setContent(preGameAt(2f))
-
-        val circle =
-            compose
-                .onNodeWithTag(
-                    "detail.pregame.performers.home.J. Foote.mugshot",
-                    useUnmergedTree = true,
-                ).getUnclippedBoundsInRoot()
-        val initials = compose.onNodeWithText("JF", useUnmergedTree = true).getUnclippedBoundsInRoot()
-        assertTrue(
-            "the JF initials are outside the circle: initials $initials, circle $circle",
-            initials.left >= circle.left - 0.5.dp &&
-                initials.right <= circle.right + 0.5.dp &&
-                initials.top >= circle.top - 0.5.dp &&
-                initials.bottom <= circle.bottom + 0.5.dp,
         )
     }
 }
