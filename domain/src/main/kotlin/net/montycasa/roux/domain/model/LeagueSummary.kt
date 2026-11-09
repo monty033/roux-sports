@@ -5,8 +5,13 @@ package net.montycasa.roux.domain.model
  *
  * A club's rank is only meaningful against the other clubs, so the league is kept whole rather than
  * fetched club by club. The list order is the feed's and carries no meaning.
+ *
+ * [season] is the feed's eight-digit season id, such as `20252026`, and names the season the table came
+ * from. It is the season the page asked for unless that season had no clubs yet, in which case it is the
+ * season before, so the UI can say so.
  */
 data class LeagueSummary(
+    val season: String,
     val clubs: List<LeagueClub>,
 )
 

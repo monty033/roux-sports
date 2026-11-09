@@ -43,9 +43,16 @@ internal sealed interface ParseResult<out T> {
         val value: T,
     ) : ParseResult<T>
 
-    /** Retain diagnostic context so a broken response can be investigated. */
+    /**
+     * Retain diagnostic context so a broken response can be investigated.
+     *
+     * [emptyPayload] is true only when the reply was well-formed and simply carried no rows for the club,
+     * an empty season. It is the one failure that may roll a club page back to the season before; a reply
+     * that could not be read stays a plain failure.
+     */
     data class Failure(
         val reason: String,
+        val emptyPayload: Boolean = false,
     ) : ParseResult<Nothing>
 }
 
@@ -112,7 +119,10 @@ internal object NhlAdapter {
      * Kept on the single adapter entry point as well as on [ClubStatsAdapter] so callers that already
      * use `NhlAdapter.parse…` do not need a second vocabulary.
      */
-    fun parseClubStats(json: String): ParseResult<ClubStats> = ClubStatsAdapter.parse(json)
+    fun parseClubStats(
+        json: String,
+        season: String,
+    ): ParseResult<ClubStats> = ClubStatsAdapter.parse(json, season)
 
     /**
      * One week of the league schedule, reduced to the dates and game types opening night needs.
@@ -146,8 +156,10 @@ internal object NhlAdapter {
      *
      * An empty games array is a failure here, unlike a score day where an off day is a legitimate
      * empty slate: every club has a season schedule, so zero games means the response is not the
-     * one that was asked for. Individual unusable rows are dropped, but if none survive that is the
-     * same failure.
+     * one that was asked for. It is flagged [ParseResult.Failure.emptyPayload] anyway, because a
+     * season that has not started yet answers exactly this way. Individual unusable rows are dropped,
+     * but if none survive that is the same failure, and it is not flagged: the reply was not empty,
+     * it was unreadable.
      */
     fun parseClubSchedule(json: String): ParseResult<List<ClubGame>> {
         val schedule =
@@ -159,7 +171,7 @@ internal object NhlAdapter {
         val wireGames =
             schedule.games ?: return ParseResult.Failure("NHL club schedule mapping failed: missing games field")
         if (wireGames.isEmpty()) {
-            return ParseResult.Failure("NHL club schedule mapping failed: empty games list")
+            return ParseResult.Failure("NHL club schedule mapping failed: empty games list", emptyPayload = true)
         }
         val games =
             wireGames.mapNotNull { element ->

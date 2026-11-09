@@ -12,8 +12,8 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.Loadable
-import net.montycasa.roux.domain.model.ClubGame
 import net.montycasa.roux.domain.model.ClubRoster
+import net.montycasa.roux.domain.model.ClubSchedule
 import net.montycasa.roux.domain.model.ClubStats
 import net.montycasa.roux.domain.model.Conference
 import net.montycasa.roux.domain.model.Division
@@ -236,9 +236,9 @@ private class FakeStandings(
 private class FakeSchedule : ClubScheduleRepository {
     var calls = 0
 
-    override suspend fun schedule(teamKey: TeamKey): Loadable<List<ClubGame>> {
+    override suspend fun schedule(teamKey: TeamKey): Loadable<ClubSchedule> {
         calls++
-        return Loadable(emptyList(), Freshness.Fresh, null)
+        return Loadable(ClubSchedule(season = "20262027", games = emptyList()), Freshness.Fresh, null)
     }
 }
 
@@ -256,7 +256,7 @@ private class FakeStats : ClubStatsRepository {
 
     override suspend fun stats(teamKey: TeamKey): Loadable<ClubStats> {
         calls++
-        return Loadable(ClubStats(), Freshness.Fresh, null)
+        return Loadable(ClubStats(season = "20262027"), Freshness.Fresh, null)
     }
 }
 

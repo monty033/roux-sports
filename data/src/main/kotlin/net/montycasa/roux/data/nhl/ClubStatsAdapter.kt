@@ -23,7 +23,17 @@ internal object ClubStatsAdapter {
             explicitNulls = false
         }
 
-    fun parse(json: String): ParseResult<ClubStats> {
+    /**
+     * Parses one season's club statistics and stamps them with [season], the season the request asked for.
+     *
+     * Both groups present and both without a usable row is an empty season: the feed answered with the right
+     * shape and nothing in it, which is what a season that has not started looks like. It is flagged
+     * [ParseResult.Failure.emptyPayload]. One group empty while the other has rows is still a broken reply.
+     */
+    fun parse(
+        json: String,
+        season: String,
+    ): ParseResult<ClubStats> {
         val stats =
             try {
                 feedJson.decodeFromString<ClubStatsDto>(json)
@@ -37,18 +47,24 @@ internal object ClubStatsAdapter {
         val goaliesWire = stats.goalies ?: return ParseResult.Failure("NHL club stats mapping failed: missing goalies")
 
         val skaters = skatersWire.mapNotNull { it?.toStat() }.skaterLeaderboard()
+        val goalies = goaliesWire.mapNotNull { it?.toStat() }.goalieLeaderboard()
+        if (skaters.isEmpty() && goalies.isEmpty()) {
+            return ParseResult.Failure("NHL club stats mapping failed: no skaters or goalies", emptyPayload = true)
+        }
         if (skaters.isEmpty()) {
             return ParseResult.Failure("NHL club stats mapping failed: skaters has no usable players")
         }
-        val goalies = goaliesWire.mapNotNull { it?.toStat() }.goalieLeaderboard()
         if (goalies.isEmpty()) {
             return ParseResult.Failure("NHL club stats mapping failed: goalies has no usable players")
         }
-        return ParseResult.Success(ClubStats(skaters = skaters, goalies = goalies))
+        return ParseResult.Success(ClubStats(season = season, skaters = skaters, goalies = goalies))
     }
 
     /** The endpoint's own name for the same parse, for callers that name the feed. */
-    fun parseClubStats(json: String): ParseResult<ClubStats> = parse(json)
+    fun parseClubStats(
+        json: String,
+        season: String,
+    ): ParseResult<ClubStats> = parse(json, season)
 
     /**
      * A missing name is the only reason to drop a row. Every number stays exactly as the feed sent
@@ -137,7 +153,13 @@ internal object ClubStatsAdapter {
 
 /** The feed's own name for the same adapter, for callers that prefer it. */
 internal object StatsAdapter {
-    fun parse(json: String): ParseResult<ClubStats> = ClubStatsAdapter.parse(json)
+    fun parse(
+        json: String,
+        season: String,
+    ): ParseResult<ClubStats> = ClubStatsAdapter.parse(json, season)
 
-    fun parseClubStats(json: String): ParseResult<ClubStats> = ClubStatsAdapter.parse(json)
+    fun parseClubStats(
+        json: String,
+        season: String,
+    ): ParseResult<ClubStats> = ClubStatsAdapter.parse(json, season)
 }

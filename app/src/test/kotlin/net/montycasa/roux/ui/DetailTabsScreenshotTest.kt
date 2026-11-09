@@ -69,6 +69,23 @@ class DetailTabsScreenshotTest {
         captureTab("team.tab.TeamStats", "team-stats")
     }
 
+    @Test
+    fun clubPagesNameTheSeasonWhenTheyShowLastSeasonsDataInBothThemes() {
+        rule.setContent {
+            RouxTheme(dark = dark.value) {
+                TeamDetailScreen(
+                    state = DetailPageFixtures.teamStateLastSeason,
+                    onBack = {},
+                    now = DetailPageFixtures.NOW,
+                )
+            }
+        }
+
+        captureBothThemes("team-schedule-last-season")
+        captureTab("team.tab.Players", "team-players-last-season")
+        captureTab("team.tab.TeamStats", "team-stats-last-season")
+    }
+
     private fun captureTab(
         tag: String,
         file: String,
@@ -77,6 +94,10 @@ class DetailTabsScreenshotTest {
         // disagree about how far through it they were.
         rule.onNodeWithTag(tag).performSemanticsAction(SemanticsActions.OnClick)
         rule.waitForIdle()
+        captureBothThemes(file)
+    }
+
+    private fun captureBothThemes(file: String) {
         listOf(false, true).forEach { isDark ->
             val theme = if (isDark) "dark" else "light"
             rule.runOnIdle { dark.value = isDark }

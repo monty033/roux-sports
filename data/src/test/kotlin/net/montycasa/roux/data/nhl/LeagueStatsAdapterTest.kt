@@ -88,30 +88,50 @@ class LeagueStatsAdapterTest {
 
     @Test
     fun aPayloadWithoutADataArrayIsAFailure() {
-        assertTrue(LeagueStatsAdapter.parse("""{"total":32}""") is ParseResult.Failure)
+        assertTrue(LeagueStatsAdapter.parse("""{"total":32}""", SEASON) is ParseResult.Failure)
     }
 
     @Test
-    fun anEmptyDataArrayIsAFailure() {
-        assertTrue(LeagueStatsAdapter.parse("""{"data":[]}""") is ParseResult.Failure)
+    fun anEmptyDataArrayIsAnEmptySeason() {
+        val result = LeagueStatsAdapter.parse("""{"data":[],"total":0}""", SEASON)
+
+        assertTrue(result is ParseResult.Failure && result.emptyPayload)
     }
 
     @Test
-    fun aBodyThatIsNotJsonIsAFailure() {
-        assertTrue(LeagueStatsAdapter.parse("<html>maintenance</html>") is ParseResult.Failure)
+    fun aMissingDataArrayIsABrokenReplyNotAnEmptySeason() {
+        val result = LeagueStatsAdapter.parse("""{"total":32}""", SEASON)
+
+        assertTrue(result is ParseResult.Failure && !result.emptyPayload)
+    }
+
+    @Test
+    fun aBodyThatIsNotJsonIsNotAnEmptySeason() {
+        val result = LeagueStatsAdapter.parse("<html>maintenance</html>", SEASON)
+
+        assertTrue(result is ParseResult.Failure && !result.emptyPayload)
+    }
+
+    @Test
+    fun theParsedTableCarriesTheSeasonItWasAskedFor() {
+        assertEquals("20252026", parsed(season = "20252026").season)
     }
 
     private fun ana(): LeagueClub = parsed().clubs.first { it.teamName == "Anaheim Ducks" }
 
     private fun parsedRow(row: String): LeagueClub = parsed("""{"data":[$row]}""").clubs.single()
 
-    private fun parsed(json: String = Fixtures.text(Fixtures.CLUB_STATS_CAPTURE, FIXTURE)): LeagueSummary {
-        val result = LeagueStatsAdapter.parse(json)
+    private fun parsed(
+        json: String = Fixtures.text(Fixtures.CLUB_STATS_CAPTURE, FIXTURE),
+        season: String = SEASON,
+    ): LeagueSummary {
+        val result = LeagueStatsAdapter.parse(json, season)
         return (result as? ParseResult.Success)?.value ?: error("expected a parse, got $result")
     }
 
     private companion object {
         const val FIXTURE = "league-team-summary-20262027.json"
+        const val SEASON = "20262027"
         const val DELTA = 1e-9
     }
 }

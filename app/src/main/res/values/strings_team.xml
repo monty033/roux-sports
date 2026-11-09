@@ -43,6 +43,7 @@
     <string name="team_players_open_player">%1$s, open player details</string>
     <string name="team_schedule_empty">No games scheduled.</string>
     <string name="team_schedule_error">Schedule could not be loaded.</string>
+    <string name="team_season_label">%1$s season</string>
     <string name="team_schedule_next">Next</string>
     <string name="team_schedule_vs">vs</string>
     <string name="team_schedule_at">at</string>

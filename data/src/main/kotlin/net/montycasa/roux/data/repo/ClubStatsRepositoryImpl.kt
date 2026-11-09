@@ -34,6 +34,9 @@ import kotlin.time.Instant
  * The cache key carries both the club and the season, exactly like the schedule: a season boundary
  * must never serve last year's totals under this year's request. The entry is its own kind, so a
  * stats fetch cannot evict the roster or the schedule the reader already has.
+ *
+ * A season with no skater or goalie rows for the club yet rolls back once, to the season before it, and
+ * the value says which season it came from. Only an empty reply rolls back; an error keeps its own handling.
  */
 internal class ClubStatsRepositoryImpl(
     private val api: NhlApi,
@@ -45,35 +48,45 @@ internal class ClubStatsRepositoryImpl(
     override suspend fun stats(teamKey: TeamKey): Loadable<ClubStats> {
         val abbrev = teamKey.abbrev.uppercase()
         val season = LeagueCalendar.seasonId(clock.now(), zone)
-        return load(
+        val requested = read(abbrev, season)
+        if (!requested.emptySeason) return requested.loadable
+        // The requested season has nothing for this club yet. Roll back once: the season before is read
+        // exactly like any other, and if it is empty or fails too, its own answer is what the page shows.
+        return read(abbrev, LeagueCalendar.previousSeasonId(season)).loadable
+    }
+
+    private suspend fun read(
+        abbrev: String,
+        season: String,
+    ): SeasonRead<ClubStats> =
+        load(
             key = CacheKey(CacheKind.ClubStats, "$abbrev-$season"),
             maxAge = FreshnessPolicy.clubStatsMaxAge(),
             fetch = { api.clubStats(abbrev, season, GAME_TYPE) },
-            parse = ClubStatsAdapter::parse,
+            parse = { ClubStatsAdapter.parse(it, season) },
         )
-    }
 
     private suspend fun <T> load(
         key: CacheKey,
         maxAge: Duration,
         fetch: suspend () -> ApiResult,
         parse: (String) -> ParseResult<T>,
-    ): Loadable<T> =
+    ): SeasonRead<T> =
         withContext(ioDispatcher) {
             val cached = readCached(key, parse)
             if (cached != null &&
                 !FreshnessPolicy.isStale(fetchedAt = cached.fetchedAt, now = clock.now(), maxAge = maxAge)
             ) {
-                return@withContext Loadable(cached.value, Freshness.Fresh, null)
+                return@withContext SeasonRead(Loadable(cached.value, Freshness.Fresh, null))
             }
 
             val result =
                 try {
                     fetch()
                 } catch (limited: RateLimited) {
-                    return@withContext fallBack(cached, LoadError.Http(status = 429, retryAfter = limited.retryAfter))
+                    return@withContext SeasonRead(fallBack(cached, LoadError.Http(status = 429, retryAfter = limited.retryAfter)))
                 } catch (blocked: HostNotAllowedException) {
-                    return@withContext fallBack(cached, LoadError.Blocked(blocked.host))
+                    return@withContext SeasonRead(fallBack(cached, LoadError.Blocked(blocked.host)))
                 }
 
             when (result) {
@@ -82,24 +95,24 @@ internal class ClubStatsRepositoryImpl(
                         is ParseResult.Success -> {
                             try {
                                 cache.put(key, result.bytes, clock.now())
-                                Loadable(parsed.value, Freshness.Fresh, null)
+                                SeasonRead(Loadable(parsed.value, Freshness.Fresh, null))
                             } catch (_: IOException) {
-                                Loadable(parsed.value, Freshness.Fresh, LoadError.Local)
+                                SeasonRead(Loadable(parsed.value, Freshness.Fresh, LoadError.Local))
                             }
                         }
 
                         is ParseResult.Failure -> {
-                            fallBack(cached, LoadError.Parse)
+                            SeasonRead(fallBack(cached, LoadError.Parse), emptySeason = parsed.emptyPayload)
                         }
                     }
                 }
 
                 is ApiResult.HttpError -> {
-                    fallBack(cached, LoadError.Http(result.status))
+                    SeasonRead(fallBack(cached, LoadError.Http(result.status)))
                 }
 
                 is ApiResult.NetworkError -> {
-                    fallBack(cached, LoadError.Network)
+                    SeasonRead(fallBack(cached, LoadError.Network))
                 }
             }
         }
@@ -122,6 +135,15 @@ internal class ClubStatsRepositoryImpl(
             cached?.let { Cached(it.value, it.fetchedAt) },
             FetchOutcome.Failed(error),
         )
+
+    /**
+     * One season's read. [emptySeason] is true only when the feed answered with a well-formed reply that had no rows
+     * for the club, the one outcome that justifies asking for the season before.
+     */
+    private class SeasonRead<T>(
+        val loadable: Loadable<T>,
+        val emptySeason: Boolean = false,
+    )
 
     private class CachedValue<T>(
         val value: T,

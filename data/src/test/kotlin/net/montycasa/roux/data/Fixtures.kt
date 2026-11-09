@@ -15,6 +15,9 @@ object Fixtures {
     /** The league penalties table was captured a day after the club corpus, on 4 November 2026. */
     const val LEAGUE_PENALTIES_CAPTURE = "2026-11-04"
 
+    /** The Toronto season pair that proves the pre-season rollover, captured 9 November 2026. */
+    const val ROLLOVER_CAPTURE = "2026-11-09"
+
     fun bytes(name: String): ByteArray = bytes(CURRENT, name)
 
     fun bytes(
@@ -44,4 +47,7 @@ object Fixtures {
 
     /** The shorter name, for callers that already have "club" in scope. */
     fun stats(name: String): String = clubStats(name)
+
+    /** A rollover capture from [ROLLOVER_CAPTURE]: the empty upcoming season, or the season that has games. */
+    fun rollover(name: String): String = text(ROLLOVER_CAPTURE, name)
 }

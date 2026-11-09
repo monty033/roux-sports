@@ -16,6 +16,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.model.Conference
 import net.montycasa.roux.domain.model.Division
 import net.montycasa.roux.domain.model.StandingRow
@@ -92,6 +93,16 @@ class TeamDetailScreenTest {
      * Every place sits within the card at 360 dp and font scale 2.0, and each line of places is centred on the card.
      * Lines are told apart by their top edge, so a place that wraps is still measured on the line it lands on.
      */
+    @Test
+    fun aFailedStandingsLoadSaysNothingAboutTheRecordRatherThanClaimingItIsMissing() {
+        show(TeamDetailUiState(TeamKey("ANA"), row = null, isLoading = false, error = LoadError.Network))
+
+        rule.onNodeWithTag("team.name").assertIsDisplayed().assertTextEquals("Anaheim Ducks")
+        rule.onNodeWithText("The standings table doesn’t have this team’s record yet.").assertDoesNotExist()
+        listOf("team.record", "team.noRecord", "team.points", "team.place.division", "team.place.conference", "team.place.league")
+            .forEach { tag -> rule.onNodeWithTag(tag).assertDoesNotExist() }
+    }
+
     @Test
     fun thePlacesLineIsCentredAndUnclippedAtNarrowWidthAndLargeText() {
         rule.setContent {

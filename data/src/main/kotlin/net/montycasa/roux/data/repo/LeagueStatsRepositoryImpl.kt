@@ -1,8 +1,6 @@
 package net.montycasa.roux.data.repo
 
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.TimeZone
 import net.montycasa.roux.data.cache.CacheKey
@@ -39,6 +37,9 @@ import kotlin.time.Instant
  * The cache key is the season and the game type together, as the club stats are, so a season boundary
  * never serves last season's table under this season's request. The entry is its own kind, so reading
  * the league cannot evict a club's roster, schedule or stats.
+ *
+ * A season whose table has no clubs yet rolls back once, to the season before it, exactly as a club's stats do,
+ * and the table says which season it came from. Only an empty reply rolls back; an error keeps its own handling.
  */
 internal class LeagueStatsRepositoryImpl(
     private val api: NhlApi,
@@ -48,56 +49,65 @@ internal class LeagueStatsRepositoryImpl(
     private val ioDispatcher: CoroutineContext = Dispatchers.IO,
 ) : LeagueStatsRepository {
     /**
-     * The table and its penalty minutes are two requests, started together. The table alone decides freshness and
-     * the error, so a penalties failure leaves the table fresh and shows only as a dash on the penalty row.
+     * The table is read first, because the season it settles on decides which penalties are asked for: the
+     * penalties are joined onto the table club by club, so they must come from the same season. The penalties are
+     * read after the table rather than beside it, which is one extra round trip on a cold cache in exchange for never
+     * requesting a season the table did not settle on. The table alone decides freshness and the error, so a
+     * penalties failure leaves the table fresh and shows only as a dash on the penalty row.
      */
-    override suspend fun summary(): Loadable<LeagueSummary> =
-        coroutineScope {
-            val season = LeagueCalendar.seasonId(clock.now(), zone)
-            val table =
-                async {
-                    load(
-                        key = CacheKey(CacheKind.LeagueStats, "$season-$GAME_TYPE"),
-                        maxAge = FreshnessPolicy.leagueStatsMaxAge(),
-                        fetch = { api.leagueSummary(season, GAME_TYPE) },
-                        parse = LeagueStatsAdapter::parse,
-                    )
-                }
-            val penalties =
-                async {
-                    load(
-                        key = CacheKey(CacheKind.LeaguePenaltyTable, "$season-$GAME_TYPE"),
-                        maxAge = FreshnessPolicy.leagueStatsMaxAge(),
-                        fetch = { api.leaguePenalties(season, GAME_TYPE) },
-                        parse = LeaguePenaltiesAdapter::parse,
-                    )
-                }
-            val summary = table.await()
-            val penaltyTable = penalties.await()
-            Loadable(summary.data?.let { joinPenalties(it, penaltyTable.data) }, summary.freshness, summary.error)
-        }
+    override suspend fun summary(): Loadable<LeagueSummary> {
+        val requestedSeason = LeagueCalendar.seasonId(clock.now(), zone)
+        val requested = readTable(requestedSeason)
+        if (!requested.emptySeason) return withPenalties(requestedSeason, requested.loadable)
+        // The requested season has no clubs yet. Roll back once: the season before is read exactly like any other,
+        // and if it is empty or fails too, its own answer is what the page shows.
+        val previousSeason = LeagueCalendar.previousSeasonId(requestedSeason)
+        return withPenalties(previousSeason, readTable(previousSeason).loadable)
+    }
+
+    private suspend fun readTable(season: String): SeasonRead<LeagueSummary> =
+        load(
+            key = CacheKey(CacheKind.LeagueStats, "$season-$GAME_TYPE"),
+            maxAge = FreshnessPolicy.leagueStatsMaxAge(),
+            fetch = { api.leagueSummary(season, GAME_TYPE) },
+            parse = { LeagueStatsAdapter.parse(it, season) },
+        )
+
+    private suspend fun withPenalties(
+        season: String,
+        table: Loadable<LeagueSummary>,
+    ): Loadable<LeagueSummary> {
+        val penalties =
+            load(
+                key = CacheKey(CacheKind.LeaguePenaltyTable, "$season-$GAME_TYPE"),
+                maxAge = FreshnessPolicy.leagueStatsMaxAge(),
+                fetch = { api.leaguePenalties(season, GAME_TYPE) },
+                parse = LeaguePenaltiesAdapter::parse,
+            ).loadable
+        return Loadable(table.data?.let { joinPenalties(it, penalties.data) }, table.freshness, table.error)
+    }
 
     private suspend fun <T> load(
         key: CacheKey,
         maxAge: Duration,
         fetch: suspend () -> ApiResult,
         parse: (String) -> ParseResult<T>,
-    ): Loadable<T> =
+    ): SeasonRead<T> =
         withContext(ioDispatcher) {
             val cached = readCached(key, parse)
             if (cached != null &&
                 !FreshnessPolicy.isStale(fetchedAt = cached.fetchedAt, now = clock.now(), maxAge = maxAge)
             ) {
-                return@withContext Loadable(cached.value, Freshness.Fresh, null)
+                return@withContext SeasonRead(Loadable(cached.value, Freshness.Fresh, null))
             }
 
             val result =
                 try {
                     fetch()
                 } catch (limited: RateLimited) {
-                    return@withContext fallBack(cached, LoadError.Http(status = 429, retryAfter = limited.retryAfter))
+                    return@withContext SeasonRead(fallBack(cached, LoadError.Http(status = 429, retryAfter = limited.retryAfter)))
                 } catch (blocked: HostNotAllowedException) {
-                    return@withContext fallBack(cached, LoadError.Blocked(blocked.host))
+                    return@withContext SeasonRead(fallBack(cached, LoadError.Blocked(blocked.host)))
                 }
 
             when (result) {
@@ -106,24 +116,24 @@ internal class LeagueStatsRepositoryImpl(
                         is ParseResult.Success -> {
                             try {
                                 cache.put(key, result.bytes, clock.now())
-                                Loadable(parsed.value, Freshness.Fresh, null)
+                                SeasonRead(Loadable(parsed.value, Freshness.Fresh, null))
                             } catch (_: IOException) {
-                                Loadable(parsed.value, Freshness.Fresh, LoadError.Local)
+                                SeasonRead(Loadable(parsed.value, Freshness.Fresh, LoadError.Local))
                             }
                         }
 
                         is ParseResult.Failure -> {
-                            fallBack(cached, LoadError.Parse)
+                            SeasonRead(fallBack(cached, LoadError.Parse), emptySeason = parsed.emptyPayload)
                         }
                     }
                 }
 
                 is ApiResult.HttpError -> {
-                    fallBack(cached, LoadError.Http(result.status))
+                    SeasonRead(fallBack(cached, LoadError.Http(result.status)))
                 }
 
                 is ApiResult.NetworkError -> {
-                    fallBack(cached, LoadError.Network)
+                    SeasonRead(fallBack(cached, LoadError.Network))
                 }
             }
         }
@@ -147,6 +157,15 @@ internal class LeagueStatsRepositoryImpl(
             FetchOutcome.Failed(error),
         )
 
+    /**
+     * One season's read. [emptySeason] is true only when the feed answered with a well-formed reply that had no clubs
+     * in it, the one outcome that justifies asking for the season before.
+     */
+    private class SeasonRead<T>(
+        val loadable: Loadable<T>,
+        val emptySeason: Boolean = false,
+    )
+
     private class CachedValue<T>(
         val value: T,
         val fetchedAt: Instant,
@@ -169,7 +188,7 @@ internal fun joinPenalties(
     penalties: LeaguePenalties?,
 ): LeagueSummary {
     if (penalties == null) return summary
-    return LeagueSummary(
+    return summary.copy(
         clubs =
             summary.clubs.map { club ->
                 val match = penalties.clubs.firstOrNull { row -> sameClub(club, row) }

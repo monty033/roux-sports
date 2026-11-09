@@ -1,7 +1,7 @@
 package net.montycasa.roux.domain.repo
 
 import net.montycasa.roux.domain.Loadable
-import net.montycasa.roux.domain.model.ClubGame
+import net.montycasa.roux.domain.model.ClubSchedule
 import net.montycasa.roux.domain.model.TeamKey
 
 /**
@@ -12,12 +12,14 @@ import net.montycasa.roux.domain.model.TeamKey
  */
 interface ClubScheduleRepository {
     /**
-     * The club's games for the season containing the current league day.
+     * The club's games for the season containing the current league day, or for the season before it
+     * when the current season has no games for the club yet. The returned [ClubSchedule.season] names
+     * whichever season the games came from.
      *
      * A failure is reported inside the [Loadable] alongside any cached copy, so a club page can keep
      * its header and say that the schedule could not be read.
      */
-    suspend fun schedule(teamKey: TeamKey): Loadable<List<ClubGame>>
+    suspend fun schedule(teamKey: TeamKey): Loadable<ClubSchedule>
 }
 
 /** A shorter name for the same contract, for callers that already have "club" in scope. */

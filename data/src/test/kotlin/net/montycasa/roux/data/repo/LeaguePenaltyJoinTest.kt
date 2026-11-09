@@ -66,7 +66,7 @@ class LeaguePenaltyJoinTest {
         assertNull(joinPenalties(summary, null).clubs.single().penaltyMinutes)
     }
 
-    private fun summary(vararg clubs: LeagueClub) = LeagueSummary(clubs.toList())
+    private fun summary(vararg clubs: LeagueClub) = LeagueSummary(season = "20262027", clubs = clubs.toList())
 
     private fun penalties(vararg clubs: ClubPenalties) = LeaguePenalties(clubs.toList())
 

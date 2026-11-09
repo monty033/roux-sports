@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performClick
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
+import net.montycasa.roux.domain.model.ClubSchedule
 import net.montycasa.roux.domain.model.Conference
 import net.montycasa.roux.domain.model.Division
 import net.montycasa.roux.domain.model.LeagueClub
@@ -120,10 +121,32 @@ class TeamStatsTest {
 
     @Test
     fun aClubMissingFromTheLeagueShowsTheAbsentLineAndNoTable() {
-        showTab(league = Loadable(LeagueSummary(rivals), Freshness.Fresh, null))
+        showTab(league = Loadable(LeagueSummary(season = "20262027", clubs = rivals), Freshness.Fresh, null))
 
         rule.onNodeWithText("There are no league stats for this club yet.").assertIsDisplayed()
         rule.onNodeWithTag("team.stats.table", useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    /**
+     * A table that fell back to last season names that season above the table, so its numbers are not read as this
+     * season's. The note sits above the table rather than beside it.
+     */
+    @Test
+    fun aFallbackSeasonNamesItselfAboveTheTable() {
+        showTab(league = Loadable(leagueWith(ana).copy(season = "20252026"), Freshness.Fresh, null))
+
+        rule.onNodeWithTag("team.stats.season").assertIsDisplayed().assertTextEquals("2025-26 season")
+        val note = rule.onNodeWithTag("team.stats.season").fetchSemanticsNode().boundsInRoot
+        val table = rule.onNodeWithTag("team.stats.table", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertTrue(note.bottom <= table.top)
+    }
+
+    /** The current season's table carries no label, so nothing about this season's numbers changes. */
+    @Test
+    fun theCurrentSeasonsTableCarriesNoSeasonLabel() {
+        showTab()
+
+        rule.onNodeWithTag("team.stats.season").assertDoesNotExist()
     }
 
     /** A refresh that failed keeps the last table on screen, and the failure's retry calls back once. */
@@ -250,7 +273,8 @@ class TeamStatsTest {
     fun withPenaltiesFailingTheOtherRanksStillRender() {
         val withoutPenalties =
             LeagueSummary(
-                listOf(ana.copy(penaltyMinutes = null)) + rivals.map { it.copy(penaltyMinutes = null) },
+                season = "20262027",
+                clubs = listOf(ana.copy(penaltyMinutes = null)) + rivals.map { it.copy(penaltyMinutes = null) },
             )
         showTab(league = Loadable(withoutPenalties, Freshness.Fresh, null))
 
@@ -281,7 +305,7 @@ class TeamStatsTest {
                             teamKey = TeamKey("ANA"),
                             row = anaRow,
                             isLoading = false,
-                            schedule = Loadable(emptyList(), Freshness.Fresh, null),
+                            schedule = Loadable(ClubSchedule(season = "20262027", games = emptyList()), Freshness.Fresh, null),
                             leagueStats = league,
                         ),
                     onBack = {},
@@ -296,7 +320,7 @@ class TeamStatsTest {
     }
 
     /** The 32-club league with [club] as Anaheim's line. */
-    private fun leagueWith(club: LeagueClub) = LeagueSummary(listOf(club) + rivals)
+    private fun leagueWith(club: LeagueClub) = LeagueSummary(season = "20262027", clubs = listOf(club) + rivals)
 
     private val anaRow =
         StandingRow(

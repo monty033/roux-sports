@@ -39,9 +39,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.first
+import kotlinx.datetime.TimeZone
 import net.montycasa.roux.R
 import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.ClubGame
+import net.montycasa.roux.domain.model.ClubSchedule
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
@@ -73,7 +75,7 @@ private val DATE_WIDTH = 72.dp
 @Composable
 internal fun TeamScheduleList(
     teamKey: TeamKey,
-    schedule: Loadable<List<ClubGame>>?,
+    schedule: Loadable<ClubSchedule>?,
     isRefreshing: Boolean,
     onRetry: () -> Unit,
     onGameClick: (ClubGame) -> Unit,
@@ -91,7 +93,7 @@ internal fun TeamScheduleList(
             }
         }
 
-        schedule.data.isNullOrEmpty() -> {
+        schedule.data?.games.isNullOrEmpty() -> {
             Text(
                 stringResource(R.string.team_schedule_empty),
                 modifier = modifier.padding(horizontal = 16.dp, vertical = 12.dp).testTag("team.schedule.empty"),
@@ -101,19 +103,34 @@ internal fun TeamScheduleList(
         }
 
         else -> {
-            val games = schedule.data.orEmpty()
+            val games = schedule.data?.games.orEmpty()
+            val label = pastSeasonLabel(schedule.data?.season, now, TimeZone.currentSystemDefault())
             if (schedule.error != null) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                     ScheduleFailure(isRefreshing = isRefreshing, onRetry = onRetry)
                 }
             }
-            SeasonList(
-                teamKey = teamKey,
-                games = games,
-                now = now,
-                onGameClick = onGameClick,
-                modifier = modifier,
-            )
+            if (label == null) {
+                SeasonList(
+                    teamKey = teamKey,
+                    games = games,
+                    now = now,
+                    onGameClick = onGameClick,
+                    modifier = modifier,
+                )
+            } else {
+                // The note takes its own row above the list, so the list fills only the space that is left.
+                Column(modifier.fillMaxSize()) {
+                    SeasonNote(label = label, tag = "team.schedule.season")
+                    SeasonList(
+                        teamKey = teamKey,
+                        games = games,
+                        now = now,
+                        onGameClick = onGameClick,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
         }
     }
 }
