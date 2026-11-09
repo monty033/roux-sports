@@ -22,11 +22,41 @@ internal data class LandingDto(
     val venue: LocalizedNameDto? = null,
     val venueLocation: LocalizedNameDto? = null,
     val tvBroadcasts: List<LandingBroadcastDto?>? = null,
+    /** Present for a game that has not started; it carries the goaltenders the feed lists. */
+    val matchup: LandingMatchupDto? = null,
 )
 
 @Serializable
 internal data class LandingTeamDto(
+    val id: Long? = null,
     val abbrev: String? = null,
+    /** The season record as the feed writes it, `10-6-2`. */
+    val record: String? = null,
+)
+
+@Serializable
+internal data class LandingMatchupDto(
+    val goalieSeasonStats: LandingGoalieSeasonStatsDto? = null,
+)
+
+@Serializable
+internal data class LandingGoalieSeasonStatsDto(
+    /** Both clubs in one flat list; the club is named by [LandingGoalieDto.teamId], not by position. */
+    val goalies: List<LandingGoalieDto?>? = null,
+)
+
+@Serializable
+internal data class LandingGoalieDto(
+    val playerId: Long? = null,
+    val teamId: Long? = null,
+    val sweaterNumber: Int? = null,
+    val name: LocalizedNameDto? = null,
+    val gamesPlayed: Int? = null,
+    val wins: Int? = null,
+    val losses: Int? = null,
+    val otLosses: Int? = null,
+    val goalsAgainstAvg: Double? = null,
+    val savePctg: Double? = null,
 )
 
 @Serializable

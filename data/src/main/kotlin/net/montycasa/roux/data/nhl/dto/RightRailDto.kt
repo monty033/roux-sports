@@ -16,6 +16,52 @@ internal data class RightRailDto(
     val shotsByPeriod: List<PeriodShotsDto?>? = null,
     val teamGameStats: List<TeamStatRowDto?>? = null,
     val seasonSeries: List<SeasonSeriesGameDto?>? = null,
+    /** A game that has not started ships its form and ranked season statistics instead of a linescore. */
+    val last10Record: Last10RecordDto? = null,
+    val teamSeasonStats: TeamSeasonStatsDto? = null,
+)
+
+@Serializable
+internal data class Last10RecordDto(
+    val awayTeam: Last10TeamDto? = null,
+    val homeTeam: Last10TeamDto? = null,
+)
+
+@Serializable
+internal data class Last10TeamDto(
+    /** The last ten games' record, `5-4-1`. */
+    val record: String? = null,
+    val streakType: String? = null,
+    val streak: Int? = null,
+    /** The ten results in the order the feed lists them, which is the order the card prints them in. */
+    val pastGameResults: List<PastGameResultDto?>? = null,
+)
+
+@Serializable
+internal data class PastGameResultDto(
+    val opponentAbbrev: String? = null,
+    /** `W`, `L`, `OTL` or `SOL`, kept as the feed sends it. */
+    val gameResult: String? = null,
+)
+
+@Serializable
+internal data class TeamSeasonStatsDto(
+    val awayTeam: SeasonStatsTeamDto? = null,
+    val homeTeam: SeasonStatsTeamDto? = null,
+)
+
+@Serializable
+internal data class SeasonStatsTeamDto(
+    val ppPctg: Double? = null,
+    val pkPctg: Double? = null,
+    val faceoffWinningPctg: Double? = null,
+    val goalsForPerGamePlayed: Double? = null,
+    val goalsAgainstPerGamePlayed: Double? = null,
+    val ppPctgRank: Int? = null,
+    val pkPctgRank: Int? = null,
+    val faceoffWinningPctgRank: Int? = null,
+    val goalsForPerGamePlayedRank: Int? = null,
+    val goalsAgainstPerGamePlayedRank: Int? = null,
 )
 
 @Serializable
@@ -65,6 +111,8 @@ internal data class TeamStatRowDto(
 internal data class SeasonSeriesGameDto(
     val id: Long? = null,
     val gameType: Int? = null,
+    /** ISO `YYYY-MM-DD`, as the feed sends it. */
+    val gameDate: String? = null,
     val gameState: String? = null,
     val awayTeam: SeasonSeriesTeamDto? = null,
     val homeTeam: SeasonSeriesTeamDto? = null,
