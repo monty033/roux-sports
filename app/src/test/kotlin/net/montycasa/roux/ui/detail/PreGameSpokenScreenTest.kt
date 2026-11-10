@@ -2,6 +2,8 @@
 
 package net.montycasa.roux.ui.detail
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -14,7 +16,7 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.unit.Density
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.Loadable
@@ -40,6 +42,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import kotlin.time.Instant
 
 /**
@@ -238,11 +241,14 @@ class PreGameSpokenScreenTest {
     }
 
     /** The pre-game state the audits and the goldens use: every card's data present, no player with a page to open. */
-    private fun showAuditState() {
+    private fun showAuditState(fontScale: Float = 1f) {
         val screen = AuditStates.screens().single { it.name == "detail.pregame" }
         compose.setContent {
-            RouxTheme(dark = false) {
-                screen.content()
+            val base = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(base.density, fontScale = fontScale)) {
+                RouxTheme(dark = false) {
+                    screen.content()
+                }
             }
         }
     }
@@ -330,5 +336,38 @@ class PreGameSpokenScreenTest {
                         goalsAgainst = RankedStat(2.88, 5),
                     ),
             )
+    }
+}
+
+/**
+ * The pre-game cards when they stack, which is how they are drawn on a narrow screen with a large font.
+ *
+ * Stacked, the two clubs no longer share a row, so each stat row belongs to one club and says so on its own.
+ */
+@RunWith(AndroidJUnit4::class)
+@Config(sdk = [35], qualifiers = "w360dp-h780dp")
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class PreGameSpokenStackedScreenTest {
+    @get:Rule
+    val compose = createComposeRule()
+
+    @Test
+    fun `a stacked stat row reads the stat and its own club's value and rank`() {
+        val screen = AuditStates.screens().single { it.name == "detail.pregame" }
+        compose.setContent {
+            val base = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(base.density, fontScale = 2f)) {
+                RouxTheme(dark = false) {
+                    screen.content()
+                }
+            }
+        }
+
+        compose.onNodeWithTag("detail.pregame.stat.Power play.away").assertContentDescriptionEquals(
+            "Power play. Utah Mammoth 20.3 percent, 14th.",
+        )
+        compose.onNodeWithTag("detail.pregame.stat.Power play.home").assertContentDescriptionEquals(
+            "Power play. Philadelphia Flyers 24.6 percent, 4th.",
+        )
     }
 }
