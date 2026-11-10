@@ -579,6 +579,16 @@ internal object DetailPageFixtures {
         )
 
     /**
+     * The club header before a season starts: the standings have no row, so the record is last season's final. The
+     * clock is 1 July 2026, between the two seasons, so the page's own season is 2026-27 and the record is 2025-26's.
+     */
+    val teamStatePreSeason: TeamDetailUiState
+        get() = teamStateLastSeason.copy(row = null)
+
+    /** 17:00 UTC on 1 July 2026, the pre-season clock the header and its golden are rendered at. */
+    val PRE_SEASON_NOW: Instant = Instant.parse("2026-07-01T17:00:00Z")
+
+    /**
      * The reach audit's club state: the same page with a two-game schedule. The full season fills the viewport at
      * doubled type, so its last row would sit 4 dp from the tab row - a finding about a dense list, not about the
      * tab row and back control this audit declares. Two games across two months keep the list short while still
