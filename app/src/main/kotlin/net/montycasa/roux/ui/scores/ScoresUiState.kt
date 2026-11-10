@@ -4,6 +4,7 @@ import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.model.DateIndexEntry
 import net.montycasa.roux.domain.model.Game
+import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.policy.FavoritesHint
 import net.montycasa.roux.domain.policy.LeagueOrder
 
@@ -66,4 +67,20 @@ data class ScoresUiState(
      * page must not lose its rows at that moment.
      */
     val rowsByDate: Map<String, List<Game>> = emptyMap(),
+    /**
+     * The favourite teams a card is accented for.
+     *
+     * Carried as the team keys themselves, not as a flag per row: the favourites filter and the
+     * favourites-first ordering both read this same set, and row order alone cannot say which rows
+     * are favourites - a live or finished game is ordered by its state first, so there is no
+     * boundary in the list to read a favourite from.
+     */
+    val favouriteTeams: Set<TeamKey> = emptySet(),
 )
+
+/**
+ * Whether either club of this game is a favourite, which is the accent's only rule.
+ *
+ * A matchup between two favourites is still one card, so it carries one accent.
+ */
+internal fun Game.isFavourite(favourites: Set<TeamKey>): Boolean = home.key in favourites || away.key in favourites

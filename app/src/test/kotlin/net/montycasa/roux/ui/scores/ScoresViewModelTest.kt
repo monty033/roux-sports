@@ -2,6 +2,7 @@ package net.montycasa.roux.ui.scores
 
 import androidx.lifecycle.ViewModelStore
 import app.cash.turbine.test
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
@@ -491,6 +492,154 @@ class ScoresViewModelTest {
             }
         }
 
+    /**
+     * The rows beside the selection are cached by date, so a changed settings snapshot has to rebuild them.
+     *
+     * Those rows are what a page draws the moment it settles, before any load for that day lands. They are
+     * filtered and ordered once, from the favourites current at that moment: if a favourite is chosen later
+     * and nothing rebuilds them, the neighbour keeps showing the old selection while [ScoresUiState] reports
+     * the new one - including the favourite set the accent is drawn from. The dates and the selection are
+     * exactly as they were here, so only the settings moved.
+     */
+    @Test
+    fun aChangedFavouriteSetRebuildsTheNeighbourRowsItAlreadyCached() =
+        runTest {
+            val scores = FakeScoresRepository(testScheduler)
+            val index =
+                listOf("2026-10-25", "2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29")
+                    .map { DateIndexEntry(it, 1) }
+            scores.respond = { date, _ ->
+                Loadable(ScoreDay(date, listOf(game(date = date)), index, 0), Freshness.Fresh, null)
+            }
+            // The day beside the selection, already on disk: one game with MTL, one with neither.
+            val withMtl = game(date = "2026-10-28", id = "mtl-game", home = "MTL")
+            val withBos = game(date = "2026-10-28", id = "bos-game", home = "BOS")
+            scores.cache("2026-10-28", ScoreDay("2026-10-28", listOf(withMtl, withBos), index, 0))
+            val preferences = FakePreferencesRepository(teams = setOf(TeamKey("MTL")))
+            val viewModel = viewModel(scores, preferences)
+
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                viewModel.selectDate("2026-10-27")
+                runCurrent()
+                val warmed = expectMostRecentItem()
+                assertEquals(setOf(TeamKey("MTL")), warmed.favouriteTeams)
+                assertEquals(listOf(withMtl), warmed.rowsByDate["2026-10-28"])
+
+                // A favourite chosen elsewhere, with the dates and the selection exactly as they were.
+                preferences.emitFavourites(setOf(TeamKey("BOS")))
+                runCurrent()
+                val reFiltered = expectMostRecentItem()
+                assertEquals(setOf(TeamKey("BOS")), reFiltered.favouriteTeams)
+                assertEquals(
+                    "the cached neighbour must be filtered by the settings uiState now exposes",
+                    listOf(withBos),
+                    reFiltered.rowsByDate["2026-10-28"],
+                )
+
+                // The filter too: all games now, favourites first, still built from one snapshot.
+                viewModel.setFavouritesOnly(false)
+                runCurrent()
+                val unfiltered = expectMostRecentItem()
+                assertFalse(unfiltered.favouritesOnly)
+                assertEquals(listOf(withBos, withMtl), unfiltered.rowsByDate["2026-10-28"])
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    /**
+     * The pager must never see rows filtered under a favourite set the state no longer reports.
+     *
+     * The neighbour's rows used to be rebuilt by a flow that collected the settings a second time and re-read
+     * the cache whenever they changed, so for as long as that read took the state already carried the new
+     * favourites while the rows beside it still carried the old filter: the accent follows the first, the pager
+     * falls back to the second, and a favourite's own game was drawn without its stripe. That page's read is
+     * held open below to make that window observable - on a real disk it is short, but it is never zero.
+     */
+    @Test
+    fun aFavouriteChangeReachesTheNeighbourPageWhileTheCacheReadIsStillHeldOpen() =
+        runTest {
+            val scores = FakeScoresRepository(testScheduler)
+            val index =
+                listOf("2026-10-25", "2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29")
+                    .map { DateIndexEntry(it, 1) }
+            scores.respond = { date, _ ->
+                Loadable(ScoreDay(date, listOf(game(date = date)), index, 0), Freshness.Fresh, null)
+            }
+            // The neighbour's own slate: one game with MTL, one with BOS, so the two favourite sets disagree about
+            // which of them is a favourite's game at all.
+            val withMtl = game(date = "2026-10-28", id = "mtl-game", home = "MTL")
+            val withBos = game(date = "2026-10-28", id = "bos-game", home = "BOS")
+            scores.cache("2026-10-28", ScoreDay("2026-10-28", listOf(withMtl, withBos), index, 0))
+            val preferences = FakePreferencesRepository(teams = setOf(TeamKey("MTL")))
+            val viewModel = viewModel(scores, preferences)
+
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                viewModel.selectDate("2026-10-27")
+                runCurrent()
+                val warmed = expectMostRecentItem()
+                assertEquals(setOf(TeamKey("MTL")), warmed.favouriteTeams)
+                assertEquals(listOf(withMtl), warmed.rowsByDate["2026-10-28"])
+
+                // The neighbour has been read once. From here a read of that page waits, so the window between a
+                // settings change and whatever used to follow it stays open for as long as the test needs - and
+                // only that page is held, which is the one whose rows would otherwise stay stale.
+                val gate = CompletableDeferred<Unit>()
+                val readsWhenWarm = scores.cacheReads.size
+                scores.cacheGateDate = "2026-10-28"
+                scores.cacheGate = gate
+                try {
+                    preferences.emitFavourites(setOf(TeamKey("BOS")))
+                    runCurrent()
+                    val reFanned = expectMostRecentItem()
+                    assertEquals(
+                        "the state the pager reads must already report the new favourites",
+                        setOf(TeamKey("BOS")),
+                        reFanned.favouriteTeams,
+                    )
+                    assertEquals(
+                        "the neighbour must already be filtered by those favourites, not the ones they replaced",
+                        listOf(withBos),
+                        reFanned.rowsByDate["2026-10-28"],
+                    )
+
+                    // The filter itself, with the cache still held open: both games, the favourite's first.
+                    viewModel.setFavouritesOnly(false)
+                    runCurrent()
+                    val unfiltered = expectMostRecentItem()
+                    assertFalse(unfiltered.favouritesOnly)
+                    assertEquals(listOf(withBos, withMtl), unfiltered.rowsByDate["2026-10-28"])
+                } finally {
+                    // Release in every path, so a failed assertion cannot leave the test waiting on the gate.
+                    scores.cacheGateDate = null
+                    scores.cacheGate = null
+                    gate.complete(Unit)
+                }
+
+                // A settings change re-filters what is already remembered; it never sends the reader back to disk.
+                assertEquals(
+                    "a changed favourite set must not re-read the cache",
+                    readsWhenWarm,
+                    scores.cacheReads.size,
+                )
+                assertEquals(
+                    "the held page's gate was never reached",
+                    emptyList<String>(),
+                    scores.cacheGateEntered,
+                )
+
+                runCurrent()
+                val settled = viewModel.uiState.value
+                assertEquals(setOf(TeamKey("BOS")), settled.favouriteTeams)
+                assertFalse(settled.favouritesOnly)
+                assertEquals(listOf(withBos, withMtl), settled.rowsByDate["2026-10-28"])
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
     @Test
     fun darkLaunchSelectsOpeningNightAndNamesTheSeasonThatOpens() =
         runTest {
@@ -794,6 +943,31 @@ class ScoresViewModelTest {
             }
         }
 
+    /**
+     * The accent reads the favourite teams themselves, so the screen is handed the same set the filter
+     * and the ordering used. A set of flags per row could not survive a change made in the Teams tab.
+     */
+    @Test
+    fun theStateCarriesTheFavouriteTeamsThatFilteredAndOrderedTheRows() =
+        runTest {
+            val scores = FakeScoresRepository(testScheduler)
+            scores.respond = { date, _ -> freshDay(date, listOf(game(date = date, home = "MTL"))) }
+            val preferences = FakePreferencesRepository(teams = setOf(TeamKey("MTL"), TeamKey("TOR")))
+            val viewModel = viewModel(scores, preferences)
+
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                assertEquals(setOf(TeamKey("MTL"), TeamKey("TOR")), expectMostRecentItem().favouriteTeams)
+
+                // A favourite chosen elsewhere reaches the screen the way it reaches the filter.
+                preferences.emitFavourites(setOf(TeamKey("BOS")))
+                runCurrent()
+                assertEquals(setOf(TeamKey("BOS")), expectMostRecentItem().favouriteTeams)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
     @Test
     fun headerAndDrawerMetadataUseTheLoadedUnfilteredDayWithoutAnExtraRequest() =
         runTest {
@@ -1087,6 +1261,48 @@ private class FakeScoresRepository(
         today: String,
     ) {
         prefetchCalls += Call(scheduler.currentTime, date, today)
+    }
+
+    /**
+     * Days already on disk: the neighbour pages read these and never ask for them.
+     *
+     * The seam is this narrow because [cachedDay] is the only way rows for a day other than the selected one
+     * reach the screen, and what these tests are about is which settings snapshot those rows were built with.
+     */
+    private val disk = mutableMapOf<String, ScoreDay>()
+
+    /** Every cache read, in order: a settings change must not add to it. */
+    val cacheReads = mutableListOf<String>()
+
+    /**
+     * A cache read of [cacheGateDate] waits on [cacheGate] instead of returning, so a test can hold open the
+     * window between a settings change and the read that used to follow it. Only the named date is delayed -
+     * every other page keeps reading - so what stalls is specifically the page whose rows would otherwise stay
+     * stale. Arm both after the warm-up; both null (every other test) lets every read return at once.
+     */
+    var cacheGateDate: String? = null
+    var cacheGate: CompletableDeferred<Unit>? = null
+
+    /** The dates that actually reached the gate: which read stalled, rather than which was expected to. */
+    val cacheGateEntered = mutableListOf<String>()
+
+    fun cache(
+        date: String,
+        day: ScoreDay,
+    ) {
+        disk[date] = day
+    }
+
+    override suspend fun cachedDay(
+        date: String,
+        today: String,
+    ): ScoreDay? {
+        cacheReads += date
+        if (date == cacheGateDate) {
+            cacheGateEntered += date
+            cacheGate?.await()
+        }
+        return disk[date]
     }
 
     /** The opener the repository would walk to; null models "not known yet". */

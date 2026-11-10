@@ -19,6 +19,7 @@ import net.montycasa.roux.ui.scores.GameRow
 import net.montycasa.roux.ui.theme.RouxTheme
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -122,10 +123,40 @@ class AccessibilityLabelsTest {
         rule.onNodeWithText("2nd 7:42").assertIsDisplayed()
     }
 
-    private fun show(game: Game) {
+    /**
+     * The accent stripe is a cue a sighted viewer reads at a glance, so the sentence carries it too.
+     *
+     * A card that looks different has to sound different. The visible text is not changed by this:
+     * only the spoken description of a favourite card is.
+     */
+    @Test
+    fun aFavouriteCardSaysItIsAFavouriteMatchup() {
+        show(live, favourite = true)
+
+        rule
+            .onNodeWithTag(CARD)
+            .assertContentDescriptionEquals(
+                "Favorite matchup. Boston Bruins 3, New York Rangers 2, live, 2nd period, 7:42",
+            )
+    }
+
+    /** The ordinary card's sentence is the one this file has always pinned, byte for byte. */
+    @Test
+    fun anOrdinaryCardIsNotCalledAFavouriteMatchup() {
+        show(live)
+
+        val sentence = description()
+        assertEquals("Boston Bruins 3, New York Rangers 2, live, 2nd period, 7:42", sentence)
+        assertFalse("an ordinary card must not claim to be a favourite", sentence.contains("Favorite"))
+    }
+
+    private fun show(
+        game: Game,
+        favourite: Boolean = false,
+    ) {
         rule.setContent {
             RouxTheme {
-                GameRow(game, narrow = false, modifier = Modifier.testTag(CARD))
+                GameRow(game, narrow = false, favourite = favourite, modifier = Modifier.testTag(CARD))
             }
         }
     }
