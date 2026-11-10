@@ -1,0 +1,70 @@
+name: gate
+
+# The canonical gate, run by the host runner described in nix-config (label `nixos`).
+#
+# It is the same command a person runs by hand. The point is not a second opinion: it is that a
+# change cannot reach main carrying a failing test or a lint error because someone forgot to run
+# it locally.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  # A newer push to the same branch makes the older run pointless. On main this serialises rather
+  # than cancels, so a merge cannot silently skip its own verification.
+  group: gate-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: nixos
+    timeout-minutes: 60
+    steps:
+      - name: Check out the commit under test
+        uses: actions/checkout@v4
+        with:
+          # The gate needs the tree, not the history.
+          fetch-depth: 1
+
+      - name: Report the toolchain
+        # Printed before the build so a broken environment is obvious in the log rather than
+        # looking like a test failure.
+        run: |
+          nix --version
+          nix develop --command bash -c 'java -version 2>&1 | head -1; echo "ANDROID_HOME=${ANDROID_HOME:-unset}"'
+
+      - name: Run the canonical gate
+        # One worker: the runner has two cores and eight gigabytes, and Gradle's default parallelism
+        # is what pushes a build that size into the OOM killer.
+        run: >
+          nix develop --command ./gradlew
+          --no-build-cache
+          --max-workers=2
+          spotlessCheck lint testDebugUnitTest
+          :domain:test :data:test :app:assembleDebug
+
+      - name: Summarise
+        if: always()
+        run: |
+          echo "### Test totals"
+          for module in app domain data; do
+            dir="$module/build/test-results"
+            [ -d "$dir" ] || continue
+            awk -v module="$module" '
+              /<testsuite / { for (i = 1; i <= NF; i++) {
+                  if ($i ~ /^tests=/)    { gsub(/[^0-9]/, "", $i); tests += $i }
+                  if ($i ~ /^failures=/) { gsub(/[^0-9]/, "", $i); failures += $i }
+                  if ($i ~ /^errors=/)   { gsub(/[^0-9]/, "", $i); errors += $i }
+              } }
+              END { printf "- %s: %d tests, %d failures, %d errors\n", module, tests, failures, errors }
+            ' "$dir"/*/*.xml
+          done
+          if [ -f app/build/reports/lint-results-debug.xml ]; then
+            echo "- lint issues: $(grep -o '<issue[ >]' app/build/reports/lint-results-debug.xml | wc -l)"
+          fi
