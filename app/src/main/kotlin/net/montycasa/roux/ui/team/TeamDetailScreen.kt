@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -37,12 +38,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.datetime.TimeZone
 import net.montycasa.roux.R
 import net.montycasa.roux.domain.model.ClubGame
 import net.montycasa.roux.domain.model.Conference
 import net.montycasa.roux.domain.model.Division
+import net.montycasa.roux.domain.model.LeagueSummary
 import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.model.TeamRef
+import net.montycasa.roux.domain.policy.LeagueCalendar
 import net.montycasa.roux.ui.common.SubNavigationRow
 import net.montycasa.roux.ui.common.TeamNames
 import net.montycasa.roux.ui.detail.TeamLogo
@@ -79,6 +83,13 @@ fun TeamDetailScreen(
     val row = state.row
     val team = row?.team ?: TeamRef(state.teamKey)
     val fullName = fullTeamName(team)
+    // Last season's record stands in only for a clean standings answer with no row: a failed request is not an empty table.
+    val lastSeason =
+        if (row == null && !state.isLoading && state.error == null) {
+            previousSeasonRecord(state.leagueStats?.data, fullName, now, TimeZone.currentSystemDefault())
+        } else {
+            null
+        }
     // Tab selection is local view state. It is not a route, so Back leaves the club page rather than
     // walking through tabs the reader visited.
     var selectedTab by rememberSaveable { mutableStateOf(TeamTab.Schedule) }
@@ -106,8 +117,10 @@ fun TeamDetailScreen(
                 team = team,
                 fullName = fullName,
                 row = row,
+                lastSeason = lastSeason,
                 isLoading = state.isLoading,
                 standingsFailed = state.error != null,
+                leagueLoading = state.isLeagueStatsLoading,
             )
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -237,8 +250,10 @@ private fun TeamCard(
     team: TeamRef,
     fullName: String,
     row: StandingRow?,
+    lastSeason: PastSeasonRecord?,
     isLoading: Boolean,
     standingsFailed: Boolean,
+    leagueLoading: Boolean,
 ) {
     val accents = Roux.accents
     Column(
@@ -284,6 +299,36 @@ private fun TeamCard(
                         }
                     }
 
+                    // Before a season starts the table is empty, so the record is last season's final, labelled as such
+                    // and with no places: places are only ever read from the current standings row.
+                    lastSeason != null -> {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Text(
+                                    lastSeason.record,
+                                    modifier = Modifier.testTag("team.record"),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                lastSeason.points?.let { pts ->
+                                    Text(
+                                        pluralStringResource(R.plurals.team_points, pts, pts),
+                                        modifier = Modifier.testTag("team.points"),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = accents.signature,
+                                    )
+                                }
+                            }
+                            SeasonNote(
+                                label = lastSeason.label,
+                                tag = "team.lastSeason",
+                                wording = R.string.team_last_season_label,
+                                padding = PaddingValues(0.dp),
+                            )
+                        }
+                    }
+
                     isLoading -> {
                         Text(
                             stringResource(R.string.team_loading_record),
@@ -296,6 +341,16 @@ private fun TeamCard(
                     // lacks the record. The Team Stats tab carries the error itself.
                     standingsFailed -> {
                         Unit
+                    }
+
+                    // The league table behind the fallback is still arriving, so the header says it is loading rather
+                    // than that the club has no record.
+                    leagueLoading -> {
+                        Text(
+                            stringResource(R.string.team_loading_record),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
 
                     else -> {
@@ -381,6 +436,37 @@ internal fun ordinal(rank: Int): String {
 internal fun fullTeamName(team: TeamRef): String {
     val (city, name) = TeamNames.cityAndName(team)
     return if (city.isNullOrBlank()) name else "$city $name"
+}
+
+/**
+ * A club's record from the season before, for a header whose current standings have no row yet.
+ *
+ * [label] names the season the numbers belong to, read from the table itself, so it can never say the current season.
+ */
+internal data class PastSeasonRecord(
+    val label: String,
+    val record: String,
+    val points: Int?,
+)
+
+/**
+ * The club's line in last season's league table, or null when the table is not the season before today's, has no line
+ * for the club by its full name, or leaves its wins, losses or overtime losses unnumbered.
+ */
+internal fun previousSeasonRecord(
+    league: LeagueSummary?,
+    fullName: String,
+    now: Instant,
+    zone: TimeZone,
+): PastSeasonRecord? {
+    if (league == null) return null
+    if (league.season != LeagueCalendar.previousSeasonId(LeagueCalendar.seasonId(now, zone))) return null
+    val club = league.clubs.firstOrNull { it.teamName == fullName } ?: return null
+    val wins = club.wins ?: return null
+    val losses = club.losses ?: return null
+    val otLosses = club.otLosses ?: return null
+    val label = pastSeasonLabel(league.season, now, zone) ?: return null
+    return PastSeasonRecord(label = label, record = "$wins-$losses-$otLosses", points = club.points)
 }
 
 /** The conference as the places line prints it: East or West, or the feed's own word when it is neither. */

@@ -742,11 +742,51 @@ internal object AuditStates {
                     onGameClick = {},
                 )
             },
+            // The player page on 1 July, with no 2026–27 row: the Season card names 2025-26 rather than "This season",
+            // the Game log falls back to 2025–26, and the Career tab carries the season before.
+            ContentCase("player.preseason.season") {
+                PlayerDetailScreen(
+                    state = DetailPageFixtures.preSeasonPlayerState,
+                    currentSeason = DetailPageFixtures.CURRENT_SEASON,
+                    today = DetailPageFixtures.PRE_SEASON_TODAY,
+                    onBack = {},
+                    onRetry = {},
+                    onGameClick = {},
+                )
+            },
+            ContentCase("player.preseason.gamelog", tab = "player.tab.GameLog") {
+                PlayerDetailScreen(
+                    state = DetailPageFixtures.preSeasonPlayerState,
+                    currentSeason = DetailPageFixtures.CURRENT_SEASON,
+                    today = DetailPageFixtures.PRE_SEASON_TODAY,
+                    onBack = {},
+                    onRetry = {},
+                    onGameClick = {},
+                )
+            },
+            ContentCase("player.preseason.career", tab = "player.tab.Career") {
+                PlayerDetailScreen(
+                    state = DetailPageFixtures.preSeasonPlayerState,
+                    currentSeason = DetailPageFixtures.CURRENT_SEASON,
+                    today = DetailPageFixtures.PRE_SEASON_TODAY,
+                    onBack = {},
+                    onRetry = {},
+                    onGameClick = {},
+                )
+            },
             ContentCase("team.schedule") {
                 TeamDetailScreen(
                     state = DetailPageFixtures.teamState,
                     onBack = {},
                     now = DetailPageFixtures.NOW,
+                )
+            },
+            // The club header on 1 July: no standings row yet, so the record is last season's final, with no places.
+            ContentCase("team.preseason") {
+                TeamDetailScreen(
+                    state = DetailPageFixtures.teamStatePreSeason,
+                    onBack = {},
+                    now = DetailPageFixtures.PRE_SEASON_NOW,
                 )
             },
             ContentCase("drawer.leagues") {

@@ -300,6 +300,8 @@ private fun PlayerHeader(
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center,
+            // Set in the page's ink: with no colour the name took the default black, unreadable on the dark page.
+            color = MaterialTheme.colorScheme.onSurface,
         )
         Text(
             numberAndPosition(profile),
@@ -493,10 +495,15 @@ private fun GameLogTab(
     // A log that has not arrived yet reads as loading; the page's retry reloads it along with the profile.
     val loadable = gameLog ?: Loadable(null, Freshness.Missing, null)
     // The season being played now, whatever the profile's newest season is: a log is never last season's games. When
-    // that season is empty, the title names the older regular season the rows below come from instead.
+    // that season is empty, the title names the older regular season the rows below come from, and the season with no
+    // games yet by its own name, so "no games yet" is never read as the season the rows came from.
     val title =
         if (gameLogFallbackSeason != null) {
-            stringResource(R.string.player_gamelog_fallback_title, seasonEnDashYears(gameLogFallbackSeason))
+            stringResource(
+                R.string.player_gamelog_fallback_title,
+                seasonEnDashYears(gameLogFallbackSeason),
+                seasonEnDashYears(currentSeason),
+            )
         } else {
             stringResource(R.string.player_gamelog_title, seasonFullYears(currentSeason))
         }

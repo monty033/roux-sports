@@ -16,9 +16,13 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
+import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.Conference
 import net.montycasa.roux.domain.model.Division
+import net.montycasa.roux.domain.model.LeagueClub
+import net.montycasa.roux.domain.model.LeagueSummary
 import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
@@ -33,6 +37,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import kotlin.math.abs
+import kotlin.time.Instant
 
 /** Native graphics, so text is measured with real glyph widths; the legacy mode gives every glyph one pixel. */
 @RunWith(RobolectricTestRunner::class)
@@ -226,6 +231,113 @@ class TeamDetailScreenTest {
         assertTrue("the conference place did not wrap: ${layout.lineCount} line(s)", layout.lineCount >= 2)
         assertFalse("team.place.conference is truncated", layout.didOverflowHeight)
         assertEquals("team.place.conference is truncated", text.length, layout.getLineEnd(layout.lineCount - 1))
+    }
+
+    /** 17:00 UTC on the first of July 2026: the season is between seasons, so the empty table falls back to 2025-26. */
+    private val preSeason = Instant.parse("2026-07-01T17:00:00Z")
+
+    private val ducks = LeagueClub(teamName = "Anaheim Ducks", wins = 42, losses = 30, otLosses = 10, points = 94)
+
+    private fun league(
+        season: String = "20252026",
+        club: LeagueClub = ducks,
+    ) = Loadable(LeagueSummary(season = season, clubs = listOf(club)), Freshness.Fresh, null)
+
+    private fun showAt(
+        state: TeamDetailUiState,
+        now: Instant,
+    ) {
+        rule.setContent { RouxTheme { TeamDetailScreen(state = state, onBack = {}, now = now) } }
+    }
+
+    @Test
+    fun preSeasonHeaderShowsLastSeasonsRecordLabelledAsFinalAndNoPlaces() {
+        showAt(TeamDetailUiState(TeamKey("ANA"), row = null, isLoading = false, leagueStats = league()), preSeason)
+
+        rule.onNodeWithTag("team.record").assertTextEquals("42-30-10")
+        rule.onNodeWithTag("team.points").assertTextEquals("94 points")
+        rule.onNodeWithTag("team.lastSeason").assertTextEquals("2025-26 final")
+        rule.onNodeWithTag("team.noRecord").assertDoesNotExist()
+        listOf("team.place.division", "team.place.conference", "team.place.league").forEach { tag ->
+            rule.onNodeWithTag(tag).assertDoesNotExist()
+        }
+    }
+
+    /** A failed standings request is not an empty table, so last season's record must not stand in for it. */
+    @Test
+    fun aFailedStandingsLoadNeverFallsBackToLastSeasonsRecord() {
+        showAt(
+            TeamDetailUiState(
+                TeamKey("ANA"),
+                row = null,
+                isLoading = false,
+                error = LoadError.Network,
+                leagueStats = league(),
+            ),
+            preSeason,
+        )
+
+        rule.onNodeWithTag("team.record").assertDoesNotExist()
+        rule.onNodeWithTag("team.lastSeason").assertDoesNotExist()
+        rule.onNodeWithTag("team.noRecord").assertDoesNotExist()
+    }
+
+    /** A table for the current season is never named as last season, even when the club has no row in it. */
+    @Test
+    fun aCurrentSeasonTableIsNeverLabelledAsLastSeason() {
+        showAt(
+            TeamDetailUiState(TeamKey("ANA"), row = null, isLoading = false, leagueStats = league(season = "20262027")),
+            preSeason,
+        )
+
+        rule.onNodeWithTag("team.record").assertDoesNotExist()
+        rule.onNodeWithTag("team.lastSeason").assertDoesNotExist()
+        rule.onNodeWithTag("team.noRecord").assertIsDisplayed()
+    }
+
+    @Test
+    fun aClubMissingFromLastSeasonsTableStillSaysNoRecord() {
+        showAt(
+            TeamDetailUiState(TeamKey("TOR"), row = null, isLoading = false, leagueStats = league()),
+            preSeason,
+        )
+
+        rule.onNodeWithTag("team.lastSeason").assertDoesNotExist()
+        rule.onNodeWithTag("team.noRecord").assertIsDisplayed()
+    }
+
+    /** While last season's table is still arriving, the header says it is loading rather than that there is no record. */
+    @Test
+    fun aPreSeasonHeaderWaitsForTheLeagueTableRatherThanClaimingNoRecord() {
+        showAt(
+            TeamDetailUiState(TeamKey("ANA"), row = null, isLoading = false, isLeagueStatsLoading = true),
+            preSeason,
+        )
+
+        rule.onNodeWithTag("team.noRecord").assertDoesNotExist()
+        rule.onNodeWithText("Loading record…").assertIsDisplayed()
+    }
+
+    /**
+     * Mid-season the club's own row is the record, even when a previous season's table for the club is loaded beside it.
+     * On 15 January 2026 the previous season is 2024-25, so that is the table the club would be read from.
+     */
+    @Test
+    fun aMidSeasonRowKeepsItsOwnRecordWithNoLastSeasonNote() {
+        val torontoLastSeason = LeagueClub(teamName = "Toronto Maple Leafs", wins = 40, losses = 30, otLosses = 12, points = 92)
+        showAt(
+            TeamDetailUiState(
+                TeamKey("TOR"),
+                row = toronto,
+                isLoading = false,
+                leagueStats = league(season = "20242025", club = torontoLastSeason),
+            ),
+            Instant.parse("2026-01-15T17:00:00Z"),
+        )
+
+        rule.onNodeWithTag("team.record").assertTextEquals("9-2-1")
+        rule.onNodeWithTag("team.points").assertTextEquals("19 points")
+        rule.onNodeWithTag("team.lastSeason").assertDoesNotExist()
     }
 
     private fun textLayout(tag: String): TextLayoutResult {

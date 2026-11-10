@@ -303,6 +303,70 @@ internal object DetailPageFixtures {
             gameLog = Loadable(playerGameLog, Freshness.Fresh, null),
         )
 
+    // A player on 1 July: 2025–26 is the newest season with games, and 2024–25 is the season before it. No 2026–27 row
+    // exists yet, so nothing on the page may call 2025–26 "this season". The career sums are the rows' own sums: 130
+    // games is 60 + 41 + 29, with the rates still from the feed's career line.
+    val preSeasonPlayerProfile =
+        playerProfile.copy(
+            seasons = careerSeasons.filter { it.season != CURRENT_SEASON },
+            career =
+                playerProfile.career.copy(
+                    regularSeason = totals(130, 22, 35, 4, 38, 220, 6, 1, 0.50, 682),
+                ),
+        )
+
+    // The fallback season's log: the games of 2025–26, the newest regular season before the one being played.
+    private val preSeasonGameLog =
+        listOf(
+            PlayerGame.Skater(
+                gameId = 2025021271L,
+                gameDate = "2026-04-16",
+                opponentAbbrev = "PHI",
+                isHome = true,
+                teamAbbrev = "NJD",
+                goals = 0,
+                assists = 1,
+                points = 1,
+                plusMinus = 0,
+                shots = 2,
+                timeOnIceSeconds = 715,
+            ),
+            PlayerGame.Skater(
+                gameId = 2025021244L,
+                gameDate = "2026-04-13",
+                opponentAbbrev = "BOS",
+                isHome = false,
+                teamAbbrev = "NJD",
+                goals = 1,
+                assists = 0,
+                points = 1,
+                plusMinus = 1,
+                shots = 3,
+                timeOnIceSeconds = 640,
+            ),
+            PlayerGame.Skater(
+                gameId = 2025021207L,
+                gameDate = "2026-04-10",
+                opponentAbbrev = "MTL",
+                isHome = true,
+                teamAbbrev = "NJD",
+                goals = 0,
+                assists = 0,
+                points = 0,
+                plusMinus = -1,
+                shots = 1,
+                timeOnIceSeconds = 688,
+            ),
+        )
+
+    val preSeasonPlayerState =
+        PlayerDetailUiState(
+            isLoading = false,
+            profile = Loadable(preSeasonPlayerProfile, Freshness.Fresh, null),
+            gameLog = Loadable(preSeasonGameLog, Freshness.Fresh, null),
+            gameLogFallbackSeason = 20252026,
+        )
+
     // ----- Club ------------------------------------------------------------------------------------------------------
 
     private val mapleLeafs = TeamRef(TeamKey("TOR"), name = "Toronto Maple Leafs", shortName = "Maple Leafs")
@@ -577,6 +641,19 @@ internal object DetailPageFixtures {
             stats = Loadable(clubStats.copy(season = LAST_SEASON), Freshness.Fresh, null),
             leagueStats = Loadable(leagueSummary.copy(season = LAST_SEASON), Freshness.Fresh, null),
         )
+
+    /**
+     * The club header before a season starts: the standings have no row, so the record is last season's final. The
+     * clock is 1 July 2026, between the two seasons, so the page's own season is 2026-27 and the record is 2025-26's.
+     */
+    val teamStatePreSeason: TeamDetailUiState
+        get() = teamStateLastSeason.copy(row = null)
+
+    /** 17:00 UTC on 1 July 2026, the pre-season clock the header and its golden are rendered at. */
+    val PRE_SEASON_NOW: Instant = Instant.parse("2026-07-01T17:00:00Z")
+
+    /** The same July day as a calendar date, for the player page's Info tab. */
+    val PRE_SEASON_TODAY = LocalDate(2026, 7, 1)
 
     /**
      * The reach audit's club state: the same page with a two-game schedule. The full season fills the viewport at

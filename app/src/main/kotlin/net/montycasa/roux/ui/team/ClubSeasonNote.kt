@@ -34,16 +34,18 @@ internal fun pastSeasonLabel(
 
 /**
  * The muted line that names the season a list is showing, placed above the list it describes. [padding] sets the
- * inset, so a card that is already inset can line the note up with its own edge.
+ * inset, so a card that is already inset can line the note up with its own edge. [wording] is the sentence the label
+ * goes into, so a caller that must say more than "season" (the final record) uses the same style.
  */
 @Composable
 internal fun SeasonNote(
     label: String,
     tag: String,
     padding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+    wording: Int = R.string.team_season_label,
 ) {
     Text(
-        stringResource(R.string.team_season_label, label),
+        stringResource(wording, label),
         modifier = Modifier.padding(padding).testTag(tag),
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,

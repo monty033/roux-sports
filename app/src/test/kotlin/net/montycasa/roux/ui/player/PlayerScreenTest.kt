@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -39,6 +40,7 @@ import net.montycasa.roux.domain.model.PlayerGame
 import net.montycasa.roux.domain.model.PlayerProfile
 import net.montycasa.roux.domain.model.PlayerSeasonLine
 import net.montycasa.roux.domain.model.PlayerTotals
+import net.montycasa.roux.ui.theme.RouxDarkColors
 import net.montycasa.roux.ui.theme.RouxTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -617,7 +619,8 @@ class PlayerScreenTest {
         )
         selectTab("GameLog")
 
-        rule.onNodeWithText("2025–26 REGULAR SEASON · NO GAMES YET THIS SEASON").assertExists()
+        // The no-games season is named, so the line never reads as though 2025–26 is the one without games.
+        rule.onNodeWithText("2025–26 REGULAR SEASON · NO GAMES YET IN 2026–27").assertExists()
         rule.onNodeWithTag("player.gamelog.row.0.label", useUnmergedTree = true).assertTextEquals("Nov 1 · @ OTT")
     }
 
@@ -807,15 +810,61 @@ class PlayerScreenTest {
         rule.onNodeWithTag("player.loading").assertExists()
     }
 
+    /**
+     * The name and the figures are drawn in the page's ink. With no colour of their own they took the default black, which
+     * is unreadable on the dark page. The colour each one resolves to is read back from the rendered text and held to
+     * 4.5:1 against the surface it sits on.
+     */
+    @Test
+    fun aDarkPlayerPageDrawsItsNameAndFiguresInReadableInk() {
+        show(
+            loaded(skaterProfile(seasons = listOf(line(20252026, "NHL", "Carolina Hurricanes", 1, skaterTotals(gamesPlayed = 60))))),
+            dark = true,
+        )
+
+        assertTrue("player.name contrast", contrast(renderedInk("player.name"), RouxDarkColors.background) >= 4.5)
+        assertTrue("stat figure contrast", contrast(renderedInk("player.season.row.0.ast"), RouxDarkColors.surfaceVariant) >= 4.5)
+    }
+
+    /** The colour a rendered text node resolved to, from its own layout, so a missing colour shows as the default. */
+    private fun renderedInk(tag: String): Color {
+        val layouts = mutableListOf<TextLayoutResult>()
+        rule
+            .onNodeWithTag(tag, useUnmergedTree = true)
+            .fetchSemanticsNode()
+            .config
+            .getOrNull(SemanticsActions.GetTextLayoutResult)
+            ?.action
+            ?.invoke(layouts)
+        return layouts
+            .single()
+            .layoutInput.style.color
+    }
+
+    /** WCAG 2.x contrast ratio between two colours, from their sRGB channels. */
+    private fun contrast(
+        a: Color,
+        b: Color,
+    ): Double {
+        fun luminance(c: Color): Double {
+            fun linear(v: Float): Double = v.toDouble().let { if (it <= 0.03928) it / 12.92 else Math.pow((it + 0.055) / 1.055, 2.4) }
+            return 0.2126 * linear(c.red) + 0.7152 * linear(c.green) + 0.0722 * linear(c.blue)
+        }
+        val la = luminance(a)
+        val lb = luminance(b)
+        return (maxOf(la, lb) + 0.05) / (minOf(la, lb) + 0.05)
+    }
+
     private fun show(
         state: PlayerDetailUiState,
         onRetry: () -> Unit = {},
         onGameClick: (Long) -> Unit = {},
         today: LocalDate = TODAY,
         widthDp: Int? = null,
+        dark: Boolean = false,
     ) {
         rule.setContent {
-            RouxTheme {
+            RouxTheme(dark = dark) {
                 PlayerDetailScreen(
                     state = state,
                     currentSeason = CURRENT_SEASON,

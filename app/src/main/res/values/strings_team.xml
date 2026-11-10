@@ -1,6 +1,7 @@
 <resources>
     <string name="team_loading_record">Loading record…</string>
     <string name="team_no_record">The standings table doesn’t have this team’s record yet.</string>
+    <string name="team_last_season_label">%1$s final</string>
     <string name="team_place_division">%1$s in %2$s</string>
     <string name="team_place_conference">%1$s in %2$s</string>
     <string name="team_place_league">%1$s in League</string>

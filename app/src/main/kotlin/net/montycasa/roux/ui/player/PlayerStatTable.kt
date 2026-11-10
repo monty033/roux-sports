@@ -83,6 +83,7 @@ internal fun StatGrid(
                             cell.value,
                             modifier = Modifier.testTag("$tagPrefix.${cell.key}"),
                             style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
                     }
                 }
@@ -176,6 +177,7 @@ internal fun PlayerStatTable(
                             cell.value,
                             modifier = Modifier.width(widths[index]).testTag("${row.tag}.${cell.key}"),
                             style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
                             textAlign = TextAlign.Center,
                         )
                     }
