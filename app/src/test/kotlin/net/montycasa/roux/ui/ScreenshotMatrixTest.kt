@@ -83,6 +83,7 @@ class ScreenshotMatrixTest {
             "player.season",
             "player.gamelog.fallback",
             "team.schedule",
+            "team.preseason",
             "drawer.leagues",
         )
 

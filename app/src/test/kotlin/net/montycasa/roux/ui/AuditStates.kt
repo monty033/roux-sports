@@ -749,6 +749,14 @@ internal object AuditStates {
                     now = DetailPageFixtures.NOW,
                 )
             },
+            // The club header on 1 July: no standings row yet, so the record is last season's final, with no places.
+            ContentCase("team.preseason") {
+                TeamDetailScreen(
+                    state = DetailPageFixtures.teamStatePreSeason,
+                    onBack = {},
+                    now = DetailPageFixtures.PRE_SEASON_NOW,
+                )
+            },
             ContentCase("drawer.leagues") {
                 LeaguesPanel(
                     drawer = DrawerUi(),
