@@ -586,7 +586,8 @@ private fun SeasonStatRows(
     TwoClubBlock(
         game = game,
         tag = "detail.pregame.season",
-        awayText = rows.flatMap { listOf(it.label, "${it.awayValue} ${it.awayRank}") },
+        // The card measures this text as it will be drawn, en space and all; keep it byte-identical.
+        awayText = rows.flatMap { listOf(it.label, "${it.awayValue}\u2002${it.awayRank}") },
         homeText = rows.flatMap { listOf(it.label, "${it.homeValue} ${it.homeRank}") },
         awayRows =
             rows.map {
