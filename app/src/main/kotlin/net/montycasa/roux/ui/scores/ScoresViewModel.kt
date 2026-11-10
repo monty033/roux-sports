@@ -14,7 +14,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emitAll
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
@@ -167,6 +166,9 @@ class ScoresViewModel(
                 today = load.today,
                 liveCount = games.count { it.isLive },
                 favouriteCount = settings.favourites.size,
+                // The same settings snapshot that filtered and ordered these rows: the accent marks
+                // the favourites the list was built from, not a second, later reading of them.
+                favouriteTeams = settings.favourites,
                 leagueOrder = settings.order,
                 loadedDate = day?.date,
                 rows = ScoresOrdering.order(filtered.rows, settings.favourites),
@@ -186,21 +188,54 @@ class ScoresViewModel(
             ScoresUiState(selectedDate.value, leagueDay()),
         )
 
-    /** Rows for every day this screen has seen, keyed by date; it accumulates, see where it is written. */
+    /**
+     * What every day this screen has seen had on disk, keyed by date; it accumulates, see where it is written.
+     *
+     * Unfiltered on purpose: the cache knows the games, not the favourites, so a settings change can re-filter
+     * what is already here instead of reading the disk again.
+     */
     private val rowsByDate = MutableStateFlow<Map<String, List<Game>>>(emptyMap())
 
     /**
-     * The days either side of the selected one, so the screen can show real games for the day being moved towards.
+     * What the neighbour pages are read from: which dates sit beside the selection, and nothing else.
+     *
+     * The settings are deliberately absent. What the cache holds for a date does not depend on the favourites,
+     * so a changed favourite set must not send the reader back to the disk - the filter is applied where the
+     * state is built, from the snapshot that state exposes. Derived from [dayState] alone there is no second
+     * collection of the settings to disagree with it, and a poll tick, a freshness change or an error leaves
+     * these two fields identical, which is what keeps the read unstarted.
+     */
+    private data class NeighbourRequest(
+        val dates: List<String>,
+        val selected: String,
+    )
+
+    /**
+     * The day on screen reduced to what decides which pages are read, and made distinct on it.
+     *
+     * Derived first: [dayState] itself changes on every poll, and only a moved date or a moved selection can
+     * change what the reader has to fetch.
+     */
+    private val neighbourRequest: Flow<NeighbourRequest> =
+        dayState
+            .map { day ->
+                NeighbourRequest(
+                    dates = day.dateIndex.map { it.date }.distinct(),
+                    selected = day.selectedDate,
+                )
+            }.distinctUntilChanged()
+
+    /**
+     * What each day beside the selection had on disk, unfiltered, keyed by date.
      *
      * A transformLatest rather than a collector in init: it runs only while the UI is subscribed, restarts when the
-     * date changes and leaves nothing running in a test that never collects. It warms the neighbours with the same
+     * request changes and leaves nothing running in a test that never collects. It warms the neighbours with the same
      * prefetch the schedule already uses - a fresh copy costs nothing - and then reads only what is on disk, so this
-     * path can never turn into a request of its own.
+     * path can never turn into a request of its own. It reads and remembers, nothing else: the favourites are not
+     * consulted here, so a settings change re-filters what is already held rather than reading the disk again.
      */
     private val neighbourRows: Flow<Map<String, List<Game>>> =
-        dayState
-            .map { day -> day.dateIndex.map { it.date }.distinct() to day.selectedDate }
-            .distinctUntilChanged()
+        neighbourRequest
             .transformLatest { (dates, selected) ->
                 val at = dates.indexOf(selected)
                 // The selection is included: a page draws from this map the moment it settles, and the day you settle on
@@ -211,21 +246,7 @@ class ScoresViewModel(
                         .distinct()
                 if (wanted.isEmpty()) return@transformLatest
                 val today = leagueDay()
-                val settings = settings().first()
-                val season = offSeason.value
-                val fresh =
-                    wanted.associateWith { date ->
-                        val games = scores.cachedDay(date, today)?.games.orEmpty()
-                        // The off-season last games are shown in full, exactly as on the selected day.
-                        val filtered =
-                            FavoritesOrdering.filter(
-                                games,
-                                settings.favourites,
-                                settings.only,
-                                allGames = season?.lastGameDate == date,
-                            )
-                        ScoresOrdering.order(filtered.rows, settings.favourites)
-                    }
+                val fresh = wanted.associateWith { date -> scores.cachedDay(date, today)?.games.orEmpty() }
                 // Accumulated, not replaced: the day you settle on is no longer beside the selection, so replacing the
                 // map took its rows away at the exact moment the page needed them and the list drew one blank frame.
                 // Bounded so a long session cannot grow it without limit.
@@ -245,9 +266,40 @@ class ScoresViewModel(
             // Start from what is already remembered, so a re-subscription does not blank the neighbouring pages.
             .onStart { emit(rowsByDate.value) }
 
+    /**
+     * The state the screen draws: the loaded day, and the remembered days filtered with that same snapshot.
+     *
+     * [rowsByDate] holds what the cache returned, unfiltered; the filter is applied here, in the same combine
+     * that carries [ScoresUiState.favouriteTeams] and [ScoresUiState.favouritesOnly]. That is what makes the two
+     * inseparable: a new favourite set reaches the accent and the rows beside it within one emission, so the
+     * pager can never fall back to rows filtered under a set the state no longer reports. A settings change
+     * re-filters what is already remembered; only a moved selection sends the reader back to the cache.
+     */
     val uiState: StateFlow<ScoresUiState> =
-        combine(dayState, neighbourRows) { day, beside -> day.copy(rowsByDate = beside) }
+        combine(dayState, neighbourRows) { day, beside -> day.copy(rowsByDate = rowsFor(day, beside)) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ScoresUiState(selectedDate.value, leagueDay()))
+
+    /**
+     * The remembered days under [day]'s own snapshot: the same favourites that ordered [ScoresUiState.rows] and
+     * that will draw the accent on these rows.
+     *
+     * The off-season window is read as the session holds it, exactly as the read path did before, so the last
+     * games are still shown in full regardless of the favourites.
+     */
+    private fun rowsFor(
+        day: ScoresUiState,
+        beside: Map<String, List<Game>>,
+    ): Map<String, List<Game>> =
+        beside.mapValues { (date, games) ->
+            val filtered =
+                FavoritesOrdering.filter(
+                    games,
+                    day.favouriteTeams,
+                    day.favouritesOnly,
+                    allGames = offSeason.value?.lastGameDate == date,
+                )
+            ScoresOrdering.order(filtered.rows, day.favouriteTeams)
+        }
 
     /** Loads immediately, even when the cadence has stopped. A pull also reaches past a fresh cache. */
     fun refresh() {

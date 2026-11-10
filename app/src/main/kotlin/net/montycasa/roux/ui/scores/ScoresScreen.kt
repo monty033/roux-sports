@@ -292,6 +292,10 @@ fun ScoresScreen(
                                         GameRow(
                                             game,
                                             narrow = narrow,
+                                            // The accent follows the favourite teams themselves, not the
+                                            // row's place in the list: the order also depends on whether a
+                                            // game is live or finished, so position says nothing.
+                                            favourite = game.isFavourite(state.favouriteTeams),
                                             modifier =
                                                 Modifier
                                                     .padding(horizontal = 12.dp)

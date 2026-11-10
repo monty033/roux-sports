@@ -27,4 +27,6 @@
     <string name="game_row_description_final_ot">final in overtime</string>
     <string name="game_row_description_final_so">final in a shootout</string>
     <string name="game_row_description_unknown">status unavailable</string>
+    <!-- The accent stripe is a visual cue, so the sentence carries it too. The visible text is unchanged. -->
+    <string name="game_row_description_favourite">Favorite matchup. %1$s</string>
 </resources>

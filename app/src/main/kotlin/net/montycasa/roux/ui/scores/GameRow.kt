@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
@@ -69,6 +70,15 @@ const val STATE_RAIL_TAG = "gameRowStateRail"
 const val WATCH_TAG = "gameRowWatch"
 const val TEAM_LINE_TAG = "gameRowTeamLine"
 
+/**
+ * The accent stripe that marks a favourite matchup.
+ *
+ * Four dp: the width Patrick approved, a shade thicker than the mock's three. It is painted over the
+ * card's left edge rather than laid out beside it, so it costs the card no width - the club names
+ * and the rail keep the measurements the design fixed.
+ */
+internal val FAVOURITE_ACCENT_WIDTH = 4.dp
+
 /** Values from the reference's wide rules and max-width:380px list viewport variant. */
 private data class CardMetrics(
     val railWidth: Dp,
@@ -95,6 +105,7 @@ fun GameRow(
     game: Game,
     narrow: Boolean,
     modifier: Modifier = Modifier,
+    favourite: Boolean = false,
 ) {
     val upcoming = game.state == GameState.Scheduled || game.state == GameState.Pre
     val homeScore = game.homeScore
@@ -102,7 +113,9 @@ fun GameRow(
     val homeWins = game.state == GameState.Final && homeScore != null && awayScore != null && homeScore > awayScore
     val awayWins = game.state == GameState.Final && homeScore != null && awayScore != null && awayScore > homeScore
     val metrics = if (narrow) narrowCard else wideCard
-    val description = gameRowDescription(game)
+    val description = gameRowDescription(game, favourite)
+    // Read outside the draw scope: the accent is the brand orange, the same one the live capsule fills with.
+    val accent = Roux.accents.fill
     Row(
         modifier =
             modifier
@@ -112,6 +125,15 @@ fun GameRow(
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .border(1.dp, Color.Transparent, RoundedCornerShape(16.dp))
+                // The accent rides the card's full left edge and is clipped by the rounded corner
+                // above, so it follows the card's shape instead of standing proud of it. Painted
+                // over the card rather than laid out beside it: a stripe with a width of its own
+                // would move the club names and the rail.
+                .drawBehind {
+                    if (favourite) {
+                        drawRect(accent, size = Size(FAVOURITE_ACCENT_WIDTH.toPx(), size.height))
+                    }
+                }
                 // One sentence for the whole card. The rows and the rail are the same information drawn
                 // twice - a score per team, and a state the sentence already states - so a screen reader
                 // gets the card as one statement instead of seven unconnected fragments. It is set without
@@ -430,9 +452,15 @@ private fun RailText(text: String) {
  * score twice with the state split across two labels. The sentence is the fixed order a person would say it
  * in: who played, the score, then the state. The state appears once, which is why the live word is not
  * repeated from the rail's capsule.
+ *
+ * A favourite card says so. The accent is a cue a sighted viewer reads at a glance, and a card that looks
+ * different has to sound different; the cue is spoken, the visible text is not changed.
  */
 @Composable
-internal fun gameRowDescription(game: Game): String {
+internal fun gameRowDescription(
+    game: Game,
+    favourite: Boolean = false,
+): String {
     val away = game.away.name?.takeIf { it.isNotBlank() } ?: game.away.abbrev
     val home = game.home.name?.takeIf { it.isNotBlank() } ?: game.home.abbrev
     val awayScore = game.awayScore
@@ -467,7 +495,9 @@ internal fun gameRowDescription(game: Game): String {
                 stringResource(R.string.game_row_description_unknown)
             }
         }
-    return stringResource(R.string.game_row_description, scoreLine, state)
+    val sentence = stringResource(R.string.game_row_description, scoreLine, state)
+    // An ordinary card keeps its sentence byte for byte: only the favourite one is prefixed.
+    return if (favourite) stringResource(R.string.game_row_description_favourite, sentence) else sentence
 }
 
 /** The live part of the sentence: the word, then the period and the clock, each spoken once. */

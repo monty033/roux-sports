@@ -94,7 +94,18 @@ internal object AuditStates {
                     Broadcast("SN", "CA", "N"),
                 ),
         )
-    private val scoresFresh = ScoresUiState(scoreDate, today = scoreDate, freshness = Freshness.Fresh, dateIndex = scoreIndex)
+
+    // Toronto is this audit's favourite team, so the accent stripe is photographed wherever the fixture
+    // shows this matchup. The empty states below have no rows and so show no accent either way.
+    private val auditFavourites = setOf(TeamKey("TOR"))
+    private val scoresFresh =
+        ScoresUiState(
+            scoreDate,
+            today = scoreDate,
+            freshness = Freshness.Fresh,
+            dateIndex = scoreIndex,
+            favouriteTeams = auditFavourites,
+        )
     private val scoresData = scoresFresh.copy(rows = listOf(scoreGame))
     private val scoresStale =
         scoresData.copy(freshness = Freshness.Stale(Instant.parse("2025-10-25T23:42:00Z")))
@@ -117,6 +128,7 @@ internal object AuditStates {
             freshness = Freshness.Fresh,
             dateIndex = listOf(DateIndexEntry("2026-06-14", 1), DateIndexEntry("2026-07-20", 0)),
             offSeason = OffSeasonUi("2026-06-14", "2026-09-19", "2025–26"),
+            favouriteTeams = auditFavourites,
         )
 
     // The same window with opening night resolved: the card names the coming season instead of the finals.
@@ -143,6 +155,7 @@ internal object AuditStates {
                     "2025–26",
                     openingNight = OpeningNightUi("2026-09-29", "2026–27"),
                 ),
+            favouriteTeams = auditFavourites,
         )
 
     // No crest URLs, as with the teams fixture: a real logo URL lets Coil load (or not) depending on what ran earlier
