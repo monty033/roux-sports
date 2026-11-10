@@ -72,6 +72,15 @@ private val NAMES_Z_BENCHED =
  * - "A. Vanecek, 14 games, 8 wins, 4 losses, 2 overtime losses, 2.71 goals against, 90.6 percent saves"
  *
  * The words on the cards are unchanged: a sentence is added beside them, not instead of them.
+ *
+ * Each of these is a change the cards must refuse, and each one is caught here:
+ *
+ * - a record read with a "-" separator instead of "6 wins, 3 losses, 1 overtime loss";
+ * - a percentage read as "20.3%" instead of "20.3 percent";
+ * - a streak code ignored, so the streak is read as a bare "2" instead of "won the last 2";
+ * - a rank dropped from a stat row;
+ * - a photo given a description of its own;
+ * - the goals and the assists read in the wrong order.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [34], qualifiers = "w411dp-h923dp-xhdpi")
