@@ -77,7 +77,7 @@ const val TEAM_LINE_TAG = "gameRowTeamLine"
  * card's left edge rather than laid out beside it, so it costs the card no width - the club names
  * and the rail keep the measurements the design fixed.
  */
-internal val FAVOURITE_ACCENT_WIDTH = 4.dp
+internal val FAVOURITE_ACCENT_WIDTH = 6.dp
 
 /** Values from the reference's wide rules and max-width:380px list viewport variant. */
 private data class CardMetrics(

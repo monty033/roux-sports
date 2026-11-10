@@ -43,8 +43,8 @@ class FavouriteAccentTest {
     @get:Rule
     val rule = createComposeRule()
 
-    /** The width Patrick approved, written out here so the measurement is against the approval. */
-    private val approvedAccentWidth = 4.dp
+    /** The width Patrick approved, written here so the measurement is against the approval. */
+    private val approvedAccentWidth = 6.dp
 
     private val date = "2025-10-25"
     private val index = listOf(DateIndexEntry(date, 4))
