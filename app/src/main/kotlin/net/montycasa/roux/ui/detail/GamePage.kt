@@ -308,6 +308,9 @@ private val HEADER_GAP = 6.dp
 /** The height a player's photo-and-name line is at least, so the whole line is one target a finger can hit. */
 private val PLAYER_TARGET_HEIGHT = 48.dp
 
+/** What a tap on a player does. The row's sentence says who the player is; the tap says where it goes. */
+private const val PLAYER_PAGE_LABEL = "Opens the player page"
+
 /** The width a player's row gives up beside its words: the photo, which grows with the font scale, and the gap after it. */
 @Composable
 private fun photoReserve(): Dp = mugshotSize(CARD_MUGSHOT_BASE_DP) + 6.dp
@@ -509,10 +512,14 @@ private fun ClubHeader(
 /**
  * One club's value on a two-club card: the record and streak, printed in the club's own half. A club the feed sent no
  * value for has an empty half.
+ *
+ * [spoken] is what a screen reader says for the same row: the club's name, its record in words and its streak in
+ * words. The words on the card are unchanged.
  */
 @Composable
 private fun ClubValue(
     text: String?,
+    spoken: String?,
     tag: String,
     alignEnd: Boolean,
 ) {
@@ -523,7 +530,8 @@ private fun ClubValue(
             Modifier
                 .fillMaxWidth()
                 .padding(vertical = 4.dp)
-                .testTag(tag),
+                .testTag(tag)
+                .then(if (spoken == null) Modifier else Modifier.semantics { contentDescription = spoken }),
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurface,
         textAlign = if (alignEnd && !LocalClubLayout.current.stacked) TextAlign.End else TextAlign.Start,
@@ -539,6 +547,10 @@ private fun LastTenRows(
 ) {
     val awayText = rail.awayForm?.let { PreGameFormat.lastTenText(it) }
     val homeText = rail.homeForm?.let { PreGameFormat.lastTenText(it) }
+    // The card prints the record and the streak as glyphs. The sentence says the same two things in words, with the
+    // club named, so a listener knows whose record it is.
+    val awaySpoken = rail.awayForm?.let { PreGameSpoken.lastTen(TeamNames.fullName(game.away), it) }
+    val homeSpoken = rail.homeForm?.let { PreGameSpoken.lastTen(TeamNames.fullName(game.home), it) }
     TwoClubBlock(
         game = game,
         tag = "detail.pregame.last10",
@@ -547,12 +559,12 @@ private fun LastTenRows(
         rowReserve = 0.dp,
         sideBySide = {
             TwoClubHalves(
-                away = { ClubValue(text = awayText, tag = "detail.pregame.last10.away", alignEnd = false) },
-                home = { ClubValue(text = homeText, tag = "detail.pregame.last10.home", alignEnd = true) },
+                away = { ClubValue(text = awayText, spoken = awaySpoken, tag = "detail.pregame.last10.away", alignEnd = false) },
+                home = { ClubValue(text = homeText, spoken = homeSpoken, tag = "detail.pregame.last10.home", alignEnd = true) },
             )
         },
-        away = { ClubValue(text = awayText, tag = "detail.pregame.last10.away", alignEnd = false) },
-        home = { ClubValue(text = homeText, tag = "detail.pregame.last10.home", alignEnd = true) },
+        away = { ClubValue(text = awayText, spoken = awaySpoken, tag = "detail.pregame.last10.away", alignEnd = false) },
+        home = { ClubValue(text = homeText, spoken = homeSpoken, tag = "detail.pregame.last10.home", alignEnd = true) },
     )
 }
 
@@ -561,16 +573,20 @@ private fun LastTenRows(
  * home rank and value on the right, then the comparison bar drawn from the values. The bar is the same split the
  * completed game's stats draw. Stacked, each club lists its own values, label and value and rank, with no bar: a bar
  * is a comparison between the two clubs, and the clubs no longer share a row.
+ *
+ * Each row is one node for a screen reader: the stat, then each club's value and rank, said in one sentence.
  */
 @Composable
 private fun SeasonStatRows(
     game: Game,
     rows: List<SeasonStatRow>,
 ) {
+    val awayClub = TeamNames.fullName(game.away)
+    val homeClub = TeamNames.fullName(game.home)
     TwoClubBlock(
         game = game,
         tag = "detail.pregame.season",
-        awayText = rows.flatMap { listOf(it.label, "${it.awayValue} ${it.awayRank}") },
+        awayText = rows.flatMap { listOf(it.label, "${it.awayValue} ${it.awayRank}") },
         homeText = rows.flatMap { listOf(it.label, "${it.homeValue} ${it.homeRank}") },
         awayRows =
             rows.map {
@@ -588,20 +604,32 @@ private fun SeasonStatRows(
             },
         sideFraction = SEASON_SIDE,
         rowReserve = 0.dp,
-        sideBySide = { SideBySideSeasonRows(rows = rows) },
-        away = { StackedSeasonRows(rows = rows, awayClub = true) },
-        home = { StackedSeasonRows(rows = rows, awayClub = false) },
+        sideBySide = { SideBySideSeasonRows(rows = rows, awayClub = awayClub, homeClub = homeClub) },
+        away = { StackedSeasonRows(rows = rows, awayClub = true, clubName = awayClub) },
+        home = { StackedSeasonRows(rows = rows, awayClub = false, clubName = homeClub) },
     )
 }
 
 @Composable
-private fun SideBySideSeasonRows(rows: List<SeasonStatRow>) {
+private fun SideBySideSeasonRows(
+    rows: List<SeasonStatRow>,
+    awayClub: String,
+    homeClub: String,
+) {
     rows.forEach { row ->
+        val spoken =
+            PreGameSpoken.seasonStat(
+                label = row.label,
+                away = PreGameSpoken.StatSide(awayClub, row.awayValue, row.awayRank),
+                home = PreGameSpoken.StatSide(homeClub, row.homeValue, row.homeRank),
+            )
         Column(
             Modifier
                 .fillMaxWidth()
                 .padding(top = 10.dp)
-                .testTag("detail.pregame.stat.${row.label}"),
+                .testTag("detail.pregame.stat.${row.label}")
+                // One node for the row: the value, the rank and the label beside it are said as one sentence.
+                .semantics(mergeDescendants = true) { contentDescription = spoken },
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
@@ -638,16 +666,26 @@ private fun SideBySideSeasonRows(rows: List<SeasonStatRow>) {
 private fun StackedSeasonRows(
     rows: List<SeasonStatRow>,
     awayClub: Boolean,
+    clubName: String,
 ) {
     val side = if (awayClub) "away" else "home"
     rows.forEach { row ->
         val value = if (awayClub) row.awayValue else row.homeValue
         val rank = if (awayClub) row.awayRank else row.homeRank
+        // Stacked, each club has a row of its own, so the row names the stat and that club's value and rank.
+        val spoken = PreGameSpoken.seasonStatSide(row.label, PreGameSpoken.StatSide(clubName, value, rank))
         Row(
             Modifier
                 .fillMaxWidth()
                 .padding(top = 10.dp)
-                .testTag("detail.pregame.stat.${row.label}.$side"),
+                .testTag("detail.pregame.stat.${row.label}.$side")
+                .then(
+                    if (spoken == null) {
+                        Modifier
+                    } else {
+                        Modifier.semantics(mergeDescendants = true) { contentDescription = spoken }
+                    },
+                ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
@@ -710,6 +748,8 @@ private data class PlayerLine(
     val photoUrl: String?,
     val photoTag: String,
     val figures: List<String>,
+    /** What a screen reader says for the whole row: the player and their figures, in one sentence. */
+    val spoken: String,
 )
 
 /** A club's top skaters as card lines, in the order they are given. Each reads its figures as goals, assists, points. */
@@ -726,6 +766,7 @@ private fun skaterLines(
             photoUrl = PlayerMugshot.url(skater.playerId, club.abbrev, seasonStartYear),
             photoTag = "detail.pregame.performers.$side.${skater.name}",
             figures = listOf("${skater.goals} G · ${skater.assists} A · ${skater.points} PTS"),
+            spoken = PreGameSpoken.topPerformer(skater.name, skater.goals, skater.assists, skater.points),
         )
     }
 
@@ -760,6 +801,7 @@ private fun GoaltenderRows(
                 photoUrl = PlayerMugshot.url(goalie.playerId, game.away.abbrev, seasonStartYear),
                 photoTag = "detail.pregame.goalies.away.${goalie.name}",
                 figures = goalieFigures(goalie),
+                spoken = PreGameSpoken.goaltender(goalie.name, goalie),
             )
         }
     val home =
@@ -770,6 +812,7 @@ private fun GoaltenderRows(
                 photoUrl = PlayerMugshot.url(goalie.playerId, game.home.abbrev, seasonStartYear),
                 photoTag = "detail.pregame.goalies.home.${goalie.name}",
                 figures = goalieFigures(goalie),
+                spoken = PreGameSpoken.goaltender(goalie.name, goalie),
             )
         }
     PlayerCard(game = game, tag = "detail.pregame.goalies", away = away, home = home, onPlayerClick = onPlayerClick)
@@ -839,6 +882,9 @@ private fun PlayerColumn(
  * id has no target at all. The name ellipsizes only when it cannot fit beside the photo; a figure line is never wrapped
  * and ellipsizes in place. The figures are indented past the photo, so they sit under the name and never beside the
  * initials.
+ *
+ * The row is one node either way: the photo and the name beside it say who the player is, and the figures say what they
+ * did, so the sentence says both together and the parts are not read out again.
  */
 @Composable
 private fun PlayerRow(
@@ -851,12 +897,13 @@ private fun PlayerRow(
     val id = line.playerId
     val action =
         if (id == null) {
-            Modifier
+            Modifier.semantics(mergeDescendants = true) { contentDescription = line.spoken }
         } else {
             Modifier
-                .semantics { contentDescription = "${line.name}, opens the player page" }
+                .semantics { contentDescription = line.spoken }
                 .listRow()
-                .clickable(role = Role.Button) { onPlayerClick(id) }
+                // The sentence says what the row is; the tap says what it does, so neither has to carry the other.
+                .clickable(onClickLabel = PLAYER_PAGE_LABEL, role = Role.Button) { onPlayerClick(id) }
         }
     Row(
         Modifier

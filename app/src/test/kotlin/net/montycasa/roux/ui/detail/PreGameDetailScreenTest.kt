@@ -138,7 +138,10 @@ class PreGameDetailScreenTest {
         show(scheduled, landing = preGameLanding, rail = preGameRail, onPlayerClick = { clicked += it })
 
         val row = "detail.pregame.performers.away.N. MacKinnon.row"
-        compose.onNodeWithTag(row).assert(hasClickAction()).assert(hasContentDescription("N. MacKinnon, opens the player page"))
+        compose
+            .onNodeWithTag(row)
+            .assert(hasClickAction())
+            .assert(hasContentDescription("N. MacKinnon, 10 goals, 20 assists, 30 points"))
         compose.onNodeWithTag(row).performScrollTo().performClick()
         compose.onNodeWithTag("detail.pregame.performers.home.A. Matthews.row").performScrollTo().performClick()
 

@@ -57,4 +57,15 @@ internal object TeamNames {
 
     /** The city and club name as the page writes them, falling back to the payload and then the abbreviation. */
     fun cityAndName(team: TeamRef): Pair<String?, String> = city(team.abbrev) to (nickname(team.abbrev) ?: team.name ?: team.abbrev)
+
+    /**
+     * The club in full: the city and its own name, e.g. "Toronto Maple Leafs".
+     *
+     * The card headers print the nickname alone, which is right for a heading the eye can place. A spoken sentence
+     * cannot lean on a heading beside it, so it names the club in full.
+     */
+    fun fullName(team: TeamRef): String {
+        val (city, name) = cityAndName(team)
+        return listOfNotNull(city, name).joinToString(" ")
+    }
 }
