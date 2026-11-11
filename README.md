@@ -142,6 +142,25 @@ sha256sum -c roux-sports-1.0.0.apk.sha256
 apksigner verify --print-certs roux-sports-1.0.0.apk
 ```
 
+### Upgrading an installed release
+
+Android installs a new APK over an existing one only when both are signed with the same key and the new
+`versionCode` is not lower than the installed one. A release-to-release upgrade therefore needs two things: the
+release key, and the `versionCode` bumped in `app/build.gradle.kts` before the build. `versionName` is the label
+people read; `versionCode` is the integer Android compares, and forgetting it is the usual cause of "app not
+installed" on an upgrade.
+
+Favourites, league order, notification choices and the theme live in the app's own DataStore, which an upgrade
+does not touch — they survive a release-to-release install. The cached NHL responses do not need to: they are
+refetched.
+
+A build signed with any other key — a debug build, or one made with the throwaway keystore the signing check
+uses — cannot be installed over a release. The install fails with a signature mismatch, which is Android refusing
+the replacement rather than the app losing data. Uninstall the old build first, accepting that its preferences go
+with it, and install the new one cleanly.
+
+`docs/device-checklist.md` carries the upgrade check itself, under Stage 10.
+
 ## License
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
