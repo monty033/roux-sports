@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Backup policy "preferences_only" (Stage E1). The only app data that leaves the device, by cloud backup or by
+  device-to-device transfer, is the preferences DataStore under filesDir/datastore/ (favourites, league order,
+  theme and filter settings, team alert preferences, notification ledger). The NHL response cache under
+  filesDir/nhl-cache/ is excluded: it is rebuilt from the network, and restoring stale scores would mislead.
+  Lint calls the excludes redundant (nhl-cache/ is outside the only included path) and lint-vital fails the
+  release build on that, so they carry tools:ignore; they stay so the policy is explicit and audited.
+  No other domain is included. The backup mode of scripts/check-release-apk.sh audits the compiled copy of this
+  file and rejects any change to this exact set of rules.
+-->
+<data-extraction-rules xmlns:tools="http://schemas.android.com/tools">
+    <cloud-backup>
+        <include domain="file" path="datastore/" />
+        <exclude domain="file" path="nhl-cache/" tools:ignore="FullBackupContent" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="file" path="datastore/" />
+        <exclude domain="file" path="nhl-cache/" tools:ignore="FullBackupContent" />
+    </device-transfer>
+</data-extraction-rules>

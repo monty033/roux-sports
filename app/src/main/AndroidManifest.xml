@@ -12,6 +12,8 @@
 
     <application
         android:name=".RouxApp"
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:theme="@style/Theme.Roux">
