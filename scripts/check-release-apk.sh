@@ -6,6 +6,16 @@
 # Usage: check-release-apk.sh [APK]    APK defaults to the single APK in app/build/outputs/apk/release.
 #        check-release-apk.sh --self-test    needs no APK; feeds the permission check a list containing
 #                                            android.permission.READ_CONTACTS and exits 1 because it is rejected.
+#        check-release-apk.sh --backup [APK]    audits only the backup policy (Stage E1, preferences_only): the manifest
+#                                            has android:allowBackup="true" and android:dataExtractionRules pointing at
+#                                            xml/data_extraction_rules, and that compiled file has exactly the sections
+#                                            cloud-backup and device-transfer, each holding exactly
+#                                            <include domain="file" path="datastore/"/> and
+#                                            <exclude domain="file" path="nhl-cache/"/>. Anything missing, malformed,
+#                                            broader or contradictory fails. Build the APK first with
+#                                            `./gradlew :app:assembleRelease` (the default APK path above is the
+#                                            unsigned release APK). The other checks do not run in this mode.
+# This is a static audit of the built APK; it does not prove that a device restore behaves as intended.
 # Run it inside `nix develop`. aapt2 is taken from PATH, otherwise from the newest $ANDROID_HOME/build-tools/*/
 # directory. APK entries are listed with `unzip -Z1`, or with the JDK's `jar tf` when unzip is not installed
 # (the devShell has no unzip). It works from any cwd and exits non-zero on the first failed check.
@@ -90,6 +100,12 @@ resolve_tool() {
   fail "$name not found on PATH or under \$ANDROID_HOME/build-tools; run this inside nix develop"
 }
 
+mode=release
+if [ "${1:-}" = "--backup" ]; then
+  mode=backup
+  shift
+fi
+
 if [ "$#" -ge 1 ]; then
   apk="$1"
 else
@@ -103,6 +119,151 @@ fi
 printf 'APK: %s\n' "$apk"
 
 aapt2="$(resolve_tool aapt2)"
+
+# Backup policy (Stage E1). The compiled manifest names the rules by resource id, so the id is resolved through
+# `aapt2 dump resources` to the xml resource name and to the file inside the APK that `dump xmltree` can read.
+EXPECTED_RULES_RESOURCE=xml/data_extraction_rules
+
+# Reads `aapt2 dump xmltree` of AndroidManifest.xml on stdin; prints the backup-related application attributes and
+# "application" for each <application> element. A custom backup agent is rejected because it can bypass these rules.
+manifest_backup_attributes() {
+  awk '
+    /^ *E: / { in_app = ($2 == "application"); if (in_app) print "application"; next }
+    in_app && /^ *A: http:\/\/schemas\.android\.com\/apk\/res\/android:allowBackup\(0x[0-9a-f]+\)=/ {
+      sub(/^[^=]*=/, ""); print "allowBackup=" $0; next }
+    in_app && /^ *A: http:\/\/schemas\.android\.com\/apk\/res\/android:dataExtractionRules\(0x[0-9a-f]+\)=/ {
+      sub(/^[^=]*=/, ""); print "dataExtractionRules=" $0; next }
+    in_app && index($0, "android:backupAgent(") > 0 {
+      sub(/^[^=]*=/, ""); print "backupAgent=" $0; next }
+  '
+}
+
+# Reads `aapt2 dump xmltree` of the rules file on stdin and prints one line per fact:
+#   ROOT                          the document element is <data-extraction-rules>
+#   SECTION|name                  a child of the root (cloud-backup or device-transfer expected)
+#   RULE|section|tag|domain|path  an include/exclude inside a section
+#   BAD|reason                    anything outside that shape (unknown element or attribute, wrong nesting)
+parse_rules() {
+  awk '
+    function flush() {
+      if (rule_tag != "") print "RULE|" rule_section "|" rule_tag "|" rule_domain "|" rule_path
+      rule_tag = ""; rule_domain = ""; rule_path = ""
+    }
+    /^ *E: / {
+      flush()
+      match($0, /^ */); indent = RLENGTH; name = $2
+      while (depth > 0 && indents[depth] >= indent) depth--
+      depth++; indents[depth] = indent; names[depth] = name; kind = ""
+      if (depth == 1) {
+        if (name == "data-extraction-rules") print "ROOT"; else print "BAD|unexpected root element " name
+      } else if (depth == 2) {
+        print "SECTION|" name; section = name
+        if (name != "cloud-backup" && name != "device-transfer") print "BAD|unexpected section " name
+      } else if (depth == 3 && (name == "include" || name == "exclude")) {
+        rule_tag = name; rule_section = section; kind = "rule"
+      } else {
+        print "BAD|unexpected element " name " in " section
+      }
+      next
+    }
+    /^ *A: / {
+      line = $0; sub(/^ *A: /, "", line)
+      attr = line; sub(/=.*/, "", attr)
+      value = line; sub(/^[^=]*="/, "", value); sub(/" \(Raw: ".*"\)$/, "", value)
+      if (kind == "rule" && attr == "domain") rule_domain = value
+      else if (kind == "rule" && attr == "path") rule_path = value
+      else print "BAD|unexpected attribute " attr " on " names[depth] " in " section
+      next
+    }
+    END { flush() }
+  '
+}
+
+check_backup_policy() {
+  local apk="$1" manifest_dump facts attr_lines application_count=0 allow_backup="" rules_ref="" backup_agent="" line
+  manifest_dump="$("$aapt2" dump xmltree --file AndroidManifest.xml "$apk")" || fail "aapt2 dump xmltree failed for AndroidManifest.xml in $apk"
+  attr_lines="$(printf '%s\n' "$manifest_dump" | manifest_backup_attributes)"
+  while IFS= read -r line; do
+    case "$line" in
+      application) application_count=$((application_count + 1)) ;;
+      allowBackup=*) allow_backup="${line#allowBackup=}" ;;
+      dataExtractionRules=*) rules_ref="${line#dataExtractionRules=}" ;;
+      backupAgent=*) backup_agent="${line#backupAgent=}" ;;
+    esac
+  done <<<"$attr_lines"
+  [ -z "$backup_agent" ] || fail "manifest declares custom android:backupAgent (${backup_agent}); custom agent behavior is not audited"
+  [ "$application_count" -eq 1 ] || fail "manifest has $application_count <application> elements, expected 1"
+  [ "$allow_backup" = "true" ] || fail "manifest does not enable allowBackup (android:allowBackup='${allow_backup:-unset}', expected true)"
+  [ -n "$rules_ref" ] || fail "manifest has no android:dataExtractionRules"
+  pass "manifest enables allowBackup"
+
+  # Resolve the rules reference (@0x7fXXXXXX) to a resource name and the file that holds it.
+  case "$rules_ref" in
+    @0x*) ;;
+    *) fail "android:dataExtractionRules is '$rules_ref', expected a resource reference" ;;
+  esac
+  local resources rules_id="${rules_ref#@}" rules_name rules_files rules_file
+  resources="$("$aapt2" dump resources "$apk")" || fail "aapt2 dump resources failed for $apk"
+  rules_name="$(printf '%s\n' "$resources" | awk -v id="$rules_id" '$1 == "resource" && $2 == id { print $3; exit }')"
+  [ "$rules_name" = "$EXPECTED_RULES_RESOURCE" ] \
+    || fail "android:dataExtractionRules does not reference $EXPECTED_RULES_RESOURCE (resolves to '${rules_name:-nothing}')"
+  rules_files="$(printf '%s\n' "$resources" | awk -v id="$rules_id" '
+    $1 == "resource" { current = ($2 == id); next }
+    /^ *type / { current = 0; next }
+    current && /\(file\) / { for (i = 1; i <= NF; i++) if ($i == "(file)") print $(i + 1) }
+  ')"
+  [ -n "$rules_files" ] || fail "no file found in $apk for $EXPECTED_RULES_RESOURCE"
+  pass "android:dataExtractionRules references $EXPECTED_RULES_RESOURCE"
+
+  while IFS= read -r rules_file; do
+    printf 'rules file: %s\n' "$rules_file"
+    local dump
+    dump="$("$aapt2" dump xmltree --file "$rules_file" "$apk")" || fail "aapt2 dump xmltree failed for $rules_file in $apk"
+    facts="$(printf '%s\n' "$dump" | parse_rules)"
+    check_rules_facts "$facts" || fail "$rules_file does not match the preferences_only policy"
+  done <<<"$rules_files"
+  pass "data extraction rules include only file datastore/ and exclude file nhl-cache/ for cloud-backup and device-transfer"
+}
+
+# Reads parse_rules output as $1. Reports every violation on stderr and returns 1 if there is any.
+check_rules_facts() {
+  local facts="$1" bad=0 line section kind rule_section tag domain path included excluded count
+  printf '%s\n' "$facts" | grep -qx 'ROOT' || { printf '  rules: no <data-extraction-rules> root element\n' >&2; bad=1; }
+  while IFS= read -r line; do
+    case "$line" in
+      BAD\|*) printf '  rules: %s\n' "${line#BAD|}" >&2; bad=1 ;;
+    esac
+  done <<<"$facts"
+  for section in cloud-backup device-transfer; do
+    count="$(printf '%s\n' "$facts" | grep -cx "SECTION|$section" || true)"
+    if [ "$count" -eq 0 ]; then
+      printf '  %s: section missing\n' "$section" >&2; bad=1; continue
+    elif [ "$count" -gt 1 ]; then
+      printf '  %s: section appears %s times\n' "$section" "$count" >&2; bad=1
+    fi
+    included=0 excluded=0
+    while IFS='|' read -r kind rule_section tag domain path; do
+      [ "$kind" = RULE ] && [ "$rule_section" = "$section" ] || continue
+      if [ "$tag" = include ] && [ "$domain" = file ] && [ "$path" = "datastore/" ]; then
+        included=$((included + 1))
+      elif [ "$tag" = exclude ] && [ "$domain" = file ] && [ "$path" = "nhl-cache/" ]; then
+        excluded=$((excluded + 1))
+      else
+        printf '  %s: unexpected %s %s %s\n' "$section" "$tag" "$domain" "$path" >&2; bad=1
+      fi
+    done <<<"$facts"
+    [ "$included" -ge 1 ] || { printf '  %s: missing include file datastore/\n' "$section" >&2; bad=1; }
+    [ "$excluded" -ge 1 ] || { printf '  %s: missing exclude file nhl-cache/\n' "$section" >&2; bad=1; }
+    [ "$included" -le 1 ] && [ "$excluded" -le 1 ] || { printf '  %s: duplicate rule\n' "$section" >&2; bad=1; }
+  done
+  return "$bad"
+}
+
+if [ "$mode" = backup ]; then
+  check_backup_policy "$apk"
+  printf 'BACKUP POLICY OK\n'
+  exit 0
+fi
 
 list_entries() {
   if command -v unzip >/dev/null 2>&1; then
