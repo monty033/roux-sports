@@ -142,6 +142,32 @@ sha256sum -c roux-sports-1.0.0.apk.sha256
 apksigner verify --print-certs roux-sports-1.0.0.apk
 ```
 
+### Upgrading an installed release
+
+A normal install replaces an installed app when two things hold: the APK is signed with the same signing
+identity, and its `versionCode` is not lower than the installed one. A lower `versionCode` is a downgrade, and
+Android refuses it. `adb install -r` is the same replacement request from a terminal — it keeps app data, and it
+does not permit a downgrade either.
+
+Bump the `versionCode` in `app/build.gradle.kts` for every release even though an equal one would install: two
+different builds sharing a code cannot be told apart after the fact, and the moment one has to be rolled back, the
+lower code is exactly what Android refuses. `versionName` is the label people read; `versionCode` is the integer
+Android compares.
+
+The project does not rotate its signing key. Android can be told to accept a new signing certificate for an
+existing package, but that is a deliberate migration with tooling of its own, not something this README sets up —
+if the release key is ever replaced, that migration is the work, not a rebuild.
+
+Favourites, league order, notification choices and the theme live in the app's own private storage, which an
+in-place replacement does not touch, so they survive a release-to-release upgrade. The cached NHL responses do not
+need to survive: they are refetched.
+
+A build signed by anyone else — a debug build, or one made with the throwaway keystore the signing check uses —
+cannot be installed over a release, and the error is a signature mismatch. To move between differently signed
+builds the installed app has to be removed first, which does take its preferences with it.
+
+`docs/device-checklist.md` carries the upgrade check itself, under Stage 10.
+
 ## License
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
