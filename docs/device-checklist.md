@@ -152,7 +152,9 @@ Done on the Pixel 9 (Android 16) by Patrick, one-handed, against builds from thi
 own tree. Two rounds were needed because the first one found a real defect.
 
 **Round R160, 2026-11-11** — debug build from `aff6c0d` (the merge of PR #136).
-Font scale 2.0, light and dark, contrast, colour-independent state and dynamic type all passed.
+Font scale 2.0, light and dark, contrast, colour-independent state, and the dynamic-type plus
+display-size item all passed. The display-size half is named because it is half of the item:
+a font-scale pass says nothing about layout at a larger display size.
 The one-thumb walkthrough failed on its first action: the club page's Schedule / Players / Team
 Stats tabs could only be changed by tapping the strip, so a thumb could not swipe between them
 the way it can on the player and game pages. That is the defect PR #137 fixed, along with the
