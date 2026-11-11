@@ -1,15 +1,18 @@
 package net.montycasa.roux.ui.team
 
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
 import androidx.compose.ui.test.swipeLeft
@@ -274,6 +277,26 @@ class TeamPlayersTest {
             swipe(Offset(right - 8f, centerY), Offset(right - 8f - by, centerY), durationMillis = 600)
         }
         rule.waitForIdle()
+    }
+
+    /**
+     * The buffer, measured on this table: at the end of its travel the last column sits clear of the table's edge. The
+     * drag tests above state the behaviour but pass with or without the spacer, so this is the one that can fail when
+     * the travel is removed.
+     */
+    @Test
+    fun theTableKeepsDeadTravelPastItsLastColumn() {
+        showPlayers()
+
+        val scrolling = rule.onNodeWithTag("team.players.player.91.numbers", useUnmergedTree = true)
+        scrolling.performSemanticsAction(SemanticsActions.ScrollBy) { scrollBy -> scrollBy(4000f, 0f) }
+        rule.waitForIdle()
+
+        val edge = scrolling.getUnclippedBoundsInRoot()
+        val last = rule.onNodeWithTag("team.players.player.91.pim", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val gap = edge.right - last.right
+
+        assertTrue("the last column must sit clear of the edge: gap=$gap", gap >= 60.dp)
     }
 
     @Test
