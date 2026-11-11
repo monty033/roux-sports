@@ -48,6 +48,7 @@ import net.montycasa.roux.domain.model.GoalieStat
 import net.montycasa.roux.domain.model.RosterPlayer
 import net.montycasa.roux.domain.model.SkaterStat
 import net.montycasa.roux.ui.common.RetryButton
+import net.montycasa.roux.ui.common.TABLE_EDGE_BUFFER
 import net.montycasa.roux.ui.detail.PeriodDivider
 import net.montycasa.roux.ui.reach.listRow
 import net.montycasa.roux.ui.theme.Roux
@@ -220,6 +221,7 @@ private fun PlayersGroupContent(
                         tag = "team.players.group.${group.group.tag}.header.$column",
                     )
                 }
+                Spacer(Modifier.width(TABLE_EDGE_BUFFER))
             }
         }
         group.rows.forEach { row ->
@@ -289,6 +291,7 @@ private fun PlayersRow(
                     tag = "$tag.${columns[index].lowercase()}",
                 )
             }
+            Spacer(Modifier.width(TABLE_EDGE_BUFFER))
         }
     }
 }

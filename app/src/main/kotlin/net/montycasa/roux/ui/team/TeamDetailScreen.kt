@@ -2,6 +2,8 @@
 
 package net.montycasa.roux.ui.team
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,16 +20,16 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerDefaults
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 import net.montycasa.roux.R
 import net.montycasa.roux.domain.model.ClubGame
@@ -50,6 +53,7 @@ import net.montycasa.roux.domain.policy.LeagueCalendar
 import net.montycasa.roux.ui.common.SubNavigationRow
 import net.montycasa.roux.ui.common.TeamNames
 import net.montycasa.roux.ui.detail.TeamLogo
+import net.montycasa.roux.ui.nav.NavSwipe
 import net.montycasa.roux.ui.reach.reachTarget
 import net.montycasa.roux.ui.theme.Roux
 import kotlin.time.Clock
@@ -57,6 +61,9 @@ import kotlin.time.Instant
 
 /** The same crest size the Teams picker uses, so a club looks like itself on both screens. */
 private val CREST_SIZE = 56.dp
+
+/** The same settle the player page's tabs use, so the two screens feel like one app. */
+private const val TAB_SETTLE_MILLIS = 250
 
 /**
  * A club's page: who the club is, its record, and a sub-navigation that opens on the season schedule.
@@ -90,11 +97,14 @@ fun TeamDetailScreen(
         } else {
             null
         }
-    // Tab selection is local view state. It is not a route, so Back leaves the club page rather than
-    // walking through tabs the reader visited.
-    var selectedTab by rememberSaveable { mutableStateOf(TeamTab.Schedule) }
-    // Each tab keeps its own saved list state: switching to Players and back restores the schedule's
+    // The three tabs are pages, so a horizontal swipe moves between them the same way the player and game pages do.
+    // Each page keeps its own saved list state through the holder below, so leaving a tab and coming back restores its
     // scroll position instead of re-anchoring or scrolling to the top.
+    val pager = rememberPagerState { TeamTab.entries.size }
+    val scope = rememberCoroutineScope()
+    // During a swipe the strip follows the page the pager is heading to, not the one it is leaving, so it never lags
+    // behind the finger.
+    val shownTab = TeamTab.entries[if (pager.isScrollInProgress) pager.targetPage else pager.currentPage]
     val tabState = rememberSaveableStateHolder()
     val retryPlayers: () -> Unit = {
         onPlayersRetry()
@@ -123,9 +133,22 @@ fun TeamDetailScreen(
                 leagueLoading = state.isLeagueStatsLoading,
             )
         }
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            tabState.SaveableStateProvider(selectedTab) {
-                when (selectedTab) {
+        HorizontalPager(
+            state = pager,
+            // Off, horizontal drags belong to the pager; on, the shell's pager would claim them instead.
+            userScrollEnabled = !NavSwipe.TURNS_PAGES,
+            // The neighbouring tab is composed ahead of the drag, so a swipe reveals a finished page, not an empty one.
+            beyondViewportPageCount = 1,
+            flingBehavior =
+                PagerDefaults.flingBehavior(
+                    state = pager,
+                    snapAnimationSpec = tween(durationMillis = TAB_SETTLE_MILLIS, easing = FastOutSlowInEasing),
+                ),
+            modifier = Modifier.weight(1f).fillMaxWidth().testTag("team.pager"),
+        ) { page ->
+            val tab = TeamTab.entries[page]
+            tabState.SaveableStateProvider(tab) {
+                when (tab) {
                     TeamTab.Schedule -> {
                         TeamScheduleList(
                             teamKey = state.teamKey,
@@ -169,8 +192,8 @@ fun TeamDetailScreen(
         // The page's own second level sits at the bottom, where the app's other navigation lives, so the thumb
         // reaches it without crossing the list and the header keeps the height the card needs.
         TeamTabRow(
-            selected = selectedTab,
-            onSelect = { selectedTab = it },
+            selected = shownTab,
+            onSelect = { tab -> scope.launch { pager.animateScrollToPage(tab.ordinal) } },
             modifier =
                 Modifier
                     .fillMaxWidth()

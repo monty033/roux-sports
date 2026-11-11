@@ -37,6 +37,7 @@ import coil3.compose.AsyncImage
 import net.montycasa.roux.domain.model.GoalieLine
 import net.montycasa.roux.domain.model.PlayerMugshot
 import net.montycasa.roux.domain.model.SkaterLine
+import net.montycasa.roux.ui.common.TABLE_EDGE_BUFFER
 import net.montycasa.roux.ui.reach.listRow
 import net.montycasa.roux.ui.theme.LocalRouxAccents
 
@@ -173,6 +174,7 @@ private fun RosterTable(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 headers.forEach { StatHeader(it) }
+                Spacer(Modifier.width(TABLE_EDGE_BUFFER))
             }
         }
         rows.forEach { row ->
@@ -203,6 +205,7 @@ private fun RosterTable(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     row.values.forEach { StatCell(it) }
+                    Spacer(Modifier.width(TABLE_EDGE_BUFFER))
                 }
             }
         }

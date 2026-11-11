@@ -29,6 +29,7 @@ import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import net.montycasa.roux.ui.common.TABLE_EDGE_BUFFER
 import net.montycasa.roux.ui.reach.Reach
 import net.montycasa.roux.ui.reach.listRow
 
@@ -146,7 +147,7 @@ internal fun PlayerStatTable(
     Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
         Row(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
             Spacer(Modifier.width(labelWidth))
-            StatCells(scroll, headerTag) {
+            StatCells(scroll, headerTag, widths.fold(0.dp) { acc, width -> acc + width }) {
                 headers.forEachIndexed { index, header ->
                     Text(
                         header.label,
@@ -171,7 +172,7 @@ internal fun PlayerStatTable(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                StatCells(scroll, headerTag) {
+                StatCells(scroll, headerTag, widths.fold(0.dp) { acc, width -> acc + width }) {
                     row.cells.forEachIndexed { index, cell ->
                         Text(
                             cell.value,
@@ -213,14 +214,18 @@ private fun Modifier.rowModifier(
 private fun RowScope.StatCells(
     scroll: ScrollState,
     tag: String,
+    contentWidth: Dp,
     content: @Composable () -> Unit,
 ) {
     BoxWithConstraints(Modifier.weight(1f)) {
+        val available = maxWidth
         Row(
-            Modifier.widthIn(min = maxWidth).horizontalScroll(scroll).testTag("$tag.scroll"),
+            Modifier.widthIn(min = available).horizontalScroll(scroll).testTag("$tag.scroll"),
             horizontalArrangement = Arrangement.Center,
         ) {
             content()
+            // Only when the columns overflow: a table that fits stays centred, and the buffer would shift it.
+            if (contentWidth > available) Spacer(Modifier.width(TABLE_EDGE_BUFFER))
         }
     }
 }
