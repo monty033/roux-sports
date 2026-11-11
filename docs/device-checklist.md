@@ -130,21 +130,44 @@ it theoretically should have.
 This is a sign-off pass across every screen, not a spot check. Do it with the device in one
 hand, because that is how it will be used.
 
-- [ ] One-thumb walkthrough: reach every primary action — switching tabs, changing date,
+- [x] One-thumb walkthrough: reach every primary action — switching tabs, changing date,
       opening a game, going back — without moving your grip or using a second hand.
-- [ ] Repeat the walkthrough at system font scale 2.0. Text grows without clipping, overlap,
+- [x] Repeat the walkthrough at system font scale 2.0. Text grows without clipping, overlap,
       or truncation that loses meaning. This is the check that breaks layouts most often.
-- [ ] Light and dark themes: every screen, both themes, no unreadable text and no invisible
+- [x] Light and dark themes: every screen, both themes, no unreadable text and no invisible
       icon.
-- [ ] Contrast: small secondary text — dates, timestamps, "final" labels — is legible in
+- [x] Contrast: small secondary text — dates, timestamps, "final" labels — is legible in
       daylight on the device at normal brightness.
 - [ ] TalkBack: turning it on, every control announces something meaningful. An icon button
       that reads as "button" is a defect.
 - [ ] TalkBack: the scores list is navigable and a game row announces its teams, score and
       state as a coherent unit.
-- [ ] Nothing depends on colour alone to convey state — a live game must be distinguishable
+- [x] Nothing depends on colour alone to convey state — a live game must be distinguishable
       without seeing red versus grey.
-- [ ] Dynamic type and display size changes do not break the navigation shell.
+- [x] Dynamic type and display size changes do not break the navigation shell.
+
+### Sign-off record
+
+Done on the Pixel 9 (Android 16) by Patrick, one-handed, against builds from this repository's
+own tree. Two rounds were needed because the first one found a real defect.
+
+**Round R160, 2026-11-11** — debug build from `aff6c0d` (the merge of PR #136).
+Font scale 2.0, light and dark, contrast, colour-independent state and dynamic type all passed.
+The one-thumb walkthrough failed on its first action: the club page's Schedule / Players / Team
+Stats tabs could only be changed by tapping the strip, so a thumb could not swipe between them
+the way it can on the player and game pages. That is the defect PR #137 fixed, along with the
+64 dp of edge travel that stopped a sideways table scroll from turning the page.
+
+**Round R167, 2026-11-11** — debug build from `c235d33` (the merge of PR #137).
+The walkthrough passed: the club page now swipes between its three tabs, the strip follows the
+finger, and the players table keeps the last column readable before the page takes over.
+Patrick's verdict: "All good".
+
+**TalkBack (the two checks above) is not verified.** No pass had been run with TalkBack enabled
+when this stage closed, and neither check can be marked on the strength of the others — TalkBack
+reads semantics the visible layout says nothing about. They stay open as a known gap rather than
+being ticked or quietly dropped. Treat them as release-blocking only if Stage 10 is to be tagged
+without them; that is Patrick's call, recorded when it is made.
 
 ---
 
