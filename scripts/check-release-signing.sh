@@ -4,7 +4,9 @@
 #   2. with a throwaway keystore and a temporary keystore.properties, assembleRelease succeeds and
 #      apksigner verifies the APK and prints a signer certificate;
 #   3. keystore.properties is git-ignored, so the signing secrets cannot be committed;
-#   4. R8 ran (minifyReleaseWithR8, forced to re-execute) and reported no "Missing class" errors.
+#   4. R8 ran (minifyReleaseWithR8, forced to re-execute) and reported no "Missing class" errors;
+#   5. the signed APK carries the versionName and versionCode the build declares, and that version is a release
+#      version - this is the value the User-Agent sends.
 # Run it inside `nix develop`. keytool comes from the JDK on PATH; apksigner is taken from PATH, otherwise from
 # the newest $ANDROID_HOME/build-tools/*/ directory. It works from any cwd. It refuses to run when a real
 # keystore.properties already exists, and only ever creates a throwaway keystore inside a mktemp -d directory;
@@ -61,6 +63,7 @@ resolve_tool() {
 
 keytool="$(resolve_tool keytool)"
 apksigner="$(resolve_tool apksigner)"
+aapt2="$(resolve_tool aapt2)"
 
 work_dir="$(mktemp -d)"
 
@@ -127,5 +130,23 @@ if grep -q 'Missing class' "$r8_log"; then
   fail "R8 reported missing classes"
 fi
 pass "(4) minifyReleaseWithR8 executed and reported no Missing class errors"
+
+# (5) The version the APK carries is the version the build declares, and it is a release version - the
+# User-Agent in a shipped build reads exactly this value, so a fallback such as "dev" reaching it would mean the
+# header names a build nobody can identify. The expectation is parsed from the build file rather than written
+# here twice, so the two cannot drift apart.
+gradle_version="$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)"
+gradle_code="$(sed -n 's/^[[:space:]]*versionCode = \([0-9]*\).*/\1/p' app/build.gradle.kts | head -n 1)"
+[ -n "$gradle_version" ] || fail "could not read versionName from app/build.gradle.kts"
+[ -n "$gradle_code" ] || fail "could not read versionCode from app/build.gradle.kts"
+badging="$("$aapt2" dump badging "$signed_apk" 2>&1)" || fail "aapt2 dump badging failed on $signed_apk"
+apk_version="$(printf '%s\n' "$badging" | sed -n "s/^package: .*versionName='\([^']*\)'.*/\1/p" | head -n 1)"
+apk_code="$(printf '%s\n' "$badging" | sed -n "s/^package: .*versionCode='\([^']*\)'.*/\1/p" | head -n 1)"
+[ "$apk_version" = "$gradle_version" ] || fail "the APK carries versionName '$apk_version' but the build declares '$gradle_version'"
+[ "$apk_code" = "$gradle_code" ] || fail "the APK carries versionCode '$apk_code' but the build declares '$gradle_code'"
+[ "$apk_version" != "dev" ] || fail "the APK carries the 'dev' fallback as its version"
+printf '%s\n' "$apk_version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' \
+  || fail "versionName '$apk_version' is not a release version (expected N.N.N)"
+pass "(5) the signed APK carries versionName $apk_version (code $apk_code) from app/build.gradle.kts, with no dev fallback"
 
 printf 'RELEASE SIGNING OK\n'

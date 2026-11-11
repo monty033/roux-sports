@@ -177,7 +177,12 @@ class AppContainer(
     filesDir: Path,
     engine: HttpClientEngine,
     val clock: Clock = Clock.System,
-    version: String = "dev",
+    /**
+     * The version that reaches the User-Agent. A `val` because a test has to be able to compare the value the
+     * container carries with the one the package manager reports: the fallback below only exists for the case
+     * where the platform reports no version at all, and a release build must never ship that fallback.
+     */
+    val version: String = "dev",
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) {
     val httpClient: HttpClient = NhlHttpClientFactory.create(engine, version)

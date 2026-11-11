@@ -42,6 +42,30 @@ class AppContainerTest {
     private val projectDir: File get() = File(System.getProperty("user.dir") ?: ".")
 
     /**
+     * The end of the chain the plan's release acceptance names: the version in the APK reaches the User-Agent.
+     * The data layer already pins its own formatting, so what is unproven without this is the arrow from the
+     * package to the container - and the fallback, which must not be what a real build carries.
+     */
+    @Test
+    fun thePackagedVersionIsWhatTheContainerCarries() {
+        val packaged =
+            app.packageManager
+                .getPackageInfo(app.packageName, 0)
+                .versionName
+
+        assertTrue("the package manager must report a version", !packaged.isNullOrBlank())
+        assertEquals(packaged, app.container.version)
+        assertTrue(
+            "a release build must not carry the fallback: ${app.container.version}",
+            app.container.version != "dev",
+        )
+        assertTrue(
+            "the version must look like a release version, not a debug marker: ${app.container.version}",
+            Regex("""\d+\.\d+\.\d+""").matches(app.container.version),
+        )
+    }
+
+    /**
      * One container per process. A second would open the preferences file twice and DataStore refuses that,
      * so a lazy field that built a new instance per call would fail at the first screen that touched it.
      */
