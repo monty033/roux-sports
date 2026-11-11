@@ -1,16 +1,17 @@
 package net.montycasa.roux.ui.team
 
-import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipe
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
@@ -64,7 +65,36 @@ class TeamPlayersTest {
         rule.onNodeWithTag("team.tab.Players").assertIsSelected()
         rule.onNodeWithTag("team.tab.Schedule").assertIsNotSelected()
         rule.onNodeWithTag("team.players.list").assertExists()
-        rule.onNodeWithTag("team.schedule.list").assertDoesNotExist()
+        rule.onNodeWithTag("team.schedule.list").assertIsNotDisplayed()
+    }
+
+    /** A swipe turns the club page one tab at a time, and the strip follows it, both ways. */
+    @Test
+    fun aSwipeMovesOneTabAtATimeAndTheStripFollowsIt() {
+        showScreen()
+        rule.onNodeWithTag("team.tab.Schedule").assertIsSelected()
+
+        swipePager(towardsTheNextTab = true)
+        rule.onNodeWithTag("team.tab.Players").assertIsSelected()
+        rule.onNodeWithTag("team.players.list").assertIsDisplayed()
+        swipePager(towardsTheNextTab = true)
+        rule.onNodeWithTag("team.tab.TeamStats").assertIsSelected()
+
+        swipePager(towardsTheNextTab = false)
+        rule.onNodeWithTag("team.tab.Players").assertIsSelected()
+        swipePager(towardsTheNextTab = false)
+        rule.onNodeWithTag("team.tab.Schedule").assertIsSelected()
+        rule.onNodeWithTag("team.schedule.list").assertIsDisplayed()
+    }
+
+    /** Tapping a tab still moves the pager to that page. */
+    @Test
+    fun tappingATabStillMovesToThatPage() {
+        showScreen()
+        rule.onNodeWithTag("team.tab.TeamStats").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithTag("team.tab.TeamStats").assertIsSelected()
+        rule.onNodeWithTag("team.players.list").assertIsNotDisplayed()
     }
 
     @Test
@@ -186,14 +216,22 @@ class TeamPlayersTest {
         // would pass against a clipped name as well.
     }
 
+    /** The pinned name column stays put while the numbers scroll under their own horizontal scroll. */
     @Test
-    fun aSidewaysDragMovesTheNumbersButNotTheNameColumn() {
+    fun aSidewaysScrollMovesTheNumbersButNotTheNameColumn() {
         showPlayers()
+        rule.waitForIdle()
 
         val nameBefore = rule.onNodeWithTag("team.players.player.91.name", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         val pointsBefore = rule.onNodeWithTag("team.players.player.91.pts", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
 
-        rule.onNodeWithTag("team.players.player.91.numbers", useUnmergedTree = true).performTouchInput { swipeLeft() }
+        rule
+            .onNodeWithTag("team.players.player.91.numbers", useUnmergedTree = true)
+            .performTouchInput {
+                val y = centerY
+                // Short enough to stay inside the table's own travel, so the page never takes over.
+                swipe(Offset(right - 8f, y), Offset(right - 8f - 80f, y))
+            }
         rule.waitForIdle()
 
         val nameAfter = rule.onNodeWithTag("team.players.player.91.name", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
@@ -202,9 +240,40 @@ class TeamPlayersTest {
         assertEquals("the pinned name must not move sideways", nameBefore.left, nameAfter.left, 0.5f)
         assertEquals("the pinned name must not move sideways", nameBefore.right, nameAfter.right, 0.5f)
         assertTrue(
-            "the number column must move under the drag: ${pointsBefore.left} -> ${pointsAfter.left}",
+            "the number column must move under the scroll: ${pointsBefore.left} -> ${pointsAfter.left}",
             pointsAfter.left < pointsBefore.left - 1f,
         )
+    }
+
+    /** The table keeps a little travel past its last column, so reaching PIM does not throw the page. */
+    @Test
+    fun aSidewaysDragPastTheLastColumnStaysOnPlayers() {
+        showPlayers()
+
+        swipeTableLeft(by = 290f)
+
+        rule.onNodeWithTag("team.tab.Players").assertIsSelected()
+        rule.onNodeWithTag("team.players.player.91.pim", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    /** Once that travel is used up the page takes the next drag, which is the whole point of keeping it short. */
+    @Test
+    fun aFurtherSidewaysDragTurnsThePage() {
+        showPlayers()
+
+        swipeTableLeft(by = 290f)
+        rule.onNodeWithTag("team.players.player.91.numbers", useUnmergedTree = true).performTouchInput { swipeLeft() }
+        rule.waitForIdle()
+
+        rule.onNodeWithTag("team.tab.TeamStats").assertIsSelected()
+    }
+
+    /** Slowly, so the verdict is about distance rather than how hard the table was thrown. */
+    private fun swipeTableLeft(by: Float) {
+        rule.onNodeWithTag("team.players.player.91.numbers", useUnmergedTree = true).performTouchInput {
+            swipe(Offset(right - 8f, centerY), Offset(right - 8f - by, centerY), durationMillis = 600)
+        }
+        rule.waitForIdle()
     }
 
     @Test
@@ -398,6 +467,20 @@ class TeamPlayersTest {
         showPlayers()
 
         rule.onNodeWithTag("team.players.season").assertDoesNotExist()
+    }
+
+    /**
+     * A horizontal swipe on the pager, starting near its top edge. Starting at the top keeps the touch off the
+     * schedule rows and the players table, whose own gestures would otherwise take it.
+     */
+    private fun swipePager(towardsTheNextTab: Boolean) {
+        rule.onNodeWithTag("team.pager").performTouchInput {
+            val y = top + 4f
+            val start = if (towardsTheNextTab) Offset(right - 16f, y) else Offset(left + 16f, y)
+            val end = if (towardsTheNextTab) Offset(left + 16f, y) else Offset(right - 16f, y)
+            swipe(start, end)
+        }
+        rule.waitForIdle()
     }
 
     private fun openPlayers() {

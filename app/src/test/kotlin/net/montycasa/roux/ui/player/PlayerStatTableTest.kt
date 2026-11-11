@@ -1,13 +1,17 @@
 package net.montycasa.roux.ui.player
 
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHasNoClickAction
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.unit.dp
 import net.montycasa.roux.ui.theme.RouxTheme
 import org.junit.Assert.assertEquals
@@ -64,6 +68,53 @@ class PlayerStatTableTest {
         show(rows = listOf(row(gameId = 2026020188L)), onRowClick = null)
 
         rule.onNodeWithTag("row.0").assertHasNoClickAction()
+    }
+
+    /**
+     * The same buffer the club and game tables carry: once the columns overflow, there is dead travel past the last
+     * column so the swipe that reveals it does not immediately hand the gesture to the page.
+     */
+    @Test
+    fun theColumnsKeepDeadTravelPastTheLastOne() {
+        showColumns(count = 8)
+
+        val container = rule.onAllNodesWithTag("table.scroll", useUnmergedTree = true)[0]
+        container.performSemanticsAction(SemanticsActions.ScrollBy) { scrollBy -> scrollBy(4000f, 0f) }
+        rule.waitForIdle()
+
+        val edge = container.getUnclippedBoundsInRoot()
+        val last = rule.onNodeWithTag("table.header.c7", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val gap = edge.right - last.right
+
+        assertTrue("the last column must sit clear of the edge: gap=$gap", gap >= 60.dp)
+    }
+
+    /** A table whose columns fit stays centred: the buffer belongs to the scrolling case only. */
+    @Test
+    fun aTableThatFitsStaysCentred() {
+        showColumns(count = 1)
+
+        val edge = rule.onAllNodesWithTag("table.scroll", useUnmergedTree = true)[0].getUnclippedBoundsInRoot()
+        val cell = rule.onNodeWithTag("table.header.c0", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val containerMiddle = (edge.left.value + edge.right.value) / 2f
+        val cellMiddle = (cell.left.value + cell.right.value) / 2f
+
+        assertEquals("the column must sit in the middle of its space", containerMiddle, cellMiddle, 1f)
+    }
+
+    private fun showColumns(count: Int) {
+        val headers = (0 until count).map { StatCell("c$it", "H$it", "") }
+        val cells = (0 until count).map { StatCell("c$it", "H$it", "12") }
+        rule.setContent {
+            RouxTheme {
+                PlayerStatTable(
+                    headers = headers,
+                    rows = listOf(StatRow(tag = "row.0", label = "Nov 1 · vs OTT", cells = cells, gameId = null)),
+                    headerTag = "table",
+                    onRowClick = null,
+                )
+            }
+        }
     }
 
     private fun show(

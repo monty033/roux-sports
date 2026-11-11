@@ -2,6 +2,7 @@
 
 package net.montycasa.roux.ui.detail
 
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasAnyAncestor
@@ -13,6 +14,8 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import net.montycasa.roux.domain.model.GoalieLine
 import net.montycasa.roux.domain.model.PlayerRef
@@ -282,6 +285,29 @@ class PlayerTablesTest {
             .getUnclippedBoundsInRoot()
             .top
             .value
+
+    /**
+     * The game page's tables get the same buffer the club page's do: empty travel past the last column, so the swipe
+     * that reveals it does not hand the gesture to the page.
+     */
+    @Test
+    fun `the numbers keep dead travel past their last column`() {
+        show(forwards = listOf(skater("F. First")), defense = emptyList(), goalies = emptyList())
+
+        val table = compose.onNodeWithTag("detail.section.forwards", useUnmergedTree = true)
+        table.performSemanticsAction(SemanticsActions.ScrollBy) { scrollBy -> scrollBy(4000f, 0f) }
+        compose.waitForIdle()
+
+        val container = table.getUnclippedBoundsInRoot()
+        val lastColumn =
+            compose
+                .onNode(hasText("FO%") and hasAnyAncestor(hasTestTag("detail.section.forwards")), useUnmergedTree = true)
+                .getUnclippedBoundsInRoot()
+
+        // The buffer is 64 dp; measured with slack for the last column's own edge. Without it the gap is ~20 dp.
+        val gap = container.right - lastColumn.right
+        assertTrue("the last column must sit clear of the edge: gap=$gap", gap >= 60.dp)
+    }
 
     private fun show(
         forwards: List<SkaterLine>,
