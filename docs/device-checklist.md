@@ -197,15 +197,13 @@ perfectly in debug.
 - [ ] **Untested by this round:** the theme, the league order and the favourites-only toggle. They
       are stored by the same preferences repository as the favourites, which suggests they survive,
       but nothing was set or observed for them, so the result above speaks only for the stars.
-- [ ] **Source review, not this device round — open defect and a publication blocker for E9:** the
-      standings conference and ranking are not persisted at all. `StandingsViewModel` holds them in its own state and starts at Eastern
-      and Playoffs on every cold start — there is no `SavedStateHandle` in the app and no
-      preference key for either, while the repository already has keys for favourites, theme, league
-      order and favourites-only. So this resets on every launch, upgrade or not. `CHANGELOG.md`
-      says those two choices "are remembered between launches", which is untrue of this build.
-      The fix belongs in the preferences path and the ViewModel's read and write of those two
-      values; alternatively the changelog sentence comes out. Either way it has to be settled
-      before E9 publishes a release, because the release notes would otherwise ship a false claim.
+- [x] **Source review, not this device round — settled by decision 2026-11-11:** the standings conference
+      and ranking are not persisted at all. `StandingsViewModel` holds them in its own state and starts at
+      Eastern and Playoffs on every cold start — there is no `SavedStateHandle` in the app and no preference
+      key for either, while the repository already has keys for favourites, theme, league order and
+      favourites-only. Patrick's decision: **they are not meant to persist**, so the reset is the intended
+      behaviour and no storage is added. `CHANGELOG.md` claimed they were "remembered between launches"; that
+      sentence now describes what the screen actually does. E9 is unblocked.
 - [ ] Record the exact non-default pair chosen on the next upgrade round, so a repeat is a
       comparison rather than a re-derivation.
 - [ ] Do not expect the release APK to install over a debug build. Android refuses to replace

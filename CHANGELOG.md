@@ -9,8 +9,8 @@ First release.
 
 - **Scores** — every game for the day with live state, period-by-period scoring, shots, team stats, penalties and the
   three stars. Swipe between days, or pick any date from the month picker.
-- **Standings** — Eastern, Western and league tables, with playoffs, division and conference views. The chosen
-  conference and ranking are remembered between launches.
+- **Standings** — Eastern, Western and league tables, with playoffs, division and conference views. The screen
+  opens on Eastern and the playoff picture; the conference and ranking are per-visit choices and are not stored.
 - **Teams** — all 32 clubs, each with a full-season schedule centred on the next game, the season roster, and
   league-relative team stats where every number carries its rank across the league.
 - **Players** — skaters and goalies with season totals in one list, and a player page with career and season history.
