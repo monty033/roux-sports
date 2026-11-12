@@ -179,13 +179,33 @@ The release build differs from debug in ways that only show up on a device: sign
 changed, and Stage 10 enables R8 minification and shrinking. Both can break things that work
 perfectly in debug.
 
-- [ ] Upgrade path: install the release APK **over the previous release signed with the same
+- [x] Upgrade path: install the release APK **over the previous release signed with the same
       release key**, and confirm favourites and settings survive. This is the only in-place
       upgrade Android actually permits, and it is the one real users will perform.
-      **Prerequisite:** this needs a release signing configuration and a documented path for
-      delivering a signed release to the phone. Neither exists yet — they arrive with Stage 10
-      itself, and `device-testing.md` currently documents debug APKs only. Until both exist,
-      record this check as not yet applicable rather than skipping it quietly.
+      **Done 2026-11-11 on the Pixel 9 (Android 16)** with two throwaway-key release builds from
+      `7fcd692` — `versionCode` 1 reading 1.0.0 and `versionCode` 2 reading 1.0.1, same signer. The
+      second installed over the first without uninstalling, and no install was refused. The
+      installation itself worked. The next two bullets record what was seen on the device; the
+      bullet marked **Source review** further down explains why the conference and ranking came back
+      default, and is the only part of this record that comes from reading the code.
+- [x] **Seen after the upgrade:** the starred teams were still starred. Patrick's words: "Yes",
+      asked directly whether the stars survived.
+- [x] **Also seen after the upgrade:** the standings conference and
+      ranking were back at their defaults (Eastern and Playoffs) rather than the non-default pair
+      that had been set before the upgrade. The specific pair was not recorded at the time; what
+      matters is that both came back default.
+- [ ] **Untested by this round:** the theme, the league order and the favourites-only toggle. They
+      are stored by the same preferences repository as the favourites, which suggests they survive,
+      but nothing was set or observed for them, so the result above speaks only for the stars.
+- [x] **Source review, not this device round — settled by decision 2026-11-11:** the standings conference
+      and ranking are not persisted at all. `StandingsViewModel` holds them in its own state and starts at
+      Eastern and Playoffs on every cold start — there is no `SavedStateHandle` in the app and no preference
+      key for either, while the repository already has keys for favourites, theme, league order and
+      favourites-only. Patrick's decision: **they are not meant to persist**, so the reset is the intended
+      behaviour and no storage is added. `CHANGELOG.md` claimed they were "remembered between launches"; that
+      sentence now describes what the screen actually does. E9 is unblocked.
+- [ ] Record the exact non-default pair chosen on the next upgrade round, so a repeat is a
+      comparison rather than a re-derivation.
 - [ ] Do not expect the release APK to install over a debug build. Android refuses to replace
       an app whose signing certificate differs, and a debug build is signed with the build
       host's debug key. An install failure there is a signature mismatch, not data loss —
