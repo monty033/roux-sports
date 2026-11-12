@@ -30,8 +30,8 @@ import org.robolectric.annotation.Config
  *
  * TalkBack was never run against this app and nobody here can run it, so nothing in this file claims a phrase
  * sounds right or that the reading order is pleasant. What it claims is narrower and checkable: every control
- * Compose exposes with a click action on the scores and teams screens carries some words, and every game row the
- * lazy list has composed exposes one description naming its own clubs, each club's goals and the state.
+ * Compose exposes with a click action on the scores and teams screens carries some words, and every tagged game row
+ * the lazy list has composed exposes one description naming its own clubs, each club's goals and the state.
  *
  * It does not claim a row is read as one utterance. The row's description sits on the card while the rail's own
  * nodes stay separate, which is deliberate - the layout and reach audits measure them - so a reader may still meet
