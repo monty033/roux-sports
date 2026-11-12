@@ -165,11 +165,24 @@ The walkthrough passed: the club page now swipes between its three tabs, the str
 finger, and the players table keeps the last column readable before the page takes over.
 Patrick's verdict: "All good".
 
-**TalkBack (the two checks above) is not verified.** No pass had been run with TalkBack enabled
-when this stage closed, and neither check can be marked on the strength of the others — TalkBack
-reads semantics the visible layout says nothing about. They stay open as a known gap rather than
-being ticked or quietly dropped. Treat them as release-blocking only if Stage 10 is to be tagged
-without them; that is Patrick's call, recorded when it is made.
+**TalkBack (the two checks above) is not verified, and cannot be here.** No pass has been run with
+TalkBack enabled, and Patrick reports no capability to run one, so these two stay unticked as
+unverifiable rather than being marked on the strength of the others — TalkBack reads semantics the
+visible layout says nothing about.
+
+What was done instead, on 2026-11-11: `app/src/test/kotlin/net/montycasa/roux/ui/a11y/SpokenControlsTest.kt`
+asserts the two properties those checks are about, where a test can see them. Every control Compose
+exposes with a click action on the scores and teams screens, in the merged semantics tree, carries
+text or a description — an icon button with nothing to say fails, named by its test tag where it has
+one — and every game row the list has composed, found by its `scores.game.<id>` tag, exposes one
+description naming its own clubs, each club's goals and the state. Three limits are deliberate: rows
+the lazy list has not composed are not checked, a composed row without that tag would not be seen,
+and the row's sentence sits on the card while its rail nodes stay separately exposed, so this does
+not claim a row is read as a single utterance. Nor is "has words" the same as "reads well": any
+non-blank string passes. Both halves were proven by breaking them: blanking the previous-day icon's
+description fails the audit as `scores.previous`, and cutting the row's sentence before the state
+fails the row test. That is evidence the words are there; it is not evidence a voice reads them
+well, and nothing in this file claims otherwise.
 
 ---
 
