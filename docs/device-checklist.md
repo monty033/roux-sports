@@ -174,10 +174,12 @@ What was done instead, on 2026-11-11: `app/src/test/kotlin/net/montycasa/roux/ui
 asserts the two properties those checks are about, where a test can see them. Every control Compose
 exposes with a click action on the scores and teams screens, in the merged semantics tree, carries
 text or a description — an icon button with nothing to say fails, named by its test tag where it has
-one — and every game row the list has composed exposes one description naming its own clubs, each
-club's goals and the state. Two limits are deliberate: rows the lazy list has not composed are not
-checked, and the row's sentence sits on the card while its rail nodes stay separately exposed, so
-this does not claim a row is read as a single utterance. Both halves were proven by breaking them: blanking the previous-day icon's
+one — and every game row the list has composed, found by its `scores.game.<id>` tag, exposes one
+description naming its own clubs, each club's goals and the state. Three limits are deliberate: rows
+the lazy list has not composed are not checked, a composed row without that tag would not be seen,
+and the row's sentence sits on the card while its rail nodes stay separately exposed, so this does
+not claim a row is read as a single utterance. Nor is "has words" the same as "reads well": any
+non-blank string passes. Both halves were proven by breaking them: blanking the previous-day icon's
 description fails the audit as `scores.previous`, and cutting the row's sentence before the state
 fails the row test. That is evidence the words are there; it is not evidence a voice reads them
 well, and nothing in this file claims otherwise.

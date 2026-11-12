@@ -52,7 +52,8 @@ class SpokenControlsTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
 
-    /** A control with no words anywhere inside it: no text, no description, nothing for a reader to say. */
+    /** A node with neither text nor a description — which is not the same as a node a reader finds useless: any
+     * non-blank string passes, and a control that speaks through another semantics property is reported here. */
     private val silentControl =
         SemanticsMatcher("a control with neither text nor description") { node ->
             val text = node.config.getOrNull(SemanticsProperties.Text).orEmpty()
@@ -73,7 +74,8 @@ class SpokenControlsTest {
         )
     }
 
-    /** Enough detail to find the control: its test tag when it has one, its role when it has one, and its node id. */
+    /** What the failure prints: the test tag when the control has one, its role when it has one, and its node id.
+     * The tag is the part that leads to source; role and id only identify a node in a runtime dump. */
     private fun SemanticsNode.describe(): String {
         val tag = config.getOrNull(SemanticsProperties.TestTag)
         val role = config.getOrNull(SemanticsProperties.Role)
@@ -96,12 +98,12 @@ class SpokenControlsTest {
 
     /**
      * Each row's sentence is checked against that game's own fixture: the clubs it names, the goals each club scored,
-     * and the state it is in. A sentence that loses a club or a goal fails here, and so does a row that exposes
-     * several descriptions rather than one, because the point of the sentence is that a listener hears one
-     * statement.
+     * and the state it is in. A sentence that loses a club, or attaches a club's goals to the other club, fails here,
+     * and so does a row that exposes several descriptions rather than one.
      *
-     * Only composed rows are inspected: the list is lazy, so games scrolled out of view are not in the tree. The
-     * captured slate is larger than one screen, so this checks the rows that are on it.
+     * Two limits. Rows are found by their `scores.game.<id>` tag, so a composed row without that tag is not seen —
+     * the coverage claim is about tagged composed rows. And the single description is a fact about the card, not
+     * about how a reader hears the row: the rail's nodes stay separately exposed by design.
      */
     @Test
     fun everyComposedGameRowDescribesItsOwnGame() {
