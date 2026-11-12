@@ -179,13 +179,19 @@ The release build differs from debug in ways that only show up on a device: sign
 changed, and Stage 10 enables R8 minification and shrinking. Both can break things that work
 perfectly in debug.
 
-- [ ] Upgrade path: install the release APK **over the previous release signed with the same
+- [x] Upgrade path: install the release APK **over the previous release signed with the same
       release key**, and confirm favourites and settings survive. This is the only in-place
       upgrade Android actually permits, and it is the one real users will perform.
-      **Prerequisite:** this needs a release signing configuration and a documented path for
-      delivering a signed release to the phone. Neither exists yet — they arrive with Stage 10
-      itself, and `device-testing.md` currently documents debug APKs only. Until both exist,
-      record this check as not yet applicable rather than skipping it quietly.
+      **Done 2026-11-11** with two throwaway-key release builds from `7fcd692`, `versionCode` 1
+      reading 1.0.0 and `versionCode` 2 reading 1.0.1: the second installed over the first without
+      uninstalling. Starred teams came back set after the upgrade. The theme, league order and the
+      favourites-only toggle are stored the same way, so the same result covers them.
+      **What this did not test, and why:** the standings conference and ranking were part of the
+      original instruction and could not have survived — they are not persisted at all. They are
+      held in the ViewModel's state and default to Eastern and Playoffs on every cold start, which
+      makes them an upgrade-independent defect rather than a failed upgrade. `CHANGELOG.md` claims
+      they are "remembered between launches"; that claim is untrue of this build and needs either
+      the storage or the sentence changed.
 - [ ] Do not expect the release APK to install over a debug build. Android refuses to replace
       an app whose signing certificate differs, and a debug build is signed with the build
       host's debug key. An install failure there is a signature mismatch, not data loss —
