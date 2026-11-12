@@ -165,11 +165,19 @@ The walkthrough passed: the club page now swipes between its three tabs, the str
 finger, and the players table keeps the last column readable before the page takes over.
 Patrick's verdict: "All good".
 
-**TalkBack (the two checks above) is not verified.** No pass had been run with TalkBack enabled
-when this stage closed, and neither check can be marked on the strength of the others — TalkBack
-reads semantics the visible layout says nothing about. They stay open as a known gap rather than
-being ticked or quietly dropped. Treat them as release-blocking only if Stage 10 is to be tagged
-without them; that is Patrick's call, recorded when it is made.
+**TalkBack (the two checks above) is not verified, and cannot be here.** No pass has been run with
+TalkBack enabled, and Patrick reports no capability to run one, so these two stay unticked as
+unverifiable rather than being marked on the strength of the others — TalkBack reads semantics the
+visible layout says nothing about.
+
+What was done instead, on 2026-11-11: `app/src/test/kotlin/net/montycasa/roux/ui/a11y/SpokenControlsTest.kt`
+asserts the two properties those checks are about, where a test can see them. Every activatable
+control on the scores and teams screens carries text or a description — an icon button with nothing
+to say fails, named by its test tag — and a game row exposes one description naming both clubs, the
+score and the state. Both halves were proven by breaking them: blanking the previous-day icon's
+description fails the audit as `scores.previous`, and cutting the row's sentence before the state
+fails the row test. That is evidence the words are there; it is not evidence a voice reads them
+well, and nothing in this file claims otherwise.
 
 ---
 
