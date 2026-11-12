@@ -185,8 +185,9 @@ perfectly in debug.
       **Done 2026-11-11 on the Pixel 9 (Android 16)** with two throwaway-key release builds from
       `7fcd692` — `versionCode` 1 reading 1.0.0 and `versionCode` 2 reading 1.0.1, same signer. The
       second installed over the first without uninstalling, and no install was refused. The
-      installation itself worked; the values in the two bullets below are what was seen afterwards,
-      and only the last bullet comes from reading the source rather than from the device.
+      installation itself worked. The next two bullets record what was seen on the device; the
+      bullet marked **Source review** further down explains why the conference and ranking came back
+      default, and is the only part of this record that comes from reading the code.
 - [x] **Seen after the upgrade:** the starred teams were still starred. Patrick's words: "Yes",
       asked directly whether the stars survived.
 - [x] **Also seen after the upgrade:** the standings conference and
