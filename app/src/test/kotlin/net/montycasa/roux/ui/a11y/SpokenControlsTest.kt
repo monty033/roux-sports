@@ -1,5 +1,6 @@
 package net.montycasa.roux.ui.a11y
 
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
@@ -7,10 +8,16 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performClick
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import net.montycasa.roux.MainActivity
+import net.montycasa.roux.ui.scores.ScoreFixture
 import net.montycasa.roux.ui.scores.ScoresIntegrationApp
 import net.montycasa.roux.ui.scores.waitForFixtureScores
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -19,16 +26,17 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * What a screen reader needs in order to be useful, checked where it can be checked without a screen reader.
+ * What a screen reader needs in order to be useful, checked where a test can see it.
  *
- * TalkBack was never run against this app: no device pass turned it on, so nothing here claims a phrase sounds
- * right or that the reading order is pleasant. What it does claim is the failure the checklist names — "an icon
- * button that reads as 'button' is a defect" — which is a property of the semantics tree, not of a voice: a control
- * a person can activate either carries words of its own or has descendants that do, and a game row is one unit
- * rather than a pile of fragments.
+ * TalkBack was never run against this app and nobody here can run it, so nothing in this file claims a phrase
+ * sounds right or that the reading order is pleasant. What it claims is narrower and checkable: every control
+ * Compose exposes with a click action on the scores and teams screens carries some words, and every composed game
+ * row exposes one description naming both clubs, both scores and the state.
  *
- * Both halves are ordinary assertions over the merged semantics tree, so a control that loses its description fails
- * here instead of on a phone nobody tests with TalkBack installed.
+ * Both are properties of the semantics tree, and both are bounded by what that tree shows. A control with no click
+ * action is not inspected. A control that speaks through some other semantics property than text or description
+ * would be reported as silent. "Says something" means a non-blank string, not a good one. Only scores and teams are
+ * walked; standings, game detail, player detail and settings are covered by their own tests, not by this one.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = ScoresIntegrationApp::class, qualifiers = "w411dp-h923dp-420dpi")
@@ -50,15 +58,26 @@ class SpokenControlsTest {
      */
     private fun assertEveryControlSpeaks(where: String) {
         val silent = composeRule.onAllNodes(hasClickAction() and silentControl).fetchSemanticsNodes()
-        val described = silent.map { it.config.getOrNull(SemanticsProperties.TestTag) ?: it.id.toString() }
         assertTrue(
-            "$where: ${silent.size} control(s) can be activated but say nothing: $described",
+            "$where: ${silent.size} control(s) can be activated but say nothing: " +
+                silent.joinToString { it.describe() },
             silent.isEmpty(),
         )
     }
 
+    /** Enough detail to find the control: its test tag when it has one, its role when it has one, and its node id. */
+    private fun SemanticsNode.describe(): String {
+        val tag = config.getOrNull(SemanticsProperties.TestTag)
+        val role = config.getOrNull(SemanticsProperties.Role)
+        return listOfNotNull(tag?.let { "tag=$it" }, role?.let { "role=$it" }, "node=$id").joinToString(" ")
+    }
+
+    private fun JsonObject.text(key: String): String = getValue(key).jsonPrimitive.content
+
+    private fun JsonObject.objectAt(key: String): JsonObject = getValue(key).jsonObject
+
     @Test
-    fun theScoresScreenNamesEveryControl() {
+    fun theScoresAndTeamsScreensNameEveryControl() {
         composeRule.waitForFixtureScores()
         assertEveryControlSpeaks("scores")
 
@@ -68,44 +87,55 @@ class SpokenControlsTest {
     }
 
     /**
-     * The row is the thing a listener meets first: if it reads as five separate fragments the score belongs to no
-     * club. Its description is one sentence, so this pins the facts that sentence has to contain rather than its
-     * wording, which is the design's business.
+     * Each row's sentence is checked against that game's own fixture: the clubs it names, the goals each club scored,
+     * and the state it is in. A sentence that loses a club or a goal fails here, and so does a row that exposes
+     * several descriptions rather than one, because the point of the sentence is that a listener hears one
+     * statement.
+     *
+     * Only composed rows are inspected: the list is lazy, so games scrolled out of view are not in the tree. The
+     * captured slate is larger than one screen, so this checks the rows that are on it.
      */
     @Test
-    fun aGameRowReadsAsOneUnit() {
+    fun everyComposedGameRowReadsItsOwnGame() {
         composeRule.waitForFixtureScores()
 
-        val rows = composeRule.onAllNodes(hasClickAction() and hasAnyContentDescription()).fetchSemanticsNodes()
-        assertTrue("expected at least one spoken game row", rows.isNotEmpty())
+        val stateWords =
+            mapOf(
+                "OFF" to listOf("final"),
+                "LIVE" to listOf("live"),
+                "FUT" to listOf("scheduled", "pre"),
+                "PRE" to listOf("scheduled", "pre"),
+            )
 
-        val spoken = rows.mapNotNull { it.config.getOrNull(SemanticsProperties.ContentDescription)?.joinToString(" ") }
-        assertTrue("no row had a description", spoken.isNotEmpty())
+        var checked = 0
+        for (game in ScoreFixture.games) {
+            val id = game.text("id")
+            val node = composeRule.onAllNodesWithTag("scores.game.$id").fetchSemanticsNodes().singleOrNull() ?: continue
+            checked++
 
-        val first = spoken.first()
-        // The row speaks in the design's own words ("Ducks 5, Flyers 4, final"), not in abbreviations, so the club
-        // check counts the words that are neither the state nor the numbers: two clubs have to be named.
-        val words =
-            Regex("[A-Za-z]{3,}")
-                .findAll(first)
-                .map { it.value.lowercase() }
-                .filterNot { it in setOf("final", "live", "scheduled", "pre", "game") }
-                .distinct()
-                .toList()
-        assertTrue("a game row must name both clubs: $first (found $words)", words.size >= 2)
-        assertTrue("a game row must carry a score: $first", Regex("""\d""").containsMatchIn(first))
-        assertTrue(
-            "a game row must say what state the game is in: $first",
-            listOf("Final", "Live", "Scheduled", "Pre").any { first.contains(it, ignoreCase = true) },
-        )
+            val descriptions = node.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty()
+            assertEquals("row $id must expose exactly one description, found $descriptions", 1, descriptions.size)
+            val sentence = descriptions.single()
+            val lower = sentence.lowercase()
+
+            val away = game.objectAt("awayTeam")
+            val home = game.objectAt("homeTeam")
+            val awayName = away.objectAt("name").text("default")
+            val homeName = home.objectAt("name").text("default")
+            assertTrue("row $id must name $awayName: $sentence", lower.contains(awayName.lowercase()))
+            assertTrue("row $id must name $homeName: $sentence", lower.contains(homeName.lowercase()))
+
+            val awayGoals = away.text("score")
+            val homeGoals = home.text("score")
+            assertTrue("row $id must carry the away goals ($awayName $awayGoals): $sentence", sentence.contains(awayGoals))
+            assertTrue("row $id must carry the home goals ($homeName $homeGoals): $sentence", sentence.contains(homeGoals))
+
+            val state = game.text("gameState")
+            val words = stateWords[state] ?: listOf(state.lowercase())
+            assertTrue("row $id must say its state ($state): $sentence", words.any { lower.contains(it) })
+        }
+
+        assertTrue("no game row was composed, so nothing was checked", checked > 0)
         assertEveryControlSpeaks("scores rows")
     }
-
-    private fun hasAnyContentDescription(): SemanticsMatcher =
-        SemanticsMatcher("has a description") { node ->
-            node.config
-                .getOrNull(SemanticsProperties.ContentDescription)
-                .orEmpty()
-                .any { it.isNotBlank() }
-        }
 }
