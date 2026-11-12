@@ -184,18 +184,20 @@ perfectly in debug.
       upgrade Android actually permits, and it is the one real users will perform.
       **Done 2026-11-11 on the Pixel 9 (Android 16)** with two throwaway-key release builds from
       `7fcd692` — `versionCode` 1 reading 1.0.0 and `versionCode` 2 reading 1.0.1, same signer. The
-      second installed over the first without uninstalling, and no install was refused.
+      second installed over the first without uninstalling, and no install was refused. The
+      installation itself worked; the values in the two bullets below are what was seen afterwards,
+      and only the last bullet comes from reading the source rather than from the device.
 - [x] **Seen after the upgrade:** the starred teams were still starred. Patrick's words: "Yes",
       asked directly whether the stars survived.
-- [x] **Also seen after the upgrade, and not an upgrade failure:** the standings conference and
+- [x] **Also seen after the upgrade:** the standings conference and
       ranking were back at their defaults (Eastern and Playoffs) rather than the non-default pair
       that had been set before the upgrade. The specific pair was not recorded at the time; what
       matters is that both came back default.
 - [ ] **Untested by this round:** the theme, the league order and the favourites-only toggle. They
       are stored by the same preferences repository as the favourites, which suggests they survive,
       but nothing was set or observed for them, so the result above speaks only for the stars.
-- [ ] **Open defect, and a publication blocker for E9:** the standings conference and ranking are
-      not persisted at all. `StandingsViewModel` holds them in its own state and starts at Eastern
+- [ ] **Source review, not this device round — open defect and a publication blocker for E9:** the
+      standings conference and ranking are not persisted at all. `StandingsViewModel` holds them in its own state and starts at Eastern
       and Playoffs on every cold start — there is no `SavedStateHandle` in the app and no
       preference key for either, while the repository already has keys for favourites, theme, league
       order and favourites-only. So this resets on every launch, upgrade or not. `CHANGELOG.md`
