@@ -182,16 +182,29 @@ perfectly in debug.
 - [x] Upgrade path: install the release APK **over the previous release signed with the same
       release key**, and confirm favourites and settings survive. This is the only in-place
       upgrade Android actually permits, and it is the one real users will perform.
-      **Done 2026-11-11** with two throwaway-key release builds from `7fcd692`, `versionCode` 1
-      reading 1.0.0 and `versionCode` 2 reading 1.0.1: the second installed over the first without
-      uninstalling. Starred teams came back set after the upgrade. The theme, league order and the
-      favourites-only toggle are stored the same way, so the same result covers them.
-      **What this did not test, and why:** the standings conference and ranking were part of the
-      original instruction and could not have survived — they are not persisted at all. They are
-      held in the ViewModel's state and default to Eastern and Playoffs on every cold start, which
-      makes them an upgrade-independent defect rather than a failed upgrade. `CHANGELOG.md` claims
-      they are "remembered between launches"; that claim is untrue of this build and needs either
-      the storage or the sentence changed.
+      **Done 2026-11-11 on the Pixel 9 (Android 16)** with two throwaway-key release builds from
+      `7fcd692` — `versionCode` 1 reading 1.0.0 and `versionCode` 2 reading 1.0.1, same signer. The
+      second installed over the first without uninstalling, and no install was refused.
+- [x] **Seen after the upgrade:** the starred teams were still starred. Patrick's words: "Yes",
+      asked directly whether the stars survived.
+- [x] **Also seen after the upgrade, and not an upgrade failure:** the standings conference and
+      ranking were back at their defaults (Eastern and Playoffs) rather than the non-default pair
+      that had been set before the upgrade. The specific pair was not recorded at the time; what
+      matters is that both came back default.
+- [ ] **Untested by this round:** the theme, the league order and the favourites-only toggle. They
+      are stored by the same preferences repository as the favourites, which suggests they survive,
+      but nothing was set or observed for them, so the result above speaks only for the stars.
+- [ ] **Open defect, and a publication blocker for E9:** the standings conference and ranking are
+      not persisted at all. `StandingsViewModel` holds them in its own state and starts at Eastern
+      and Playoffs on every cold start — there is no `SavedStateHandle` in the app and no
+      preference key for either, while the repository already has keys for favourites, theme, league
+      order and favourites-only. So this resets on every launch, upgrade or not. `CHANGELOG.md`
+      says those two choices "are remembered between launches", which is untrue of this build.
+      The fix belongs in the preferences path and the ViewModel's read and write of those two
+      values; alternatively the changelog sentence comes out. Either way it has to be settled
+      before E9 publishes a release, because the release notes would otherwise ship a false claim.
+- [ ] Record the exact non-default pair chosen on the next upgrade round, so a repeat is a
+      comparison rather than a re-derivation.
 - [ ] Do not expect the release APK to install over a debug build. Android refuses to replace
       an app whose signing certificate differs, and a debug build is signed with the build
       host's debug key. An install failure there is a signature mismatch, not data loss —
