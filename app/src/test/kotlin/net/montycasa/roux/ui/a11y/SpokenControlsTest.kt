@@ -30,8 +30,12 @@ import org.robolectric.annotation.Config
  *
  * TalkBack was never run against this app and nobody here can run it, so nothing in this file claims a phrase
  * sounds right or that the reading order is pleasant. What it claims is narrower and checkable: every control
- * Compose exposes with a click action on the scores and teams screens carries some words, and every composed game
- * row exposes one description naming both clubs, both scores and the state.
+ * Compose exposes with a click action on the scores and teams screens carries some words, and every game row the
+ * lazy list has composed exposes one description naming its own clubs, each club's goals and the state.
+ *
+ * It does not claim a row is read as one utterance. The row's description sits on the card while the rail's own
+ * nodes stay separate, which is deliberate - the layout and reach audits measure them - so a reader may still meet
+ * those nodes individually.
  *
  * Both are properties of the semantics tree, and both are bounded by what that tree shows. A control with no click
  * action is not inspected. A control that speaks through some other semantics property than text or description
@@ -41,6 +45,10 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = ScoresIntegrationApp::class, qualifiers = "w411dp-h923dp-420dpi")
 class SpokenControlsTest {
+    private companion object {
+        const val ROW_TAG_PREFIX = "scores.game."
+    }
+
     @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
 
@@ -96,46 +104,57 @@ class SpokenControlsTest {
      * captured slate is larger than one screen, so this checks the rows that are on it.
      */
     @Test
-    fun everyComposedGameRowReadsItsOwnGame() {
+    fun everyComposedGameRowDescribesItsOwnGame() {
         composeRule.waitForFixtureScores()
 
         val stateWords =
             mapOf(
-                "OFF" to listOf("final"),
-                "LIVE" to listOf("live"),
-                "FUT" to listOf("scheduled", "pre"),
-                "PRE" to listOf("scheduled", "pre"),
+                "OFF" to "final",
+                "LIVE" to "live",
+                "FUT" to "scheduled",
+                "PRE" to "scheduled",
             )
 
-        var checked = 0
-        for (game in ScoreFixture.games) {
-            val id = game.text("id")
-            val node = composeRule.onAllNodesWithTag("scores.game.$id").fetchSemanticsNodes().singleOrNull() ?: continue
-            checked++
+        // Which rows the list composed, taken from the tree rather than assumed: a row the fixture has but the list
+        // has not composed is skipped, and a row composed twice is a defect in its own right.
+        val composed =
+            composeRule
+                .onAllNodes(
+                    SemanticsMatcher("a scores row") { node ->
+                        node.config.getOrNull(SemanticsProperties.TestTag)?.startsWith(ROW_TAG_PREFIX) == true
+                    },
+                ).fetchSemanticsNodes()
+                .mapNotNull { it.config.getOrNull(SemanticsProperties.TestTag)?.removePrefix(ROW_TAG_PREFIX) }
+        assertEquals("a row must not be composed twice: $composed", composed.distinct().size, composed.size)
+        assertTrue("the list composed no rows", composed.isNotEmpty())
+
+        val byId = ScoreFixture.games.associateBy { it.text("id") }
+        for (id in composed) {
+            val game = requireNotNull(byId[id]) { "composed a row for a game the fixture does not contain: $id" }
+            val node = composeRule.onAllNodesWithTag("$ROW_TAG_PREFIX$id").fetchSemanticsNodes().single()
 
             val descriptions = node.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty()
             assertEquals("row $id must expose exactly one description, found $descriptions", 1, descriptions.size)
             val sentence = descriptions.single()
-            val lower = sentence.lowercase()
 
             val away = game.objectAt("awayTeam")
             val home = game.objectAt("homeTeam")
-            val awayName = away.objectAt("name").text("default")
-            val homeName = home.objectAt("name").text("default")
-            assertTrue("row $id must name $awayName: $sentence", lower.contains(awayName.lowercase()))
-            assertTrue("row $id must name $homeName: $sentence", lower.contains(homeName.lowercase()))
-
-            val awayGoals = away.text("score")
-            val homeGoals = home.text("score")
-            assertTrue("row $id must carry the away goals ($awayName $awayGoals): $sentence", sentence.contains(awayGoals))
-            assertTrue("row $id must carry the home goals ($homeName $homeGoals): $sentence", sentence.contains(homeGoals))
+            for ((side, team) in listOf("away" to away, "home" to home)) {
+                val name = team.objectAt("name").text("default")
+                val goals = team.text("score")
+                // The goals have to sit with the club that scored them, not merely appear in the sentence.
+                val bound = Regex("""${Regex.escape(name)}\W{0,4}${Regex.escape(goals)}""", RegexOption.IGNORE_CASE)
+                assertTrue("row $id must say $side $name scored $goals: $sentence", bound.containsMatchIn(sentence))
+            }
 
             val state = game.text("gameState")
-            val words = stateWords[state] ?: listOf(state.lowercase())
-            assertTrue("row $id must say its state ($state): $sentence", words.any { lower.contains(it) })
+            val word = stateWords[state] ?: state.lowercase()
+            assertTrue(
+                "row $id must say its state ($state): $sentence",
+                Regex("""\b${Regex.escape(word)}\b""", RegexOption.IGNORE_CASE).containsMatchIn(sentence),
+            )
         }
 
-        assertTrue("no game row was composed, so nothing was checked", checked > 0)
         assertEveryControlSpeaks("scores rows")
     }
 }
