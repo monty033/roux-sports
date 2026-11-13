@@ -2,6 +2,7 @@ package net.montycasa.roux.domain.repo
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import net.montycasa.roux.domain.model.AccentColor
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.ThemeMode
 import kotlin.time.Instant
@@ -83,6 +84,15 @@ interface PreferencesRepository {
 
     /** Saved theme as it changes, starting with the current value. */
     fun observeThemeMode(): Flow<ThemeMode> = flow { emit(getThemeMode()) }
+
+    /** Saved accent colour; defaults to Orange when unset. */
+    suspend fun getAccentColor(): AccentColor
+
+    /** Save an accent colour in the shared preferences store. */
+    suspend fun setAccentColor(color: AccentColor)
+
+    /** Saved accent as it changes, starting with the current value. */
+    fun observeAccentColor(): Flow<AccentColor> = flow { emit(getAccentColor()) }
 
     /** Read the saved favourite teams; an empty set means none are selected. */
     suspend fun getFavourites(): Set<TeamKey>

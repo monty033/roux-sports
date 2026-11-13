@@ -7,6 +7,16 @@
     <string name="theme_system">System</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
+    <string name="settings_accent">Accent</string>
+    <string name="accent_orange">Orange</string>
+    <string name="accent_blue">Blue</string>
+    <string name="accent_teal">Teal</string>
+    <string name="accent_green">Green</string>
+    <string name="accent_purple">Purple</string>
+    <string name="accent_red">Red</string>
+    <string name="accent_gold">Gold</string>
+    <string name="accent_pink">Pink</string>
+    <string name="accent_cyan">Cyan</string>
     <string name="settings_back">Back</string>
     <string name="settings_about">About</string>
     <string name="settings_about_version">Roux Sports %1$s</string>

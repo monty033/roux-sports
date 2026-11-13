@@ -20,18 +20,20 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.TextUnitType
+import net.montycasa.roux.domain.model.AccentColor
 import net.montycasa.roux.ui.drawer.DrawerPalette
 import net.montycasa.roux.ui.drawer.LeaguesPanel
-import net.montycasa.roux.ui.teams.SHEET_ACCENT
 import net.montycasa.roux.ui.teams.SHEET_INK
 import net.montycasa.roux.ui.teams.SHEET_MUTED
 import net.montycasa.roux.ui.teams.SHEET_OFF_FILL
 import net.montycasa.roux.ui.teams.SHEET_PANEL
-import net.montycasa.roux.ui.theme.RouxDarkAccents
-import net.montycasa.roux.ui.theme.RouxDarkColors
-import net.montycasa.roux.ui.theme.RouxLightAccents
-import net.montycasa.roux.ui.theme.RouxLightColors
+import net.montycasa.roux.ui.theme.RouxDarkCard
+import net.montycasa.roux.ui.theme.RouxDarkPage
+import net.montycasa.roux.ui.theme.RouxLightCard
+import net.montycasa.roux.ui.theme.RouxLightPage
 import net.montycasa.roux.ui.theme.RouxTheme
+import net.montycasa.roux.ui.theme.rouxAccents
+import net.montycasa.roux.ui.theme.rouxColorScheme
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -47,10 +49,10 @@ import org.robolectric.annotation.GraphicsMode
  * text node. Two things are proven, and they are proven separately:
  *
  *  1. CONTRAST. [palettePairs], [alertsSheetPairs] and [drawerPairs] enumerate the (ink, surface) pairs the UI
- *     paints text with, and assert the WCAG 2.x ratio is >= 4.5:1. They read the real constants (SHEET_INK,
- *     DrawerPalette, ...), not copies, so a change in the source is seen here. It proves the PALETTE PAIRS are
- *     compliant. It does NOT prove each rendered node uses one of these pairs. A NEW text colour or a NEW surface
- *     is not covered until its pair is added to one of these functions.
+ *     paints text with, for every [AccentColor], and assert the WCAG 2.x ratio is >= 4.5:1. They read the real
+ *     constants (SHEET_INK, DrawerPalette, the accent table, ...), not copies, so a change in the source is seen
+ *     here. It proves the PALETTE PAIRS are compliant. It does NOT prove each rendered node uses one of these
+ *     pairs. A NEW text colour or a NEW surface is not covered until its pair is added to one of these functions.
  *
  *  2. TYPE SIZE. Every rendered text node in every case is walked from the unmerged semantics tree, and its
  *     resolved `TextLayoutResult.layoutInput.style.fontSize` (in sp, independent of font scale) is read. This
@@ -62,7 +64,8 @@ import org.robolectric.annotation.GraphicsMode
  * [auditCases]. Text inside those is not checked by this file.
  *
  * The drawer and the alerts sheet use fixed colours that do not change with the theme, so their pairs are checked
- * once and reported in the table with a theme label of "drawer" or "fixed".
+ * once and reported in the table with a theme label of "drawer" or "fixed". The one exception is the accent, which
+ * both read from the selected [AccentColor]'s fill; that fill is the same in both themes.
  *
  * WCAG maths is computed here from the sRGB channels, not from Compose's `Color.luminance()`.
  */
@@ -118,13 +121,16 @@ class ContrastAndTypeTest {
     }
 
     /**
-     * Every (ink, surface) pair the UI paints text with, for one theme. Built from the same role names the screens
-     * use, so a new role on a surface has to be added here by name to be covered.
+     * Every (ink, surface) pair the UI paints text with, for one theme and one accent. Built from the same role names
+     * the screens use, so a new role on a surface has to be added here by name to be covered.
      */
-    private fun palettePairs(dark: Boolean): List<TextPair> {
-        val scheme = if (dark) RouxDarkColors else RouxLightColors
-        val accents = if (dark) RouxDarkAccents else RouxLightAccents
-        val tag = if (dark) "dark" else "light"
+    private fun palettePairs(
+        dark: Boolean,
+        accent: AccentColor,
+    ): List<TextPair> {
+        val scheme = rouxColorScheme(dark, accent)
+        val accents = rouxAccents(dark, accent)
+        val tag = (if (dark) "dark" else "light") + " $accent"
         val page = scheme.surface
         val card = scheme.surfaceVariant
         val inks =
@@ -148,34 +154,38 @@ class ContrastAndTypeTest {
 
     /**
      * The alerts sheet paints every text node with an explicit colour on a fixed dark panel, in both themes. These
-     * are the real constants, so the test reads what the sheet draws. The orange is the secondary text action.
+     * are the real constants, so the test reads what the sheet draws. The orange is the selected accent's fill, which
+     * the sheet reads from [rouxAccents]; it does not change with the theme.
      */
-    private fun alertsSheetPairs(): List<TextPair> =
-        listOf(
+    private fun alertsSheetPairs(accent: AccentColor): List<TextPair> {
+        val fill = rouxAccents(false, accent).fill
+        return listOf(
             TextPair("sheet title/labels/warnings SHEET_INK on SHEET_PANEL", SHEET_INK, SHEET_PANEL),
             TextPair("sheet disclosure SHEET_MUTED on SHEET_PANEL", SHEET_MUTED, SHEET_PANEL),
-            TextPair("sheet secondary action SHEET_ACCENT on SHEET_PANEL", SHEET_ACCENT, SHEET_PANEL),
+            TextPair("sheet secondary action $accent fill on SHEET_PANEL", fill, SHEET_PANEL),
             // The chosen reminder time: near-black on the accent fill. White on that orange is 3.3:1 and was not used.
-            TextPair("sheet chosen reminder time SHEET_PANEL on SHEET_ACCENT", SHEET_PANEL, SHEET_ACCENT),
+            TextPair("sheet chosen reminder time SHEET_PANEL on $accent fill", SHEET_PANEL, fill),
             // The default answer, Off: ink on the raised neutral. Deliberately not the accent, which means "on" here.
             TextPair("sheet chosen Off SHEET_INK on SHEET_OFF_FILL", SHEET_INK, SHEET_OFF_FILL),
         )
+    }
 
     /**
-     * The league drawer paints every colour from [DrawerPalette], not from the scheme, so these pairs do not depend
-     * on the theme. Each pair is one the drawer's rows and labels actually produce.
+     * The league drawer paints its colours from [DrawerPalette], except the accent, which is the selected accent's
+     * fill. None of them depend on the theme. Each pair is one the drawer's rows and labels actually produce.
      */
-    private fun drawerPairs(): List<TextPair> {
+    private fun drawerPairs(accent: AccentColor): List<TextPair> {
         val d = DrawerPalette
+        val orange = rouxAccents(false, accent).fill
         // Each row is a pairing LeagueDrawer.DrawerRow / LeaguesPanel actually makes. Muted never sits on the selected
         // row (a selected row trails in orange) and unselected names never sit on the team row, so those are omitted.
         return listOf(
             TextPair("drawer ink on team row (My Teams name)", d.ink, d.teamRow),
             TextPair("drawer unselected name on panel", d.unselected, d.panel),
             TextPair("drawer selected name on selected row", d.selectedName, d.selectedRow),
-            TextPair("drawer orange on panel (edit, selected trailing off-row)", d.orange, d.panel),
-            TextPair("drawer orange on selected row (selected trailing)", d.orange, d.selectedRow),
-            TextPair("drawer orange on team row (selected trailing)", d.orange, d.teamRow),
+            TextPair("drawer $accent on panel (edit, selected trailing off-row)", orange, d.panel),
+            TextPair("drawer $accent on selected row (selected trailing)", orange, d.selectedRow),
+            TextPair("drawer $accent on team row (selected trailing)", orange, d.teamRow),
             TextPair("drawer muted on panel (labels, footer, trailing)", d.muted, d.panel),
             TextPair("drawer muted on team row (trailing, unselected)", d.muted, d.teamRow),
             TextPair("drawer season on panel", d.season, d.panel),
@@ -184,14 +194,25 @@ class ContrastAndTypeTest {
         )
     }
 
+    /** Every accent in both themes. */
     private val palette: List<Pair<String, TextPair>> =
-        listOf(false, true).flatMap { dark -> palettePairs(dark).map { (if (dark) "dark" else "light") to it } }
+        AccentColor.entries.flatMap { accent ->
+            listOf(false, true).flatMap { dark ->
+                palettePairs(dark, accent).map { (if (dark) "dark" else "light") to it }
+            }
+        }
+
+    /** The drawer and sheet pairs for every accent. */
+    private val fixedPairs: List<Pair<String, TextPair>> =
+        AccentColor.entries.flatMap { accent ->
+            drawerPairs(accent).map { "drawer" to it } + alertsSheetPairs(accent).map { "fixed" to it }
+        }
 
     @Test
     fun everyPaintedTextPairMeetsContrastInBothThemes() {
         val report = StringBuilder()
         val failures = mutableListOf<String>()
-        for ((theme, pair) in palette + drawerPairs().map { "drawer" to it } + alertsSheetPairs().map { "fixed" to it }) {
+        for ((theme, pair) in palette + fixedPairs) {
             val ratio = wcagRatio(pair.ink, pair.surface)
             report.append("%-8s %-40s %6.2f:1\n".format(theme, pair.what, ratio))
             if (ratio < minContrast) {
@@ -201,6 +222,50 @@ class ContrastAndTypeTest {
         println("CONTRAST REPORT\n$report")
         if (failures.isNotEmpty()) {
             throw AssertionError("${failures.size} text pair(s) below $minContrast:1:\n" + failures.joinToString("\n"))
+        }
+    }
+
+    private class RoleFloor(
+        val what: String,
+        val a: Color,
+        val b: Color,
+        val floor: Double,
+    )
+
+    /**
+     * The floors each accent was measured against in the design, by role. The 4.5:1 loop above covers text; these
+     * cover the parts that are not text: the live fill and its ink, the light signature, the light rule, and the
+     * 6 dp stripe. A fill that drops below one of these fails here by name.
+     */
+    @Test
+    fun everyAccentRoleMeetsItsMeasuredFloor() {
+        val failures = mutableListOf<String>()
+        for (accent in AccentColor.entries) {
+            val light = rouxAccents(dark = false, accent = accent)
+            val dark = rouxAccents(dark = true, accent = accent)
+            val floors =
+                listOf(
+                    RoleFloor("$accent fill vs onFill", light.fill, light.onFill, 4.5),
+                    RoleFloor("$accent dark fill vs dark page", dark.fill, RouxDarkPage, 4.5),
+                    RoleFloor("$accent dark fill vs dark card", dark.fill, RouxDarkCard, 4.5),
+                    RoleFloor("$accent dark fill vs drawer team row", dark.fill, DrawerPalette.teamRow, 4.5),
+                    RoleFloor("$accent dark fill vs drawer selected row", dark.fill, DrawerPalette.selectedRow, 4.5),
+                    RoleFloor("$accent dark fill vs sheet panel", dark.fill, SHEET_PANEL, 4.5),
+                    RoleFloor("$accent light signature vs light page", light.signature, RouxLightPage, 4.55),
+                    RoleFloor("$accent light signature vs white card", light.signature, RouxLightCard, 4.55),
+                    RoleFloor("$accent light stroke vs light page", light.stroke, RouxLightPage, 3.05),
+                    RoleFloor("$accent light stroke vs white card", light.stroke, RouxLightCard, 3.05),
+                    RoleFloor("$accent light fill vs white (6 dp stripe)", light.fill, Color.White, 3.0),
+                )
+            for (floor in floors) {
+                val ratio = wcagRatio(floor.a, floor.b)
+                if (ratio < floor.floor) {
+                    failures += "${floor.what}: ${"%.2f".format(ratio)}:1 < ${floor.floor}:1"
+                }
+            }
+        }
+        if (failures.isNotEmpty()) {
+            throw AssertionError("${failures.size} accent role(s) below their floor:\n" + failures.joinToString("\n"))
         }
     }
 
