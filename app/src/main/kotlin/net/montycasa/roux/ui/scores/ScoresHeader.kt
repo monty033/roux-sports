@@ -43,7 +43,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import net.montycasa.roux.R
+import net.montycasa.roux.ui.common.LeagueCrest
+import net.montycasa.roux.ui.common.leagueCrestUrl
 import net.montycasa.roux.ui.reach.reachTarget
+import net.montycasa.roux.ui.theme.LocalRouxDark
 import net.montycasa.roux.ui.theme.Roux
 
 @Composable
@@ -52,6 +55,8 @@ fun ScoresHeader(
     modifier: Modifier = Modifier,
     // The league or My Teams the user is in, beside the wordmark. Null leaves the chip out.
     leagueLabel: String? = null,
+    // The league whose crest the chip carries. Null, or a league with no crest, draws the label alone.
+    leagueId: String? = null,
     // Opens the leagues sheet. The caller decides whether a tap also closes it when the sheet is already open.
     onLeagueClick: () -> Unit = {},
     // Injected so a test can hold the status bar's height still: the phone's own inset is not something a JVM test can
@@ -94,12 +99,23 @@ fun ScoresHeader(
                     .testTag("scores.leagueChip"),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(
+                // A league with no crest of its own keeps the plain pill: without this the padding would
+                // still indent for artwork that is not there.
+                val crestId = leagueId?.takeIf { leagueCrestUrl(it, dark = LocalRouxDark.current) != null }
+                Row(
                     Modifier
                         .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
                         .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                        .padding(
+                            start = if (crestId != null) 8.dp else 12.dp,
+                            end = 12.dp,
+                            top = 6.dp,
+                            bottom = 6.dp,
+                        ),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    if (crestId != null) LeagueCrest(crestId, LEAGUE_CREST_SIZE)
                     Text(
                         leagueLabel,
                         color = MaterialTheme.colorScheme.onSurface,
@@ -138,6 +154,9 @@ fun ScoresHeader(
         }
     }
 }
+
+/** The crest inside the chip: smaller than the drawer's, because the pill is 28 dp tall. */
+private val LEAGUE_CREST_SIZE = 16.dp
 
 private val menuIcon =
     ImageVector

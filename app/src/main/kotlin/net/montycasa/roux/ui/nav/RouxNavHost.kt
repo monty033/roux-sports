@@ -111,6 +111,7 @@ import net.montycasa.roux.ui.drawer.BottomLeaguesSheet
 import net.montycasa.roux.ui.drawer.LeaguesPanel
 import net.montycasa.roux.ui.drawer.LeaguesSheetState
 import net.montycasa.roux.ui.drawer.leagueChipLabel
+import net.montycasa.roux.ui.drawer.leagueCrestId
 import net.montycasa.roux.ui.drawer.rememberLeaguesSheetSettler
 import net.montycasa.roux.ui.player.PlayerDetailScreen
 import net.montycasa.roux.ui.player.PlayerDetailViewModel
@@ -241,6 +242,7 @@ fun RouxNavHost(
                             liveCount = scoresState.liveCount,
                             modifier = Modifier.fillMaxWidth(),
                             leagueLabel = leagueChipLabel(drawerUi, stringResource(R.string.league_chip_my_teams)),
+                            leagueId = leagueCrestId(drawerUi),
                             onLeagueClick = toggleLeagues,
                         )
                     }

@@ -33,6 +33,14 @@ val LocalRouxAccents = staticCompositionLocalOf { RouxLightAccents }
 
 val LocalRouxCardTypography = staticCompositionLocalOf { RouxCardTypography }
 
+/**
+ * Whether the app is drawing dark, as the app decided it - not as the system did.
+ *
+ * Artwork with a light and a dark variant has to follow the theme the user is actually looking at,
+ * and a forced dark setting never touches [isSystemInDarkTheme].
+ */
+val LocalRouxDark = staticCompositionLocalOf { false }
+
 /** Read the accents without reaching for `MaterialTheme.colorScheme.primary` and getting lucky. */
 object Roux {
     val cardTypography: GameCardTypography
@@ -70,6 +78,7 @@ fun RouxTheme(
     CompositionLocalProvider(
         LocalRouxAccents provides rouxAccents(dark, accent),
         LocalRouxCardTypography provides RouxCardTypography,
+        LocalRouxDark provides dark,
     ) {
         MaterialTheme(colorScheme = rouxColorScheme(dark, accent), typography = RouxTypography, content = content)
     }
