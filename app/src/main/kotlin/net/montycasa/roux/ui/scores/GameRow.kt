@@ -289,11 +289,15 @@ private fun TeamLine(
         Box(Modifier.width(metrics.crestSize).height(28.dp), contentAlignment = Alignment.Center) {
             TeamLogo(team, metrics.crestSize)
         }
-        val clubName = team.name?.takeIf { it.isNotBlank() }
         // A name cut to "Bos…" does not tell Boston from Boston College, and the wider rail can leave
         // exactly that much room at large type. The abbreviation is short, true and unambiguous, so it
         // takes over the moment the name would have to be cut.
-        var nameWasCut by remember(clubName, metrics.clubSize) { mutableStateOf(false) }
+        val clubName = team.name?.takeIf { it.isNotBlank() }
+        // The latch has to reopen when the card gets a wider window (rotation, a resized desktop
+        // window), or the abbreviation would outlive the reason for it. The column's own width is
+        // not observable here without a subcomposing layout, which the card's intrinsic measurement
+        // forbids, so the window width stands in for it: the column moves with the card.
+        var nameWasCut by remember(clubName, metrics.clubSize, windowWidth()) { mutableStateOf(false) }
         Text(
             text = if (clubName == null || nameWasCut) team.abbrev else clubName,
             modifier = Modifier.weight(1f).testTag(CLUB_NAME_TAG),
@@ -301,8 +305,8 @@ private fun TeamLine(
             color = ink,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            // Latched: the abbreviation fits, so re-measuring would report no overflow and flip the
-            // label back to the cut name, forever. Once cut, it stays cut for this width.
+            // Latched within one window width: the abbreviation fits, so re-measuring would report
+            // no overflow and flip the label back to the cut name, forever.
             onTextLayout = { layout -> if (clubName != null && layout.hasVisualOverflow) nameWasCut = true },
         )
         // A reserved slot keeps names aligned, even when no score is known. Grow with large type.

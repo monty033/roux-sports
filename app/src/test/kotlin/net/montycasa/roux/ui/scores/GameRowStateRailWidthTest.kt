@@ -325,6 +325,21 @@ class GameRowStateRailWidthTest {
         )
     }
 
+    /**
+     * The fallback must not outlive the reason for it. A wider window gives the card room for the
+     * name again, and the abbreviation would then be a lie about the space available.
+     */
+    @Test
+    @Config(qualifiers = "en-rUS-w720dp-h780dp-mdpi")
+    fun theNameComesBackInAWiderWindow() {
+        launch(cards = listOf(game("final-ot", GameState.Final, FinalKind.OT)), fontScale = 2f)
+        assertEquals(
+            "a wide window at 2x should show the names again",
+            listOf("Boston Bruins", "Toronto Maple Leafs"),
+            clubLabels(),
+        )
+    }
+
     private fun clubLabels(): List<String> =
         rule
             .onAllNodesWithTag(CLUB_NAME_TAG, useUnmergedTree = true)
