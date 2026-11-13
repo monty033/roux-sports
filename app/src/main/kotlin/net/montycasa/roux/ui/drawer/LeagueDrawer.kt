@@ -62,6 +62,7 @@ import net.montycasa.roux.domain.policy.LeagueOrder
 import net.montycasa.roux.ui.common.LeagueCrest
 import net.montycasa.roux.ui.reach.reachTarget
 import net.montycasa.roux.ui.scores.DrawerUi
+import net.montycasa.roux.ui.scores.MY_TEAMS_LEAGUE
 import net.montycasa.roux.ui.theme.Roux
 import java.time.LocalDate
 import java.time.format.DateTimeParseException
@@ -406,13 +407,17 @@ fun leagueChipLabel(
 /** The crest beside a league's name: the same height as the row's text block, not the whole row. */
 private val LEAGUE_CREST_SIZE = 20.dp
 
+/** The league the app carries today. A filter over "the leagues" is a filter over this one. */
+private const val CARRIED_LEAGUE_ID = "nhl"
+
 /**
  * The league whose crest the top bar shows.
  *
- * "My Teams" is a filter inside the league being read, not a league of its own, so it keeps the
- * league's crest - the slate behind it is still that league's games.
+ * "My Teams" is a filter inside the league being read, not a league of its own: the slate behind it is
+ * still that league's games, so it keeps the league's crest. Only the NHL is carried, so that is what
+ * the filter sits in - a second carried league would need the filter to remember which one it is in.
  */
-fun leagueCrestId(drawer: DrawerUi): String = drawer.selectedLeagueId
+fun leagueCrestId(drawer: DrawerUi): String = if (drawer.selectedLeagueId == MY_TEAMS_LEAGUE) CARRIED_LEAGUE_ID else drawer.selectedLeagueId
 
 @Composable
 private fun ReorderableLeagueRow(
