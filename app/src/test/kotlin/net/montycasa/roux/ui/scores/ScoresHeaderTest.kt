@@ -198,12 +198,14 @@ class ScoresHeaderTest {
     }
 
     @Test
-    fun theChipSitsInTheMiddleOfTheHeaderWithNoLiveGame() {
+    fun theChipDoesNotMoveWhenAGameGoesLive() {
+        // The count keeps its slot when nothing is live, so the chip stays put between the two states.
+        val live = mutableStateOf(0)
         rule.setContent {
             RouxTheme {
                 Box(Modifier.width(360.dp)) {
                     ScoresHeader(
-                        liveCount = 0,
+                        liveCount = live.value,
                         modifier = Modifier.fillMaxWidth(),
                         leagueLabel = "My Teams",
                         leagueId = "nhl",
@@ -213,38 +215,24 @@ class ScoresHeaderTest {
             }
         }
 
-        val header = rule.onNodeWithTag("scores.header").getUnclippedBoundsInRoot()
-        val chip = rule.onNodeWithTag("scores.leagueChip", useUnmergedTree = true).getUnclippedBoundsInRoot()
-        val off = kotlin.math.abs((chip.left.value + chip.right.value) / 2 - (header.left.value + header.right.value) / 2)
-        assert(off <= 1.5f) { "the chip sits $off dp off the header's centre" }
-    }
-
-    @Test
-    fun theChipSitsInTheMiddleOfTheHeaderWhileAGameIsLive() {
-        rule.setContent {
-            RouxTheme {
-                Box(Modifier.width(360.dp)) {
-                    ScoresHeader(
-                        liveCount = 3,
-                        modifier = Modifier.fillMaxWidth(),
-                        leagueLabel = "My Teams",
-                        leagueId = "nhl",
-                        statusInset = WindowInsets(0, 0, 0, 0),
-                    )
-                }
-            }
+        fun centre(): Float {
+            val chip = rule.onNodeWithTag("scores.leagueChip", useUnmergedTree = true).getUnclippedBoundsInRoot()
+            return (chip.left.value + chip.right.value) / 2
         }
 
-        val header = rule.onNodeWithTag("scores.header").getUnclippedBoundsInRoot()
-        val chip = rule.onNodeWithTag("scores.leagueChip", useUnmergedTree = true).getUnclippedBoundsInRoot()
-        val off = kotlin.math.abs((chip.left.value + chip.right.value) / 2 - (header.left.value + header.right.value) / 2)
-        assert(off <= 1.5f) { "the chip sits $off dp off the header's centre" }
+        val quiet = centre()
+        live.value = 3
+        rule.waitForIdle()
+        val counted = centre()
+        assert(kotlin.math.abs(quiet - counted) <= 1.5f) {
+            "the chip moved from $quiet to $counted when a game went live"
+        }
     }
 
     @Test
-    fun atLargeTypeTheChipLeavesTheLivePillItsWholeWidth() {
-        // 320 dp is the narrowest phone in scope and 2x the largest type: the chip may squeeze its own label, but
-        // the count still has to be readable in full.
+    fun atLargeTypeNothingIsSqueezedOutOfTheHeader() {
+        // 320 dp is the narrowest phone in scope and 2x the largest type: the chip may shorten its own label, but
+        // it must not take the count's room, and it must not be left with no readable label at all.
         rule.setContent {
             RouxTheme {
                 CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = 2f)) {
@@ -252,7 +240,7 @@ class ScoresHeaderTest {
                         ScoresHeader(
                             liveCount = 3,
                             modifier = Modifier.fillMaxWidth(),
-                            leagueLabel = "My Teams",
+                            leagueLabel = "NHL",
                             leagueId = "nhl",
                             statusInset = WindowInsets(0, 0, 0, 0),
                         )
@@ -269,6 +257,8 @@ class ScoresHeaderTest {
         assert(chip.left >= wordmark.right) { "the chip starts at ${chip.left}; the wordmark ends at ${wordmark.right}" }
         val pillWidth = pill.right.value - pill.left.value
         assert(pillWidth >= 72f) { "the live pill was squeezed to $pillWidth dp" }
+        val labelWidth = chip.right.value - chip.left.value - 58f
+        assert(labelWidth >= 24f) { "the chip left only $labelWidth dp for the league's name" }
     }
 
     @Test

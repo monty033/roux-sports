@@ -66,7 +66,7 @@ fun ScoresHeader(
     // see, and this header sitting under the clock is a bug that has now come back twice because nothing asserted it.
     statusInset: WindowInsets = WindowInsets.statusBars,
 ) {
-    BoxWithConstraints(
+    Row(
         modifier
             .background(MaterialTheme.colorScheme.background)
             // The app draws behind the system bars, so the header has to step down over the status bar itself.
@@ -75,23 +75,23 @@ fun ScoresHeader(
             .heightIn(min = 64.dp)
             .testTag("scores.header")
             .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Read once, at the top: half the header, less the wordmark's side and the pill's side at their widest.
-        val chipMaxWidth = (maxWidth / 2 - 84.dp).coerceIn(48.dp, 140.dp)
-        // The brand and the count hold the edges. matchParentSize keeps this row the height of the header, so its
-        // contents stay vertically centred no matter what the other children measure.
-        Row(
-            Modifier.matchParentSize(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Image(
-                painterResource(R.drawable.wordmark_orange),
-                contentDescription = stringResource(R.string.app_name),
-                // The authority's .brandmark is 1.25rem (20 dp), including transparent pixels.
-                modifier = Modifier.height(20.dp).testTag("scores.wordmark"),
-                contentScale = ContentScale.Fit,
-            )
-            Spacer(Modifier.weight(1f))
+        Image(
+            painterResource(R.drawable.wordmark_orange),
+            contentDescription = stringResource(R.string.app_name),
+            // The authority's .brandmark is 1.25rem (20 dp), including transparent pixels.
+            modifier = Modifier.height(20.dp).testTag("scores.wordmark"),
+            contentScale = ContentScale.Fit,
+        )
+        // Equal weights place the chip at the midpoint of the space between the brand and the count, and a row
+        // lays its children out in order, so the chip can only ever be squeezed - never drawn over either
+        // neighbour. The count keeps its slot even when nothing is live, so the chip does not slide when a game
+        // starts.
+        Spacer(Modifier.weight(1f))
+        if (leagueLabel != null) LeagueChip(leagueLabel, leagueId, onLeagueClick)
+        Spacer(Modifier.weight(1f))
+        Box(Modifier.widthIn(min = LIVE_PILL_SLOT), contentAlignment = Alignment.CenterEnd) {
             if (liveCount > 0) {
                 Row(
                     Modifier
@@ -115,17 +115,11 @@ fun ScoresHeader(
                 }
             }
         }
-        if (leagueLabel != null) {
-            // Centred in the header itself, not in the space left by the pill: the chip names the slate, so it does
-            // not move when a game goes live. What keeps it off its neighbours is a width cap derived from the header
-            // itself, because the pill grows with the type scale and a fixed cap cannot know that: half the header,
-            // less the wordmark's side and the pill's side at their widest.
-            Box(Modifier.align(Alignment.Center)) {
-                LeagueChip(leagueLabel, leagueId, onLeagueClick, maxWidth = chipMaxWidth)
-            }
-        }
     }
 }
+
+/** The room the live count gets whether or not anything is live, so the chip's place does not depend on it. */
+private val LIVE_PILL_SLOT = 72.dp
 
 /**
  * The slate the screen is showing, as a pill with the league's crest.
@@ -138,7 +132,6 @@ private fun LeagueChip(
     leagueLabel: String,
     leagueId: String?,
     onClick: () -> Unit,
-    maxWidth: Dp,
 ) {
     val description = stringResource(R.string.league_chip_description, leagueLabel)
     val crestId = leagueId?.takeIf { leagueCrestUrl(it, dark = LocalRouxDark.current) != null }
@@ -148,7 +141,7 @@ private fun LeagueChip(
             .heightIn(min = 48.dp)
             // Capped so a long label cannot take the room the live pill needs, and floored so a short label
             // still gives a 48 dp-wide target, not just a tall one.
-            .widthIn(min = 48.dp, max = maxWidth)
+            .widthIn(min = 48.dp, max = 140.dp)
             .clickable(role = Role.Button, onClick = onClick)
             .reachTarget("scores.leagueChip")
             .semantics { contentDescription = description }
