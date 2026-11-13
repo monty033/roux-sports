@@ -125,13 +125,21 @@ class StandingsIntegrationTest {
         rule.onNodeWithTag("standings.view.Eastern").performClick().assertIsSelected()
         // The strip opens on the playoff picture, which is the first ranking.
         rule.onNodeWithTag("standings.mode.Playoffs").assertIsSelected()
-        rule.onNodeWithText("NHL").assertDoesNotExist()
+        // The league name must not appear as a table heading in a conference view. The top bar's league chip
+        // does say "NHL" now, so the assertion is scoped to the table rather than the whole tree.
+        rule
+            .onNode(hasText("NHL") and hasAnyAncestor(hasTestTag("standings.list")))
+            .assertDoesNotExist()
         rule.onNodeWithTag("standings.mode.Division").performClick().assertIsSelected()
         rule.onNodeWithText("Atlantic").performScrollTo().assertIsDisplayed()
         rule.onNodeWithTag("standings.view.Western").performClick().assertIsSelected()
         rule.onNodeWithText("Central").performScrollTo().assertIsDisplayed()
         rule.onNodeWithTag("standings.view.League").performClick().assertIsSelected()
-        rule.onNodeWithText("NHL").performScrollTo().assertIsDisplayed()
+        // Scoped for the same reason: the chip also says "NHL", so this asks for the table's own heading.
+        rule
+            .onNode(hasText("NHL") and hasAnyAncestor(hasTestTag("standings.list")))
+            .performScrollTo()
+            .assertIsDisplayed()
     }
 
     private fun openStandingsFromColdStart() {

@@ -149,6 +149,8 @@ class ContrastAndTypeTest {
         pairs += TextPair("$tag onPrimary on primary", scheme.onPrimary, scheme.primary)
         pairs += TextPair("$tag Settings back action on surface", scheme.primary, scheme.surface)
         pairs += TextPair("$tag onFill on live fill", accents.onFill, accents.fill)
+        // The league chip beside the wordmark: onSurface ink on the surfaceVariant it is drawn on.
+        pairs += TextPair("$tag league chip onSurface on chip", scheme.onSurface, scheme.surfaceVariant)
         return pairs
     }
 

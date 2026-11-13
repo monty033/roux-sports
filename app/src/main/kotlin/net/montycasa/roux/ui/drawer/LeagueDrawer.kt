@@ -383,6 +383,22 @@ val drawerCatalog: List<DrawerLeague> =
         DrawerLeague("mlb", "MLB", R.string.drawer_baseball, false),
     )
 
+/**
+ * The name the top bar's chip shows: My Teams while the favourites filter is on, otherwise the selected league's label.
+ *
+ * Kept out of the header so ScoresHeader takes a plain string, and so the rule can be tested without a composition.
+ */
+fun leagueChipLabel(
+    drawer: DrawerUi,
+    myTeams: String,
+    catalog: List<DrawerLeague> = drawerCatalog,
+): String =
+    if (drawer.favouritesOnly) {
+        myTeams
+    } else {
+        catalog.firstOrNull { it.id == drawer.selectedLeagueId }?.label ?: drawer.selectedLeagueId
+    }
+
 @Composable
 private fun ReorderableLeagueRow(
     league: DrawerLeague,

@@ -110,6 +110,7 @@ import net.montycasa.roux.ui.detail.GameDetailViewModel
 import net.montycasa.roux.ui.drawer.BottomLeaguesSheet
 import net.montycasa.roux.ui.drawer.LeaguesPanel
 import net.montycasa.roux.ui.drawer.LeaguesSheetState
+import net.montycasa.roux.ui.drawer.leagueChipLabel
 import net.montycasa.roux.ui.drawer.rememberLeaguesSheetSettler
 import net.montycasa.roux.ui.player.PlayerDetailScreen
 import net.montycasa.roux.ui.player.PlayerDetailViewModel
@@ -225,6 +226,8 @@ fun RouxNavHost(
         }
         Unit
     }
+    // The menu button and the top bar's league chip both open and close the same sheet, so they share one lambda.
+    val toggleLeagues: () -> Unit = { if (sheetState.isOpen) closeLeagues() else openLeagues() }
     // Back dismisses the menu before it dismisses the screen: an open surface owns the button.
     BackHandler(enabled = sheetState.isOpen) { closeLeagues() }
     Box(modifier.fillMaxSize()) {
@@ -234,7 +237,12 @@ fun RouxNavHost(
                 modifier = Modifier.fillMaxSize(),
                 topBar = {
                     if (currentRoute == HOME_ROUTE) {
-                        ScoresHeader(scoresState.liveCount, Modifier.fillMaxWidth())
+                        ScoresHeader(
+                            liveCount = scoresState.liveCount,
+                            modifier = Modifier.fillMaxWidth(),
+                            leagueLabel = leagueChipLabel(drawerUi, stringResource(R.string.league_chip_my_teams)),
+                            onLeagueClick = toggleLeagues,
+                        )
                     }
                 },
                 bottomBar = {
@@ -295,7 +303,7 @@ fun RouxNavHost(
                                             role = Role.Button,
                                             interactionSource = remember { MutableInteractionSource() },
                                             indication = null,
-                                            onClick = { if (sheetState.isOpen) closeLeagues() else openLeagues() },
+                                            onClick = toggleLeagues,
                                         ).primaryControl("nav.menu", frequent = true)
                                         .testTag("nav.menu"),
                                 contentAlignment = Alignment.TopCenter,
