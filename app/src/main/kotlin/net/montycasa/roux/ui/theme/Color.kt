@@ -5,6 +5,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
+import net.montycasa.roux.domain.model.AccentColor
 
 /**
  * The palette, taken from the signed-off design rather than invented here.
@@ -21,6 +22,9 @@ import androidx.compose.ui.graphics.Color
  * - [RouxLightStroke] is the orange rule, one step lighter than the type colour.
  *
  * Collapsing these into a single "accent" is the mistake that produces orange small type on white.
+ *
+ * These constants are the shipped Orange. The other eight accents are measured in AccentPalette.kt and
+ * derive their roles the same way; the schemes and accents below are built from whichever is selected.
  */
 internal val RouxLightPage = Color(0xFFF2F2EF)
 internal val RouxLightCard = Color(0xFFFFFFFF)
@@ -43,9 +47,6 @@ internal val RouxDarkInkMuted = Color(0xFFA2A8B1)
 // --ink3 (muted rail labels) in final/scores-screen.html.
 internal val RouxDarkMuted = Color(0xFF878D96)
 internal val RouxDarkRule = Color(0xFF202228)
-internal val RouxDarkSignature = Color(0xFFFF4B12)
-internal val RouxDarkFill = Color(0xFFFF4B12)
-internal val RouxDarkStroke = Color(0xFFFF4B12)
 
 /**
  * Text that sits on the live fill.
@@ -77,24 +78,6 @@ data class RouxAccents(
     val muted: Color,
 )
 
-val RouxLightAccents =
-    RouxAccents(
-        fill = RouxLightFill,
-        onFill = RouxOnFill,
-        signature = RouxLightSignature,
-        stroke = RouxLightStroke,
-        muted = RouxLightMuted,
-    )
-
-val RouxDarkAccents =
-    RouxAccents(
-        fill = RouxDarkFill,
-        onFill = RouxOnFill,
-        signature = RouxDarkSignature,
-        stroke = RouxDarkStroke,
-        muted = RouxDarkMuted,
-    )
-
 /**
  * Text on the two oranges, which need different inks - this is not one value for both.
  *
@@ -105,14 +88,37 @@ val RouxDarkAccents =
 internal val RouxLightOnPrimary = Color(0xFFFFFFFF)
 internal val RouxDarkOnPrimary = Color(0xFF0B0C0E)
 
+private fun lightAccents(accent: AccentColor): RouxAccents {
+    val swatch = accent.swatch()
+    return RouxAccents(
+        fill = swatch.fill,
+        onFill = RouxOnFill,
+        signature = swatch.lightSignature,
+        stroke = swatch.lightStroke,
+        muted = RouxLightMuted,
+    )
+}
+
+/** The dark theme has one accent colour for type, rule and fill: the swatch's fill. */
+private fun darkAccents(accent: AccentColor): RouxAccents {
+    val fill = accent.swatch().fill
+    return RouxAccents(
+        fill = fill,
+        onFill = RouxOnFill,
+        signature = fill,
+        stroke = fill,
+        muted = RouxDarkMuted,
+    )
+}
+
 /**
  * Light scheme. [ColorScheme.surfaceVariant] holds the card colour, because a card is the raised
  * surface a list row sits on; the page colour stays in [ColorScheme.surface] and
  * [ColorScheme.background].
  */
-val RouxLightColors: ColorScheme =
+private fun lightScheme(accent: AccentColor): ColorScheme =
     lightColorScheme(
-        primary = RouxLightSignature,
+        primary = accent.swatch().lightSignature,
         onPrimary = RouxLightOnPrimary,
         background = RouxLightPage,
         onBackground = RouxLightInk,
@@ -125,9 +131,9 @@ val RouxLightColors: ColorScheme =
     )
 
 /** Dark scheme, same structure. `#08090B` is the brand pack's own black. */
-val RouxDarkColors: ColorScheme =
+private fun darkScheme(accent: AccentColor): ColorScheme =
     darkColorScheme(
-        primary = RouxDarkSignature,
+        primary = accent.swatch().fill,
         onPrimary = RouxDarkOnPrimary,
         background = RouxDarkPage,
         onBackground = RouxDarkInk,
@@ -138,3 +144,33 @@ val RouxDarkColors: ColorScheme =
         outline = RouxDarkRule,
         outlineVariant = RouxDarkRule,
     )
+
+// Built once per accent and read by identity, so a theme hands out the same instances every time it is applied.
+// These sit after the constants above on purpose: top-level properties initialise in source order.
+private val lightAccentSets: Map<AccentColor, RouxAccents> = AccentColor.entries.associateWith(::lightAccents)
+private val darkAccentSets: Map<AccentColor, RouxAccents> = AccentColor.entries.associateWith(::darkAccents)
+private val lightSchemes: Map<AccentColor, ColorScheme> = AccentColor.entries.associateWith(::lightScheme)
+private val darkSchemes: Map<AccentColor, ColorScheme> = AccentColor.entries.associateWith(::darkScheme)
+
+/** The accent roles for [dark] and [accent]. */
+internal fun rouxAccents(
+    dark: Boolean,
+    accent: AccentColor,
+): RouxAccents = (if (dark) darkAccentSets else lightAccentSets).getValue(accent)
+
+/** The scheme for [dark] and [accent]. */
+internal fun rouxScheme(
+    dark: Boolean,
+    accent: AccentColor,
+): ColorScheme = (if (dark) darkSchemes else lightSchemes).getValue(accent)
+
+/**
+ * The shipped Orange, for code that has no selected accent to read. A screen that does should read
+ * `Roux.accents`, which follows the selection.
+ */
+val RouxLightAccents: RouxAccents = rouxAccents(dark = false, accent = AccentColor.DEFAULT)
+val RouxDarkAccents: RouxAccents = rouxAccents(dark = true, accent = AccentColor.DEFAULT)
+
+/** The shipped Orange scheme; [rouxColorScheme] returns the selected accent's scheme instead. */
+val RouxLightColors: ColorScheme = rouxScheme(dark = false, accent = AccentColor.DEFAULT)
+val RouxDarkColors: ColorScheme = rouxScheme(dark = true, accent = AccentColor.DEFAULT)

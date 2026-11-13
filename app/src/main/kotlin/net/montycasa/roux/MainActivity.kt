@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import net.montycasa.roux.domain.model.AccentColor
 import net.montycasa.roux.domain.model.ThemeMode
 import net.montycasa.roux.notify.Notifier
 import net.montycasa.roux.ui.nav.GameRequest
@@ -34,7 +35,7 @@ class MainActivity : ComponentActivity() {
         request(intent?.getStringExtra(Notifier.EXTRA_GAME_ID))
         setContent {
             // Fixed palettes from the signed-off design; dynamic colour stays off. The theme also
-            // carries the orange roles Material has no slot for.
+            // carries the accent roles Material has no slot for, for the accent the user chose.
             //
             // No inset padding here: the shell's Scaffold owns the insets, so the navigation bar's own
             // background reaches the bottom edge instead of stopping short of it.
@@ -42,7 +43,9 @@ class MainActivity : ComponentActivity() {
             // DataStore reads asynchronously: a brief System-theme frame may precede the stored choice.
             val mode by remember(preferences) { preferences.observeThemeMode() }
                 .collectAsStateWithLifecycle(initialValue = ThemeMode.System)
-            RouxTheme(dark = resolveDark(mode, isSystemInDarkTheme())) {
+            val accent by remember(preferences) { preferences.observeAccentColor() }
+                .collectAsStateWithLifecycle(initialValue = AccentColor.DEFAULT)
+            RouxTheme(dark = resolveDark(mode, isSystemInDarkTheme()), accent = accent) {
                 RouxNavHost(
                     requestedGame = requestedGame.value,
                     // Cleared once acted on: holding it would mean the same tap, or any recomposition, navigates

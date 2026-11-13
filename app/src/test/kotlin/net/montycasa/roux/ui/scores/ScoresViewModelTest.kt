@@ -21,6 +21,7 @@ import kotlinx.datetime.TimeZone
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
+import net.montycasa.roux.domain.model.AccentColor
 import net.montycasa.roux.domain.model.DateIndexEntry
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
@@ -1322,6 +1323,10 @@ private class FakePreferencesRepository(
     override suspend fun getThemeMode() = ThemeMode.System
 
     override suspend fun setThemeMode(mode: ThemeMode) = Unit
+
+    override suspend fun getAccentColor() = AccentColor.DEFAULT
+
+    override suspend fun setAccentColor(color: AccentColor) = Unit
 
     // Backed by flows so the observing reads behave like the real store: a write reaches a collector. The plain
     // properties below keep every existing test reading naturally.

@@ -61,6 +61,7 @@ import net.montycasa.roux.R
 import net.montycasa.roux.domain.policy.LeagueOrder
 import net.montycasa.roux.ui.reach.reachTarget
 import net.montycasa.roux.ui.scores.DrawerUi
+import net.montycasa.roux.ui.theme.Roux
 import java.time.LocalDate
 import java.time.format.DateTimeParseException
 
@@ -71,6 +72,8 @@ import java.time.format.DateTimeParseException
  * Each text ink is the lowest-contrast value that still reads as its role on every surface it is drawn on, and the
  * ladder is kept in order: ink > unselected > season > dimmedName > muted > dimmedTrailing (all >= 4.5:1 where they
  * carry text).
+ *
+ * The accent is not here: the drawer reads the selected one from [Roux.accents], so it follows the user's choice.
  */
 internal object DrawerPalette {
     val panel = SHEET_PANEL
@@ -79,7 +82,6 @@ internal object DrawerPalette {
     val ink = Color(0xFFEDEEF1)
     val unselected = Color(0xFFB4B9C1)
     val selectedName = Color.White
-    val orange = Color(0xFFFF4B12)
     val season = Color(0xFF8A9099)
     val muted = Color(0xFF7D8188)
     val dimmedName = Color(0xFF80868E)
@@ -89,7 +91,6 @@ internal object DrawerPalette {
 private val panel = DrawerPalette.panel
 private val ink = DrawerPalette.ink
 private val muted = DrawerPalette.muted
-private val orange = DrawerPalette.orange
 private val rule = Color(0xFF1B1D22)
 
 /**
@@ -111,6 +112,7 @@ fun LeaguesPanel(
     catalog: List<DrawerLeague> = drawerCatalog,
     onSettings: () -> Unit = {},
 ) {
+    val accent = Roux.accents.fill
     Column(
         modifier
             .fillMaxWidth()
@@ -165,13 +167,13 @@ fun LeaguesPanel(
                 if (editing) {
                     Text(
                         stringResource(R.string.drawer_done),
-                        color = orange,
+                        color = accent,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.ExtraBold,
                         letterSpacing = 0.1.em,
                     )
                 } else {
-                    Icon(pencil, stringResource(R.string.drawer_edit_leagues), Modifier.size(20.dp), tint = orange)
+                    Icon(pencil, stringResource(R.string.drawer_edit_leagues), Modifier.size(20.dp), tint = accent)
                 }
             }
         }
@@ -283,6 +285,7 @@ private fun DrawerRow(
     handle: (@Composable () -> Unit)? = null,
     onClick: () -> Unit,
 ) {
+    val accent = Roux.accents.fill
     Row(
         modifier
             .fillMaxWidth()
@@ -334,7 +337,7 @@ private fun DrawerRow(
             color =
                 when {
                     dimmed -> DrawerPalette.dimmedTrailing
-                    selected -> orange
+                    selected -> accent
                     else -> muted
                 },
             fontSize = 12.sp,

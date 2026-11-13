@@ -18,6 +18,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import net.montycasa.roux.domain.model.AccentColor
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.ThemeMode
 import net.montycasa.roux.domain.policy.LeagueOrder
@@ -73,6 +74,21 @@ class DataStorePreferencesRepository(
         store.edit { preferences ->
             preferences[VERSION] = PREFERENCES_VERSION
             preferences[THEME_MODE] = mode.name
+        }
+    }
+
+    private fun accentColor(preferences: Preferences?): AccentColor =
+        AccentColor.entries.firstOrNull { it.name == preferences?.get(ACCENT_COLOR) } ?: AccentColor.DEFAULT
+
+    override suspend fun getAccentColor(): AccentColor = accentColor(readablePreferences())
+
+    override fun observeAccentColor(): Flow<AccentColor> = readablePreferencesFlow().map { accentColor(it) }
+
+    override suspend fun setAccentColor(color: AccentColor) {
+        requireWritable()
+        store.edit { preferences ->
+            preferences[VERSION] = PREFERENCES_VERSION
+            preferences[ACCENT_COLOR] = color.name
         }
     }
 
@@ -522,6 +538,7 @@ class DataStorePreferencesRepository(
         val VERSION = intPreferencesKey("prefs_version")
         val FAVOURITES = stringSetPreferencesKey("favourites_abbreviations")
         val THEME_MODE = stringPreferencesKey("theme_mode")
+        val ACCENT_COLOR = stringPreferencesKey("accent_color")
         val LEAGUE_ORDER = stringPreferencesKey("league_order")
         val FAVOURITES_ONLY = booleanPreferencesKey("favourites_only")
     }

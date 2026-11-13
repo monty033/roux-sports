@@ -91,6 +91,7 @@ import kotlinx.coroutines.launch
 import net.montycasa.roux.AppContainer
 import net.montycasa.roux.R
 import net.montycasa.roux.RouxApp
+import net.montycasa.roux.domain.model.AccentColor
 import net.montycasa.roux.domain.model.ClubGame
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
@@ -375,10 +376,14 @@ fun RouxNavHost(
                     composable("settings") {
                         val mode by remember(container.preferences) { container.preferences.observeThemeMode() }
                             .collectAsStateWithLifecycle(initialValue = ThemeMode.System)
+                        val accent by remember(container.preferences) { container.preferences.observeAccentColor() }
+                            .collectAsStateWithLifecycle(initialValue = AccentColor.DEFAULT)
                         net.montycasa.roux.ui.settings.SettingsScreen(
                             mode = mode,
                             onMode = { mode -> scope.launch { container.preferences.setThemeMode(mode) } },
                             onBack = { navController.popBackStack() },
+                            accent = accent,
+                            onAccent = { choice -> scope.launch { container.preferences.setAccentColor(choice) } },
                         )
                     }
                     composable(HOME_ROUTE) {

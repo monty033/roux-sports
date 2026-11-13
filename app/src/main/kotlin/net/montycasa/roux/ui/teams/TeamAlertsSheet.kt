@@ -47,6 +47,7 @@ import net.montycasa.roux.domain.repo.UpcomingLead
 import net.montycasa.roux.ui.reach.Reach
 import net.montycasa.roux.ui.reach.listRow
 import net.montycasa.roux.ui.reach.primaryControl
+import net.montycasa.roux.ui.theme.Roux
 
 /**
  * The sheet's own surface, matching the leagues menu so the two read as the same material.
@@ -62,9 +63,6 @@ internal val SHEET_INK = Color(0xFFEDEEF1)
 
 /** The explanatory disclosure and group headings on [SHEET_PANEL]: 7.11:1. */
 internal val SHEET_MUTED = Color(0xFFA2A8B1)
-
-/** The secondary (non-filled) action on [SHEET_PANEL]: 5.08:1. */
-internal val SHEET_ACCENT = Color(0xFFFF4B12)
 
 /**
  * The tallest a sheet may be, as a fraction of the window.
@@ -365,7 +363,7 @@ private fun RowScope.ReminderSegment(
     val fill =
         when {
             !selected -> Color.Transparent
-            accentWhenSelected -> SHEET_ACCENT
+            accentWhenSelected -> Roux.accents.fill
             else -> SHEET_OFF_FILL
         }
     Box(
@@ -461,7 +459,7 @@ private fun PromptBlock(
         onClick = onDismissPrompt,
         modifier = Modifier.fillMaxWidth().heightIn(min = Reach.MIN_TARGET_DP.dp).testTag("teams.alerts.prompt.later"),
         // A TextButton is drawn in primary, which is the light-theme #C93A06 (3.31:1 on this panel).
-        colors = ButtonDefaults.textButtonColors(contentColor = SHEET_ACCENT),
+        colors = ButtonDefaults.textButtonColors(contentColor = Roux.accents.fill),
     ) {
         Text(stringResource(R.string.teams_alerts_prompt_later))
     }

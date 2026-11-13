@@ -22,6 +22,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
+import net.montycasa.roux.domain.model.AccentColor
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.ThemeMode
 import net.montycasa.roux.domain.repo.NotificationLedgerEntry
@@ -70,6 +71,49 @@ class DataStorePreferencesRepositoryTest {
                 } finally {
                     closeScope(readerScope)
                 }
+            }
+        }
+
+    @Test fun accentDefaultsToOrange() =
+        runTest {
+            val scope = newScope()
+            try {
+                assertEquals(
+                    AccentColor.Orange,
+                    DataStorePreferencesRepository(newDirectory(), scope).getAccentColor(),
+                )
+            } finally {
+                closeScope(scope)
+            }
+        }
+
+    @Test fun accentColorsSurviveReopen() =
+        runTest {
+            for (accent in AccentColor.entries) {
+                val directory = newDirectory()
+                val writerScope = newScope()
+                DataStorePreferencesRepository(directory, writerScope).setAccentColor(accent)
+                closeScope(writerScope)
+                val readerScope = newScope()
+                try {
+                    assertEquals(accent, openWhenReleased(directory, readerScope).getAccentColor())
+                } finally {
+                    closeScope(readerScope)
+                }
+            }
+        }
+
+    @Test fun unknownStoredAccentReadsAsOrange() =
+        runTest {
+            val directory = newDirectory()
+            writeRawLedgerEntry(directory, gameId = "unused", version = 1, accentColor = "Magenta")
+            val scope = newScope()
+            try {
+                val repository = openWhenReleased(directory, scope)
+                assertEquals(AccentColor.Orange, repository.getAccentColor())
+                assertEquals(AccentColor.Orange, repository.observeAccentColor().first())
+            } finally {
+                closeScope(scope)
             }
         }
 
@@ -152,12 +196,14 @@ class DataStorePreferencesRepositoryTest {
         favourites: Set<String>? = null,
         favouritesOnly: Boolean? = null,
         leagueOrder: String? = null,
+        accentColor: String? = null,
     ) {
         val scope = newScope()
         try {
             openRawStore(directory, scope)
                 .edit { preferences ->
                     leagueOrder?.let { preferences[stringPreferencesKey("league_order")] = it }
+                    accentColor?.let { preferences[stringPreferencesKey("accent_color")] = it }
                     version?.let { preferences[intPreferencesKey("prefs_version")] = it }
                     favourites?.let { preferences[stringSetPreferencesKey("favourites_abbreviations")] = it }
                     favouritesOnly?.let { preferences[booleanPreferencesKey("favourites_only")] = it }

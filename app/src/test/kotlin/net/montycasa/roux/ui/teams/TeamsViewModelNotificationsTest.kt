@@ -13,6 +13,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.Loadable
+import net.montycasa.roux.domain.model.AccentColor
 import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
@@ -75,6 +76,10 @@ class TeamsViewModelNotificationsTest {
         override suspend fun getThemeMode() = ThemeMode.System
 
         override suspend fun setThemeMode(mode: ThemeMode) = Unit
+
+        override suspend fun getAccentColor() = AccentColor.DEFAULT
+
+        override suspend fun setAccentColor(color: AccentColor) = Unit
 
         val writes = CopyOnWriteArrayList<Pair<TeamKey, TeamAlertPreferences>>()
 

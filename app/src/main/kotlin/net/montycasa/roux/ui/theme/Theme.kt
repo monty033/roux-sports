@@ -15,12 +15,18 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.sp
+import net.montycasa.roux.domain.model.AccentColor
 
 /**
  * Fixed light and dark schemes. No dynamic colour, ever: this app has a brand, and a wallpaper-derived
- * palette would break the one thing the design relies on - orange meaning "live, final, or winning".
+ * palette would break the one thing the design relies on - the accent meaning "live, final, or winning".
+ *
+ * The accent is the user's choice from Settings; it changes the primary and the accent roles, and nothing else.
  */
-fun rouxColorScheme(dark: Boolean): ColorScheme = if (dark) RouxDarkColors else RouxLightColors
+fun rouxColorScheme(
+    dark: Boolean,
+    accent: AccentColor = AccentColor.DEFAULT,
+): ColorScheme = rouxScheme(dark, accent)
 
 /** The orange roles Material has no slot for, resolvable from any composable. */
 val LocalRouxAccents = staticCompositionLocalOf { RouxLightAccents }
@@ -58,13 +64,14 @@ private val RouxTypography =
 @Composable
 fun RouxTheme(
     dark: Boolean = isSystemInDarkTheme(),
+    accent: AccentColor = AccentColor.DEFAULT,
     content: @Composable () -> Unit,
 ) {
     CompositionLocalProvider(
-        LocalRouxAccents provides if (dark) RouxDarkAccents else RouxLightAccents,
+        LocalRouxAccents provides rouxAccents(dark, accent),
         LocalRouxCardTypography provides RouxCardTypography,
     ) {
-        MaterialTheme(colorScheme = rouxColorScheme(dark), typography = RouxTypography, content = content)
+        MaterialTheme(colorScheme = rouxColorScheme(dark, accent), typography = RouxTypography, content = content)
     }
 }
 

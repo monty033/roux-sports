@@ -40,6 +40,7 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import kotlinx.coroutines.launch
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.Loadable
+import net.montycasa.roux.domain.model.AccentColor
 import net.montycasa.roux.domain.model.ScoreDay
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.ThemeMode
@@ -535,6 +536,10 @@ private class DrawerPreferences(
     override suspend fun getThemeMode() = ThemeMode.System
 
     override suspend fun setThemeMode(mode: ThemeMode) = Unit
+
+    override suspend fun getAccentColor() = AccentColor.DEFAULT
+
+    override suspend fun setAccentColor(color: AccentColor) = Unit
 
     val writes = mutableListOf<List<String>>()
 

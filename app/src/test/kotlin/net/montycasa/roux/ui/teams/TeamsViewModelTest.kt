@@ -15,6 +15,7 @@ import kotlinx.coroutines.test.setMain
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
+import net.montycasa.roux.domain.model.AccentColor
 import net.montycasa.roux.domain.model.Conference
 import net.montycasa.roux.domain.model.Division
 import net.montycasa.roux.domain.model.Season
@@ -487,6 +488,10 @@ private class FakePreferences(
     override suspend fun getThemeMode() = ThemeMode.System
 
     override suspend fun setThemeMode(mode: ThemeMode) = Unit
+
+    override suspend fun getAccentColor() = AccentColor.DEFAULT
+
+    override suspend fun setAccentColor(color: AccentColor) = Unit
 
     var reads = 0
     val writes = mutableListOf<Set<TeamKey>>()
