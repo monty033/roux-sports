@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -63,7 +64,7 @@ fun ScoresHeader(
     // see, and this header sitting under the clock is a bug that has now come back twice because nothing asserted it.
     statusInset: WindowInsets = WindowInsets.statusBars,
 ) {
-    Row(
+    Box(
         modifier
             .background(MaterialTheme.colorScheme.background)
             // The app draws behind the system bars, so the header has to step down over the status bar itself.
@@ -72,27 +73,60 @@ fun ScoresHeader(
             .heightIn(min = 64.dp)
             .testTag("scores.header")
             .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(contentAlignment = Alignment.CenterStart) {
-            Image(
-                painterResource(R.drawable.wordmark_orange),
-                contentDescription = stringResource(R.string.app_name),
-                // The authority's .brandmark is 1.25rem (20 dp), including transparent pixels.
-                modifier = Modifier.height(20.dp).testTag("scores.wordmark"),
-                contentScale = ContentScale.Fit,
-            )
+        Row(
+            // Centred in the header's own height: with the chip lifted out of this row, the row is now only
+            // as tall as the wordmark and the live pill, and left at the top it would drag them up.
+            Modifier.fillMaxWidth().align(Alignment.CenterStart),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(contentAlignment = Alignment.CenterStart) {
+                Image(
+                    painterResource(R.drawable.wordmark_orange),
+                    contentDescription = stringResource(R.string.app_name),
+                    // The authority's .brandmark is 1.25rem (20 dp), including transparent pixels.
+                    modifier = Modifier.height(20.dp).testTag("scores.wordmark"),
+                    contentScale = ContentScale.Fit,
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            if (liveCount > 0) {
+                Row(
+                    Modifier
+                        .height(28.dp)
+                        .widthIn(min = 72.dp)
+                        .background(Roux.accents.fill, CircleShape)
+                        .testTag("scores.livePill")
+                        .padding(horizontal = 11.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.size(6.dp).background(Roux.accents.onFill, CircleShape))
+                    Text(
+                        stringResource(R.string.live_count, liveCount),
+                        color = Roux.accents.onFill,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 0.12.em,
+                        maxLines = 1,
+                    )
+                }
+            }
         }
         if (leagueLabel != null) {
             val description = stringResource(R.string.league_chip_description, leagueLabel)
             Row(
                 Modifier
+                    // Centred in the header rather than tucked beside the wordmark: it names the slate the
+                    // whole screen is showing, so it belongs over the middle of it. Drawn last so it stays
+                    // above the row underneath and keeps its taps.
+                    .align(Alignment.Center)
                     // The touch target is 48 dp, the height the menu button also meets; the pill inside is what is seen.
                     .heightIn(min = 48.dp)
                     // Capped so a long label cannot take the room the live pill needs on a 360 dp screen,
                     // and floored so a short label still gives a 48 dp-wide target, not just a tall one.
-                    .widthIn(min = 48.dp, max = 140.dp)
+                    .widthIn(min = 48.dp, max = 168.dp)
                     .clickable(role = Role.Button, onClick = onLeagueClick)
                     .reachTarget("scores.leagueChip")
                     .semantics { contentDescription = description }
@@ -107,15 +141,15 @@ fun ScoresHeader(
                         .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
                         .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
                         .padding(
-                            start = if (crestId != null) 8.dp else 12.dp,
-                            end = 12.dp,
-                            top = 6.dp,
-                            bottom = 6.dp,
+                            start = if (crestId != null) 6.dp else 14.dp,
+                            end = 14.dp,
+                            top = 4.dp,
+                            bottom = 4.dp,
                         ),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (crestId != null) LeagueCrest(crestId, LEAGUE_CREST_SIZE)
+                    if (crestId != null) LeagueCrest(crestId, CHIP_CREST_SIZE)
                     Text(
                         leagueLabel,
                         color = MaterialTheme.colorScheme.onSurface,
@@ -127,36 +161,11 @@ fun ScoresHeader(
                 }
             }
         }
-        // The chip sits beside the wordmark, not out at the right edge: the leftover space belongs to the
-        // spacer, so the live count keeps the right edge it has always had.
-        Spacer(Modifier.weight(1f))
-        if (liveCount > 0) {
-            Row(
-                Modifier
-                    .height(28.dp)
-                    .widthIn(min = 72.dp)
-                    .background(Roux.accents.fill, CircleShape)
-                    .testTag("scores.livePill")
-                    .padding(horizontal = 11.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(Modifier.size(6.dp).background(Roux.accents.onFill, CircleShape))
-                Text(
-                    stringResource(R.string.live_count, liveCount),
-                    color = Roux.accents.onFill,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 0.12.em,
-                    maxLines = 1,
-                )
-            }
-        }
     }
 }
 
-/** The crest inside the chip: smaller than the drawer's, because the pill is 28 dp tall. */
-private val LEAGUE_CREST_SIZE = 16.dp
+/** The crest inside the chip: the league's mark, sized to the pill rather than to a badge beside it. */
+private val CHIP_CREST_SIZE = 30.dp
 
 private val menuIcon =
     ImageVector

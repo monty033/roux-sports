@@ -404,8 +404,8 @@ fun leagueChipLabel(
         catalog.firstOrNull { it.id == drawer.selectedLeagueId }?.label ?: drawer.selectedLeagueId
     }
 
-/** The crest beside a league's name: the same height as the row's text block, not the whole row. */
-private val LEAGUE_CREST_SIZE = 20.dp
+/** The crest beside a league's name: large enough to be recognised, small enough to leave the name room. */
+private val LEAGUE_CREST_SIZE = 30.dp
 
 /** The league the app carries today. A filter over "the leagues" is a filter over this one. */
 private const val CARRIED_LEAGUE_ID = "nhl"
