@@ -1,5 +1,6 @@
 package net.montycasa.roux.ui.scores
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -80,6 +81,20 @@ class GameRowTest {
     private lateinit var originalTimeZone: TimeZone
     private lateinit var density: Density
 
+    /**
+     * The width the rail's measurement gives, for the card under test.
+     *
+     * This is NOT the width the card ought to be drawn at, and nothing here proves that number is
+     * right: it is the same function the card calls, so comparing against it only says the card
+     * draws the rail at the measured width rather than at the floor or at some width of its own.
+     * The width itself - that every card draws the same one, and that it is wide enough for the
+     * state that needs the most room - is proven in GameRowStateRailWidthTest.
+     */
+    private var measuredRailWidth = 0.dp
+
+    private val wideRailFloor = 92.dp
+    private val narrowRailFloor = 128.dp
+
     private val scheduled =
         Game(
             id = GameId("2026020001"),
@@ -121,7 +136,9 @@ class GameRowTest {
                 density = Density(LocalDensity.current.density, fontScale)
                 CompositionLocalProvider(LocalDensity provides density) {
                     BoxWithConstraints {
-                        GameRow(game, narrow = maxWidth <= 380.dp, modifier = modifier.testTag("game-row"))
+                        val narrow = maxWidth <= 380.dp
+                        measuredRailWidth = rememberStateRailWidth(if (narrow) narrowRailFloor else wideRailFloor)
+                        GameRow(game, narrow = narrow, modifier = modifier.testTag("game-row"))
                     }
                 }
             }
@@ -333,8 +350,14 @@ class GameRowTest {
     @Config(qualifiers = "en-rUS-w360dp-h780dp-mdpi")
     fun doubleFontScaleOnSmallPhoneDoesNotOverflowText() {
         launch(live, fontScale = 2f)
-        rule.onNodeWithText("Boston Bruins").assertIsDisplayed()
-        rule.onNodeWithText("Toronto Maple Leafs").assertIsDisplayed()
+        // At double type the names no longer fit the column, so the card names the clubs by
+        // abbreviation, shown whole rather than cut. Both clubs must still be named.
+        val labels =
+            rule
+                .onAllNodesWithTag(CLUB_NAME_TAG, useUnmergedTree = true)
+                .fetchSemanticsNodes()
+                .map { node -> node.config[SemanticsProperties.Text].joinToString("") { it.text } }
+        assertTrue("at 2x the card names the clubs $labels", labels.containsAll(listOf("BOS", "TOR")))
         assertTrue(rule.onNodeWithTag("game-row").getUnclippedBoundsInRoot().height > 76.dp)
         assertTextFits(expectedCount = 8)
     }
@@ -402,8 +425,20 @@ class GameRowTest {
         return layouts.single()
     }
 
+    /**
+     * A wiring assertion: the card draws its rail at the width the measurement gives.
+     *
+     * It says nothing about whether that width is the right one - the number comes from the same
+     * function the card calls. What it does catch is a card that draws its rail at some other width:
+     * at the floor, or at a width of its own state. The width itself is proven in
+     * GameRowStateRailWidthTest.
+     */
+    private fun assertTheRailIsDrawnAtTheMeasuredWidth() {
+        rule.onNodeWithTag(STATE_RAIL_TAG, useUnmergedTree = true).assertWidthIsEqualTo(measuredRailWidth)
+    }
+
     @Test
-    fun crestsAreThirtyFourDpAndRailIsNinetyTwoDp() {
+    fun crestsAreThirtyFourDpAndTheRailIsOneWidthForEveryCard() {
         launch(live, modifier = Modifier.padding(horizontal = 12.dp))
         rule.onNodeWithTag("game-row").assertWidthIsEqualTo(387.dp).assertHeightIsEqualTo(76.dp)
         rule.onAllNodesWithTag(TEAM_LINE_TAG).also { rows ->
@@ -414,7 +449,9 @@ class GameRowTest {
             assertEquals(2, crests.fetchSemanticsNodes().size)
             repeat(2) { crests[it].assertHeightIsEqualTo(34.dp).assertWidthIsEqualTo(34.dp) }
         }
-        rule.onNodeWithTag(STATE_RAIL_TAG).assertWidthIsEqualTo(92.dp)
+        assertTheRailIsDrawnAtTheMeasuredWidth()
+        // The floor under the measured width is the card's own metric.
+        rule.onNodeWithTag(STATE_RAIL_TAG).assertWidthIsAtLeast(wideRailFloor)
         val name = rule.onNodeWithText("Boston Bruins").getUnclippedBoundsInRoot()
         val score = rule.onNodeWithText("2")
         score.assertWidthIsEqualTo(30.dp)
@@ -437,13 +474,16 @@ class GameRowTest {
         rule.setContent {
             RouxTheme {
                 density = LocalDensity.current
-                ScoresScreen(
-                    ScoresUiState(live.date, today = live.date, rows = listOf(live), freshness = Freshness.Fresh),
-                    onRefresh = {},
-                    onGameClick = {},
-                    onSelectDate = {},
-                    modifier = Modifier.width(width),
-                )
+                Box {
+                    measuredRailWidth = rememberStateRailWidth(if (width <= 380.dp) narrowRailFloor else wideRailFloor)
+                    ScoresScreen(
+                        ScoresUiState(live.date, today = live.date, rows = listOf(live), freshness = Freshness.Fresh),
+                        onRefresh = {},
+                        onGameClick = {},
+                        onSelectDate = {},
+                        modifier = Modifier.width(width),
+                    )
+                }
             }
         }
         rule.onNodeWithTag("scores.list").assertWidthIsEqualTo(width)
@@ -469,7 +509,7 @@ class GameRowTest {
 
     private fun assertWideViewportMetrics(cardWidth: Dp) {
         rule.onNodeWithTag("scores.game.${live.id.value}").assertWidthIsEqualTo(cardWidth).assertHeightIsEqualTo(76.dp)
-        rule.onNodeWithTag(STATE_RAIL_TAG, useUnmergedTree = true).assertWidthIsEqualTo(92.dp)
+        assertTheRailIsDrawnAtTheMeasuredWidth()
         rule.onAllNodesWithTag(CREST_TAG, useUnmergedTree = true)[0].assertWidthIsEqualTo(34.dp)
         assertEquals(15.sp, textLayout(rule.onNodeWithText("Boston Bruins", useUnmergedTree = true)).layoutInput.style.fontSize)
         assertEquals(22.sp, textLayout(rule.onNodeWithText("2", useUnmergedTree = true)).layoutInput.style.fontSize)
@@ -481,7 +521,9 @@ class GameRowTest {
     ) {
         val card = rule.onNodeWithTag(cardTag)
         card.assertWidthIsEqualTo(cardWidth).assertHeightIsEqualTo(76.dp)
-        rule.onNodeWithTag(STATE_RAIL_TAG, useUnmergedTree = true).assertWidthIsEqualTo(128.dp)
+        assertTheRailIsDrawnAtTheMeasuredWidth()
+        // The narrow card's own metric is the floor under the measured width.
+        rule.onNodeWithTag(STATE_RAIL_TAG, useUnmergedTree = true).assertWidthIsAtLeast(narrowRailFloor)
         val rows = rule.onAllNodesWithTag(TEAM_LINE_TAG, useUnmergedTree = true)
         val crests = rule.onAllNodesWithTag(CREST_TAG, useUnmergedTree = true)
         assertEquals(2, rows.fetchSemanticsNodes().size)
@@ -779,7 +821,7 @@ class GameRowTest {
     }
 
     @Test
-    fun scheduledStartTimeStaysOneLineAtDoubleTypeOnTheNinetyTwoDpRail() {
+    fun scheduledStartTimeStaysOneLineAtDoubleType() {
         launch(scheduled, fontScale = 2f)
         val rail = rule.onNodeWithTag(STATE_RAIL_TAG).getUnclippedBoundsInRoot()
         val time = textLayout(rule.onNodeWithText("7:00 PM", useUnmergedTree = true))
@@ -830,10 +872,14 @@ class GameRowTest {
         )
         val rail = rule.onNodeWithTag(STATE_RAIL_TAG).getUnclippedBoundsInRoot()
         val watch = rule.onNodeWithTag(WATCH_TAG).getUnclippedBoundsInRoot()
-        // The rail keeps its own minimum rather than growing to fit the text...
-        assertTrue(
+        // The rail keeps the width the measurement gave it rather than growing to fit the text. Like
+        // the assertion in assertTheRailIsDrawnAtTheMeasuredWidth, this is a wiring check: it says
+        // the crowded channel list did not change the rail's width, not that the width is right.
+        assertEquals(
             "the rail grew to ${rail.width} with a crowded channel list",
-            rail.width.value <= 92f + 1f,
+            measuredRailWidth.value,
+            rail.width.value,
+            0.5f,
         )
         // ...and the text is laid out inside it, so it cannot be what widened the card.
         assertTrue(

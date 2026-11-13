@@ -68,15 +68,15 @@ internal fun LiveCapsule(
             .testTag(testTag)
             .width(IntrinsicSize.Max)
             .background(Roux.accents.fill, CircleShape)
-            .border(1.5.dp, Roux.accents.fill, CircleShape)
-            .padding(1.5.dp)
-            .padding(horizontal = 6.dp, vertical = 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+            .border(CAPSULE_BORDER, Roux.accents.fill, CircleShape)
+            .padding(CAPSULE_PADDING)
+            .padding(horizontal = CAPSULE_HORIZONTAL_PADDING, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(LIVE_DOT_GAP),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             Modifier
-                .size(6.dp)
+                .size(LIVE_DOT_SIZE)
                 .background(Roux.accents.onFill, CircleShape)
                 .semantics { contentDescription = liveDescription },
         )
