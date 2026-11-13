@@ -1,11 +1,14 @@
 package net.montycasa.roux.ui.scores
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertHeightIsEqualTo
@@ -20,6 +23,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.captureRoboImage
 import net.montycasa.roux.domain.model.Game
@@ -191,6 +195,32 @@ class ScoresHeaderTest {
             .assertHeightIsAtLeast(48.dp)
             .assertWidthIsAtLeast(48.dp)
             .assertHasClickAction()
+    }
+
+    @Test
+    fun theChipAndTheLivePillNeverOverlapAtLargeType() {
+        // A narrow phone with the largest text the app allows, and a live count: the chip is centred but must
+        // not cover the pill beside it. An overlay would; a row can only shrink the chip.
+        rule.setContent {
+            RouxTheme {
+                CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = 2f)) {
+                    Box(Modifier.width(320.dp)) {
+                        ScoresHeader(
+                            liveCount = 3,
+                            modifier = Modifier.fillMaxWidth(),
+                            leagueLabel = "My Teams",
+                            leagueId = "nhl",
+                            statusInset = WindowInsets(0, 0, 0, 0),
+                        )
+                    }
+                }
+            }
+        }
+
+        val chip = rule.onNodeWithTag("scores.leagueChip", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val pill = rule.onNodeWithTag("scores.livePill", useUnmergedTree = true).getUnclippedBoundsInRoot()
+
+        assert(chip.right <= pill.left) { "the chip reached ${chip.right} and the live pill starts at ${pill.left}" }
     }
 
     @Test
