@@ -110,7 +110,10 @@ fun ScoresHeader(
                         fontSize = 10.sp,
                         fontWeight = FontWeight.ExtraBold,
                         letterSpacing = 0.12.em,
+                        // The slot is 72 dp and the pill may grow past it for a two-digit count; what it must never
+                        // do is clip, so a count too long for its room ends in an ellipsis instead.
                         maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }

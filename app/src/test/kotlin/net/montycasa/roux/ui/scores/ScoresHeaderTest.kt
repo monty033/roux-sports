@@ -262,6 +262,37 @@ class ScoresHeaderTest {
     }
 
     @Test
+    fun aTwoDigitCountAtLargeTypeStillReads() {
+        // 12 LIVE on a 320 dp screen at double type: the count may take more room than its slot, the chip gives
+        // way, and neither may overlap the other or be cut off.
+        rule.setContent {
+            RouxTheme {
+                CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = 2f)) {
+                    Box(Modifier.width(320.dp)) {
+                        ScoresHeader(
+                            liveCount = 12,
+                            modifier = Modifier.fillMaxWidth(),
+                            leagueLabel = "NHL",
+                            leagueId = "nhl",
+                            statusInset = WindowInsets(0, 0, 0, 0),
+                        )
+                    }
+                }
+            }
+        }
+
+        val chip = rule.onNodeWithTag("scores.leagueChip", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val pill = rule.onNodeWithTag("scores.livePill", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val header = rule.onNodeWithTag("scores.header").getUnclippedBoundsInRoot()
+
+        assert(chip.right <= pill.left) { "the chip reaches ${chip.right}; the pill starts at ${pill.left}" }
+        assert(chip.right.value - chip.left.value >= 48f) { "the chip was squeezed to ${chip.right.value - chip.left.value} dp" }
+        assert(pill.right <= header.right) { "the live pill runs past the header's edge at ${pill.right}" }
+        val pillWidth = pill.right.value - pill.left.value
+        assert(pillWidth >= 72f) { "the live pill was squeezed to $pillWidth dp, and its text would not fit" }
+    }
+
+    @Test
     fun leagueChipIsAbsentWhenNoLabelIsGiven() {
         launch()
         rule.onNodeWithTag("scores.leagueChip").assertDoesNotExist()
