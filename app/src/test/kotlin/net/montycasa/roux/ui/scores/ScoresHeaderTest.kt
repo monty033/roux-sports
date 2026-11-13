@@ -171,6 +171,29 @@ class ScoresHeaderTest {
     }
 
     @Test
+    fun leagueChipKeepsA48DpTargetEvenWithAOneLetterLabel() {
+        // "NHL" is wide enough on its own that a width assertion on it proves nothing: the floor could be
+        // removed and the chip would still measure over 48 dp. A one-letter label is the case where the
+        // minimum is the only thing keeping the target wide enough.
+        rule.setContent {
+            RouxTheme {
+                ScoresHeader(
+                    liveCount = 0,
+                    modifier = Modifier.fillMaxWidth(),
+                    leagueLabel = "A",
+                    onLeagueClick = {},
+                    statusInset = WindowInsets(0, 0, 0, 0),
+                )
+            }
+        }
+        rule
+            .onNodeWithTag("scores.leagueChip")
+            .assertHeightIsAtLeast(48.dp)
+            .assertWidthIsAtLeast(48.dp)
+            .assertHasClickAction()
+    }
+
+    @Test
     fun leagueChipIsAbsentWhenNoLabelIsGiven() {
         launch()
         rule.onNodeWithTag("scores.leagueChip").assertDoesNotExist()
