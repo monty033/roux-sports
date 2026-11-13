@@ -185,9 +185,16 @@ fun GameRow(
     // One width for every card. The rail is the width the widest state needs, measured once and not
     // from this card's own state, so the right-hand edge of a list is the same edge on every card.
     val measuredRailWidth = rememberStateRailWidth(metrics.railWidth)
-    // ...and never wider than the card can spare: the club column keeps a readable name and the rail
-    // takes what is left of the card. The ceiling wins even over the floor - on a card too narrow for
-    // both, a state that wraps is better than a club column squeezed below its share.
+    // ...and never wider than the card can spare: the club column keeps enough room to name the club
+    // and the rail takes what is left. The ceiling wins even over the floor, so a card too narrow for
+    // both gives the space to the club column.
+    //
+    // Known limit, stated rather than papered over: once the ceiling drops the rail below the width a
+    // state needs, that state has nowhere to go - the start time, the capsule and the live clock are
+    // all single-line - so it clips rather than wrapping. That needs a card narrower than about 315 dp
+    // at double type, which is narrower than the smallest phone this app draws for (a 360 dp screen
+    // leaves the card about 336 dp, where the ceiling is 149 dp and never bites). A compact state
+    // layout is the fix if such a width ever matters.
     val railWidth =
         min(
             max(metrics.railWidth, measuredRailWidth),

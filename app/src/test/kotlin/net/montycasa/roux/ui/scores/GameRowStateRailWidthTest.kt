@@ -392,6 +392,24 @@ class GameRowStateRailWidthTest {
         }
     }
 
+    /**
+     * The ceiling must not bite where the app actually draws. A 360 dp phone leaves the card about
+     * 336 dp, where the ceiling is above the rail's floor, so the widest state keeps the width it
+     * needs and nothing is clipped.
+     */
+    @Test
+    @Config(qualifiers = "en-rUS-w360dp-h780dp-mdpi")
+    fun theCeilingDoesNotBiteOnAPhoneAtDoubleType() {
+        launch(cards = listOf(game("final-ot", GameState.Final, FinalKind.OT)), fontScale = 2f)
+        val rail = rule.onNodeWithTag(STATE_RAIL_TAG, useUnmergedTree = true).fetchSemanticsNode()
+        val capsule = rule.onNodeWithTag(STATE_CAPSULE_TAG, useUnmergedTree = true).fetchSemanticsNode()
+        assertEquals("the capsule does not wrap on a phone at 2x", 1, layoutOf(capsule).lineCount)
+        assertTrue(
+            "the capsule runs past the rail on a phone at 2x",
+            capsule.boundsInRoot.right <= rail.boundsInRoot.right + 0.5f,
+        )
+    }
+
     private fun clubLabels(): List<String> =
         rule
             .onAllNodesWithTag(CLUB_NAME_TAG, useUnmergedTree = true)
