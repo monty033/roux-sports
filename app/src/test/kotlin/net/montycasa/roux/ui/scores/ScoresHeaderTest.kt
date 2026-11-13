@@ -9,6 +9,7 @@ import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertHeightIsEqualTo
+import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
@@ -157,7 +158,13 @@ class ScoresHeaderTest {
             }
         }
         rule.onNodeWithText("NHL", useUnmergedTree = true).assertExists()
-        rule.onNodeWithTag("scores.leagueChip").assertHeightIsAtLeast(48.dp).assertHasClickAction()
+        // Both dimensions, not just the height: a short label makes a narrow box, and a tall-but-thin target is
+        // still hard to hit.
+        rule
+            .onNodeWithTag("scores.leagueChip")
+            .assertHeightIsAtLeast(48.dp)
+            .assertWidthIsAtLeast(48.dp)
+            .assertHasClickAction()
         rule.onNodeWithContentDescription("Showing NHL. Change leagues.").performClick()
         assertEquals(1, taps)
         rule.onNodeWithTag("scores.header").assertHeightIsEqualTo(64.dp)

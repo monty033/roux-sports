@@ -85,8 +85,9 @@ fun ScoresHeader(
                 Modifier
                     // The touch target is 48 dp, the height the menu button also meets; the pill inside is what is seen.
                     .heightIn(min = 48.dp)
-                    // Capped so a long label cannot take the room the live pill needs on a 360 dp screen.
-                    .widthIn(max = 140.dp)
+                    // Capped so a long label cannot take the room the live pill needs on a 360 dp screen,
+                    // and floored so a short label still gives a 48 dp-wide target, not just a tall one.
+                    .widthIn(min = 48.dp, max = 140.dp)
                     .clickable(role = Role.Button, onClick = onLeagueClick)
                     .reachTarget("scores.leagueChip")
                     .semantics { contentDescription = description }

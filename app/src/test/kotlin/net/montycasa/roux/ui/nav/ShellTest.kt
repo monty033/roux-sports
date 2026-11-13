@@ -83,6 +83,26 @@ class ShellTest {
         barItem("Teams").assertIsSelected()
     }
 
+    /**
+     * The chip is the second door to the leagues sheet, and the production wiring is what makes it a door: a
+     * callback supplied by a test would pass even if the shell stopped connecting it, so this taps the real one.
+     */
+    @Test
+    fun theLeagueChipOpensAndClosesTheSheet() {
+        launchShell()
+
+        // The chip's semantics are unmerged: the merged node above it carries the description instead.
+        rule.onNodeWithTag("scores.leagueChip", useUnmergedTree = true).performClick()
+        rule.waitForIdle()
+        rule.onNodeWithTag("leagues.sheet").assertIsDisplayed()
+
+        // The menu button toggles, and the chip shares its lambda: a second tap must put the sheet away rather
+        // than open it again.
+        rule.onNodeWithTag("scores.leagueChip", useUnmergedTree = true).performClick()
+        rule.waitForIdle()
+        rule.onNodeWithTag("leagues.sheet").assertDoesNotExist()
+    }
+
     @Test
     fun theDrawerOpensOnStandingsAndReordersThere() {
         launchShell()
