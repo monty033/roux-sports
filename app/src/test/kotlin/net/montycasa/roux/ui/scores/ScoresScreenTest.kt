@@ -5,9 +5,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasTestTag
@@ -25,6 +27,7 @@ import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.width
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.model.DateIndexEntry
@@ -356,7 +359,18 @@ class ScoresScreenTest {
         val gap = second.getUnclippedBoundsInRoot().top - first.getUnclippedBoundsInRoot().bottom
         assertEquals(8f, gap.value, 0.5f)
         first.assertWidthIsEqualTo(387.dp)
-        rule.onAllNodesWithTag(STATE_RAIL_TAG, useUnmergedTree = true)[0].assertWidthIsEqualTo(92.dp)
+        // The rail's width is the width the widest state needs rather than a fixed number, so what
+        // is asserted here is that every card draws it at the same width, and that it is never
+        // narrower than the card's own floor.
+        val rails = rule.onAllNodesWithTag(STATE_RAIL_TAG, useUnmergedTree = true)
+        rails.assertCountEquals(2)
+        val railWidth = rails[0].getUnclippedBoundsInRoot().width
+        assertEquals(
+            "every card draws its rail at the same width",
+            railWidth,
+            rails[1].getUnclippedBoundsInRoot().width,
+        )
+        assertTrue("the rail is $railWidth, under its 92 dp floor", railWidth >= 92.dp)
     }
 
     @Test
@@ -367,7 +381,9 @@ class ScoresScreenTest {
         val first = rule.onNodeWithTag("scores.game.${games[0].id.value}")
         val second = rule.onNodeWithTag("scores.game.${games[1].id.value}")
         first.assertHeightIsEqualTo(76.dp).assertWidthIsEqualTo(336.dp)
-        rule.onAllNodesWithTag(STATE_RAIL_TAG, useUnmergedTree = true)[0].assertWidthIsEqualTo(128.dp)
+        rule
+            .onAllNodesWithTag(STATE_RAIL_TAG, useUnmergedTree = true)[0]
+            .assertWidthIsAtLeast(128.dp)
         rule.onAllNodesWithTag(CREST_TAG, useUnmergedTree = true)[0].assertWidthIsEqualTo(32.dp)
         val gap = second.getUnclippedBoundsInRoot().top - first.getUnclippedBoundsInRoot().bottom
         assertEquals(Reach.MIN_TARGET_GAP_DP, gap.value, 0.01f)

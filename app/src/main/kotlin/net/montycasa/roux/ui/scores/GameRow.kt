@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -36,6 +35,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -48,6 +48,8 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.max
+import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import net.montycasa.roux.R
@@ -56,6 +58,10 @@ import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.TeamRef
+import net.montycasa.roux.ui.common.CAPSULE_BORDER
+import net.montycasa.roux.ui.common.CAPSULE_HORIZONTAL_PADDING
+import net.montycasa.roux.ui.common.CAPSULE_PADDING
+import net.montycasa.roux.ui.common.LIVE_CLOCK_GAP
 import net.montycasa.roux.ui.common.LiveCapsule
 import net.montycasa.roux.ui.common.StateClock
 import net.montycasa.roux.ui.common.periodLabel
@@ -90,8 +96,62 @@ private data class CardMetrics(
     val startPadding: Dp,
 )
 
+/**
+ * The width the club column keeps for the club's name: two and a half times the club's own type
+ * size, which is about six characters.
+ *
+ * Six characters is what the name is for - enough to tell Boston from Buffalo - and the club's type
+ * size is what it is measured in, so the room grows with the type and the guarantee holds at double
+ * size as well.
+ */
+private const val CLUB_NAME_EM = 2.5f
+
+/** The club column's padding at the end, against the rail. */
+private val CLUB_COLUMN_END_PADDING = 4.dp
+
+/**
+ * The width the rail may take: the card's width less what the club column needs to stay readable.
+ *
+ * The rail is the width the widest state needs, but a state that needs more than the card can spare
+ * cannot have it: the club name would be squeezed down to a bare ellipsis, and a card that no longer
+ * says which team is playing is worse than one whose clock has wrapped. So the rail stops at the
+ * card's width less the club column's share - the crest, the gaps, the score slot and room for the
+ * name - and whatever the rail cannot have, it wraps inside itself.
+ */
+@Composable
+private fun CardMetrics.railCeiling(cardWidth: Dp): Dp {
+    val fontScale = LocalDensity.current.fontScale
+    val clubColumn =
+        startPadding +
+            CLUB_COLUMN_END_PADDING +
+            crestSize +
+            columnGap * 2 +
+            scoreWidth * fontScale +
+            (clubSize.value * fontScale * CLUB_NAME_EM).dp
+    return (cardWidth - clubColumn).coerceAtLeast(0.dp)
+}
+
+/**
+ * The width the card would be drawn at when the host did not say: the window's own width, in dp.
+ *
+ * The card fills the list width, and the list fills the window on every phone the app draws for, so the
+ * window is the honest stand-in rather than a number written down here.
+ */
+@Composable
+private fun windowWidth(): Dp {
+    val density = LocalDensity.current
+    return with(density) {
+        LocalWindowInfo.current.containerSize.width
+            .toDp()
+    }
+}
+
 /** The rail pads 12 dp at the start and 7 at the end; a child given the inner width cannot widen the rail. */
-private val RAIL_INSETS = 19.dp
+private val RAIL_START_INSET = 12.dp
+private val RAIL_END_INSET = 7.dp
+
+/** The rail's horizontal padding, added once to the width the widest state needs. */
+internal val RAIL_INSETS = RAIL_START_INSET + RAIL_END_INSET
 
 private val wideCard = CardMetrics(92.dp, 34.dp, 15.sp, 22.sp, 30.dp, 8.dp, 13.dp)
 private val narrowCard = CardMetrics(128.dp, 32.dp, 14.sp, 21.sp, 28.dp, 7.dp, 11.dp)
@@ -99,6 +159,10 @@ private val narrowCard = CardMetrics(128.dp, 32.dp, 14.sp, 21.sp, 28.dp, 7.dp, 1
 /**
  * One informational card per game; the host owns the existing navigation callback and tag.
  * Intrinsic height lets the team rows and vertically centred state stack grow together with type size.
+ *
+ * [cardWidth] is the width the card is drawn at, which the host knows and the card cannot: the rail's
+ * share of the card is measured against it. Left out, the screen's width is used, which is the card's
+ * width on every phone the app draws.
  */
 @Composable
 fun GameRow(
@@ -106,6 +170,7 @@ fun GameRow(
     narrow: Boolean,
     modifier: Modifier = Modifier,
     favourite: Boolean = false,
+    cardWidth: Dp? = null,
 ) {
     val upcoming = game.state == GameState.Scheduled || game.state == GameState.Pre
     val homeScore = game.homeScore
@@ -113,6 +178,16 @@ fun GameRow(
     val homeWins = game.state == GameState.Final && homeScore != null && awayScore != null && homeScore > awayScore
     val awayWins = game.state == GameState.Final && homeScore != null && awayScore != null && awayScore > homeScore
     val metrics = if (narrow) narrowCard else wideCard
+    // One width for every card. The rail is the width the widest state needs, measured once and not
+    // from this card's own state, so the right-hand edge of a list is the same edge on every card.
+    val measuredRailWidth = rememberStateRailWidth(metrics.railWidth)
+    // ...and never wider than the card can spare: the club column keeps a readable name and the rail
+    // takes what is left of the card.
+    val railWidth =
+        max(
+            metrics.railWidth,
+            min(measuredRailWidth, metrics.railCeiling(cardWidth ?: windowWidth())),
+        )
     val description = gameRowDescription(game, favourite)
     // Read outside the draw scope: the accent is the brand orange, the same one the live capsule fills with.
     val accent = Roux.accents.fill
@@ -145,7 +220,15 @@ fun GameRow(
                 .padding(1.dp),
     ) {
         Column(
-            Modifier.weight(1f).fillMaxHeight().padding(start = metrics.startPadding, end = 4.dp, top = 8.dp, bottom = 8.dp),
+            Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .padding(
+                    start = metrics.startPadding,
+                    end = CLUB_COLUMN_END_PADDING,
+                    top = 8.dp,
+                    bottom = 8.dp,
+                ),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             TeamLine(
@@ -167,7 +250,7 @@ fun GameRow(
                 Modifier.weight(1f),
             )
         }
-        StateRail(game, upcoming, metrics.railWidth)
+        StateRail(game, upcoming, railWidth)
     }
 }
 
@@ -290,12 +373,11 @@ private fun StateRail(
     // The reference's .rr elements are empty spacers. .rstate centres one stack across the
     // full card height; its lines have no relationship to the two team rows.
     Column(
-        // A floor, not a ceiling. The rail is measured by its own widest line, so the capsule can never be
-        // squeezed into a wrap by a constant that was chosen for a different phone width. The club column
-        // is the one that yields, because a truncated club name still reads and a two-line capsule does not.
+        // One width for every card: the rail is drawn at the width the widest state needs, so the
+        // right-hand edge of the list is the same edge on every card. The club column is the one that
+        // yields, because a truncated club name still reads and a two-line capsule does not.
         Modifier
-            .width(IntrinsicSize.Max)
-            .widthIn(min = width)
+            .width(width)
             .testTag(STATE_RAIL_TAG)
             .fillMaxHeight()
             .drawBehind {
@@ -305,7 +387,7 @@ private fun StateRail(
                         androidx.compose.ui.geometry
                             .Size(1.dp.toPx(), size.height),
                 )
-            }.padding(start = 12.dp, end = 7.dp, top = 8.dp, bottom = 8.dp),
+            }.padding(start = RAIL_START_INSET, end = RAIL_END_INSET, top = 8.dp, bottom = 8.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.Start,
     ) {
@@ -348,7 +430,7 @@ private fun StateRail(
                         // One line: capsule and clock beside each other. The period used to sit above a bare
                         // clock, which read as two lines for a game that had only two facts to report.
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(LIVE_CLOCK_GAP),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             LiveCapsule(label = label, testTag = STATE_CAPSULE_TAG)
@@ -425,9 +507,9 @@ private fun FinalCapsule(kind: FinalKind?) {
         ),
         Modifier
             .testTag(STATE_CAPSULE_TAG)
-            .border(1.5.dp, Roux.accents.stroke, CircleShape)
-            .padding(1.5.dp)
-            .padding(horizontal = 6.dp, vertical = 2.dp),
+            .border(CAPSULE_BORDER, Roux.accents.stroke, CircleShape)
+            .padding(CAPSULE_PADDING)
+            .padding(horizontal = CAPSULE_HORIZONTAL_PADDING, vertical = 2.dp),
         style = Roux.cardTypography.finalState,
         color = Roux.accents.signature,
         textAlign = TextAlign.Start,

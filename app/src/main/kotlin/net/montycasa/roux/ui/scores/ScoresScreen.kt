@@ -59,6 +59,9 @@ import java.time.format.DateTimeFormatter
 
 private const val DAY_SETTLE_MILLIS = 360
 
+/** The padding at each side of a card in the list. */
+private val CARD_SIDE_PADDING = 12.dp
+
 /**
  * Renders the selected day's state without owning loading or filtering. Callbacks map to refresh,
  * selectDate on ScoresViewModel; game navigation belongs to the host.
@@ -230,6 +233,9 @@ fun ScoresScreen(
                         BoxWithConstraints(Modifier.fillMaxSize()) {
                             // The reference queries .listwrap before the list's 12 dp side padding.
                             val narrow = maxWidth <= 380.dp
+                            // The card is the list's width less its own side padding, and the rail's
+                            // share of the card is measured against it.
+                            val cardWidth = maxWidth - CARD_SIDE_PADDING * 2
                             // Only a page with nothing to draw says so.
                             val pageMissing = missing && pageRows.isEmpty()
                             val pageLoading = pageMissing && state.isRefreshing && state.error == null
@@ -292,13 +298,14 @@ fun ScoresScreen(
                                         GameRow(
                                             game,
                                             narrow = narrow,
+                                            cardWidth = cardWidth,
                                             // The accent follows the favourite teams themselves, not the
                                             // row's place in the list: the order also depends on whether a
                                             // game is live or finished, so position says nothing.
                                             favourite = game.isFavourite(state.favouriteTeams),
                                             modifier =
                                                 Modifier
-                                                    .padding(horizontal = 12.dp)
+                                                    .padding(horizontal = CARD_SIDE_PADDING)
                                                     .testTag("scores.game.${game.id.value}")
                                                     .clickable { onGameClick(game) },
                                         )
