@@ -198,9 +198,53 @@ class ScoresHeaderTest {
     }
 
     @Test
-    fun theChipAndTheLivePillNeverOverlapAtLargeType() {
-        // A narrow phone with the largest text the app allows, and a live count: the chip is centred but must
-        // not cover the pill beside it. An overlay would; a row can only shrink the chip.
+    fun theChipSitsInTheMiddleOfTheHeaderWithNoLiveGame() {
+        rule.setContent {
+            RouxTheme {
+                Box(Modifier.width(360.dp)) {
+                    ScoresHeader(
+                        liveCount = 0,
+                        modifier = Modifier.fillMaxWidth(),
+                        leagueLabel = "My Teams",
+                        leagueId = "nhl",
+                        statusInset = WindowInsets(0, 0, 0, 0),
+                    )
+                }
+            }
+        }
+
+        val header = rule.onNodeWithTag("scores.header").getUnclippedBoundsInRoot()
+        val chip = rule.onNodeWithTag("scores.leagueChip", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val off = kotlin.math.abs((chip.left.value + chip.right.value) / 2 - (header.left.value + header.right.value) / 2)
+        assert(off <= 1.5f) { "the chip sits $off dp off the header's centre" }
+    }
+
+    @Test
+    fun theChipSitsInTheMiddleOfTheHeaderWhileAGameIsLive() {
+        rule.setContent {
+            RouxTheme {
+                Box(Modifier.width(360.dp)) {
+                    ScoresHeader(
+                        liveCount = 3,
+                        modifier = Modifier.fillMaxWidth(),
+                        leagueLabel = "My Teams",
+                        leagueId = "nhl",
+                        statusInset = WindowInsets(0, 0, 0, 0),
+                    )
+                }
+            }
+        }
+
+        val header = rule.onNodeWithTag("scores.header").getUnclippedBoundsInRoot()
+        val chip = rule.onNodeWithTag("scores.leagueChip", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val off = kotlin.math.abs((chip.left.value + chip.right.value) / 2 - (header.left.value + header.right.value) / 2)
+        assert(off <= 1.5f) { "the chip sits $off dp off the header's centre" }
+    }
+
+    @Test
+    fun atLargeTypeTheChipLeavesTheLivePillItsWholeWidth() {
+        // 320 dp is the narrowest phone in scope and 2x the largest type: the chip may squeeze its own label, but
+        // the count still has to be readable in full.
         rule.setContent {
             RouxTheme {
                 CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = 2f)) {
@@ -219,8 +263,12 @@ class ScoresHeaderTest {
 
         val chip = rule.onNodeWithTag("scores.leagueChip", useUnmergedTree = true).getUnclippedBoundsInRoot()
         val pill = rule.onNodeWithTag("scores.livePill", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val wordmark = rule.onNodeWithTag("scores.wordmark", useUnmergedTree = true).getUnclippedBoundsInRoot()
 
-        assert(chip.right <= pill.left) { "the chip reached ${chip.right} and the live pill starts at ${pill.left}" }
+        assert(chip.right <= pill.left) { "the chip reaches ${chip.right}; the live pill starts at ${pill.left}" }
+        assert(chip.left >= wordmark.right) { "the chip starts at ${chip.left}; the wordmark ends at ${wordmark.right}" }
+        val pillWidth = pill.right.value - pill.left.value
+        assert(pillWidth >= 72f) { "the live pill was squeezed to $pillWidth dp" }
     }
 
     @Test
