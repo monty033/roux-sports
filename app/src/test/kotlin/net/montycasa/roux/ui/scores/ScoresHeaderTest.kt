@@ -2,9 +2,11 @@ package net.montycasa.roux.ui.scores
 
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertWidthIsEqualTo
@@ -138,5 +140,54 @@ class ScoresHeaderTest {
         // The tag sits inside the inset, so this measures the header's own box: it keeps its 64 dp floor and gains the
         // status bar on top of it rather than squeezing into it.
         assertTrue("the header keeps its own height under the inset", (header.bottom - header.top) >= 64.dp - 1.dp)
+    }
+
+    @Test
+    fun leagueChipShowsItsLabelAtTheReachSizeAndTapOpensTheLeagues() {
+        var taps = 0
+        rule.setContent {
+            RouxTheme {
+                ScoresHeader(
+                    liveCount = 0,
+                    modifier = Modifier.fillMaxWidth(),
+                    leagueLabel = "NHL",
+                    onLeagueClick = { taps++ },
+                    statusInset = WindowInsets(0, 0, 0, 0),
+                )
+            }
+        }
+        rule.onNodeWithText("NHL", useUnmergedTree = true).assertExists()
+        rule.onNodeWithTag("scores.leagueChip").assertHeightIsAtLeast(48.dp).assertHasClickAction()
+        rule.onNodeWithContentDescription("Showing NHL. Change leagues.").performClick()
+        assertEquals(1, taps)
+        rule.onNodeWithTag("scores.header").assertHeightIsEqualTo(64.dp)
+    }
+
+    @Test
+    fun leagueChipIsAbsentWhenNoLabelIsGiven() {
+        launch()
+        rule.onNodeWithTag("scores.leagueChip").assertDoesNotExist()
+    }
+
+    @Test
+    fun livePillStaysOnTheScreenAtThreeHundredSixtyDp() {
+        rule.setContent {
+            RouxTheme {
+                ScoresHeader(
+                    liveCount = 12,
+                    modifier = Modifier.width(360.dp),
+                    leagueLabel = "My Teams",
+                    statusInset = WindowInsets(0, 0, 0, 0),
+                )
+            }
+        }
+        val header = rule.onNodeWithTag("scores.header").getUnclippedBoundsInRoot()
+        val chip = rule.onNodeWithTag("scores.leagueChip").getUnclippedBoundsInRoot()
+        val pill = rule.onNodeWithTag("scores.livePill").getUnclippedBoundsInRoot()
+        // The header's own 16 dp edge is the line the pill must not cross.
+        assertTrue("live pill is pushed past the header's edge", pill.right <= header.right - 16.dp + 0.5.dp)
+        val wordmark = rule.onNodeWithTag("scores.wordmark").getUnclippedBoundsInRoot()
+        assertTrue("chip sits after the wordmark", wordmark.right <= chip.left)
+        assertTrue("chip sits before the live pill", chip.right <= pill.left)
     }
 }

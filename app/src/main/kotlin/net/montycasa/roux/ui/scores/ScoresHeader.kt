@@ -4,9 +4,12 @@ package net.montycasa.roux.ui.scores
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -31,7 +34,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
@@ -43,6 +50,10 @@ import net.montycasa.roux.ui.theme.Roux
 fun ScoresHeader(
     liveCount: Int,
     modifier: Modifier = Modifier,
+    // The league or My Teams the user is in, beside the wordmark. Null leaves the chip out.
+    leagueLabel: String? = null,
+    // Opens the leagues sheet. The caller decides whether a tap also closes it when the sheet is already open.
+    onLeagueClick: () -> Unit = {},
     // Injected so a test can hold the status bar's height still: the phone's own inset is not something a JVM test can
     // see, and this header sitting under the clock is a bug that has now come back twice because nothing asserted it.
     statusInset: WindowInsets = WindowInsets.statusBars,
@@ -59,7 +70,7 @@ fun ScoresHeader(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+        Box(contentAlignment = Alignment.CenterStart) {
             Image(
                 painterResource(R.drawable.wordmark_orange),
                 contentDescription = stringResource(R.string.app_name),
@@ -68,6 +79,40 @@ fun ScoresHeader(
                 contentScale = ContentScale.Fit,
             )
         }
+        if (leagueLabel != null) {
+            val description = stringResource(R.string.league_chip_description, leagueLabel)
+            Row(
+                Modifier
+                    // The touch target is 48 dp, the height the menu button also meets; the pill inside is what is seen.
+                    .heightIn(min = 48.dp)
+                    // Capped so a long label cannot take the room the live pill needs on a 360 dp screen.
+                    .widthIn(max = 140.dp)
+                    .clickable(role = Role.Button, onClick = onLeagueClick)
+                    .reachTarget("scores.leagueChip")
+                    .semantics { contentDescription = description }
+                    .testTag("scores.leagueChip"),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    Modifier
+                        .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
+                        .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                ) {
+                    Text(
+                        leagueLabel,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+        // The chip sits beside the wordmark, not out at the right edge: the leftover space belongs to the
+        // spacer, so the live count keeps the right edge it has always had.
+        Spacer(Modifier.weight(1f))
         if (liveCount > 0) {
             Row(
                 Modifier
