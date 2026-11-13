@@ -42,6 +42,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
@@ -185,11 +186,12 @@ fun GameRow(
     // from this card's own state, so the right-hand edge of a list is the same edge on every card.
     val measuredRailWidth = rememberStateRailWidth(metrics.railWidth)
     // ...and never wider than the card can spare: the club column keeps a readable name and the rail
-    // takes what is left of the card.
+    // takes what is left of the card. The ceiling wins even over the floor - on a card too narrow for
+    // both, a state that wraps is better than a club column squeezed below its share.
     val railWidth =
-        max(
-            metrics.railWidth,
-            min(measuredRailWidth, metrics.railCeiling(cardWidth ?: windowWidth())),
+        min(
+            max(metrics.railWidth, measuredRailWidth),
+            metrics.railCeiling(cardWidth ?: windowWidth()),
         )
     val description = gameRowDescription(game, favourite)
     // Read outside the draw scope: the accent is the brand orange, the same one the live capsule fills with.
@@ -289,25 +291,44 @@ private fun TeamLine(
         Box(Modifier.width(metrics.crestSize).height(28.dp), contentAlignment = Alignment.Center) {
             TeamLogo(team, metrics.crestSize)
         }
-        // A name cut to "Bos…" does not tell Boston from Boston College, and the wider rail can leave
-        // exactly that much room at large type. The abbreviation is short, true and unambiguous, so it
-        // takes over the moment the name would have to be cut.
         val clubName = team.name?.takeIf { it.isNotBlank() }
-        // The latch has to reopen when the card gets a wider window (rotation, a resized desktop
-        // window), or the abbreviation would outlive the reason for it. The column's own width is
-        // not observable here without a subcomposing layout, which the card's intrinsic measurement
-        // forbids, so the window width stands in for it: the column moves with the card.
-        var nameWasCut by remember(clubName, metrics.clubSize, windowWidth()) { mutableStateOf(false) }
+        // A name cut to "Bos…" does not tell Boston from Boston College, and the rail can leave exactly
+        // that much room at large type. The abbreviation is short, true and always whole, so it stands in
+        // whenever the name would have to be cut.
+        //
+        // Whether it has to be cut is decided from the room the column actually got - the constraint the
+        // text was measured under - and not from the window's width: a card can be resized inside a window
+        // that never changes (split screen, a tablet pane), and a latch on the window would keep the
+        // abbreviation long after the room came back.
+        val clubStyle = Roux.cardTypography.clubName.copy(fontSize = metrics.clubSize)
+        val measurer = rememberTextMeasurer()
+        val density = LocalDensity.current
+        var clubLabel by remember(clubName) { mutableStateOf(clubName ?: team.abbrev) }
         Text(
-            text = if (clubName == null || nameWasCut) team.abbrev else clubName,
+            text = clubLabel,
             modifier = Modifier.weight(1f).testTag(CLUB_NAME_TAG),
-            style = Roux.cardTypography.clubName.copy(fontSize = metrics.clubSize),
+            style = clubStyle,
             color = ink,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            // Latched within one window width: the abbreviation fits, so re-measuring would report
-            // no overflow and flip the label back to the cut name, forever.
-            onTextLayout = { layout -> if (clubName != null && layout.hasVisualOverflow) nameWasCut = true },
+            onTextLayout = { layout ->
+                if (clubName != null) {
+                    val room = layout.layoutInput.constraints.maxWidth
+                    // The name is drawn on one line or not at all, so its unwrapped width is the test.
+                    val needed =
+                        measurer
+                            .measure(
+                                text = clubName,
+                                style = clubStyle,
+                                maxLines = 1,
+                                softWrap = false,
+                                density = density,
+                            ).size.width
+                    val wanted = if (needed <= room) clubName else team.abbrev
+                    // Converges: the choice is a function of the room, which does not depend on the label.
+                    if (wanted != clubLabel) clubLabel = wanted
+                }
+            },
         )
         // A reserved slot keeps names aligned, even when no score is known. Grow with large type.
         Box(Modifier.width(metrics.scoreWidth * LocalDensity.current.fontScale.coerceAtLeast(1f)), contentAlignment = Alignment.CenterEnd) {

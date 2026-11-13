@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -326,18 +327,69 @@ class GameRowStateRailWidthTest {
     }
 
     /**
-     * The fallback must not outlive the reason for it. A wider window gives the card room for the
-     * name again, and the abbreviation would then be a lie about the space available.
+     * The fallback must not outlive the reason for it. A card can be resized inside a window that
+     * never changes - split screen, a tablet pane - and the abbreviation would then be a lie about
+     * the room the column actually has.
      */
     @Test
-    @Config(qualifiers = "en-rUS-w720dp-h780dp-mdpi")
-    fun theNameComesBackInAWiderWindow() {
-        launch(cards = listOf(game("final-ot", GameState.Final, FinalKind.OT)), fontScale = 2f)
+    fun theNameComesBackWhenTheCardWidensInAFixedWindow() {
+        val cardWidth = mutableStateOf(300.dp)
+        rule.setContent {
+            RouxTheme {
+                GameRow(
+                    game("final-ot", GameState.Final, FinalKind.OT),
+                    narrow = true,
+                    modifier = Modifier.width(cardWidth.value),
+                )
+            }
+        }
+        rule.waitForIdle()
+        assertEquals("a narrow card names the clubs by abbreviation", listOf("BOS", "TOR"), clubLabels())
+        cardWidth.value = 700.dp
+        rule.waitForIdle()
         assertEquals(
-            "a wide window at 2x should show the names again",
+            "the widened card should show the names again",
             listOf("Boston Bruins", "Toronto Maple Leafs"),
             clubLabels(),
         )
+    }
+
+    /**
+     * The rail floor must not beat the ceiling. On a card too narrow to give the rail its floor and
+     * the club column its share, the rail takes what is left - the state wraps - rather than taking
+     * the floor and squeezing the club column below the width it was promised.
+     */
+    @Test
+    fun theCeilingBeatsTheFloorOnATooNarrowCard() {
+        rule.setContent {
+            RouxTheme {
+                CompositionLocalProvider(LocalDensity provides Density(1f, 2f)) {
+                    GameRow(
+                        game("final-ot", GameState.Final, FinalKind.OT),
+                        narrow = true,
+                        cardWidth = 256.dp,
+                        modifier = Modifier.width(256.dp).testTag("ceiling-card"),
+                    )
+                }
+            }
+        }
+        rule.waitForIdle()
+        val rail = rule.onNodeWithTag(STATE_RAIL_TAG, useUnmergedTree = true).fetchSemanticsNode()
+        val card = rule.onNodeWithTag("ceiling-card", useUnmergedTree = true).fetchSemanticsNode()
+        val railWidth = with(Density(1f)) { rail.boundsInRoot.width.toDp() }
+        val cardDp = with(Density(1f)) { card.boundsInRoot.width.toDp() }
+        assertTrue(
+            "the rail is $railWidth dp on a $cardDp dp card: the floor beat the ceiling",
+            railWidth < 128.dp,
+        )
+        clubLabels().forEach { label ->
+            val node =
+                rule
+                    .onAllNodesWithTag(CLUB_NAME_TAG, useUnmergedTree = true)
+                    .fetchSemanticsNodes()
+                    .first { it.config[SemanticsProperties.Text].joinToString("") { t -> t.text } == label }
+            assertFalse("the club label $label is itself cut", layoutOf(node).isLineEllipsized(0))
+        }
     }
 
     private fun clubLabels(): List<String> =
