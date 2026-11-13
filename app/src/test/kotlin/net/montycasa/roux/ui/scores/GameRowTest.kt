@@ -350,8 +350,14 @@ class GameRowTest {
     @Config(qualifiers = "en-rUS-w360dp-h780dp-mdpi")
     fun doubleFontScaleOnSmallPhoneDoesNotOverflowText() {
         launch(live, fontScale = 2f)
-        rule.onNodeWithText("Boston Bruins").assertIsDisplayed()
-        rule.onNodeWithText("Toronto Maple Leafs").assertIsDisplayed()
+        // At double type the names no longer fit the column, so the card names the clubs by
+        // abbreviation, shown whole rather than cut. Both clubs must still be named.
+        val labels =
+            rule
+                .onAllNodesWithTag(CLUB_NAME_TAG, useUnmergedTree = true)
+                .fetchSemanticsNodes()
+                .map { node -> node.config[SemanticsProperties.Text].joinToString("") { it.text } }
+        assertTrue("at 2x the card names the clubs $labels", labels.containsAll(listOf("BOS", "TOR")))
         assertTrue(rule.onNodeWithTag("game-row").getUnclippedBoundsInRoot().height > 76.dp)
         assertTextFits(expectedCount = 8)
     }

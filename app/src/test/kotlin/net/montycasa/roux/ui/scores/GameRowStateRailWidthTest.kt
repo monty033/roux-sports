@@ -289,38 +289,47 @@ class GameRowStateRailWidthTest {
 
     /**
      * At double type the widest state needs more of the card than the card has to spare, and the
-     * rail is capped so the club column keeps a name.
+     * rail is capped so the club column keeps its room.
      *
      * A card that says nothing about which team is playing is worse than one whose clock has
-     * wrapped, so the club name has to survive: the assertion reads the text the line actually
-     * shows, not a picture of it.
+     * wrapped. Cutting the name was not good enough: "Bos…" could be any Boston, and a test that
+     * accepts any three characters accepts exactly that. The column now answers with the club's
+     * abbreviation - short, true, and never cut - so the assertion is that the row names the club
+     * unmistakably rather than that it shows some of its letters.
      */
     private fun assertTheClubNameIsStillAName() {
         launch(cards = listOf(game("final-ot", GameState.Final, FinalKind.OT)), fontScale = 2f)
-        val rows = rule.onAllNodesWithTag(TEAM_LINE_TAG, useUnmergedTree = true).fetchSemanticsNodes()
-        val names =
-            rows
-                .flatMap { it.descendants() }
-                .filter { node ->
-                    node.config.getOrNull(SemanticsProperties.Text)?.any { it.text == "Boston Bruins" } == true
-                }
-        assertEquals("expected one club name on the card", 1, names.size)
-        val layout = layoutOf(names.single())
-        // The part of the line the column has room for: the text before the ellipsis.
-        val visible =
-            layout.layoutInput.text.text
-                .substring(0, layout.getLineEnd(0, false))
-        val railWidth = railWidthsDp().first()
-        println("club name at 2x in a $railWidth dp rail: '$visible…'")
-        assertTrue(
-            "the club name is '$visible': the rail took the column's room",
-            visible.isNotEmpty() && visible != "…",
+        val labels = clubLabels()
+        assertEquals("expected a club label on each team line", 2, labels.size)
+        assertEquals(
+            "at 2x type the card names the clubs $labels instead of their abbreviations",
+            listOf("BOS", "TOR"),
+            labels,
         )
-        assertTrue(
-            "the club name shows '$visible': too little of it to tell the club from another",
-            visible.length >= 3,
+        rule.onAllNodesWithTag(CLUB_NAME_TAG, useUnmergedTree = true).fetchSemanticsNodes().forEach { node ->
+            assertFalse(
+                "the label ${node.config[SemanticsProperties.Text]} is itself cut",
+                layoutOf(node).isLineEllipsized(0),
+            )
+        }
+    }
+
+    /** The abbreviation is a fallback, not the rule: at normal type the name is shown in full. */
+    @Test
+    fun theClubNameIsTheWholeNameWhenItFits() {
+        launch(cards = listOf(game("final-ot", GameState.Final, FinalKind.OT)))
+        assertEquals(
+            "at normal type the card should show the names",
+            listOf("Boston Bruins", "Toronto Maple Leafs"),
+            clubLabels(),
         )
     }
+
+    private fun clubLabels(): List<String> =
+        rule
+            .onAllNodesWithTag(CLUB_NAME_TAG, useUnmergedTree = true)
+            .fetchSemanticsNodes()
+            .map { node -> node.config[SemanticsProperties.Text].joinToString("") { it.text } }
 
     @Test
     @Config(qualifiers = "en-rUS-w360dp-h780dp-mdpi")
@@ -364,19 +373,14 @@ class GameRowStateRailWidthTest {
         val widths = railWidthsDp()
         assertEquals("expected two rails", 2, widths.size)
         assertEquals("the long club name widened the rail", widths[0], widths[1], 0.01f)
-        val rows =
+        val labels =
             rule
-                .onAllNodesWithTag(TEAM_LINE_TAG, useUnmergedTree = true)
+                .onAllNodesWithTag(CLUB_NAME_TAG, useUnmergedTree = true)
                 .fetchSemanticsNodes()
-        val clubName =
-            rows
-                .flatMap { it.descendants() }
-                .single {
-                    it.config.getOrNull(SemanticsProperties.Text)?.any { text -> text.text == longName } == true
-                }
-        val layout = layoutOf(clubName)
-        assertTrue("the long club name was not truncated", layout.isLineEllipsized(0))
-        println("long club name: rail widths $widths, ellipsised=${layout.isLineEllipsized(0)}")
+                .map { node -> node.config[SemanticsProperties.Text].joinToString("") { it.text } }
+        // The name is far too long for the column, so the card answers with the club's abbreviation
+        // rather than a cut name. Either way it must not widen the rail.
+        assertTrue("the long club name was not replaced by the abbreviation: $labels", "BOS" in labels)
     }
 }
 

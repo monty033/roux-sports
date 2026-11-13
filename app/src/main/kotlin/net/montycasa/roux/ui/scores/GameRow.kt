@@ -76,6 +76,9 @@ const val STATE_RAIL_TAG = "gameRowStateRail"
 const val WATCH_TAG = "gameRowWatch"
 const val TEAM_LINE_TAG = "gameRowTeamLine"
 
+/** The club's name, or its abbreviation where the name would have to be cut. */
+const val CLUB_NAME_TAG = "gameRowClubName"
+
 /**
  * The accent stripe that marks a favourite matchup.
  *
@@ -286,13 +289,21 @@ private fun TeamLine(
         Box(Modifier.width(metrics.crestSize).height(28.dp), contentAlignment = Alignment.Center) {
             TeamLogo(team, metrics.crestSize)
         }
+        val clubName = team.name?.takeIf { it.isNotBlank() }
+        // A name cut to "Bos…" does not tell Boston from Boston College, and the wider rail can leave
+        // exactly that much room at large type. The abbreviation is short, true and unambiguous, so it
+        // takes over the moment the name would have to be cut.
+        var nameWasCut by remember(clubName, metrics.clubSize) { mutableStateOf(false) }
         Text(
-            text = team.name?.takeIf { it.isNotBlank() } ?: team.abbrev,
-            modifier = Modifier.weight(1f),
+            text = if (clubName == null || nameWasCut) team.abbrev else clubName,
+            modifier = Modifier.weight(1f).testTag(CLUB_NAME_TAG),
             style = Roux.cardTypography.clubName.copy(fontSize = metrics.clubSize),
             color = ink,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            // Latched: the abbreviation fits, so re-measuring would report no overflow and flip the
+            // label back to the cut name, forever. Once cut, it stays cut for this width.
+            onTextLayout = { layout -> if (clubName != null && layout.hasVisualOverflow) nameWasCut = true },
         )
         // A reserved slot keeps names aligned, even when no score is known. Grow with large type.
         Box(Modifier.width(metrics.scoreWidth * LocalDensity.current.fontScale.coerceAtLeast(1f)), contentAlignment = Alignment.CenterEnd) {
