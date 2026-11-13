@@ -59,8 +59,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import net.montycasa.roux.R
 import net.montycasa.roux.domain.policy.LeagueOrder
+import net.montycasa.roux.ui.common.LeagueCrest
 import net.montycasa.roux.ui.reach.reachTarget
 import net.montycasa.roux.ui.scores.DrawerUi
+import net.montycasa.roux.ui.scores.MY_TEAMS_LEAGUE
 import net.montycasa.roux.ui.theme.Roux
 import java.time.LocalDate
 import java.time.format.DateTimeParseException
@@ -283,6 +285,8 @@ private fun DrawerRow(
     dimmed: Boolean = false,
     editing: Boolean = false,
     handle: (@Composable () -> Unit)? = null,
+    /** Artwork before the name: a league's crest, where the league has one. */
+    leading: (@Composable () -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     val accent = Roux.accents.fill
@@ -316,6 +320,7 @@ private fun DrawerRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        leading?.invoke()
         if (team) Icon(star, contentDescription = null, Modifier.size(17.dp).testTag("leagues.myTeams.star"), tint = ink)
         Text(
             label,
@@ -399,6 +404,21 @@ fun leagueChipLabel(
         catalog.firstOrNull { it.id == drawer.selectedLeagueId }?.label ?: drawer.selectedLeagueId
     }
 
+/** The crest beside a league's name: the same height as the row's text block, not the whole row. */
+private val LEAGUE_CREST_SIZE = 20.dp
+
+/** The league the app carries today. A filter over "the leagues" is a filter over this one. */
+private const val CARRIED_LEAGUE_ID = "nhl"
+
+/**
+ * The league whose crest the top bar shows.
+ *
+ * "My Teams" is a filter inside the league being read, not a league of its own: the slate behind it is
+ * still that league's games, so it keeps the league's crest. Only the NHL is carried, so that is what
+ * the filter sits in - a second carried league would need the filter to remember which one it is in.
+ */
+fun leagueCrestId(drawer: DrawerUi): String = if (drawer.selectedLeagueId == MY_TEAMS_LEAGUE) CARRIED_LEAGUE_ID else drawer.selectedLeagueId
+
 @Composable
 private fun ReorderableLeagueRow(
     league: DrawerLeague,
@@ -420,6 +440,7 @@ private fun ReorderableLeagueRow(
         label = league.label,
         trailing = stringResource(league.sport),
         tag = "leagues.${league.id}",
+        leading = { LeagueCrest(league.id, LEAGUE_CREST_SIZE) },
         selected = selected,
         dimmed = !league.available,
         editing = editing,
