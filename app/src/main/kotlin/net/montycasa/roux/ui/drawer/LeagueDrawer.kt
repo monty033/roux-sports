@@ -400,11 +400,10 @@ fun leagueChipLabel(
 private val LEAGUE_CREST_SIZE = 30.dp
 
 /**
- * The league whose crest the top bar shows.
+ * The league whose crest the top bar draws.
  *
- * "My Teams" is a filter inside the league being read, not a league of its own: the slate behind it is
- * still that league's games, so it keeps the league's crest. Only the NHL is carried, so that is what
- * the filter sits in - a second carried league would need the filter to remember which one it is in.
+ * The favourites filter is not a league and carries no crest - the chip marks it with a star instead - so this is
+ * simply what the drawer has selected.
  */
 fun leagueCrestId(drawer: DrawerUi): String = drawer.selectedLeagueId
 
