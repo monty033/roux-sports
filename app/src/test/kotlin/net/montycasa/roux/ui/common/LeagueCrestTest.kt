@@ -7,6 +7,8 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import net.montycasa.roux.ui.drawer.leagueCrestId
+import net.montycasa.roux.ui.scores.DrawerUi
 import net.montycasa.roux.ui.scores.ScoresHeader
 import net.montycasa.roux.ui.theme.RouxTheme
 import org.junit.Rule
@@ -14,6 +16,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+
+const val CHIP_STAR_TAG = "scores.leagueChip.star"
 
 /**
  * The crest is the league's, and it follows the theme the user is actually looking at.
@@ -47,30 +51,14 @@ class LeagueCrestUrlTest {
     }
 
     /**
-     * With the favourites filter on the drawer reports "myTeams", which is a filter rather than a league.
-     * The chip still shows the league's crest, because the slate behind it is that league's games.
+     * The favourites filter is not a league, so it borrows no league's crest: the chip marks it with a star.
      */
     @Test
-    fun theFavouritesFilterKeepsTheLeagueCrest() {
-        val filtered =
-            net.montycasa.roux.ui.scores
-                .DrawerUi(selectedLeagueId = "myTeams", favouritesOnly = true)
-        val selected =
-            net.montycasa.roux.ui.scores
-                .DrawerUi(selectedLeagueId = "nhl", favouritesOnly = false)
+    fun theFavouritesFilterIsNotALeagueWithACrest() {
+        val filtered = DrawerUi(selectedLeagueId = "myTeams", favouritesOnly = true)
 
-        assert(
-            net.montycasa.roux.ui.drawer
-                .leagueCrestId(filtered) == "nhl",
-        ) {
-            "the favourites filter drew the crests of ${net.montycasa.roux.ui.drawer.leagueCrestId(filtered)}"
-        }
-        assert(
-            net.montycasa.roux.ui.drawer
-                .leagueCrestId(selected) == "nhl",
-        ) {
-            "the league itself drew the crests of ${net.montycasa.roux.ui.drawer.leagueCrestId(selected)}"
-        }
+        assert(leagueCrestId(filtered) == "myTeams") { "the filter was given ${leagueCrestId(filtered)}" }
+        assert(leagueCrestUrl(leagueCrestId(filtered), dark = false) == null) { "the filter drew a crest" }
     }
 
     @Test
@@ -82,7 +70,7 @@ class LeagueCrestUrlTest {
     }
 }
 
-/** The chip in the top bar carries the same crest, and only when there is one to carry. */
+/** The chip carries a league's crest, and a star - not a crest - while the favourites filter is on. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class LeagueCrestInHeaderTest {
@@ -91,6 +79,7 @@ class LeagueCrestInHeaderTest {
     private fun header(
         leagueLabel: String?,
         leagueId: String?,
+        favouritesOnly: Boolean = false,
     ) {
         compose.setContent {
             RouxTheme {
@@ -99,6 +88,7 @@ class LeagueCrestInHeaderTest {
                     modifier = Modifier.fillMaxWidth(),
                     leagueLabel = leagueLabel,
                     leagueId = leagueId,
+                    favouritesOnly = favouritesOnly,
                     statusInset = WindowInsets(0, 0, 0, 0),
                 )
             }
@@ -107,6 +97,8 @@ class LeagueCrestInHeaderTest {
 
     private fun crestCount(): Int = compose.onAllNodesWithTag(LEAGUE_CREST_TAG, useUnmergedTree = true).fetchSemanticsNodes().size
 
+    private fun starCount(): Int = compose.onAllNodesWithTag(CHIP_STAR_TAG, useUnmergedTree = true).fetchSemanticsNodes().size
+
     @Test
     fun theChipCarriesTheCrest() {
         header(leagueLabel = "NHL", leagueId = "nhl")
@@ -114,6 +106,7 @@ class LeagueCrestInHeaderTest {
         compose.onNodeWithTag("scores.leagueChip").assertExists()
         val crests = crestCount()
         assert(crests == 1) { "the chip drew $crests crests, expected exactly one" }
+        assert(starCount() == 0) { "the league chip drew a star" }
     }
 
     @Test
@@ -123,24 +116,20 @@ class LeagueCrestInHeaderTest {
         compose.onNodeWithTag("scores.leagueChip").assertExists()
         val crests = crestCount()
         assert(crests == 0) { "a league with no crest drew $crests crest(s)" }
+        assert(starCount() == 0) { "a league with no crest drew a star" }
     }
 
     @Test
-    fun theFavouritesChipStillCarriesTheLeagueCrest() {
-        // This is what the nav host passes while the filter is on: the label is My Teams, and the crest
-        // comes from the league the filter sits in.
-        header(
-            leagueLabel = "My Teams",
-            leagueId =
-                net.montycasa.roux.ui.drawer.leagueCrestId(
-                    net.montycasa.roux.ui.scores
-                        .DrawerUi(selectedLeagueId = "myTeams", favouritesOnly = true),
-                ),
-        )
+    fun theFavouritesChipCarriesAStarAndNoCrest() {
+        // What the nav host passes while the filter is on: label My Teams, the filter's own id, favourites true.
+        // A league badge beside "My Teams" would say something untrue - the filter is not a league.
+        header(leagueLabel = "My Teams", leagueId = "myTeams", favouritesOnly = true)
 
         compose.onNodeWithText("My Teams").assertExists()
         val crests = crestCount()
-        assert(crests == 1) { "the My Teams chip drew $crests crests, expected exactly one" }
+        val stars = starCount()
+        assert(crests == 0) { "the My Teams chip drew $crests crest(s)" }
+        assert(stars == 1) { "the My Teams chip drew $stars stars, expected exactly one" }
     }
 
     @Test
@@ -149,5 +138,6 @@ class LeagueCrestInHeaderTest {
 
         val crests = crestCount()
         assert(crests == 0) { "a chip with no league drew $crests crest(s)" }
+        assert(starCount() == 0) { "a chip with no league drew a star" }
     }
 }

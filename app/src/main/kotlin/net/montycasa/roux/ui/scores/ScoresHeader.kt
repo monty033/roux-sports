@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import net.montycasa.roux.R
+import net.montycasa.roux.ui.common.FavouriteStar
 import net.montycasa.roux.ui.common.LeagueCrest
 import net.montycasa.roux.ui.common.leagueCrestUrl
 import net.montycasa.roux.ui.reach.reachTarget
@@ -60,6 +61,9 @@ fun ScoresHeader(
     leagueLabel: String? = null,
     // The league whose crest the chip carries. Null, or a league with no crest, draws the label alone.
     leagueId: String? = null,
+    // True while the user is reading the favourites filter. The chip marks that with a star, not a league's crest:
+    // the filter is not a league, and a league badge beside "My Teams" says something untrue.
+    favouritesOnly: Boolean = false,
     // Opens the leagues sheet. The caller decides whether a tap also closes it when the sheet is already open.
     onLeagueClick: () -> Unit = {},
     // Injected so a test can hold the status bar's height still: the phone's own inset is not something a JVM test can
@@ -89,7 +93,7 @@ fun ScoresHeader(
         // neighbour. The count keeps its slot even when nothing is live, so the chip does not slide when a game
         // starts.
         Spacer(Modifier.weight(1f))
-        if (leagueLabel != null) LeagueChip(leagueLabel, leagueId, onLeagueClick)
+        if (leagueLabel != null) LeagueChip(leagueLabel, leagueId, favouritesOnly, onLeagueClick)
         Spacer(Modifier.weight(1f))
         Box(Modifier.widthIn(min = LIVE_PILL_SLOT), contentAlignment = Alignment.CenterEnd) {
             if (liveCount > 0) {
@@ -134,10 +138,12 @@ private val LIVE_PILL_SLOT = 72.dp
 private fun LeagueChip(
     leagueLabel: String,
     leagueId: String?,
+    favouritesOnly: Boolean,
     onClick: () -> Unit,
 ) {
     val description = stringResource(R.string.league_chip_description, leagueLabel)
-    val crestId = leagueId?.takeIf { leagueCrestUrl(it, dark = LocalRouxDark.current) != null }
+    val crestId = leagueId?.takeIf { !favouritesOnly && leagueCrestUrl(it, dark = LocalRouxDark.current) != null }
+    val mark = crestId != null || favouritesOnly
     Row(
         Modifier
             // The touch target is 48 dp, the height the menu button also meets; the pill inside is what is seen.
@@ -156,7 +162,7 @@ private fun LeagueChip(
                 .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
                 .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
                 .padding(
-                    start = if (crestId != null) 6.dp else 14.dp,
+                    start = if (mark) 6.dp else 14.dp,
                     end = 14.dp,
                     top = 4.dp,
                     bottom = 4.dp,
@@ -164,7 +170,21 @@ private fun LeagueChip(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (crestId != null) LeagueCrest(crestId, CHIP_CREST_SIZE)
+            when {
+                crestId != null -> {
+                    LeagueCrest(crestId, CHIP_CREST_SIZE)
+                }
+
+                // The same star the drawer's My Teams row carries, in the accent, so the two read as one idea.
+                favouritesOnly -> {
+                    Icon(
+                        FavouriteStar,
+                        contentDescription = null,
+                        modifier = Modifier.size(CHIP_STAR_SIZE).testTag("scores.leagueChip.star"),
+                        tint = Roux.accents.fill,
+                    )
+                }
+            }
             Text(
                 leagueLabel,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -177,7 +197,10 @@ private fun LeagueChip(
     }
 }
 
-/** The crest inside the chip: the league's mark, sized to the pill rather than to a badge beside it. */
+/** The star inside the chip. Smaller than the crest: a glyph, not artwork. */
+private val CHIP_STAR_SIZE = 20.dp
+
+/** The crest inside the chip. It is the league's mark, so it is the pill's height, not a badge beside it. */
 private val CHIP_CREST_SIZE = 30.dp
 
 private val menuIcon =

@@ -243,6 +243,7 @@ fun RouxNavHost(
                             modifier = Modifier.fillMaxWidth(),
                             leagueLabel = leagueChipLabel(drawerUi, stringResource(R.string.league_chip_my_teams)),
                             leagueId = leagueCrestId(drawerUi),
+                            favouritesOnly = drawerUi.favouritesOnly,
                             onLeagueClick = toggleLeagues,
                         )
                     }
