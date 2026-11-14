@@ -59,10 +59,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import net.montycasa.roux.R
 import net.montycasa.roux.domain.policy.LeagueOrder
+import net.montycasa.roux.ui.common.FavouriteStar
 import net.montycasa.roux.ui.common.LeagueCrest
 import net.montycasa.roux.ui.reach.reachTarget
 import net.montycasa.roux.ui.scores.DrawerUi
-import net.montycasa.roux.ui.scores.MY_TEAMS_LEAGUE
 import net.montycasa.roux.ui.theme.Roux
 import java.time.LocalDate
 import java.time.format.DateTimeParseException
@@ -321,7 +321,7 @@ private fun DrawerRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         leading?.invoke()
-        if (team) Icon(star, contentDescription = null, Modifier.size(17.dp).testTag("leagues.myTeams.star"), tint = ink)
+        if (team) Icon(FavouriteStar, contentDescription = null, Modifier.size(17.dp).testTag("leagues.myTeams.star"), tint = ink)
         Text(
             label,
             Modifier.weight(1f),
@@ -365,14 +365,6 @@ internal fun leagueSeason(loadedDate: String?): String? {
     return "%04d–%02d".format(java.util.Locale.ROOT, firstYear, (firstYear + 1) % 100)
 }
 
-private val star =
-    ImageVector
-        .Builder("Favourite", 24.dp, 24.dp, 24f, 24f)
-        .addPath(
-            addPathNodes("M12,3.6 L14.6,8.9 L20.5,9.8 L16.2,13.9 L17.2,19.7 L12,16.9 L6.8,19.7 L7.8,13.9 L3.5,9.8 L9.4,8.9 Z"),
-            fill = SolidColor(Color.Black),
-        ).build()
-
 /** Availability is catalog data, so tests and future adapters can offer more than today's NHL. */
 data class DrawerLeague(
     val id: String,
@@ -407,9 +399,6 @@ fun leagueChipLabel(
 /** The crest beside a league's name: large enough to be recognised, small enough to leave the name room. */
 private val LEAGUE_CREST_SIZE = 30.dp
 
-/** The league the app carries today. A filter over "the leagues" is a filter over this one. */
-private const val CARRIED_LEAGUE_ID = "nhl"
-
 /**
  * The league whose crest the top bar shows.
  *
@@ -417,7 +406,7 @@ private const val CARRIED_LEAGUE_ID = "nhl"
  * still that league's games, so it keeps the league's crest. Only the NHL is carried, so that is what
  * the filter sits in - a second carried league would need the filter to remember which one it is in.
  */
-fun leagueCrestId(drawer: DrawerUi): String = if (drawer.selectedLeagueId == MY_TEAMS_LEAGUE) CARRIED_LEAGUE_ID else drawer.selectedLeagueId
+fun leagueCrestId(drawer: DrawerUi): String = drawer.selectedLeagueId
 
 @Composable
 private fun ReorderableLeagueRow(
