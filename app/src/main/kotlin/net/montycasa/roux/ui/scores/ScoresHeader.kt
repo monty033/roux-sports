@@ -8,9 +8,11 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -39,6 +41,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
@@ -72,91 +75,110 @@ fun ScoresHeader(
             .heightIn(min = 64.dp)
             .testTag("scores.header")
             .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(contentAlignment = Alignment.CenterStart) {
-            Image(
-                painterResource(R.drawable.wordmark_orange),
-                contentDescription = stringResource(R.string.app_name),
-                // The authority's .brandmark is 1.25rem (20 dp), including transparent pixels.
-                modifier = Modifier.height(20.dp).testTag("scores.wordmark"),
-                contentScale = ContentScale.Fit,
-            )
-        }
-        if (leagueLabel != null) {
-            val description = stringResource(R.string.league_chip_description, leagueLabel)
-            Row(
-                Modifier
-                    // The touch target is 48 dp, the height the menu button also meets; the pill inside is what is seen.
-                    .heightIn(min = 48.dp)
-                    // Capped so a long label cannot take the room the live pill needs on a 360 dp screen,
-                    // and floored so a short label still gives a 48 dp-wide target, not just a tall one.
-                    .widthIn(min = 48.dp, max = 140.dp)
-                    .clickable(role = Role.Button, onClick = onLeagueClick)
-                    .reachTarget("scores.leagueChip")
-                    .semantics { contentDescription = description }
-                    .testTag("scores.leagueChip"),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                // A league with no crest of its own keeps the plain pill: without this the padding would
-                // still indent for artwork that is not there.
-                val crestId = leagueId?.takeIf { leagueCrestUrl(it, dark = LocalRouxDark.current) != null }
+        Image(
+            painterResource(R.drawable.wordmark_orange),
+            contentDescription = stringResource(R.string.app_name),
+            // The authority's .brandmark is 1.25rem (20 dp), including transparent pixels.
+            modifier = Modifier.height(20.dp).testTag("scores.wordmark"),
+            contentScale = ContentScale.Fit,
+        )
+        // Equal weights place the chip at the midpoint of the space between the brand and the count, and a row
+        // lays its children out in order, so the chip can only ever be squeezed - never drawn over either
+        // neighbour. The count keeps its slot even when nothing is live, so the chip does not slide when a game
+        // starts.
+        Spacer(Modifier.weight(1f))
+        if (leagueLabel != null) LeagueChip(leagueLabel, leagueId, onLeagueClick)
+        Spacer(Modifier.weight(1f))
+        Box(Modifier.widthIn(min = LIVE_PILL_SLOT), contentAlignment = Alignment.CenterEnd) {
+            if (liveCount > 0) {
                 Row(
                     Modifier
-                        .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
-                        .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
-                        .padding(
-                            start = if (crestId != null) 8.dp else 12.dp,
-                            end = 12.dp,
-                            top = 6.dp,
-                            bottom = 6.dp,
-                        ),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        .height(28.dp)
+                        .widthIn(min = 72.dp)
+                        .background(Roux.accents.fill, CircleShape)
+                        .testTag("scores.livePill")
+                        .padding(horizontal = 11.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (crestId != null) LeagueCrest(crestId, LEAGUE_CREST_SIZE)
+                    Box(Modifier.size(6.dp).background(Roux.accents.onFill, CircleShape))
                     Text(
-                        leagueLabel,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
+                        stringResource(R.string.live_count, liveCount),
+                        color = Roux.accents.onFill,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 0.12.em,
+                        // The slot is 72 dp and the pill may grow past it for a two-digit count; what it must never
+                        // do is clip, so a count too long for its room ends in an ellipsis instead.
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
         }
-        // The chip sits beside the wordmark, not out at the right edge: the leftover space belongs to the
-        // spacer, so the live count keeps the right edge it has always had.
-        Spacer(Modifier.weight(1f))
-        if (liveCount > 0) {
-            Row(
-                Modifier
-                    .height(28.dp)
-                    .widthIn(min = 72.dp)
-                    .background(Roux.accents.fill, CircleShape)
-                    .testTag("scores.livePill")
-                    .padding(horizontal = 11.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(Modifier.size(6.dp).background(Roux.accents.onFill, CircleShape))
-                Text(
-                    stringResource(R.string.live_count, liveCount),
-                    color = Roux.accents.onFill,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 0.12.em,
-                    maxLines = 1,
-                )
-            }
+    }
+}
+
+/** The room the live count gets whether or not anything is live, so the chip's place does not depend on it. */
+private val LIVE_PILL_SLOT = 72.dp
+
+/**
+ * The slate the screen is showing, as a pill with the league's crest.
+ *
+ * The label is what is read; the crest is what is seen first. A league with no crest keeps the plain pill rather
+ * than borrowing another league's mark.
+ */
+@Composable
+private fun LeagueChip(
+    leagueLabel: String,
+    leagueId: String?,
+    onClick: () -> Unit,
+) {
+    val description = stringResource(R.string.league_chip_description, leagueLabel)
+    val crestId = leagueId?.takeIf { leagueCrestUrl(it, dark = LocalRouxDark.current) != null }
+    Row(
+        Modifier
+            // The touch target is 48 dp, the height the menu button also meets; the pill inside is what is seen.
+            .heightIn(min = 48.dp)
+            // Capped so a long label cannot take the room the live pill needs, and floored so a short label
+            // still gives a 48 dp-wide target, not just a tall one.
+            .widthIn(min = 48.dp, max = 140.dp)
+            .clickable(role = Role.Button, onClick = onClick)
+            .reachTarget("scores.leagueChip")
+            .semantics { contentDescription = description }
+            .testTag("scores.leagueChip"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            Modifier
+                .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
+                .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                .padding(
+                    start = if (crestId != null) 6.dp else 14.dp,
+                    end = 14.dp,
+                    top = 4.dp,
+                    bottom = 4.dp,
+                ),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (crestId != null) LeagueCrest(crestId, CHIP_CREST_SIZE)
+            Text(
+                leagueLabel,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
 
-/** The crest inside the chip: smaller than the drawer's, because the pill is 28 dp tall. */
-private val LEAGUE_CREST_SIZE = 16.dp
+/** The crest inside the chip: the league's mark, sized to the pill rather than to a badge beside it. */
+private val CHIP_CREST_SIZE = 30.dp
 
 private val menuIcon =
     ImageVector
