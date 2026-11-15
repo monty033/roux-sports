@@ -5,21 +5,29 @@ name: release
 # LAN-only, so a release here is the record of what was built; the GitHub release is the download.
 #
 # Order matters and is the point of the workflow:
-#   1. preflight refuses a tag that is not on main, does not match versionName, or names a commit with
+#   1. resolve the target, so a manual dispatch releases the tag it checked out and not the branch the
+#      dispatch was fired from.
+#   2. preflight refuses a tag that is not on main, does not match versionName, or names a commit with
 #      no successful gate run. Nothing is built or published from a commit that has not passed.
-#   2. build restores the keystore from secrets, runs the repository's own release script, and checks the
+#   3. build restores the keystore from secrets, runs the repository's own release script, and checks the
 #      signer against a pinned certificate digest.
-#   3. publish runs in its own step with its own environment, holding only the GitHub token. It runs no
-#      repository script, so nothing from the tagged commit executes with that token in scope.
-#   4. the uploaded APK is downloaded again and compared, so a corrupt upload fails the run instead of
-#      becoming a release people install.
+#   4. publish runs in its own step with its own environment, holding only the GitHub token. It resolves
+#      its tools from a fixed PATH and runs no repository script, so nothing from the tagged commit
+#      executes with that token in scope.
+#   5. the release is created as a draft, both assets are uploaded and read back for comparison, and only
+#      then is it published. A corrupt upload therefore cannot go live.
 #
-# Secrets this needs (Forgejo; user-level secrets are visible to both repositories):
+# Secrets this needs (Forgejo user-level secrets are visible to both repositories):
 #   RELEASE_PUBLISH_TOKEN   GitHub token with contents:write on the mirror
 #   RELEASE_KEYSTORE_B64    base64 of the release .jks
 #   RELEASE_STORE_PASSWORD  keystore password
 #   RELEASE_KEY_PASSWORD    key password
 #   RELEASE_KEY_ALIAS       key alias (optional; read out of the keystore when absent)
+#
+# Known limitation, stated rather than hidden: a push trigger runs the workflow file from the ref being
+# built, so whoever can create a tag can also supply the workflow that handles these secrets. Restrict
+# who may create release tags (Forgejo tag protection) or move release automation to a ref tags cannot
+# override.
 
 on:
   push:
@@ -29,11 +37,12 @@ on:
       tag:
         description: Existing tag to publish, e.g. v1.0.0
         required: true
+        type: string
 
 concurrency:
-  # Two runs for one tag would race on the same release assets. Never cancel a run in flight: a
-  # half-published release is worse than a slow one.
-  group: release-${{ github.ref }}
+  # Keyed on the tag itself, so a tag push and a manual dispatch for the same tag serialise instead of
+  # racing on the same release assets. Never cancel: a half-published release is worse than a slow one.
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 permissions:
@@ -42,8 +51,8 @@ permissions:
 env:
   APP_PACKAGE: net.montycasa.roux
   GITHUB_MIRROR: monty033/roux-sports
-  # The certificate this project ships. A release signed by anything else is not ours, so the build
-  # step fails rather than publishing it. Rotating the signing key means changing this line.
+  # The certificate this project ships. A release signed by anything else is not ours, so the build step
+  # fails rather than publishing it. Rotating the signing key means changing this line.
   EXPECTED_CERT_SHA256: 6dd177eef48595e217cc660a72fcb05ca4eae4979d1484936941b01721893a21
 
 jobs:
@@ -51,18 +60,42 @@ jobs:
     runs-on: nixos
     timeout-minutes: 90
     steps:
-      - name: Check out the tagged commit with its history
+      - name: Check out the release target
         uses: actions/checkout@v4
         with:
           # The ancestry check needs main, not just the tag's tree.
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
+      - name: Resolve the target
+        # The tag comes from the event, so it is untrusted input: it is passed in the environment (never
+        # spliced into shell source) and validated against a strict shape before anything uses it.
+        env:
+          REQUESTED_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          case "$REQUESTED_TAG" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "refusing tag that is not v<major>.<minor>.<patch>: $REQUESTED_TAG"; exit 1 ;;
+          esac
+          case "$REQUESTED_TAG" in
+            *[!0-9A-Za-z._-]*) echo "refusing tag with unexpected characters: $REQUESTED_TAG"; exit 1 ;;
+          esac
+          # The checked-out tag resolved to a commit. A manual dispatch passes a tag input, but the
+          # event's own SHA belongs to the branch it was fired from, so the commit is read from git.
+          SHA="$(git rev-parse HEAD)"
+          SHORT="$(git rev-parse --short=8 HEAD)"
+          {
+            printf 'TARGET_TAG=%s\n' "$REQUESTED_TAG"
+            printf 'TARGET_SHA=%s\n' "$SHA"
+          } >> "$GITHUB_ENV"
+          printf 'tag\t%s\ncommit\t%s\n' "$REQUESTED_TAG" "$SHORT"
+
       - name: Preflight
         # Read-only. Refuses before any secret is in scope.
         env:
-          # Forgejo's automatic token, read-only here. GITHUB_TOKEN is blanked so a repository script
-          # cannot pick it up out of the environment.
+          # Both well-known token names are blanked so a repository script cannot pick one up out of the
+          # environment; only the read-only copy below is in scope.
           GITHUB_TOKEN: ""
           FORGEJO_TOKEN: ""
           FORGEJO_READ_TOKEN: ${{ github.token }}
@@ -70,43 +103,54 @@ jobs:
         run: |
           set -euo pipefail
 
-          TAG="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
-          printf 'tag\t%s\ncommit\t%s\n' "$TAG" "$GITHUB_SHA"
-
           # 1. The tag names a version the app actually carries.
           VERSION_NAME="$(sed -n 's/^[[:space:]]*versionName = "\(.*\)"$/\1/p' app/build.gradle.kts | head -1)"
           [ -n "$VERSION_NAME" ] || { echo "could not read versionName"; exit 1; }
-          if [ "v$VERSION_NAME" != "$TAG" ]; then
-            echo "tag $TAG does not match versionName $VERSION_NAME"; exit 1
+          if [ "v$VERSION_NAME" != "$TARGET_TAG" ]; then
+            echo "tag $TARGET_TAG does not match versionName $VERSION_NAME"; exit 1
           fi
           echo "versionName matches: $VERSION_NAME"
 
           # 2. The tagged commit is on main. A tag on a side branch is an accident, not a release.
           git fetch --quiet origin main
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD; then
-            echo "commit $GITHUB_SHA is not on main"; exit 1
+          if ! git merge-base --is-ancestor "$TARGET_SHA" FETCH_HEAD; then
+            echo "commit $TARGET_SHA is not on main"; exit 1
           fi
           echo "commit is on main"
 
-          # 3. That commit passed the gate. The gate workflow is the same command a person runs, and a
-          # release is not the place to discover it did not.
-          curl -sS -H "Authorization: token $FORGEJO_READ_TOKEN" \
-            "$RUNS_URL?limit=50" -o "$RUNNER_TEMP/runs.json"
+          # 3. That commit passed the gate. Runs are selected by workflow id, commit and status - a
+          # successful run of something else is not a gate - and paged, because an older tag's gate run
+          # can sit well past the first page.
           PY="$(command -v python3 || true)"
-          if [ -z "$PY" ]; then
-            PY="$(nix develop --command bash -c 'command -v python3')"
-          fi
-          printf '%s\n' "$PY" > "$RUNNER_TEMP/py.path"
-          "$PY" - "$GITHUB_SHA" "$RUNNER_TEMP/runs.json" <<'PY'
+          [ -n "$PY" ] || PY="$(nix develop --command bash -c 'command -v python3')"
+          FOUND=0
+          for page in 1 2 3 4 5 6 7 8; do
+            curl -sS -H "Authorization: token $FORGEJO_READ_TOKEN" \
+              "$RUNS_URL?limit=50&page=$page" -o "$RUNNER_TEMP/runs.json"
+            RESULT="$("$PY" - "$TARGET_SHA" "$RUNNER_TEMP/runs.json" <<'PY'
           import json, sys
           sha, path = sys.argv[1], sys.argv[2]
           runs = json.load(open(path)).get("workflow_runs") or []
-          mine = [r for r in runs if r.get("head_sha") == sha]
-          ok = [r for r in mine if r.get("conclusion") == "success"]
-          print("runs for commit:", len(mine), "successful:", len(ok))
-          if not ok:
-              sys.exit("no successful workflow run for this commit; refusing to release")
+          gate = [r for r in runs if r.get("workflow_id") == "gate.yml" and r.get("commit_sha") == sha]
+          if any(r.get("status") == "success" for r in gate):
+              print("found")
+          elif not runs:
+              print("empty")
+          else:
+              print("keep")
           PY
+          )"
+            echo "page $page: $RESULT"
+            case "$RESULT" in
+              found) FOUND=1; break ;;
+              empty) echo "no gate run for this commit"; exit 1 ;;
+              keep) ;;
+              *) echo "unexpected result from the gate check"; exit 1 ;;
+            esac
+          done
+          if [ "$FOUND" -ne 1 ]; then
+            echo "no successful gate run for this commit in 400 runs"; exit 1
+          fi
           echo "gate run found"
 
       - name: Build the signed release
@@ -115,8 +159,9 @@ jobs:
           STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
-          # Nothing in this step needs repository write access.
+          # Nothing in this step needs repository or forge write access.
           GITHUB_TOKEN: ""
+          FORGEJO_TOKEN: ""
         run: |
           set -euo pipefail
           [ -n "$KEYSTORE_B64" ] || { echo "RELEASE_KEYSTORE_B64 is not set"; exit 1; }
@@ -148,37 +193,50 @@ jobs:
           [ -n "$APK" ] || { echo "no APK in app/build/dist"; exit 1; }
           DIGEST="$(nix develop --command apksigner verify --print-certs "$APK" \
             | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1)"
-          printf 'certificate\ts%s\n' "$DIGEST"
+          printf 'certificate\t%s\n' "$DIGEST"
           if [ "$DIGEST" != "$EXPECTED_CERT_SHA256" ]; then
             echo "APK is signed by an unexpected certificate"; exit 1
           fi
-          sha256sum "$APK" | tee "$RUNNER_TEMP/apk.sha256"
+          sha256sum "$APK"
 
       - name: Remove the key material
         if: always()
         run: |
           set -uo pipefail
+          failed=0
           for f in "$RUNNER_TEMP/release.jks" keystore.properties; do
-            if [ -f "$f" ]; then
-              # Overwrite before unlinking: a build artifact may be uploaded with the workspace, and a
-              # deleted file whose bytes are still on disk is not deleted for our purposes.
+            if [ -e "$f" ]; then
               shred -u "$f" 2>/dev/null || rm -f "$f"
+              if [ -e "$f" ]; then
+                echo "could not remove $f"
+                failed=1
+              fi
             fi
           done
-          rm -f "$RUNNER_TEMP/apk.sha256"
-          echo "key material removed; anything keystore-shaped left in the workspace:"
-          find . -maxdepth 1 -iname '*keystore*' -print | sed 's/^/  /' | grep . || echo "  none"
+          left="$(find "$RUNNER_TEMP" . -maxdepth 1 -iname '*keystore*' -print 2>/dev/null | grep . || true)"
+          if [ -n "$left" ]; then
+            echo "key-shaped files still present:"
+            printf '%s\n' "$left"
+            failed=1
+          fi
+          if [ "$failed" -eq 0 ]; then echo "key material removed"; else exit 1; fi
 
       - name: Publish to the GitHub mirror
-        # Holds the GitHub token and nothing else. No repository script runs here: the tools come from a
-        # fixed PATH, and the only inputs are files this run produced.
+        # Holds the GitHub token and nothing else. An explicit PATH replaces the runner's own, so a
+        # directory an earlier step added to GITHUB_PATH is not searched, and no repository script runs
+        # here: the token cannot reach code from the tagged commit through this step's environment.
         env:
           RELEASE_PUBLISH_TOKEN: ${{ secrets.RELEASE_PUBLISH_TOKEN }}
-          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          PATH: /run/current-system/sw/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+          BASH_ENV: ""
+          ENV: ""
+          GITHUB_TOKEN: ""
+          FORGEJO_TOKEN: ""
         run: |
           set -euo pipefail
           [ -n "$RELEASE_PUBLISH_TOKEN" ] || { echo "RELEASE_PUBLISH_TOKEN is not set"; exit 1; }
-          PY="$(cat "$RUNNER_TEMP/py.path")"
+          PY="$(command -v python3 || true)"
+          [ -n "$PY" ] || { echo "python3 not found on the publish PATH"; exit 1; }
 
           API="https://api.github.com/repos/$GITHUB_MIRROR"
           auth=(-H "Authorization: Bearer $RELEASE_PUBLISH_TOKEN" -H "Accept: application/vnd.github+json")
@@ -188,48 +246,98 @@ jobs:
           SUM="$APK.sha256"
           [ -f "$SUM" ] || { echo "no checksum beside $APK"; exit 1; }
 
-          # Create the release, or reuse the one a previous attempt made for this tag.
+          # If the mirror already has this tag, it must point at the commit that was built. A push mirror
+          # that is behind, or a tag pointing elsewhere, would publish an APK for the wrong source.
+          TAG_CODE="$(curl -sS -o "$RUNNER_TEMP/tag.json" -w '%{http_code}' "${auth[@]}" \
+            "$API/git/ref/tags/$TARGET_TAG")"
+          if [ "$TAG_CODE" = "200" ]; then
+            # The ref may point at the commit (lightweight tag) or at a tag object (annotated tag); peel
+            # it, or an annotated tag would be refused for pointing at "the wrong commit" forever.
+            MIRROR_SHA="$("$PY" -c 'import json,sys
+          obj = json.load(open(sys.argv[1]))["object"]
+          print(obj["sha"])' "$RUNNER_TEMP/tag.json")"
+            MIRROR_TYPE="$("$PY" -c 'import json,sys
+          print(json.load(open(sys.argv[1]))["object"]["type"])' "$RUNNER_TEMP/tag.json")"
+            if [ "$MIRROR_TYPE" = "tag" ]; then
+              curl -sS -o "$RUNNER_TEMP/tagobj.json" "${auth[@]}" "$API/git/tags/$MIRROR_SHA"
+              MIRROR_SHA="$("$PY" -c 'import json,sys
+          print(json.load(open(sys.argv[1]))["object"]["sha"])' "$RUNNER_TEMP/tagobj.json")"
+              echo "peeled annotated tag to $MIRROR_SHA"
+            fi
+            printf 'mirror tag\t%s\nbuilt commit\t%s\n' "$MIRROR_SHA" "$TARGET_SHA"
+            if [ "$MIRROR_SHA" != "$TARGET_SHA" ]; then
+              echo "the mirror's $TARGET_TAG is not the commit that was built"; exit 1
+            fi
+          elif [ "$TAG_CODE" = "404" ]; then
+            echo "the mirror has no $TARGET_TAG yet; the release will create it at $TARGET_SHA"
+          else
+            echo "could not read the mirror's tag ref (HTTP $TAG_CODE)"; exit 1
+          fi
+
+          # Draft first: nothing is visible until both assets are uploaded and read back.
           CODE="$(curl -sS -o "$RUNNER_TEMP/release.json" -w '%{http_code}' "${auth[@]}" \
             -X POST "$API/releases" -H 'Content-Type: application/json' \
-            -d "{\"tag_name\":\"$TAG\",\"target_commitish\":\"$GITHUB_SHA\",\"name\":\"Roux Sports ${TAG#v}\",\"draft\":false,\"prerelease\":false}")"
-          if [ "$CODE" != "201" ] && [ "$CODE" != "200" ]; then
-            curl -sS -o "$RUNNER_TEMP/release.json" "${auth[@]}" "$API/releases/tags/$TAG"
+            -d "{\"tag_name\":\"$TARGET_TAG\",\"target_commitish\":\"$TARGET_SHA\",\"name\":\"Roux Sports ${TARGET_TAG#v}\",\"draft\":true,\"prerelease\":false}")"
+          if [ "$CODE" != "201" ]; then
+            echo "creating the draft release failed (HTTP $CODE)"
+            cat "$RUNNER_TEMP/release.json"
+            exit 1
           fi
           RID="$("$PY" -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "$RUNNER_TEMP/release.json")"
-          echo "release id: $RID"
+          UPLOAD_URL="$("$PY" -c 'import json,sys
+          print(json.load(open(sys.argv[1]))["upload_url"].split("{")[0])' "$RUNNER_TEMP/release.json")"
+          echo "draft release id: $RID"
 
+          : > "$RUNNER_TEMP/asset_ids.txt"
           upload() {
             local file="$1" name="$2" code
-            # An asset with this name from an earlier attempt would 422; remove it first.
-            EXISTING="$("$PY" - "$RUNNER_TEMP/release.json" "$name" <<'PY'
-          import json, sys
-          data = json.load(open(sys.argv[1]))
-          for asset in data.get("assets") or []:
-              if asset.get("name") == sys.argv[2]:
-                  print(asset["id"])
-                  break
-          PY
-          )"
-            if [ -n "$EXISTING" ]; then
-              curl -sS -o /dev/null "${auth[@]}" -X DELETE "$API/releases/assets/$EXISTING"
-            fi
-            code="$(curl -sS -o /dev/null -w '%{http_code}' "${auth[@]}" \
-              -X POST "$API/releases/$RID/assets?name=$name" \
-              -H 'Content-Type: application/octet-stream' --data-binary "@$file")"
+            code="$(curl -sS -o "$RUNNER_TEMP/asset.json" -w '%{http_code}' \
+              -H "Authorization: Bearer $RELEASE_PUBLISH_TOKEN" \
+              -H 'Content-Type: application/octet-stream' \
+              -X POST "$UPLOAD_URL?name=$name" --data-binary "@$file")"
             echo "upload $name -> $code"
-            case "$code" in 200|201) ;; *) echo "upload of $name failed"; exit 1 ;; esac
+            if [ "$code" != "201" ]; then
+              cat "$RUNNER_TEMP/asset.json"
+              exit 1
+            fi
+            "$PY" -c 'import json,sys
+          asset = json.load(open(sys.argv[1]))
+          print(asset["id"])' "$RUNNER_TEMP/asset.json" >> "$RUNNER_TEMP/asset_ids.txt"
           }
 
           upload "$APK" "$(basename "$APK")"
           upload "$SUM" "$(basename "$SUM")"
 
-          # Download what we just published and compare it with what we built.
-          URL="https://github.com/$GITHUB_MIRROR/releases/download/$TAG/$(basename "$APK")"
-          curl -sSL -o "$RUNNER_TEMP/published.apk" "$URL"
-          LOCAL_SHA="$(sha256sum "$APK" | cut -d' ' -f1)"
-          REMOTE_SHA="$(sha256sum "$RUNNER_TEMP/published.apk" | cut -d' ' -f1)"
-          printf 'local\t%s\nremote\t%s\n' "$LOCAL_SHA" "$REMOTE_SHA"
-          [ "$LOCAL_SHA" = "$REMOTE_SHA" ] || { echo "published bytes differ from the build"; exit 1; }
-          rm -f "$RUNNER_TEMP/published.apk"
+          APK_ID="$(sed -n 1p "$RUNNER_TEMP/asset_ids.txt")"
+          SUM_ID="$(sed -n 2p "$RUNNER_TEMP/asset_ids.txt")"
+          [ -n "$APK_ID" ] && [ -n "$SUM_ID" ] || { echo "asset ids were not recorded"; exit 1; }
 
-          echo "published: https://github.com/$GITHUB_MIRROR/releases/tag/$TAG"
+          # Both assets are read back through the API and compared with the files that were built. A
+          # draft's download URLs need auth anyway, so this is the same path a client would use.
+          verify() {
+            local asset_id="$1" local_file="$2" name="$3" a b
+            curl -sS -H "Authorization: Bearer $RELEASE_PUBLISH_TOKEN" \
+              -H 'Accept: application/octet-stream' \
+              -o "$RUNNER_TEMP/back.bin" "$API/releases/assets/$asset_id"
+            a="$(sha256sum "$local_file" | cut -d' ' -f1)"
+            b="$(sha256sum "$RUNNER_TEMP/back.bin" | cut -d' ' -f1)"
+            printf 'verify %s\n  built  %s\n  stored %s\n' "$name" "$a" "$b"
+            if [ "$a" != "$b" ]; then echo "$name did not round-trip"; exit 1; fi
+            rm -f "$RUNNER_TEMP/back.bin"
+          }
+
+          verify "$APK_ID" "$APK" "$(basename "$APK")"
+          verify "$SUM_ID" "$SUM" "$(basename "$SUM")"
+
+          # Verified, so it can be seen.
+          CODE="$(curl -sS -o /dev/null -w '%{http_code}' "${auth[@]}" \
+            -X PATCH "$API/releases/$RID" -H 'Content-Type: application/json' -d '{"draft":false}')"
+          echo "publish -> $CODE"
+          [ "$CODE" = "200" ] || { echo "could not publish the draft release"; exit 1; }
+
+          CODE="$(curl -sS -o /dev/null -w '%{http_code}' -L \
+            "https://github.com/$GITHUB_MIRROR/releases/download/$TARGET_TAG/$(basename "$SUM")")"
+          echo "public checksum download -> $CODE"
+          [ "$CODE" = "200" ] || { echo "the published download is not reachable"; exit 1; }
+
+          echo "published: https://github.com/$GITHUB_MIRROR/releases/tag/$TARGET_TAG"
