@@ -89,8 +89,14 @@ jobs:
           const b64 = process.env.VALUE.replace(/\s+/g, '');
           const buf = Buffer.from(b64, 'base64');
           console.log(`decoded bytes=${buf.length} magic=${buf.subarray(0, 4).toString('hex')}`);
+          // A keystore is either JKS (feedfeed) or PKCS12 (DER, 3082...). This project's is PKCS12, and an
+          // earlier version of this check asserted JKS only, so it rejected a perfectly good key.
+          const magic = buf.subarray(0, 4).toString('hex');
           if (buf.length < 1000) { console.error('too small'); process.exit(1); }
-          if (buf.subarray(0, 4).toString('hex') !== 'feedfeed') { console.error('not a JKS keystore'); process.exit(1); }
+          if (magic !== 'feedfeed' && !magic.startsWith('3082')) {
+            console.error(`not a keystore: magic ${magic}`);
+            process.exit(1);
+          }
           NODE
       - name: Preflight API read
         if: inputs.stage == 'preflight'
