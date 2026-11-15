@@ -128,7 +128,10 @@ jobs:
           # workflow. That is why the jq check below says so plainly instead of failing mutely.
           resolve() {
             local name="$1" found
-            found="$(nix develop --command bash -c "command -v $name" 2>/dev/null || true)"
+            # -i so only the dev shell's own PATH counts: without it a tool installed on the host is found
+            # here and looks fine on this machine while being absent on the runner, which is how three runs
+            # were lost.
+            found="$(nix develop -i --command bash -c "command -v $name" 2>/dev/null || true)"
             if [ -z "$found" ]; then
               echo "error: $name is not in this checkout's dev shell." >&2
               echo "       The tag being released predates the tool being added to flake.nix;" >&2
@@ -342,7 +345,10 @@ jobs:
           # Same as the build job: only the checkout's own dev shell, no nixpkgs fallback.
           resolve() {
             local name="$1" found
-            found="$(nix develop --command bash -c "command -v $name" 2>/dev/null || true)"
+            # -i so only the dev shell's own PATH counts: without it a tool installed on the host is found
+            # here and looks fine on this machine while being absent on the runner, which is how three runs
+            # were lost.
+            found="$(nix develop -i --command bash -c "command -v $name" 2>/dev/null || true)"
             if [ -z "$found" ]; then
               echo "error: $name is not in this checkout's dev shell." >&2
               echo "       The tag being released predates the tool being added to flake.nix;" >&2
