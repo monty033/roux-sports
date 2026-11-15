@@ -42,7 +42,7 @@ on:
 concurrency:
   # Keyed on the tag itself, so a tag push and a manual dispatch for the same tag serialise instead of
   # racing on the same release assets. Never cancel: a half-published release is worse than a slow one.
-  group: release-${{ inputs.tag || github.ref_name }}
+  group: release-${{ github.ref_name }}
   cancel-in-progress: false
 
 permissions:
@@ -65,15 +65,23 @@ jobs:
         with:
           # The ancestry check needs main, not just the tag's tree.
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          ref: ${{ github.ref }}
 
       - name: Resolve the target
         # The tag comes from the event, so it is untrusted input: it is passed in the environment (never
         # spliced into shell source) and validated against a strict shape before anything uses it.
         env:
-          REQUESTED_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
         run: |
           set -euo pipefail
+          # A dispatch carries the tag as an input; a tag push carries it in the ref. The choice is made in
+          # shell on purpose: this instance's expression engine mangles `a && b || c`, and it mangled it
+          # into a literal string that made the checkout fail with a ref of "%!t(string=v1.0.0)".
+          if [ -n "${INPUT_TAG:-}" ]; then
+            REQUESTED_TAG="$INPUT_TAG"
+          else
+            REQUESTED_TAG="${GITHUB_REF_NAME:?neither a tag input nor a ref name}"
+          fi
           case "$REQUESTED_TAG" in
             v[0-9]*.[0-9]*.[0-9]*) ;;
             *) echo "refusing tag that is not v<major>.<minor>.<patch>: $REQUESTED_TAG"; exit 1 ;;
@@ -81,6 +89,13 @@ jobs:
           case "$REQUESTED_TAG" in
             *[!0-9A-Za-z._-]*) echo "refusing tag with unexpected characters: $REQUESTED_TAG"; exit 1 ;;
           esac
+          # A dispatch checks out the branch it was fired from, so the tag is fetched and checked out here
+          # rather than assumed. A tag push is already on the tag.
+          if [ -n "${INPUT_TAG:-}" ]; then
+            git fetch --quiet --depth=1 origin "refs/tags/$REQUESTED_TAG"
+            git checkout --quiet FETCH_HEAD
+            echo "checked out $REQUESTED_TAG at $(git rev-parse --short=8 HEAD)"
+          fi
           # The checked-out tag resolved to a commit. A manual dispatch passes a tag input, but the
           # event's own SHA belongs to the branch it was fired from, so the commit is read from git.
           SHA="$(git rev-parse HEAD)"
@@ -249,16 +264,26 @@ jobs:
       - name: Check out the tag itself
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          ref: ${{ github.ref }}
           fetch-depth: 1
 
       - name: Resolve the target from the fresh checkout
         # Read from git in this job, not carried over from the build: the commit being published is the one
         # this job checked out, so there is nothing for an earlier step to substitute.
         env:
-          REQUESTED_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
         run: |
           set -euo pipefail
+          # Same reason as the build job: the tag comes from the input or the ref, decided in shell, because
+          # the expression engine here mangles the combined form.
+          if [ -n "${INPUT_TAG:-}" ]; then
+            REQUESTED_TAG="$INPUT_TAG"
+            git fetch --quiet --depth=1 origin "refs/tags/$REQUESTED_TAG"
+            git checkout --quiet FETCH_HEAD
+            echo "checked out $REQUESTED_TAG at $(git rev-parse --short=8 HEAD)"
+          else
+            REQUESTED_TAG="${GITHUB_REF_NAME:?neither a tag input nor a ref name}"
+          fi
           case "$REQUESTED_TAG" in
             v[0-9]*.[0-9]*.[0-9]*) ;;
             *) echo "refusing tag that is not v<major>.<minor>.<patch>: $REQUESTED_TAG"; exit 1 ;;
