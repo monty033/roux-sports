@@ -30,8 +30,8 @@ android {
     defaultConfig {
         applicationId = "net.montycasa.roux"
         // The published version. Bumping these is a release decision, not a side effect of a feature branch.
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.1"
         minSdk =
             libs.versions.minSdk
                 .get()

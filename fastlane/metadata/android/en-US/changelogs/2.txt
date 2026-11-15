@@ -1,0 +1,4 @@
+Same app as 1.0.0, published through the new release pipeline.
+
+- Releases are now built and signed by CI and published automatically
+- No behavior changes
