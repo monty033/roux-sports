@@ -119,26 +119,29 @@ jobs:
           FORGEJO_READ_TOKEN: ""
         run: |
           set -euo pipefail
-          # The dev shell is the checkout's own flake, and a release builds an old tag: the tag being
-          # published may predate a tool being added there. So each tool is looked for in the dev shell
-          # first, then in nixpkgs directly, and a lookup that finds nothing must not abort the step
-          # silently - that is exactly how the previous attempt died with no message at all.
+          # Only the checkout's own dev shell is trusted here, because it is the one thing this runner is
+          # known to provide: the gate workflow already runs `nix develop --command ./gradlew` on it.
+          # Formerly this fell back to `nix build nixpkgs#...`, which is not available on this runner - the
+          # run died in seconds with nothing to show for it.
+          #
+          # Consequence worth stating: a tag whose flake predates a tool cannot be released by this
+          # workflow. That is why the jq check below says so plainly instead of failing mutely.
           resolve() {
             local name="$1" found
             found="$(nix develop --command bash -c "command -v $name" 2>/dev/null || true)"
             if [ -z "$found" ]; then
-              echo "  $name: not in this checkout's dev shell, asking nixpkgs" >&2
-              # ^out, not the bare installable: a bare nixpkgs#jq lists every output and the last one is
-              # the man pages, which has no bin/jq in it.
-              found="$(nix build --no-link --print-out-paths "nixpkgs#$name^out" 2>/dev/null | tail -1)/bin/$name"
+              echo "error: $name is not in this checkout's dev shell." >&2
+              echo "       The tag being released predates the tool being added to flake.nix;" >&2
+              echo "       release a tag cut from a commit that has it." >&2
+              return 1
             fi
             printf '%s\n' "$found"
           }
-          JQ="$(resolve jq)"
-          CURL="$(resolve curl)"
+          JQ="$(resolve jq)" || exit 1
+          CURL="$(resolve curl)" || exit 1
           printf 'jq\t%s\ncurl\t%s\n' "$JQ" "$CURL"
-          [ -x "$JQ" ] || { echo "jq could not be resolved to an executable (got: $JQ)"; exit 1; }
-          [ -x "$CURL" ] || { echo "curl could not be resolved to an executable (got: $CURL)"; exit 1; }
+          [ -x "$JQ" ] || { echo "jq resolved to something that is not executable: $JQ"; exit 1; }
+          [ -x "$CURL" ] || { echo "curl resolved to something that is not executable: $CURL"; exit 1; }
           {
             printf 'JQ=%s\n' "$JQ"
             printf 'CURL=%s\n' "$CURL"
@@ -328,18 +331,15 @@ jobs:
           FORGEJO_TOKEN: ""
         run: |
           set -euo pipefail
-          # The dev shell is the checkout's own flake, and a release builds an old tag: the tag being
-          # published may predate a tool being added there. So each tool is looked for in the dev shell
-          # first, then in nixpkgs directly, and a lookup that finds nothing must not abort the step
-          # silently - that is exactly how the previous attempt died with no message at all.
+          # Same as the build job: only the checkout's own dev shell, no nixpkgs fallback.
           resolve() {
             local name="$1" found
             found="$(nix develop --command bash -c "command -v $name" 2>/dev/null || true)"
             if [ -z "$found" ]; then
-              echo "  $name: not in this checkout's dev shell, asking nixpkgs" >&2
-              # ^out, not the bare installable: a bare nixpkgs#jq lists every output and the last one is
-              # the man pages, which has no bin/jq in it.
-              found="$(nix build --no-link --print-out-paths "nixpkgs#$name^out" 2>/dev/null | tail -1)/bin/$name"
+              echo "error: $name is not in this checkout's dev shell." >&2
+              echo "       The tag being released predates the tool being added to flake.nix;" >&2
+              echo "       release a tag cut from a commit that has it." >&2
+              return 1
             fi
             printf '%s\n' "$found"
           }
