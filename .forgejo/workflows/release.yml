@@ -56,7 +56,7 @@ env:
   EXPECTED_CERT_SHA256: 6dd177eef48595e217cc660a72fcb05ca4eae4979d1484936941b01721893a21
 
 jobs:
-  release:
+  build:
     runs-on: nixos
     timeout-minutes: 90
     steps:
@@ -223,6 +223,56 @@ jobs:
           fi
           if [ "$failed" -eq 0 ]; then echo "key material removed"; else exit 1; fi
 
+      - name: Hand the artifact to the publish job
+        # The APK crosses a job boundary so the token-bearing job never shares a process environment with
+        # the step that runs code from the tagged commit. The checksum is recomputed on the other side.
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: app/build/dist/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    # A separate job on purpose. It starts with an empty environment file, so nothing the build step wrote
+    # to it - BASH_ENV, PATH additions, LD_PRELOAD, proxy settings - exists here to be inherited. Belt and
+    # braces, the shell that runs this job's steps is also given an empty BASH_ENV and ENV.
+    needs: build
+    runs-on: nixos
+    timeout-minutes: 20
+    env:
+      BASH_ENV: ""
+      ENV: ""
+    steps:
+      - name: Check out the tag itself
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          fetch-depth: 1
+
+      - name: Resolve the target from the fresh checkout
+        # Read from git in this job, not carried over from the build: the commit being published is the one
+        # this job checked out, so there is nothing for an earlier step to substitute.
+        env:
+          REQUESTED_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          case "$REQUESTED_TAG" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "refusing tag that is not v<major>.<minor>.<patch>: $REQUESTED_TAG"; exit 1 ;;
+          esac
+          {
+            printf 'TARGET_TAG=%s\n' "$REQUESTED_TAG"
+            printf 'TARGET_SHA=%s\n' "$(git rev-parse HEAD)"
+          } >> "$GITHUB_ENV"
+          printf 'tag\t%s\ncommit\t%s\n' "$REQUESTED_TAG" "$(git rev-parse --short=8 HEAD)"
+
+      - name: Fetch the built APK
+        uses: actions/download-artifact@v4
+        with:
+          name: release-apk
+          path: dist
+
       - name: Publish to the GitHub mirror
         # Holds the GitHub token and nothing else. An explicit PATH replaces the runner's own, so a
         # directory an earlier step added to GITHUB_PATH is not searched, and no repository script runs
@@ -269,7 +319,7 @@ jobs:
                     API="https://api.github.com/repos/$GITHUB_MIRROR"
                     auth=(-H "Authorization: Bearer $RELEASE_PUBLISH_TOKEN" -H "Accept: application/vnd.github+json")
 
-                    APK="$("$TOOLS/find" "$WORKSPACE/app/build/dist" -maxdepth 1 -type f -name '*.apk' -print -quit)"
+                    APK="$("$TOOLS/find" "$WORKSPACE/dist" -maxdepth 1 -type f -name '*.apk' -print -quit)"
                     [ -n "$APK" ] || { echo "no APK in app/build/dist"; exit 1; }
                     [ -f "$APK" ] || { echo "no APK at $APK"; exit 1; }
                     [ ! -L "$APK" ] || { echo "the APK is a symlink; refusing to upload it"; exit 1; }
