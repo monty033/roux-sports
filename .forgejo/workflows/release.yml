@@ -119,10 +119,26 @@ jobs:
           FORGEJO_READ_TOKEN: ""
         run: |
           set -euo pipefail
-          JQ="$(nix develop --command bash -c 'command -v jq')"
-          CURL="$(nix develop --command bash -c 'command -v curl')"
-          [ -x "$JQ" ] || { echo "jq not found in the dev shell"; exit 1; }
-          [ -x "$CURL" ] || { echo "curl not found in the dev shell"; exit 1; }
+          # The dev shell is the checkout's own flake, and a release builds an old tag: the tag being
+          # published may predate a tool being added there. So each tool is looked for in the dev shell
+          # first, then in nixpkgs directly, and a lookup that finds nothing must not abort the step
+          # silently - that is exactly how the previous attempt died with no message at all.
+          resolve() {
+            local name="$1" found
+            found="$(nix develop --command bash -c "command -v $name" 2>/dev/null || true)"
+            if [ -z "$found" ]; then
+              echo "  $name: not in this checkout's dev shell, asking nixpkgs" >&2
+              # ^out, not the bare installable: a bare nixpkgs#jq lists every output and the last one is
+              # the man pages, which has no bin/jq in it.
+              found="$(nix build --no-link --print-out-paths "nixpkgs#$name^out" 2>/dev/null | tail -1)/bin/$name"
+            fi
+            printf '%s\n' "$found"
+          }
+          JQ="$(resolve jq)"
+          CURL="$(resolve curl)"
+          printf 'jq\t%s\ncurl\t%s\n' "$JQ" "$CURL"
+          [ -x "$JQ" ] || { echo "jq could not be resolved to an executable (got: $JQ)"; exit 1; }
+          [ -x "$CURL" ] || { echo "curl could not be resolved to an executable (got: $CURL)"; exit 1; }
           {
             printf 'JQ=%s\n' "$JQ"
             printf 'CURL=%s\n' "$CURL"
@@ -312,10 +328,26 @@ jobs:
           FORGEJO_TOKEN: ""
         run: |
           set -euo pipefail
-          JQ="$(nix develop --command bash -c 'command -v jq')"
-          CURL="$(nix develop --command bash -c 'command -v curl')"
-          [ -x "$JQ" ] || { echo "jq not found in the dev shell"; exit 1; }
-          [ -x "$CURL" ] || { echo "curl not found in the dev shell"; exit 1; }
+          # The dev shell is the checkout's own flake, and a release builds an old tag: the tag being
+          # published may predate a tool being added there. So each tool is looked for in the dev shell
+          # first, then in nixpkgs directly, and a lookup that finds nothing must not abort the step
+          # silently - that is exactly how the previous attempt died with no message at all.
+          resolve() {
+            local name="$1" found
+            found="$(nix develop --command bash -c "command -v $name" 2>/dev/null || true)"
+            if [ -z "$found" ]; then
+              echo "  $name: not in this checkout's dev shell, asking nixpkgs" >&2
+              # ^out, not the bare installable: a bare nixpkgs#jq lists every output and the last one is
+              # the man pages, which has no bin/jq in it.
+              found="$(nix build --no-link --print-out-paths "nixpkgs#$name^out" 2>/dev/null | tail -1)/bin/$name"
+            fi
+            printf '%s\n' "$found"
+          }
+          JQ="$(resolve jq)"
+          CURL="$(resolve curl)"
+          printf 'jq\t%s\ncurl\t%s\n' "$JQ" "$CURL"
+          [ -x "$JQ" ] || { echo "jq could not be resolved to an executable (got: $JQ)"; exit 1; }
+          [ -x "$CURL" ] || { echo "curl could not be resolved to an executable (got: $CURL)"; exit 1; }
           {
             printf 'JQ=%s\n' "$JQ"
             printf 'CURL=%s\n' "$CURL"
