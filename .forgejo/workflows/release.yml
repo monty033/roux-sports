@@ -273,6 +273,12 @@ jobs:
                     [ -n "$APK" ] || { echo "no APK in app/build/dist"; exit 1; }
                     [ -f "$APK" ] || { echo "no APK at $APK"; exit 1; }
                     [ ! -L "$APK" ] || { echo "the APK is a symlink; refusing to upload it"; exit 1; }
+                    # The built file names the version it carries, so it is a second, cheap check that the
+                    # artifact and the tag describe the same release.
+                    if [ "$("$TOOLS/basename" "$APK")" != "roux-sports-${TARGET_TAG#v}.apk" ]; then
+                      echo "APK name $("$TOOLS/basename" "$APK") does not match tag $TARGET_TAG"
+                      exit 1
+                    fi
                     # The sidecar is not trusted: a symlink there could point at this process's own environment and
                     # be uploaded as the checksum. The checksum is computed from the APK and written here instead.
                     SUM="$RUNNER_TEMP/$("$TOOLS/basename" "$APK").sha256"
@@ -286,15 +292,11 @@ jobs:
                     if [ "$TAG_CODE" = "200" ]; then
                       # The ref may point at the commit (lightweight tag) or at a tag object (annotated tag); peel
                       # it, or an annotated tag would be refused for pointing at "the wrong commit" forever.
-                      MIRROR_SHA="$("$PY" -I -c 'import json,sys
-                    obj = json.load(open(sys.argv[1]))["object"]
-                    print(obj["sha"])' "$RUNNER_TEMP/tag.json")"
-                      MIRROR_TYPE="$("$PY" -I -c 'import json,sys
-                    print(json.load(open(sys.argv[1]))["object"]["type"])' "$RUNNER_TEMP/tag.json")"
+                      MIRROR_SHA="$("$PY" -I -c 'import json,sys; obj = json.load(open(sys.argv[1]))["object"]; print(obj["sha"])' "$RUNNER_TEMP/tag.json")"
+                      MIRROR_TYPE="$("$PY" -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["object"]["type"])' "$RUNNER_TEMP/tag.json")"
                       if [ "$MIRROR_TYPE" = "tag" ]; then
                         "$CURL" -q -sS --proto =https --proto-redir =https -o "$RUNNER_TEMP/tagobj.json" "${auth[@]}" "$API/git/tags/$MIRROR_SHA"
-                        MIRROR_SHA="$("$PY" -I -c 'import json,sys
-                    print(json.load(open(sys.argv[1]))["object"]["sha"])' "$RUNNER_TEMP/tagobj.json")"
+                        MIRROR_SHA="$("$PY" -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["object"]["sha"])' "$RUNNER_TEMP/tagobj.json")"
                         echo "peeled annotated tag to $MIRROR_SHA"
                       fi
                       printf 'mirror tag\t%s\nbuilt commit\t%s\n' "$MIRROR_SHA" "$TARGET_SHA"
@@ -317,8 +319,7 @@ jobs:
                       exit 1
                     fi
                     RID="$("$PY" -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "$RUNNER_TEMP/release.json")"
-                    UPLOAD_URL="$("$PY" -I -c 'import json,sys
-                    print(json.load(open(sys.argv[1]))["upload_url"].split("{")[0])' "$RUNNER_TEMP/release.json")"
+                    UPLOAD_URL="$("$PY" -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["upload_url"].split("{")[0])' "$RUNNER_TEMP/release.json")"
                     echo "draft release id: $RID"
 
                     : > "$RUNNER_TEMP/asset_ids.txt"
@@ -333,9 +334,7 @@ jobs:
                         "$TOOLS/cat" "$RUNNER_TEMP/asset.json"
                         exit 1
                       fi
-                      "$PY" -I -c 'import json,sys
-                    asset = json.load(open(sys.argv[1]))
-                    print(asset["id"])' "$RUNNER_TEMP/asset.json" >> "$RUNNER_TEMP/asset_ids.txt"
+                      "$PY" -I -c 'import json,sys; asset = json.load(open(sys.argv[1])); print(asset["id"])' "$RUNNER_TEMP/asset.json" >> "$RUNNER_TEMP/asset_ids.txt"
                     }
 
                     upload "$APK" "$("$TOOLS/basename" "$APK")"
@@ -379,7 +378,13 @@ jobs:
 
           "$TOOLS/mkdir" -p "$RUNNER_TEMP/curldir"
           set +e
-          env -i \
+          # The tag and commit come from the resolve step, which the build step can write to as well. That is
+          # accepted rather than papered over: the build holds the signing key and produces the artifact, so it is
+          # trusted with what it says it built. The check that matters is remote - the mirror's own tag ref must
+          # point at the commit published here - and a swapped tag name fails it unless the mirror agrees, which
+          # would mean the real tag does point at this commit.
+          [ -x "$TOOLS/env" ] || { echo "no env in $TOOLS"; exit 1; }
+          "$TOOLS/env" -i \
             HOME="$RUNNER_TEMP" \
             TMPDIR="$RUNNER_TEMP" \
             CURL_HOME="$RUNNER_TEMP/curldir" \
