@@ -71,13 +71,16 @@ jobs:
         # The tag comes from the event, so it is untrusted input: it is passed in the environment (never
         # spliced into shell source) and validated against a strict shape before anything uses it.
         env:
-          INPUT_TAG: ${{ github.event.inputs.tag }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_TAG_EVENT: ${{ github.event.inputs.tag }}
         run: |
           set -euo pipefail
           # A dispatch carries the tag as an input; a tag push carries it in the ref. The choice is made in
           # shell on purpose: this instance's expression engine mangles `a && b || c`, and it mangled it
           # into a literal string that made the checkout fail with a ref of "%!t(string=v1.0.0)".
-          if [ -n "${INPUT_TAG:-}" ]; then
+          # The dispatch input arrives under one of two names in this instance and the other is empty.
+          INPUT_TAG="${INPUT_TAG:-${INPUT_TAG_EVENT:-}}"
+          if [ -n "$INPUT_TAG" ]; then
             REQUESTED_TAG="$INPUT_TAG"
           else
             REQUESTED_TAG="${GITHUB_REF_NAME:?neither a tag input nor a ref name}"
@@ -271,12 +274,14 @@ jobs:
         # Read from git in this job, not carried over from the build: the commit being published is the one
         # this job checked out, so there is nothing for an earlier step to substitute.
         env:
-          INPUT_TAG: ${{ github.event.inputs.tag }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_TAG_EVENT: ${{ github.event.inputs.tag }}
         run: |
           set -euo pipefail
           # Same reason as the build job: the tag comes from the input or the ref, decided in shell, because
           # the expression engine here mangles the combined form.
-          if [ -n "${INPUT_TAG:-}" ]; then
+          INPUT_TAG="${INPUT_TAG:-${INPUT_TAG_EVENT:-}}"
+          if [ -n "$INPUT_TAG" ]; then
             REQUESTED_TAG="$INPUT_TAG"
             git fetch --quiet --depth=1 origin "refs/tags/$REQUESTED_TAG"
             git checkout --quiet FETCH_HEAD
