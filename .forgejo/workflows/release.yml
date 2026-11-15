@@ -127,7 +127,7 @@ jobs:
           for page in 1 2 3 4 5 6 7 8; do
             curl -sS -H "Authorization: token $FORGEJO_READ_TOKEN" \
               "$RUNS_URL?limit=50&page=$page" -o "$RUNNER_TEMP/runs.json"
-            RESULT="$("$PY" - "$TARGET_SHA" "$RUNNER_TEMP/runs.json" <<'PY'
+            RESULT="$("$PY" -I - "$TARGET_SHA" "$RUNNER_TEMP/runs.json" <<'PY'
           import json, sys
           sha, path = sys.argv[1], sys.argv[2]
           runs = json.load(open(path)).get("workflow_runs") or []
@@ -230,6 +230,7 @@ jobs:
           PATH: /run/current-system/sw/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
           BASH_ENV: ""
           ENV: ""
+          PYTHONPATH: ""
           GITHUB_TOKEN: ""
           FORGEJO_TOKEN: ""
         run: |
@@ -238,10 +239,17 @@ jobs:
           PY="$(command -v python3 || true)"
           [ -n "$PY" ] || { echo "python3 not found on the publish PATH"; exit 1; }
 
+          # Run from outside the checkout and use -I. Python puts the current directory on sys.path for
+          # -c, and imports sitecustomize at startup, so a tagged json.py or sitecustomize.py would
+          # otherwise run inside this step with the publish token in its environment.
+          WORKSPACE="$GITHUB_WORKSPACE"
+          [ -n "$WORKSPACE" ] || { echo "GITHUB_WORKSPACE is not set"; exit 1; }
+          cd "$RUNNER_TEMP"
+
           API="https://api.github.com/repos/$GITHUB_MIRROR"
           auth=(-H "Authorization: Bearer $RELEASE_PUBLISH_TOKEN" -H "Accept: application/vnd.github+json")
 
-          APK="$(find app/build/dist -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          APK="$(find "$WORKSPACE/app/build/dist" -maxdepth 1 -type f -name '*.apk' -print -quit)"
           [ -n "$APK" ] || { echo "no APK in app/build/dist"; exit 1; }
           SUM="$APK.sha256"
           [ -f "$SUM" ] || { echo "no checksum beside $APK"; exit 1; }
@@ -253,14 +261,14 @@ jobs:
           if [ "$TAG_CODE" = "200" ]; then
             # The ref may point at the commit (lightweight tag) or at a tag object (annotated tag); peel
             # it, or an annotated tag would be refused for pointing at "the wrong commit" forever.
-            MIRROR_SHA="$("$PY" -c 'import json,sys
+            MIRROR_SHA="$("$PY" -I -c 'import json,sys
           obj = json.load(open(sys.argv[1]))["object"]
           print(obj["sha"])' "$RUNNER_TEMP/tag.json")"
-            MIRROR_TYPE="$("$PY" -c 'import json,sys
+            MIRROR_TYPE="$("$PY" -I -c 'import json,sys
           print(json.load(open(sys.argv[1]))["object"]["type"])' "$RUNNER_TEMP/tag.json")"
             if [ "$MIRROR_TYPE" = "tag" ]; then
               curl -sS -o "$RUNNER_TEMP/tagobj.json" "${auth[@]}" "$API/git/tags/$MIRROR_SHA"
-              MIRROR_SHA="$("$PY" -c 'import json,sys
+              MIRROR_SHA="$("$PY" -I -c 'import json,sys
           print(json.load(open(sys.argv[1]))["object"]["sha"])' "$RUNNER_TEMP/tagobj.json")"
               echo "peeled annotated tag to $MIRROR_SHA"
             fi
@@ -283,8 +291,8 @@ jobs:
             cat "$RUNNER_TEMP/release.json"
             exit 1
           fi
-          RID="$("$PY" -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "$RUNNER_TEMP/release.json")"
-          UPLOAD_URL="$("$PY" -c 'import json,sys
+          RID="$("$PY" -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "$RUNNER_TEMP/release.json")"
+          UPLOAD_URL="$("$PY" -I -c 'import json,sys
           print(json.load(open(sys.argv[1]))["upload_url"].split("{")[0])' "$RUNNER_TEMP/release.json")"
           echo "draft release id: $RID"
 
@@ -300,7 +308,7 @@ jobs:
               cat "$RUNNER_TEMP/asset.json"
               exit 1
             fi
-            "$PY" -c 'import json,sys
+            "$PY" -I -c 'import json,sys
           asset = json.load(open(sys.argv[1]))
           print(asset["id"])' "$RUNNER_TEMP/asset.json" >> "$RUNNER_TEMP/asset_ids.txt"
           }
