@@ -98,6 +98,24 @@ jobs:
             process.exit(1);
           }
           NODE
+      - name: tag-by-expression
+        if: inputs.stage == 'tag-expr'
+        run: |
+          set -eu
+          # What the release workflow does today: substitute the input into the shell.
+          TAG="${{ github.event.inputs.tag }}"
+          echo "expression gave: [$TAG]"
+          [ "$TAG" = "v1.0.0" ] || { echo "expression did not give the tag"; exit 1; }
+
+      - name: tag-by-event-payload
+        if: inputs.stage == 'tag-event'
+        run: |
+          set -eu
+          # Read it out of the event JSON instead of substituting into the shell.
+          TAG="$(EVENT_PATH="$GITHUB_EVENT_PATH" node -e 'const e=require(process.env.EVENT_PATH);const t=(e.inputs&&e.inputs.tag)||e.ref_name||"";process.stdout.write(t)')"
+          echo "event payload gave: [$TAG]"
+          [ "$TAG" = "v1.0.0" ] || { echo "event payload did not give the tag"; exit 1; }
+
       - name: Preflight API read
         if: inputs.stage == 'preflight'
         env:
