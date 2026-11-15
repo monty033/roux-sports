@@ -135,6 +135,14 @@ jobs:
               echo "       release a tag cut from a commit that has it." >&2
               return 1
             fi
+            # A host tool would pass on a machine that happens to have it and fail on the runner. Only a
+            # store path is guaranteed here, and it is what the dev shell is supposed to provide.
+            case "$(readlink -f "$found")" in
+              /nix/store/*) ;;
+              *) echo "error: $name resolved to $found, which is not from the dev shell." >&2
+                 echo "       It looks like a host tool; add it to flake.nix so the runner has it." >&2
+                 return 1 ;;
+            esac
             printf '%s\n' "$found"
           }
           JQ="$(resolve jq)" || exit 1
@@ -341,6 +349,14 @@ jobs:
               echo "       release a tag cut from a commit that has it." >&2
               return 1
             fi
+            # A host tool would pass on a machine that happens to have it and fail on the runner. Only a
+            # store path is guaranteed here, and it is what the dev shell is supposed to provide.
+            case "$(readlink -f "$found")" in
+              /nix/store/*) ;;
+              *) echo "error: $name resolved to $found, which is not from the dev shell." >&2
+                 echo "       It looks like a host tool; add it to flake.nix so the runner has it." >&2
+                 return 1 ;;
+            esac
             printf '%s\n' "$found"
           }
           JQ="$(resolve jq)"
