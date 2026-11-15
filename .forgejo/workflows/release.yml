@@ -160,7 +160,9 @@ jobs:
           [ -n "${NODE:-}" ] && [ -x "$NODE" ] || { echo "NODE is not set to an executable"; exit 1; }
           FOUND=0
           for page in 1 2 3 4 5 6 7 8; do
-            "$CURL" -q -sS --proto =https -H "Authorization: token $FORGEJO_READ_TOKEN" \
+            # http is allowed here because this instance answers on a LAN address over http; the GitHub
+            # calls further down keep https only. Pinning https here made curl refuse to speak at all.
+            "$CURL" -q -sS --proto =http,https -H "Authorization: token $FORGEJO_READ_TOKEN" \
               "$RUNS_URL?limit=50&page=$page" -o "$RUNNER_TEMP/runs.json"
             read -r COUNT HIT < <(RUNS_JSON="$RUNNER_TEMP/runs.json" GATE_SHA="$TARGET_SHA" "$NODE" <<'NODE'
           const fs = require('fs');
