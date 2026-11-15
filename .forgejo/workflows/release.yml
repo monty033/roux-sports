@@ -109,6 +109,26 @@ jobs:
           } >> "$GITHUB_ENV"
           printf 'tag\t%s\ncommit\t%s\n' "$REQUESTED_TAG" "$SHORT"
 
+      - name: Resolve tools
+        # `nix develop` evaluates the flake from the checkout, so this step runs with every token blanked:
+        # nothing from the repository executes while a credential is in the environment. The paths are
+        # handed to the next step through the environment file.
+        env:
+          GITHUB_TOKEN: ""
+          FORGEJO_TOKEN: ""
+          FORGEJO_READ_TOKEN: ""
+        run: |
+          set -euo pipefail
+          JQ="$(nix develop --command bash -c 'command -v jq')"
+          CURL="$(nix develop --command bash -c 'command -v curl')"
+          [ -x "$JQ" ] || { echo "jq not found in the dev shell"; exit 1; }
+          [ -x "$CURL" ] || { echo "curl not found in the dev shell"; exit 1; }
+          {
+            printf 'JQ=%s\n' "$JQ"
+            printf 'CURL=%s\n' "$CURL"
+          } >> "$GITHUB_ENV"
+          printf 'jq\t%s\ncurl\t%s\n' "$JQ" "$CURL"
+
       - name: Preflight
         # Read-only. Refuses before any secret is in scope.
         env:
@@ -139,34 +159,20 @@ jobs:
           # 3. That commit passed the gate. Runs are selected by workflow id, commit and status - a
           # successful run of something else is not a gate - and paged, because an older tag's gate run
           # can sit well past the first page.
-          # Absolute path, not PATH and not `nix develop`: a nix develop fallback would evaluate the
-          # flake from the checkout - including its shellHook - with this step's read token in scope.
-          PY=/run/current-system/sw/bin/python3
-          [ -x "$PY" ] || { echo "python3 is not installed at $PY on this runner"; exit 1; }
+          # Set by the Resolve tools step, which runs before this one and holds no token.
+          [ -n "${JQ:-}" ] && [ -x "$JQ" ] || { echo "JQ is not set to an executable"; exit 1; }
           FOUND=0
           for page in 1 2 3 4 5 6 7 8; do
-            /run/current-system/sw/bin/curl -q -sS --proto =https -H "Authorization: token $FORGEJO_READ_TOKEN" \
+            "$CURL" -q -sS --proto =https -H "Authorization: token $FORGEJO_READ_TOKEN" \
               "$RUNS_URL?limit=50&page=$page" -o "$RUNNER_TEMP/runs.json"
-            RESULT="$("$PY" -I - "$TARGET_SHA" "$RUNNER_TEMP/runs.json" <<'PY'
-          import json, sys
-          sha, path = sys.argv[1], sys.argv[2]
-          runs = json.load(open(path)).get("workflow_runs") or []
-          gate = [r for r in runs if r.get("workflow_id") == "gate.yml" and r.get("commit_sha") == sha]
-          if any(r.get("status") == "success" for r in gate):
-              print("found")
-          elif not runs:
-              print("empty")
-          else:
-              print("keep")
-          PY
-          )"
-            echo "page $page: $RESULT"
-            case "$RESULT" in
-              found) FOUND=1; break ;;
-              empty) echo "no gate run for this commit"; exit 1 ;;
-              keep) ;;
-              *) echo "unexpected result from the gate check"; exit 1 ;;
-            esac
+            COUNT="$("$JQ" '.workflow_runs | length' "$RUNNER_TEMP/runs.json")"
+            # shellcheck disable=SC2016 # $sha is a jq variable, not a shell one
+            HIT="$("$JQ" --arg sha "$TARGET_SHA" \
+              '[.workflow_runs[] | select(.workflow_id == "gate.yml" and .commit_sha == $sha and .status == "success")] | length' \
+              "$RUNNER_TEMP/runs.json")"
+            echo "page $page: runs=$COUNT successful_gate_runs=$HIT"
+            if [ "${HIT:-0}" -gt 0 ]; then FOUND=1; break; fi
+            if [ "${COUNT:-1}" -eq 0 ]; then echo "no gate run for this commit"; exit 1; fi
           done
           if [ "$FOUND" -ne 1 ]; then
             echo "no successful gate run for this commit in 400 runs"; exit 1
@@ -299,6 +305,23 @@ jobs:
           } >> "$GITHUB_ENV"
           printf 'tag\t%s\ncommit\t%s\n' "$REQUESTED_TAG" "$(git rev-parse --short=8 HEAD)"
 
+      - name: Resolve tools
+        # Same reasoning as the build job: this evaluates the flake, so no token is in scope here.
+        env:
+          GITHUB_TOKEN: ""
+          FORGEJO_TOKEN: ""
+        run: |
+          set -euo pipefail
+          JQ="$(nix develop --command bash -c 'command -v jq')"
+          CURL="$(nix develop --command bash -c 'command -v curl')"
+          [ -x "$JQ" ] || { echo "jq not found in the dev shell"; exit 1; }
+          [ -x "$CURL" ] || { echo "curl not found in the dev shell"; exit 1; }
+          {
+            printf 'JQ=%s\n' "$JQ"
+            printf 'CURL=%s\n' "$CURL"
+          } >> "$GITHUB_ENV"
+          printf 'jq\t%s\ncurl\t%s\n' "$JQ" "$CURL"
+
       - name: Fetch the built APK
         uses: https://data.forgejo.org/actions/download-artifact@v3
         with:
@@ -329,16 +352,19 @@ jobs:
                     # runs tagged code and can add path entries that later steps inherit, so "which curl" is an
                     # input this step does not trust.
                     TOOLS="${TOOLS:-/run/current-system/sw/bin}"
-                    for tool in python3 curl sha256sum find basename sed cat rm; do
-                      path="$TOOLS/$tool"
-                      [ -x "$path" ] || { echo "$tool is not at $path"; exit 1; }
-                      case "$(readlink -f "$path")" in
+                    [ -d "$TOOLS" ] || { echo "no tool directory at $TOOLS"; exit 1; }
+                    [ -n "${JQ:-}" ] && [ -x "$JQ" ] || { echo "JQ is not set to an executable"; exit 1; }
+                    [ -n "${CURL:-}" ] && [ -x "$CURL" ] || { echo "CURL is not set to an executable"; exit 1; }
+                    # Every tool this step runs must come from the immutable store, so a path the build step
+                    # could have added cannot substitute one.
+                    for tool in "$JQ" "$CURL" "$TOOLS/sha256sum" "$TOOLS/sed" "$TOOLS/find" \
+                                "$TOOLS/basename" "$TOOLS/cat" "$TOOLS/rm" "$TOOLS/env" "$TOOLS/bash"; do
+                      [ -x "$tool" ] || { echo "missing tool: $tool"; exit 1; }
+                      case "$("$TOOLS/readlink" -f "$tool")" in
                         /nix/store/*) ;;
-                        *) echo "$tool does not resolve into the store: $(readlink -f "$path")"; exit 1 ;;
+                        *) echo "$tool does not resolve into the store"; exit 1 ;;
                       esac
                     done
-                    PY="$TOOLS/python3"
-                    CURL="$TOOLS/curl"
                     SHA="$TOOLS/sha256sum"
 
                     # Run from outside the checkout and use -I. Python puts the current directory on sys.path for
@@ -374,11 +400,11 @@ jobs:
                     if [ "$TAG_CODE" = "200" ]; then
                       # The ref may point at the commit (lightweight tag) or at a tag object (annotated tag); peel
                       # it, or an annotated tag would be refused for pointing at "the wrong commit" forever.
-                      MIRROR_SHA="$("$PY" -I -c 'import json,sys; obj = json.load(open(sys.argv[1]))["object"]; print(obj["sha"])' "$RUNNER_TEMP/tag.json")"
-                      MIRROR_TYPE="$("$PY" -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["object"]["type"])' "$RUNNER_TEMP/tag.json")"
+                      MIRROR_SHA="$("$JQ" -r '.object.sha' "$RUNNER_TEMP/tag.json")"
+                      MIRROR_TYPE="$("$JQ" -r '.object.type' "$RUNNER_TEMP/tag.json")"
                       if [ "$MIRROR_TYPE" = "tag" ]; then
                         "$CURL" -q -sS --proto =https --proto-redir =https -o "$RUNNER_TEMP/tagobj.json" "${auth[@]}" "$API/git/tags/$MIRROR_SHA"
-                        MIRROR_SHA="$("$PY" -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["object"]["sha"])' "$RUNNER_TEMP/tagobj.json")"
+                        MIRROR_SHA="$("$JQ" -r '.object.sha' "$RUNNER_TEMP/tagobj.json")"
                         echo "peeled annotated tag to $MIRROR_SHA"
                       fi
                       printf 'mirror tag\t%s\nbuilt commit\t%s\n' "$MIRROR_SHA" "$TARGET_SHA"
@@ -400,8 +426,8 @@ jobs:
                       "$TOOLS/cat" "$RUNNER_TEMP/release.json"
                       exit 1
                     fi
-                    RID="$("$PY" -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "$RUNNER_TEMP/release.json")"
-                    UPLOAD_URL="$("$PY" -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["upload_url"].split("{")[0])' "$RUNNER_TEMP/release.json")"
+                    RID="$("$JQ" -r '.id' "$RUNNER_TEMP/release.json")"
+                    UPLOAD_URL="$("$JQ" -r '.upload_url | split("{")[0]' "$RUNNER_TEMP/release.json")"
                     echo "draft release id: $RID"
 
                     : > "$RUNNER_TEMP/asset_ids.txt"
@@ -416,7 +442,7 @@ jobs:
                         "$TOOLS/cat" "$RUNNER_TEMP/asset.json"
                         exit 1
                       fi
-                      "$PY" -I -c 'import json,sys; asset = json.load(open(sys.argv[1])); print(asset["id"])' "$RUNNER_TEMP/asset.json" >> "$RUNNER_TEMP/asset_ids.txt"
+                      "$JQ" -r '.id' "$RUNNER_TEMP/asset.json" >> "$RUNNER_TEMP/asset_ids.txt"
                     }
 
                     upload "$APK" "$("$TOOLS/basename" "$APK")"
@@ -477,6 +503,8 @@ jobs:
             TARGET_TAG="$TARGET_TAG" \
             TARGET_SHA="$TARGET_SHA" \
             TOOLS="$TOOLS" \
+            JQ="$JQ" \
+            CURL="$CURL" \
             PATH="$TOOLS" \
             RELEASE_PUBLISH_TOKEN="$RELEASE_PUBLISH_TOKEN" \
             "$TOOLS/bash" --noprofile --norc "$SCRIPT"

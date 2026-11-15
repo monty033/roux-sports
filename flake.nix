@@ -38,6 +38,7 @@
           pkgs.jdk21
           pkgs.git
           pkgs.curl
+          pkgs.jq
         ];
 
         JAVA_HOME = "${pkgs.jdk21.home}";
