@@ -109,55 +109,22 @@ jobs:
           } >> "$GITHUB_ENV"
           printf 'tag\t%s\ncommit\t%s\n' "$REQUESTED_TAG" "$SHORT"
 
-      - name: Resolve tools
-        # `nix develop` evaluates the flake from the checkout, so this step runs with every token blanked:
-        # nothing from the repository executes while a credential is in the environment. The paths are
-        # handed to the next step through the environment file.
-        env:
-          GITHUB_TOKEN: ""
-          FORGEJO_TOKEN: ""
-          FORGEJO_READ_TOKEN: ""
+      - name: Check the tools this needs
+        # node and curl come from the runner's PATH, which is what the NookBridge release workflow in this
+        # organisation already relies on. Deliberately not `nix develop`: that evaluates the flake of the
+        # tag being released, so a tag whose tree predates a tool could never be released - which is
+        # exactly what blocked v1.0.0 - and its failures arrive as a mute exit code under `set -e`.
         run: |
-          set -euo pipefail
-          # Only the checkout's own dev shell is trusted here, because it is the one thing this runner is
-          # known to provide: the gate workflow already runs `nix develop --command ./gradlew` on it.
-          # Formerly this fell back to `nix build nixpkgs#...`, which is not available on this runner - the
-          # run died in seconds with nothing to show for it.
-          #
-          # Consequence worth stating: a tag whose flake predates a tool cannot be released by this
-          # workflow. That is why the jq check below says so plainly instead of failing mutely.
-          resolve() {
-            local name="$1" found
-            # -i so only the dev shell's own PATH counts: without it a tool installed on the host is found
-            # here and looks fine on this machine while being absent on the runner, which is how three runs
-            # were lost.
-            found="$(nix develop -i --command bash -c "command -v $name" 2>/dev/null || true)"
-            if [ -z "$found" ]; then
-              echo "error: $name is not in this checkout's dev shell." >&2
-              echo "       The tag being released predates the tool being added to flake.nix;" >&2
-              echo "       release a tag cut from a commit that has it." >&2
-              return 1
-            fi
-            # A host tool would pass on a machine that happens to have it and fail on the runner. Only a
-            # store path is guaranteed here, and it is what the dev shell is supposed to provide.
-            case "$(readlink -f "$found")" in
-              /nix/store/*) ;;
-              *) echo "error: $name resolved to $found, which is not from the dev shell." >&2
-                 echo "       It looks like a host tool; add it to flake.nix so the runner has it." >&2
-                 return 1 ;;
-            esac
-            printf '%s\n' "$found"
-          }
-          JQ="$(resolve jq)" || exit 1
-          CURL="$(resolve curl)" || exit 1
-          printf 'jq\t%s\ncurl\t%s\n' "$JQ" "$CURL"
-          [ -x "$JQ" ] || { echo "jq resolved to something that is not executable: $JQ"; exit 1; }
-          [ -x "$CURL" ] || { echo "curl resolved to something that is not executable: $CURL"; exit 1; }
+          set -eu
+          NODE="$(command -v node || true)"
+          CURL="$(command -v curl || true)"
+          [ -n "$NODE" ] || { echo "node is not on this runner's PATH"; exit 1; }
+          [ -n "$CURL" ] || { echo "curl is not on this runner's PATH"; exit 1; }
+          printf 'node\t%s\ncurl\t%s\n' "$NODE" "$CURL"
           {
-            printf 'JQ=%s\n' "$JQ"
+            printf 'NODE=%s\n' "$NODE"
             printf 'CURL=%s\n' "$CURL"
           } >> "$GITHUB_ENV"
-          printf 'jq\t%s\ncurl\t%s\n' "$JQ" "$CURL"
 
       - name: Preflight
         # Read-only. Refuses before any secret is in scope.
@@ -189,17 +156,22 @@ jobs:
           # 3. That commit passed the gate. Runs are selected by workflow id, commit and status - a
           # successful run of something else is not a gate - and paged, because an older tag's gate run
           # can sit well past the first page.
-          # Set by the Resolve tools step, which runs before this one and holds no token.
-          [ -n "${JQ:-}" ] && [ -x "$JQ" ] || { echo "JQ is not set to an executable"; exit 1; }
+          # node and curl were put in the environment by the step above.
+          [ -n "${NODE:-}" ] && [ -x "$NODE" ] || { echo "NODE is not set to an executable"; exit 1; }
           FOUND=0
           for page in 1 2 3 4 5 6 7 8; do
             "$CURL" -q -sS --proto =https -H "Authorization: token $FORGEJO_READ_TOKEN" \
               "$RUNS_URL?limit=50&page=$page" -o "$RUNNER_TEMP/runs.json"
-            COUNT="$("$JQ" '.workflow_runs | length' "$RUNNER_TEMP/runs.json")"
-            # shellcheck disable=SC2016 # $sha is a jq variable, not a shell one
-            HIT="$("$JQ" --arg sha "$TARGET_SHA" \
-              '[.workflow_runs[] | select(.workflow_id == "gate.yml" and .commit_sha == $sha and .status == "success")] | length' \
-              "$RUNNER_TEMP/runs.json")"
+            read -r COUNT HIT < <(RUNS_JSON="$RUNNER_TEMP/runs.json" GATE_SHA="$TARGET_SHA" "$NODE" <<'NODE'
+          const fs = require('fs');
+          const runs = JSON.parse(fs.readFileSync(process.env.RUNS_JSON, 'utf8')).workflow_runs || [];
+          const hit = runs.filter((r) =>
+            r.workflow_id === 'gate.yml' &&
+            r.commit_sha === process.env.GATE_SHA &&
+            r.status === 'success').length;
+          process.stdout.write(`${runs.length} ${hit}`);
+          NODE
+            )
             echo "page $page: runs=$COUNT successful_gate_runs=$HIT"
             if [ "${HIT:-0}" -gt 0 ]; then FOUND=1; break; fi
             if [ "${COUNT:-1}" -eq 0 ]; then echo "no gate run for this commit"; exit 1; fi
@@ -335,46 +307,20 @@ jobs:
           } >> "$GITHUB_ENV"
           printf 'tag\t%s\ncommit\t%s\n' "$REQUESTED_TAG" "$(git rev-parse --short=8 HEAD)"
 
-      - name: Resolve tools
-        # Same reasoning as the build job: this evaluates the flake, so no token is in scope here.
-        env:
-          GITHUB_TOKEN: ""
-          FORGEJO_TOKEN: ""
+      - name: Check the tools this needs
+        # Same tools, resolved in this job rather than inherited: a job boundary is a real boundary, so
+        # nothing the build wrote into its environment file exists here.
         run: |
-          set -euo pipefail
-          # Same as the build job: only the checkout's own dev shell, no nixpkgs fallback.
-          resolve() {
-            local name="$1" found
-            # -i so only the dev shell's own PATH counts: without it a tool installed on the host is found
-            # here and looks fine on this machine while being absent on the runner, which is how three runs
-            # were lost.
-            found="$(nix develop -i --command bash -c "command -v $name" 2>/dev/null || true)"
-            if [ -z "$found" ]; then
-              echo "error: $name is not in this checkout's dev shell." >&2
-              echo "       The tag being released predates the tool being added to flake.nix;" >&2
-              echo "       release a tag cut from a commit that has it." >&2
-              return 1
-            fi
-            # A host tool would pass on a machine that happens to have it and fail on the runner. Only a
-            # store path is guaranteed here, and it is what the dev shell is supposed to provide.
-            case "$(readlink -f "$found")" in
-              /nix/store/*) ;;
-              *) echo "error: $name resolved to $found, which is not from the dev shell." >&2
-                 echo "       It looks like a host tool; add it to flake.nix so the runner has it." >&2
-                 return 1 ;;
-            esac
-            printf '%s\n' "$found"
-          }
-          JQ="$(resolve jq)"
-          CURL="$(resolve curl)"
-          printf 'jq\t%s\ncurl\t%s\n' "$JQ" "$CURL"
-          [ -x "$JQ" ] || { echo "jq could not be resolved to an executable (got: $JQ)"; exit 1; }
-          [ -x "$CURL" ] || { echo "curl could not be resolved to an executable (got: $CURL)"; exit 1; }
+          set -eu
+          NODE="$(command -v node || true)"
+          CURL="$(command -v curl || true)"
+          [ -n "$NODE" ] || { echo "node is not on this runner's PATH"; exit 1; }
+          [ -n "$CURL" ] || { echo "curl is not on this runner's PATH"; exit 1; }
+          printf 'node\t%s\ncurl\t%s\n' "$NODE" "$CURL"
           {
-            printf 'JQ=%s\n' "$JQ"
+            printf 'NODE=%s\n' "$NODE"
             printf 'CURL=%s\n' "$CURL"
           } >> "$GITHUB_ENV"
-          printf 'jq\t%s\ncurl\t%s\n' "$JQ" "$CURL"
 
       - name: Fetch the built APK
         uses: https://data.forgejo.org/actions/download-artifact@v3
@@ -392,34 +338,20 @@ jobs:
           RELEASE_PUBLISH_TOKEN: ${{ secrets.RELEASE_PUBLISH_TOKEN }}
         run: |
           set -euo pipefail
-          TOOLS=/run/current-system/sw/bin
-          [ -x "$TOOLS/bash" ] || { echo "no bash in $TOOLS"; exit 1; }
-
           # The publisher is written out first, then run with an empty environment. Forgejo carries
           # environment updates from an earlier step into later ones, and the build step runs code from the
           # tagged commit, so anything it writes there - LD_PRELOAD, a proxy, a curl config - would
           # otherwise be inherited by the process that holds the publish token. This list is the entire
           # environment the publisher gets.
           SCRIPT="$RUNNER_TEMP/publish.sh"
-          ( umask 077; "$TOOLS/cat" > "$SCRIPT" <<'PUBLISH'
-                    # Every tool is addressed absolutely and must resolve into the immutable store. The build step
-                    # runs tagged code and can add path entries that later steps inherit, so "which curl" is an
-                    # input this step does not trust.
-                    TOOLS="${TOOLS:-/run/current-system/sw/bin}"
-                    [ -d "$TOOLS" ] || { echo "no tool directory at $TOOLS"; exit 1; }
-                    [ -n "${JQ:-}" ] && [ -x "$JQ" ] || { echo "JQ is not set to an executable"; exit 1; }
+          ( umask 077; cat > "$SCRIPT" <<'PUBLISH'
+                    # Tools come from the PATH this job was given. That path is trustworthy here for a
+                    # reason worth naming: the build runs in a different job, and a job boundary is a
+                    # proven barrier - a probe wrote a variable into the build's environment file and this
+                    # job could not see it.
+                    [ -n "${NODE:-}" ] && [ -x "$NODE" ] || { echo "NODE is not set to an executable"; exit 1; }
                     [ -n "${CURL:-}" ] && [ -x "$CURL" ] || { echo "CURL is not set to an executable"; exit 1; }
-                    # Every tool this step runs must come from the immutable store, so a path the build step
-                    # could have added cannot substitute one.
-                    for tool in "$JQ" "$CURL" "$TOOLS/sha256sum" "$TOOLS/sed" "$TOOLS/find" \
-                                "$TOOLS/basename" "$TOOLS/cat" "$TOOLS/rm" "$TOOLS/env" "$TOOLS/bash"; do
-                      [ -x "$tool" ] || { echo "missing tool: $tool"; exit 1; }
-                      case "$("$TOOLS/readlink" -f "$tool")" in
-                        /nix/store/*) ;;
-                        *) echo "$tool does not resolve into the store"; exit 1 ;;
-                      esac
-                    done
-                    SHA="$TOOLS/sha256sum"
+                    SHA="sha256sum"
 
                     # Run from outside the checkout and use -I. Python puts the current directory on sys.path for
                     # -c, and imports sitecustomize at startup, so a tagged json.py or sitecustomize.py would
@@ -431,21 +363,21 @@ jobs:
                     API="https://api.github.com/repos/$GITHUB_MIRROR"
                     auth=(-H "Authorization: Bearer $RELEASE_PUBLISH_TOKEN" -H "Accept: application/vnd.github+json")
 
-                    APK="$("$TOOLS/find" "$WORKSPACE/dist" -maxdepth 1 -type f -name '*.apk' -print -quit)"
+                    APK="$(find "$WORKSPACE/dist" -maxdepth 1 -type f -name '*.apk' -print -quit)"
                     [ -n "$APK" ] || { echo "no APK in app/build/dist"; exit 1; }
                     [ -f "$APK" ] || { echo "no APK at $APK"; exit 1; }
                     [ ! -L "$APK" ] || { echo "the APK is a symlink; refusing to upload it"; exit 1; }
                     # The built file names the version it carries, so it is a second, cheap check that the
                     # artifact and the tag describe the same release.
-                    if [ "$("$TOOLS/basename" "$APK")" != "roux-sports-${TARGET_TAG#v}.apk" ]; then
-                      echo "APK name $("$TOOLS/basename" "$APK") does not match tag $TARGET_TAG"
+                    if [ "$(basename "$APK")" != "roux-sports-${TARGET_TAG#v}.apk" ]; then
+                      echo "APK name $(basename "$APK") does not match tag $TARGET_TAG"
                       exit 1
                     fi
                     # The sidecar is not trusted: a symlink there could point at this process's own environment and
                     # be uploaded as the checksum. The checksum is computed from the APK and written here instead.
-                    SUM="$RUNNER_TEMP/$("$TOOLS/basename" "$APK").sha256"
-                    "$SHA" "$APK" | "$TOOLS/sed" "s| .*|  $("$TOOLS/basename" "$APK")|" > "$SUM"
-                    "$TOOLS/cat" "$SUM"
+                    SUM="$RUNNER_TEMP/$(basename "$APK").sha256"
+                    "$SHA" "$APK" | sed "s| .*|  $(basename "$APK")|" > "$SUM"
+                    cat "$SUM"
 
                     # If the mirror already has this tag, it must point at the commit that was built. A push mirror
                     # that is behind, or a tag pointing elsewhere, would publish an APK for the wrong source.
@@ -454,11 +386,23 @@ jobs:
                     if [ "$TAG_CODE" = "200" ]; then
                       # The ref may point at the commit (lightweight tag) or at a tag object (annotated tag); peel
                       # it, or an annotated tag would be refused for pointing at "the wrong commit" forever.
-                      MIRROR_SHA="$("$JQ" -r '.object.sha' "$RUNNER_TEMP/tag.json")"
-                      MIRROR_TYPE="$("$JQ" -r '.object.type' "$RUNNER_TEMP/tag.json")"
+                      MIRROR_SHA="$(TAG_JSON="$RUNNER_TEMP/tag.json" "$NODE" <<'NODE'
+                    const fs = require('fs');
+                    process.stdout.write(JSON.parse(fs.readFileSync(process.env.TAG_JSON, 'utf8')).object.sha);
+          NODE
+                    )"
+                      MIRROR_TYPE="$(TAG_JSON="$RUNNER_TEMP/tag.json" "$NODE" <<'NODE'
+                    const fs = require('fs');
+                    process.stdout.write(JSON.parse(fs.readFileSync(process.env.TAG_JSON, 'utf8')).object.type);
+          NODE
+                    )"
                       if [ "$MIRROR_TYPE" = "tag" ]; then
                         "$CURL" -q -sS --proto =https --proto-redir =https -o "$RUNNER_TEMP/tagobj.json" "${auth[@]}" "$API/git/tags/$MIRROR_SHA"
-                        MIRROR_SHA="$("$JQ" -r '.object.sha' "$RUNNER_TEMP/tagobj.json")"
+                        MIRROR_SHA="$(TAG_JSON="$RUNNER_TEMP/tagobj.json" "$NODE" <<'NODE'
+                    const fs = require('fs');
+                    process.stdout.write(JSON.parse(fs.readFileSync(process.env.TAG_JSON, 'utf8')).object.sha);
+          NODE
+                    )"
                         echo "peeled annotated tag to $MIRROR_SHA"
                       fi
                       printf 'mirror tag\t%s\nbuilt commit\t%s\n' "$MIRROR_SHA" "$TARGET_SHA"
@@ -477,11 +421,19 @@ jobs:
                       -d "{\"tag_name\":\"$TARGET_TAG\",\"target_commitish\":\"$TARGET_SHA\",\"name\":\"Roux Sports ${TARGET_TAG#v}\",\"draft\":true,\"prerelease\":false}")"
                     if [ "$CODE" != "201" ]; then
                       echo "creating the draft release failed (HTTP $CODE)"
-                      "$TOOLS/cat" "$RUNNER_TEMP/release.json"
+                      cat "$RUNNER_TEMP/release.json"
                       exit 1
                     fi
-                    RID="$("$JQ" -r '.id' "$RUNNER_TEMP/release.json")"
-                    UPLOAD_URL="$("$JQ" -r '.upload_url | split("{")[0]' "$RUNNER_TEMP/release.json")"
+                    RID="$(RELEASE_JSON="$RUNNER_TEMP/release.json" "$NODE" <<'NODE'
+                    const fs = require('fs');
+                    process.stdout.write(String(JSON.parse(fs.readFileSync(process.env.RELEASE_JSON, 'utf8')).id));
+          NODE
+                    )"
+                    UPLOAD_URL="$(RELEASE_JSON="$RUNNER_TEMP/release.json" "$NODE" <<'NODE'
+                    const fs = require('fs');
+                    process.stdout.write(JSON.parse(fs.readFileSync(process.env.RELEASE_JSON, 'utf8')).upload_url.split('{')[0]);
+          NODE
+                    )"
                     echo "draft release id: $RID"
 
                     : > "$RUNNER_TEMP/asset_ids.txt"
@@ -493,17 +445,20 @@ jobs:
                         -X POST "$UPLOAD_URL?name=$name" --data-binary "@$file")"
                       echo "upload $name -> $code"
                       if [ "$code" != "201" ]; then
-                        "$TOOLS/cat" "$RUNNER_TEMP/asset.json"
+                        cat "$RUNNER_TEMP/asset.json"
                         exit 1
                       fi
-                      "$JQ" -r '.id' "$RUNNER_TEMP/asset.json" >> "$RUNNER_TEMP/asset_ids.txt"
+                      ASSET_JSON="$RUNNER_TEMP/asset.json" "$NODE" <<'NODE' >> "$RUNNER_TEMP/asset_ids.txt"
+                    const fs = require('fs');
+                    process.stdout.write(String(JSON.parse(fs.readFileSync(process.env.ASSET_JSON, 'utf8')).id));
+          NODE
                     }
 
-                    upload "$APK" "$("$TOOLS/basename" "$APK")"
-                    upload "$SUM" "$("$TOOLS/basename" "$SUM")"
+                    upload "$APK" "$(basename "$APK")"
+                    upload "$SUM" "$(basename "$SUM")"
 
-                    APK_ID="$("$TOOLS/sed" -n 1p "$RUNNER_TEMP/asset_ids.txt")"
-                    SUM_ID="$("$TOOLS/sed" -n 2p "$RUNNER_TEMP/asset_ids.txt")"
+                    APK_ID="$(sed -n 1p "$RUNNER_TEMP/asset_ids.txt")"
+                    SUM_ID="$(sed -n 2p "$RUNNER_TEMP/asset_ids.txt")"
                     [ -n "$APK_ID" ] && [ -n "$SUM_ID" ] || { echo "asset ids were not recorded"; exit 1; }
 
                     # Both assets are read back through the API and compared with the files that were built. A
@@ -517,11 +472,11 @@ jobs:
                       b="$("$SHA" "$RUNNER_TEMP/back.bin" | cut -d' ' -f1)"
                       printf 'verify %s\n  built  %s\n  stored %s\n' "$name" "$a" "$b"
                       if [ "$a" != "$b" ]; then echo "$name did not round-trip"; exit 1; fi
-                      "$TOOLS/rm" -f "$RUNNER_TEMP/back.bin"
+                      rm -f "$RUNNER_TEMP/back.bin"
                     }
 
-                    verify "$APK_ID" "$APK" "$("$TOOLS/basename" "$APK")"
-                    verify "$SUM_ID" "$SUM" "$("$TOOLS/basename" "$SUM")"
+                    verify "$APK_ID" "$APK" "$(basename "$APK")"
+                    verify "$SUM_ID" "$SUM" "$(basename "$SUM")"
 
                     # Verified, so it can be seen.
                     CODE="$("$CURL" -q -sS --proto =https --proto-redir =https -o /dev/null -w '%{http_code}' "${auth[@]}" \
@@ -530,7 +485,7 @@ jobs:
                     [ "$CODE" = "200" ] || { echo "could not publish the draft release"; exit 1; }
 
                     CODE="$("$CURL" -q -sS --proto =https --proto-redir =https -o /dev/null -w '%{http_code}' -L \
-                      "https://github.com/$GITHUB_MIRROR/releases/download/$TARGET_TAG/$("$TOOLS/basename" "$SUM")")"
+                      "https://github.com/$GITHUB_MIRROR/releases/download/$TARGET_TAG/$(basename "$SUM")")"
                     echo "public checksum download -> $CODE"
                     [ "$CODE" = "200" ] || { echo "the published download is not reachable"; exit 1; }
 
@@ -538,15 +493,14 @@ jobs:
           PUBLISH
           )
 
-          "$TOOLS/mkdir" -p "$RUNNER_TEMP/curldir"
+          mkdir -p "$RUNNER_TEMP/curldir"
           set +e
           # The tag and commit come from the resolve step, which the build step can write to as well. That is
           # accepted rather than papered over: the build holds the signing key and produces the artifact, so it is
           # trusted with what it says it built. The check that matters is remote - the mirror's own tag ref must
           # point at the commit published here - and a swapped tag name fails it unless the mirror agrees, which
           # would mean the real tag does point at this commit.
-          [ -x "$TOOLS/env" ] || { echo "no env in $TOOLS"; exit 1; }
-          "$TOOLS/env" -i \
+          env -i \
             HOME="$RUNNER_TEMP" \
             TMPDIR="$RUNNER_TEMP" \
             CURL_HOME="$RUNNER_TEMP/curldir" \
@@ -556,13 +510,12 @@ jobs:
             GITHUB_MIRROR="$GITHUB_MIRROR" \
             TARGET_TAG="$TARGET_TAG" \
             TARGET_SHA="$TARGET_SHA" \
-            TOOLS="$TOOLS" \
-            JQ="$JQ" \
+            PATH="$PATH" \
+            NODE="$NODE" \
             CURL="$CURL" \
-            PATH="$TOOLS" \
             RELEASE_PUBLISH_TOKEN="$RELEASE_PUBLISH_TOKEN" \
-            "$TOOLS/bash" --noprofile --norc "$SCRIPT"
+            bash --noprofile --norc "$SCRIPT"
           rc=$?
           set -e
-          "$TOOLS/rm" -f "$SCRIPT"
+          rm -f "$SCRIPT"
           exit "$rc"
