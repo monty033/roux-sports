@@ -121,8 +121,10 @@ jobs:
           # 3. That commit passed the gate. Runs are selected by workflow id, commit and status - a
           # successful run of something else is not a gate - and paged, because an older tag's gate run
           # can sit well past the first page.
-          PY="$(command -v python3 || true)"
-          [ -n "$PY" ] || PY="$(nix develop --command bash -c 'command -v python3')"
+          # Absolute path, not PATH and not `nix develop`: a nix develop fallback would evaluate the
+          # flake from the checkout - including its shellHook - with this step's read token in scope.
+          PY=/run/current-system/sw/bin/python3
+          [ -x "$PY" ] || { echo "python3 is not installed at $PY on this runner"; exit 1; }
           FOUND=0
           for page in 1 2 3 4 5 6 7 8; do
             curl -sS -H "Authorization: token $FORGEJO_READ_TOKEN" \
@@ -227,7 +229,11 @@ jobs:
         # here: the token cannot reach code from the tagged commit through this step's environment.
         env:
           RELEASE_PUBLISH_TOKEN: ${{ secrets.RELEASE_PUBLISH_TOKEN }}
+          # Kept for anything that insists on a PATH, but no command below relies on it: Forgejo carries
+          # path additions from earlier steps into later ones, and the build step runs tagged code, so a
+          # PATH entry could point at a tool that code supplied.
           PATH: /run/current-system/sw/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+          TOOLS: /run/current-system/sw/bin
           BASH_ENV: ""
           ENV: ""
           PYTHONPATH: ""
@@ -236,8 +242,22 @@ jobs:
         run: |
           set -euo pipefail
           [ -n "$RELEASE_PUBLISH_TOKEN" ] || { echo "RELEASE_PUBLISH_TOKEN is not set"; exit 1; }
-          PY="$(command -v python3 || true)"
-          [ -n "$PY" ] || { echo "python3 not found on the publish PATH"; exit 1; }
+
+          # Every tool is addressed absolutely and must resolve into the immutable store. The build step
+          # runs tagged code and can add path entries that later steps inherit, so "which curl" is an
+          # input this step does not trust.
+          TOOLS="${TOOLS:-/run/current-system/sw/bin}"
+          for tool in python3 curl sha256sum find basename sed cat rm; do
+            path="$TOOLS/$tool"
+            [ -x "$path" ] || { echo "$tool is not at $path"; exit 1; }
+            case "$(readlink -f "$path")" in
+              /nix/store/*) ;;
+              *) echo "$tool does not resolve into the store: $(readlink -f "$path")"; exit 1 ;;
+            esac
+          done
+          PY="$TOOLS/python3"
+          CURL="$TOOLS/curl"
+          SHA="$TOOLS/sha256sum"
 
           # Run from outside the checkout and use -I. Python puts the current directory on sys.path for
           # -c, and imports sitecustomize at startup, so a tagged json.py or sitecustomize.py would
@@ -249,14 +269,19 @@ jobs:
           API="https://api.github.com/repos/$GITHUB_MIRROR"
           auth=(-H "Authorization: Bearer $RELEASE_PUBLISH_TOKEN" -H "Accept: application/vnd.github+json")
 
-          APK="$(find "$WORKSPACE/app/build/dist" -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          APK="$("$TOOLS/find" "$WORKSPACE/app/build/dist" -maxdepth 1 -type f -name '*.apk' -print -quit)"
           [ -n "$APK" ] || { echo "no APK in app/build/dist"; exit 1; }
-          SUM="$APK.sha256"
-          [ -f "$SUM" ] || { echo "no checksum beside $APK"; exit 1; }
+          [ -f "$APK" ] || { echo "no APK at $APK"; exit 1; }
+          [ ! -L "$APK" ] || { echo "the APK is a symlink; refusing to upload it"; exit 1; }
+          # The sidecar is not trusted: a symlink there could point at this process's own environment and
+          # be uploaded as the checksum. The checksum is computed from the APK and written here instead.
+          SUM="$RUNNER_TEMP/$("$TOOLS/basename" "$APK").sha256"
+          "$SHA" "$APK" | "$TOOLS/sed" "s| .*|  $("$TOOLS/basename" "$APK")|" > "$SUM"
+          "$TOOLS/cat" "$SUM"
 
           # If the mirror already has this tag, it must point at the commit that was built. A push mirror
           # that is behind, or a tag pointing elsewhere, would publish an APK for the wrong source.
-          TAG_CODE="$(curl -sS -o "$RUNNER_TEMP/tag.json" -w '%{http_code}' "${auth[@]}" \
+          TAG_CODE="$("$CURL" -sS -o "$RUNNER_TEMP/tag.json" -w '%{http_code}' "${auth[@]}" \
             "$API/git/ref/tags/$TARGET_TAG")"
           if [ "$TAG_CODE" = "200" ]; then
             # The ref may point at the commit (lightweight tag) or at a tag object (annotated tag); peel
@@ -267,7 +292,7 @@ jobs:
             MIRROR_TYPE="$("$PY" -I -c 'import json,sys
           print(json.load(open(sys.argv[1]))["object"]["type"])' "$RUNNER_TEMP/tag.json")"
             if [ "$MIRROR_TYPE" = "tag" ]; then
-              curl -sS -o "$RUNNER_TEMP/tagobj.json" "${auth[@]}" "$API/git/tags/$MIRROR_SHA"
+              "$CURL" -sS -o "$RUNNER_TEMP/tagobj.json" "${auth[@]}" "$API/git/tags/$MIRROR_SHA"
               MIRROR_SHA="$("$PY" -I -c 'import json,sys
           print(json.load(open(sys.argv[1]))["object"]["sha"])' "$RUNNER_TEMP/tagobj.json")"
               echo "peeled annotated tag to $MIRROR_SHA"
@@ -283,12 +308,12 @@ jobs:
           fi
 
           # Draft first: nothing is visible until both assets are uploaded and read back.
-          CODE="$(curl -sS -o "$RUNNER_TEMP/release.json" -w '%{http_code}' "${auth[@]}" \
+          CODE="$("$CURL" -sS -o "$RUNNER_TEMP/release.json" -w '%{http_code}' "${auth[@]}" \
             -X POST "$API/releases" -H 'Content-Type: application/json' \
             -d "{\"tag_name\":\"$TARGET_TAG\",\"target_commitish\":\"$TARGET_SHA\",\"name\":\"Roux Sports ${TARGET_TAG#v}\",\"draft\":true,\"prerelease\":false}")"
           if [ "$CODE" != "201" ]; then
             echo "creating the draft release failed (HTTP $CODE)"
-            cat "$RUNNER_TEMP/release.json"
+            "$TOOLS/cat" "$RUNNER_TEMP/release.json"
             exit 1
           fi
           RID="$("$PY" -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "$RUNNER_TEMP/release.json")"
@@ -299,13 +324,13 @@ jobs:
           : > "$RUNNER_TEMP/asset_ids.txt"
           upload() {
             local file="$1" name="$2" code
-            code="$(curl -sS -o "$RUNNER_TEMP/asset.json" -w '%{http_code}' \
+            code="$("$CURL" -sS -o "$RUNNER_TEMP/asset.json" -w '%{http_code}' \
               -H "Authorization: Bearer $RELEASE_PUBLISH_TOKEN" \
               -H 'Content-Type: application/octet-stream' \
               -X POST "$UPLOAD_URL?name=$name" --data-binary "@$file")"
             echo "upload $name -> $code"
             if [ "$code" != "201" ]; then
-              cat "$RUNNER_TEMP/asset.json"
+              "$TOOLS/cat" "$RUNNER_TEMP/asset.json"
               exit 1
             fi
             "$PY" -I -c 'import json,sys
@@ -313,38 +338,38 @@ jobs:
           print(asset["id"])' "$RUNNER_TEMP/asset.json" >> "$RUNNER_TEMP/asset_ids.txt"
           }
 
-          upload "$APK" "$(basename "$APK")"
-          upload "$SUM" "$(basename "$SUM")"
+          upload "$APK" "$("$TOOLS/basename" "$APK")"
+          upload "$SUM" "$("$TOOLS/basename" "$SUM")"
 
-          APK_ID="$(sed -n 1p "$RUNNER_TEMP/asset_ids.txt")"
-          SUM_ID="$(sed -n 2p "$RUNNER_TEMP/asset_ids.txt")"
+          APK_ID="$("$TOOLS/sed" -n 1p "$RUNNER_TEMP/asset_ids.txt")"
+          SUM_ID="$("$TOOLS/sed" -n 2p "$RUNNER_TEMP/asset_ids.txt")"
           [ -n "$APK_ID" ] && [ -n "$SUM_ID" ] || { echo "asset ids were not recorded"; exit 1; }
 
           # Both assets are read back through the API and compared with the files that were built. A
           # draft's download URLs need auth anyway, so this is the same path a client would use.
           verify() {
             local asset_id="$1" local_file="$2" name="$3" a b
-            curl -sS -H "Authorization: Bearer $RELEASE_PUBLISH_TOKEN" \
+            "$CURL" -sS -H "Authorization: Bearer $RELEASE_PUBLISH_TOKEN" \
               -H 'Accept: application/octet-stream' \
               -o "$RUNNER_TEMP/back.bin" "$API/releases/assets/$asset_id"
-            a="$(sha256sum "$local_file" | cut -d' ' -f1)"
-            b="$(sha256sum "$RUNNER_TEMP/back.bin" | cut -d' ' -f1)"
+            a="$("$SHA" "$local_file" | cut -d' ' -f1)"
+            b="$("$SHA" "$RUNNER_TEMP/back.bin" | cut -d' ' -f1)"
             printf 'verify %s\n  built  %s\n  stored %s\n' "$name" "$a" "$b"
             if [ "$a" != "$b" ]; then echo "$name did not round-trip"; exit 1; fi
-            rm -f "$RUNNER_TEMP/back.bin"
+            "$TOOLS/rm" -f "$RUNNER_TEMP/back.bin"
           }
 
-          verify "$APK_ID" "$APK" "$(basename "$APK")"
-          verify "$SUM_ID" "$SUM" "$(basename "$SUM")"
+          verify "$APK_ID" "$APK" "$("$TOOLS/basename" "$APK")"
+          verify "$SUM_ID" "$SUM" "$("$TOOLS/basename" "$SUM")"
 
           # Verified, so it can be seen.
-          CODE="$(curl -sS -o /dev/null -w '%{http_code}' "${auth[@]}" \
+          CODE="$("$CURL" -sS -o /dev/null -w '%{http_code}' "${auth[@]}" \
             -X PATCH "$API/releases/$RID" -H 'Content-Type: application/json' -d '{"draft":false}')"
           echo "publish -> $CODE"
           [ "$CODE" = "200" ] || { echo "could not publish the draft release"; exit 1; }
 
-          CODE="$(curl -sS -o /dev/null -w '%{http_code}' -L \
-            "https://github.com/$GITHUB_MIRROR/releases/download/$TARGET_TAG/$(basename "$SUM")")"
+          CODE="$("$CURL" -sS -o /dev/null -w '%{http_code}' -L \
+            "https://github.com/$GITHUB_MIRROR/releases/download/$TARGET_TAG/$("$TOOLS/basename" "$SUM")")"
           echo "public checksum download -> $CODE"
           [ "$CODE" = "200" ] || { echo "the published download is not reachable"; exit 1; }
 
