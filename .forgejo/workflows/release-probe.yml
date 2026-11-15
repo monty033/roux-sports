@@ -1,0 +1,71 @@
+name: release-probe
+
+# Temporary diagnostic: the release workflow fails a few seconds in and the job logs cannot be read over the
+# API from here, so each stage runs as its own dispatch and the run's pass/fail answers one question.
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: checkout | resolve | tools | preflight
+        required: true
+        type: string
+
+jobs:
+  probe:
+    runs-on: nixos
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        if: inputs.stage == 'checkout' || inputs.stage == 'resolve' || inputs.stage == 'tools' || inputs.stage == 'preflight'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - name: Resolve the target
+        if: inputs.stage == 'resolve' || inputs.stage == 'tools' || inputs.stage == 'preflight'
+        env:
+          INPUT_TAG: ${{ inputs.stage }}
+        run: |
+          set -euo pipefail
+          echo "ref=${GITHUB_REF:-unset} ref_name=${GITHUB_REF_NAME:-unset} sha=${GITHUB_SHA:-unset}"
+          git fetch --quiet --depth=1 origin "refs/tags/v1.0.0"
+          git checkout --quiet FETCH_HEAD
+          echo "checked out $(git rev-parse --short=8 HEAD)"
+          echo "versionName: $(sed -n 's/^[[:space:]]*versionName = "\(.*\)"$/\1/p' app/build.gradle.kts | head -1)"
+          if git merge-base --is-ancestor HEAD origin/main 2>/dev/null; then echo "on main"; else echo "NOT on main"; fi
+
+      - name: Check the tools
+        if: inputs.stage == 'tools' || inputs.stage == 'preflight'
+        run: |
+          set -eu
+          echo "PATH=$PATH"
+          for t in node curl git sha256sum awk; do
+            p="$(command -v "$t" || true)"
+            echo "$t -> ${p:-MISSING}"
+            [ -n "$p" ] || exit 1
+          done
+          node --version
+
+      - name: Preflight API read
+        if: inputs.stage == 'preflight'
+        env:
+          FORGEJO_READ_TOKEN: ${{ github.token }}
+          RUNS_URL: ${{ github.server_url }}/api/v1/repos/${{ github.repository }}/actions/runs
+        run: |
+          set -euo pipefail
+          NODE="$(command -v node)"
+          CURL="$(command -v curl)"
+          SHA="$(git rev-parse HEAD)"
+          "$CURL" -q -sS --proto =http,https -H "Authorization: token $FORGEJO_READ_TOKEN" \
+            "$RUNS_URL?limit=50&page=1" -o "$RUNNER_TEMP/runs.json"
+          head -c 200 "$RUNNER_TEMP/runs.json"; echo
+          RUNS_JSON="$RUNNER_TEMP/runs.json" GATE_SHA="$SHA" "$NODE" <<'NODE'
+          const fs = require('fs');
+          const runs = JSON.parse(fs.readFileSync(process.env.RUNS_JSON, 'utf8')).workflow_runs || [];
+          const hit = runs.filter((r) =>
+            r.workflow_id === 'gate.yml' &&
+            r.commit_sha === process.env.GATE_SHA &&
+            r.status === 'success').length;
+          console.log(`runs=${runs.length} gate_success_for_commit=${hit}`);
+          NODE
