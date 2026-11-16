@@ -469,7 +469,6 @@ jobs:
           esac
 
           # Draft first: nothing is visible until both assets are uploaded and read back.
-                    CODE="$("$CURL" -q -sS --proto =https --proto-redir =https -o "$RUNNER_TEMP/release.json" -w '%{http_code}' "${auth[@]}" \
                       # The body is built by node and passed as one argument. Hand-escaping JSON into a quoted
                       # shell word is what broke this before: one wrong backslash split the body into words and curl
                       # read a fragment of it as a URL. JSON.stringify cannot make that mistake.
