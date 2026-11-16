@@ -409,19 +409,19 @@ jobs:
                       # it, or an annotated tag would be refused for pointing at "the wrong commit" forever.
                       MIRROR_SHA="$(TAG_JSON="$RUNNER_TEMP/tag.json" "$NODE" <<'NODE'
                     const fs = require('fs');
-                    process.stdout.write(JSON.parse(fs.readFileSync(process.env.TAG_JSON, 'utf8')).object.sha);
+                    process.stdout.write(JSON.parse(fs.readFileSync(process.env.TAG_JSON, 'utf8')).object.sha + '\n');
           NODE
                     )"
                       MIRROR_TYPE="$(TAG_JSON="$RUNNER_TEMP/tag.json" "$NODE" <<'NODE'
                     const fs = require('fs');
-                    process.stdout.write(JSON.parse(fs.readFileSync(process.env.TAG_JSON, 'utf8')).object.type);
+                    process.stdout.write(JSON.parse(fs.readFileSync(process.env.TAG_JSON, 'utf8')).object.type + '\n');
           NODE
                     )"
                       if [ "$MIRROR_TYPE" = "tag" ]; then
                         "$CURL" -q -sS --proto =https --proto-redir =https -o "$RUNNER_TEMP/tagobj.json" "${auth[@]}" "$API/git/tags/$MIRROR_SHA"
                         MIRROR_SHA="$(TAG_JSON="$RUNNER_TEMP/tagobj.json" "$NODE" <<'NODE'
                     const fs = require('fs');
-                    process.stdout.write(JSON.parse(fs.readFileSync(process.env.TAG_JSON, 'utf8')).object.sha);
+                    process.stdout.write(JSON.parse(fs.readFileSync(process.env.TAG_JSON, 'utf8')).object.sha + '\n');
           NODE
                     )"
                         echo "peeled annotated tag to $MIRROR_SHA"
@@ -436,10 +436,29 @@ jobs:
                       echo "could not read the mirror's tag ref (HTTP $TAG_CODE)"; exit 1
                     fi
 
-                    # Draft first: nothing is visible until both assets are uploaded and read back.
+                    # An earlier attempt can leave a draft behind, and GitHub allows one release per tag, so an
+          # abandoned draft is cleared rather than worked around. A draft is invisible to users and has no
+          # downloads, which is what makes deleting it safe; a published release is refused instead.
+          EXIST_CODE="$("$CURL" -q -sS --proto =https --proto-redir =https -o "$RUNNER_TEMP/existing.json" -w '%{http_code}' "${auth[@]}" \
+            "$API/releases/tags/$TARGET_TAG")"
+          if [ "$EXIST_CODE" = "200" ]; then
+            EXIST_DRAFT="$("$NODE" -e 'const fs=require("fs");process.stdout.write(String(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).draft)+"\n")' "$RUNNER_TEMP/existing.json")"
+            if [ "$EXIST_DRAFT" != "true" ]; then
+              echo "a published release already exists for $TARGET_TAG"; exit 1
+            fi
+            OLD_ID="$("$NODE" -e 'const fs=require("fs");process.stdout.write(String(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).id)+"\n")' "$RUNNER_TEMP/existing.json")"
+            DEL_CODE="$("$CURL" -q -sS --proto =https --proto-redir =https -o /dev/null -w '%{http_code}' "${auth[@]}" \
+              -X DELETE "$API/releases/$OLD_ID")"
+            echo "cleared abandoned draft $OLD_ID -> $DEL_CODE"
+            [ "$DEL_CODE" = "204" ] || { echo "could not clear the abandoned draft"; exit 1; }
+          elif [ "$EXIST_CODE" != "404" ]; then
+            echo "could not read the mirror's release for $TARGET_TAG (HTTP $EXIST_CODE)"; exit 1
+          fi
+
+          # Draft first: nothing is visible until both assets are uploaded and read back.
                     CODE="$("$CURL" -q -sS --proto =https --proto-redir =https -o "$RUNNER_TEMP/release.json" -w '%{http_code}' "${auth[@]}" \
                       -X POST "$API/releases" -H 'Content-Type: application/json' \
-                      -d "{\"tag_name\":\"$TARGET_TAG\",\"target_commitish\":\"$TARGET_SHA\",\"name\":\"Roux Sports ${TARGET_TAG#v}\",\"draft\":true,\"prerelease\":false}")"
+                      -d "{"tag_name":"$TARGET_TAG","target_commitish":"$TARGET_SHA","name":"Roux Sports ${TARGET_TAG#v}","draft":true,"prerelease":false}")"
                     if [ "$CODE" != "201" ]; then
                       echo "creating the draft release failed (HTTP $CODE)"
                       cat "$RUNNER_TEMP/release.json"
@@ -447,12 +466,12 @@ jobs:
                     fi
                     RID="$(RELEASE_JSON="$RUNNER_TEMP/release.json" "$NODE" <<'NODE'
                     const fs = require('fs');
-                    process.stdout.write(String(JSON.parse(fs.readFileSync(process.env.RELEASE_JSON, 'utf8')).id));
+                    process.stdout.write(String(JSON.parse(fs.readFileSync(process.env.RELEASE_JSON, 'utf8')).id) + '\n');
           NODE
                     )"
                     UPLOAD_URL="$(RELEASE_JSON="$RUNNER_TEMP/release.json" "$NODE" <<'NODE'
                     const fs = require('fs');
-                    process.stdout.write(JSON.parse(fs.readFileSync(process.env.RELEASE_JSON, 'utf8')).upload_url.split('{')[0]);
+                    process.stdout.write(JSON.parse(fs.readFileSync(process.env.RELEASE_JSON, 'utf8')).upload_url.split('{')[0] + '\n');
           NODE
                     )"
                     echo "draft release id: $RID"
@@ -471,7 +490,7 @@ jobs:
                       fi
                       ASSET_JSON="$RUNNER_TEMP/asset.json" "$NODE" <<'NODE' >> "$RUNNER_TEMP/asset_ids.txt"
                     const fs = require('fs');
-                    process.stdout.write(String(JSON.parse(fs.readFileSync(process.env.ASSET_JSON, 'utf8')).id));
+                    process.stdout.write(String(JSON.parse(fs.readFileSync(process.env.ASSET_JSON, 'utf8')).id) + '\n');
           NODE
                     }
 
