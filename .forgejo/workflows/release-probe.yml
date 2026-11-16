@@ -120,6 +120,44 @@ jobs:
           echo "event payload gave: [$TAG]"
           [ "$TAG" = "v1.0.0" ] || { echo "event payload did not give the tag"; exit 1; }
 
+      - name: real-preflight
+        if: inputs.stage == 'real'
+        env:
+          TARGET_TAG: ${{ inputs.tag }}
+          TARGET_SHA: ${{ github.sha }}
+          FORGEJO_READ_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          echo "tag=$TARGET_TAG sha=$TARGET_SHA"
+          VERSION_NAME="$(sed -n 's/^[[:space:]]*versionName = "\(.*\)"$/\1/p' app/build.gradle.kts | head -1)"
+          [ -n "$VERSION_NAME" ] || { echo "FAIL: could not read versionName"; exit 1; }
+          [ "v$VERSION_NAME" = "$TARGET_TAG" ] || { echo "FAIL: tag $TARGET_TAG vs versionName $VERSION_NAME"; exit 1; }
+          git fetch --quiet origin main || { echo "FAIL: could not fetch origin main"; exit 1; }
+          git merge-base --is-ancestor "$TARGET_SHA" FETCH_HEAD || { echo "FAIL: $TARGET_SHA is not on main"; exit 1; }
+          [ -n "${FORGEJO_READ_TOKEN:-}" ] || { echo "FAIL: github.token is empty"; exit 1; }
+          RUNS_URL="${{ github.server_url }}/api/v1/repos/${{ github.repository }}/actions/runs"
+          NODE="$(command -v node)"; CURL="$(command -v curl)"
+          FOUND=0
+          for page in 1 2 3 4 5 6 7 8; do
+            "$CURL" -q -sS --proto =http,https -H "Authorization: token $FORGEJO_READ_TOKEN" \
+              "$RUNS_URL?limit=50&page=$page" -o "$RUNNER_TEMP/runs.json" || { echo "FAIL: curl page $page"; exit 1; }
+            RESULT="$(RUNS_JSON="$RUNNER_TEMP/runs.json" GATE_SHA="$TARGET_SHA" "$NODE" -e '
+              const fs=require("fs");
+              const runs=JSON.parse(fs.readFileSync(process.env.RUNS_JSON,"utf8")).workflow_runs||[];
+              const gate=runs.filter(r=>r.workflow_id==="gate.yml"&&r.commit_sha===process.env.GATE_SHA);
+              if(gate.some(r=>r.status==="success"))console.log("found");
+              else if(!runs.length)console.log("empty");
+              else console.log("keep");')"
+            case "$RESULT" in
+              found) FOUND=1; break ;;
+              empty) echo "FAIL: no gate runs visible"; exit 1 ;;
+              keep) ;;
+              *) echo "FAIL: unexpected [$RESULT]"; exit 1 ;;
+            esac
+          done
+          [ "$FOUND" -eq 1 ] || { echo "FAIL: no successful gate run for $TARGET_SHA"; exit 1; }
+          echo "PASS: preflight"
+
       - name: Preflight API read
         if: inputs.stage == 'preflight'
         env:
