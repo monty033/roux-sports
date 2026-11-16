@@ -520,7 +520,9 @@ jobs:
                     # draft's download URLs need auth anyway, so this is the same path a client would use.
                     verify() {
                       local asset_id="$1" local_file="$2" name="$3" a b
-                      "$CURL" -q -sS --proto =https --proto-redir =https -H "Authorization: Bearer $RELEASE_PUBLISH_TOKEN" \
+                      # -L matters: an asset download answers with a redirect to a signed URL, so without it
+                      # curl saves the empty redirect body and the comparison fails against the hash of nothing.
+                      "$CURL" -q -sS -L --proto =https --proto-redir =https -H "Authorization: Bearer $RELEASE_PUBLISH_TOKEN" \
                         -H 'Accept: application/octet-stream' \
                         -o "$RUNNER_TEMP/back.bin" "$API/releases/assets/$asset_id"
                       a="$("$SHA" "$local_file" | cut -d' ' -f1)"
