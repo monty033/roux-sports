@@ -9,6 +9,10 @@ on:
         description: checkout | resolve | tools | preflight
         required: true
         type: string
+      tag:
+        description: release tag
+        required: false
+        type: string
 
 jobs:
   probe:
@@ -16,7 +20,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Check out
-        if: inputs.stage == 'checkout' || inputs.stage == 'resolve' || inputs.stage == 'tools' || inputs.stage == 'preflight'
+        if: inputs.stage != ''
         uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
@@ -98,6 +102,128 @@ jobs:
             process.exit(1);
           }
           NODE
+      - name: tag-by-expression
+        if: inputs.stage == 'tag-expr'
+        run: |
+          set -eu
+          # What the release workflow does today: substitute the input into the shell.
+          TAG="${{ inputs.tag }}"
+          echo "expression gave: [$TAG]"
+          [ "$TAG" = "v1.0.0" ] || { echo "expression did not give the tag"; exit 1; }
+
+      - name: tag-by-event-payload
+        if: inputs.stage == 'tag-event'
+        run: |
+          set -eu
+          # Read it out of the event JSON instead of substituting into the shell.
+          TAG="$(EVENT_PATH="$GITHUB_EVENT_PATH" node -e 'const e=require(process.env.EVENT_PATH);const t=(e.inputs&&e.inputs.tag)||e.ref_name||"";process.stdout.write(t)')"
+          echo "event payload gave: [$TAG]"
+          [ "$TAG" = "v1.0.0" ] || { echo "event payload did not give the tag"; exit 1; }
+
+      - name: real-preflight
+        if: inputs.stage == 'real'
+        env:
+          TARGET_TAG: ${{ inputs.tag }}
+          TARGET_SHA: ${{ github.sha }}
+          FORGEJO_READ_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          echo "tag=$TARGET_TAG sha=$TARGET_SHA"
+          VERSION_NAME="$(sed -n 's/^[[:space:]]*versionName = "\(.*\)"$/\1/p' app/build.gradle.kts | head -1)"
+          [ -n "$VERSION_NAME" ] || { echo "FAIL: could not read versionName"; exit 1; }
+          [ "v$VERSION_NAME" = "$TARGET_TAG" ] || { echo "FAIL: tag $TARGET_TAG vs versionName $VERSION_NAME"; exit 1; }
+          git fetch --quiet origin main || { echo "FAIL: could not fetch origin main"; exit 1; }
+          git merge-base --is-ancestor "$TARGET_SHA" FETCH_HEAD || { echo "FAIL: $TARGET_SHA is not on main"; exit 1; }
+          [ -n "${FORGEJO_READ_TOKEN:-}" ] || { echo "FAIL: github.token is empty"; exit 1; }
+          RUNS_URL="${{ github.server_url }}/api/v1/repos/${{ github.repository }}/actions/runs"
+          NODE="$(command -v node)"; CURL="$(command -v curl)"
+          FOUND=0
+          for page in 1 2 3 4 5 6 7 8; do
+            "$CURL" -q -sS --proto =http,https -H "Authorization: token $FORGEJO_READ_TOKEN" \
+              "$RUNS_URL?limit=50&page=$page" -o "$RUNNER_TEMP/runs.json" || { echo "FAIL: curl page $page"; exit 1; }
+            RESULT="$(RUNS_JSON="$RUNNER_TEMP/runs.json" GATE_SHA="$TARGET_SHA" "$NODE" -e '
+              const fs=require("fs");
+              const runs=JSON.parse(fs.readFileSync(process.env.RUNS_JSON,"utf8")).workflow_runs||[];
+              const gate=runs.filter(r=>r.workflow_id==="gate.yml"&&r.commit_sha===process.env.GATE_SHA);
+              if(gate.some(r=>r.status==="success"))console.log("found");
+              else if(!runs.length)console.log("empty");
+              else console.log("keep");')"
+            case "$RESULT" in
+              found) FOUND=1; break ;;
+              empty) echo "FAIL: no gate runs visible"; exit 1 ;;
+              keep) ;;
+              *) echo "FAIL: unexpected [$RESULT]"; exit 1 ;;
+            esac
+          done
+          [ "$FOUND" -eq 1 ] || { echo "FAIL: no successful gate run for $TARGET_SHA"; exit 1; }
+          echo "PASS: preflight"
+
+      - name: pf-version
+        if: inputs.stage == 'pf-version'
+        env:
+          TARGET_TAG: ${{ inputs.tag }}
+          TARGET_SHA: ${{ github.sha }}
+          FORGEJO_READ_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          V="$(sed -n 's/^[[:space:]]*versionName = "\(.*\)"$/\1/p' app/build.gradle.kts | head -1)"
+          echo "versionName=[$V] tag=[$TARGET_TAG]"
+          [ -n "$V" ] && [ "v$V" = "$TARGET_TAG" ]
+
+      - name: pf-main
+        if: inputs.stage == 'pf-main'
+        env:
+          TARGET_TAG: ${{ inputs.tag }}
+          TARGET_SHA: ${{ github.sha }}
+          FORGEJO_READ_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin main
+          git merge-base --is-ancestor "$TARGET_SHA" FETCH_HEAD
+          echo "$TARGET_SHA is on main"
+
+      - name: pf-token
+        if: inputs.stage == 'pf-token'
+        env:
+          TARGET_TAG: ${{ inputs.tag }}
+          TARGET_SHA: ${{ github.sha }}
+          FORGEJO_READ_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          echo "token length=${#FORGEJO_READ_TOKEN}"
+          [ -n "${FORGEJO_READ_TOKEN:-}" ]
+
+      - name: pf-api
+        if: inputs.stage == 'pf-api'
+        env:
+          TARGET_TAG: ${{ inputs.tag }}
+          TARGET_SHA: ${{ github.sha }}
+          FORGEJO_READ_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          URL="${{ github.server_url }}/api/v1/repos/${{ github.repository }}/actions/runs"
+          echo "url=$URL"
+          curl -q -sS --proto =http,https -H "Authorization: token $FORGEJO_READ_TOKEN" "$URL?limit=1" -o "$RUNNER_TEMP/r.json"
+          head -c 120 "$RUNNER_TEMP/r.json"; echo
+          node -e 'const r=JSON.parse(require("fs").readFileSync(process.env.RUNNER_TEMP+"/r.json","utf8"));if(!Array.isArray(r.workflow_runs))process.exit(1);console.log("runs="+r.workflow_runs.length)'
+
+      - name: pf-gate
+        if: inputs.stage == 'pf-gate'
+        env:
+          TARGET_TAG: ${{ inputs.tag }}
+          TARGET_SHA: ${{ github.sha }}
+          FORGEJO_READ_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          URL="${{ github.server_url }}/api/v1/repos/${{ github.repository }}/actions/runs"
+          for page in 1 2 3 4 5 6 7 8; do
+            curl -q -sS --proto =http,https -H "Authorization: token $FORGEJO_READ_TOKEN" "$URL?limit=50&page=$page" -o "$RUNNER_TEMP/r.json"
+            OUT="$(RUNS_JSON="$RUNNER_TEMP/r.json" GATE_SHA="$TARGET_SHA" node -e 'const fs=require("fs");const runs=JSON.parse(fs.readFileSync(process.env.RUNS_JSON,"utf8")).workflow_runs||[];const g=runs.filter(r=>r.workflow_id==="gate.yml"&&r.commit_sha===process.env.GATE_SHA);if(g.some(r=>r.status==="success"))console.log("found");else if(!runs.length)console.log("empty");else console.log("keep")')"
+            echo "page $page: $OUT"
+            case "$OUT" in found) exit 0;; empty) exit 1;; esac
+          done
+          echo "no gate run"; exit 1
+
       - name: Preflight API read
         if: inputs.stage == 'preflight'
         env:
