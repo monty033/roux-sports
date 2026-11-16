@@ -470,8 +470,11 @@ jobs:
 
           # Draft first: nothing is visible until both assets are uploaded and read back.
                     CODE="$("$CURL" -q -sS --proto =https --proto-redir =https -o "$RUNNER_TEMP/release.json" -w '%{http_code}' "${auth[@]}" \
-                      -X POST "$API/releases" -H 'Content-Type: application/json' \
-                      -d "{"tag_name":"$TARGET_TAG","target_commitish":"$TARGET_SHA","name":"Roux Sports ${TARGET_TAG#v}","draft":true,"prerelease":false}")"
+                      # The body is built by node and passed as one argument. Hand-escaping JSON into a quoted
+                      # shell word is what broke this before: one wrong backslash split the body into words and curl
+                      # read a fragment of it as a URL. JSON.stringify cannot make that mistake.
+                      BODY="$("$NODE" -e 'const [t,s,n]=process.argv.slice(1);process.stdout.write(JSON.stringify({tag_name:t,target_commitish:s,name:"Roux Sports "+n,draft:true,prerelease:false}))' "$TARGET_TAG" "$TARGET_SHA" "${TARGET_TAG#v}")"
+                      CODE="$("$CURL" -q -sS --proto =https --proto-redir =https -o "$RUNNER_TEMP/release.json" -w '%{http_code}' "${auth[@]}" -X POST "$API/releases" -H 'Content-Type: application/json' -d "$BODY")"
                     if [ "$CODE" != "201" ]; then
                       echo "creating the draft release failed (HTTP $CODE)"
                       cat "$RUNNER_TEMP/release.json"
