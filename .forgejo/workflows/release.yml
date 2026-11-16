@@ -134,7 +134,6 @@ jobs:
           GITHUB_TOKEN: ""
           FORGEJO_TOKEN: ""
           FORGEJO_READ_TOKEN: ${{ github.token }}
-          RUNS_URL: ${{ github.server_url }}/api/v1/repos/${{ github.repository }}/actions/runs
         run: |
           set -euo pipefail
 
@@ -153,17 +152,35 @@ jobs:
           fi
           echo "commit is on main"
 
-          # 3. That commit passed the gate. Runs are selected by workflow id, commit and status - a
-          # successful run of something else is not a gate - and paged, because an older tag's gate run
-          # can sit well past the first page.
-          # node and curl were put in the environment by the step above.
-          [ -n "${NODE:-}" ] && [ -x "$NODE" ] || { echo "NODE is not set to an executable"; exit 1; }
+          # 3. That commit passed the gate.
+          #
+          # Tools are resolved here rather than inherited from an earlier step: an inherited value that
+          # is empty fails silently under `set -e`, which is exactly how this step used to die with no
+          # output. Each phase below announces itself, so a failure names its own line.
+          NODE="$(command -v node || true)"
+          CURL="$(command -v curl || true)"
+          echo "node=[$NODE] curl=[$CURL]"
+          [ -n "$NODE" ] || { echo "node is not on this runner's PATH"; exit 1; }
+          [ -n "$CURL" ] || { echo "curl is not on this runner's PATH"; exit 1; }
+
+          # The instance answers on a LAN address over http, so the scheme is whatever this run reports;
+          # the GitHub calls further down stay https only.
+          URLS="${{ github.server_url }}/api/v1/repos/${{ github.repository }}/actions/runs"
+          case "$URLS" in
+            http://*|https://*) ;;
+            *) echo "unusable server url: $URLS"; exit 1 ;;
+          esac
+          echo "runs url: $URLS"
+
           FOUND=0
           for page in 1 2 3 4 5 6 7 8; do
-            # http is allowed here because this instance answers on a LAN address over http; the GitHub
-            # calls further down keep https only. Pinning https here made curl refuse to speak at all.
-            "$CURL" -q -sS --proto =http,https -H "Authorization: token $FORGEJO_READ_TOKEN" \
-              "$RUNS_URL?limit=50&page=$page" -o "$RUNNER_TEMP/runs.json"
+            CODE="$("$CURL" -q -sS --proto =http,https -o "$RUNNER_TEMP/runs.json" -w '%{http_code}' \
+              -H "Authorization: token $FORGEJO_READ_TOKEN" "$URLS?limit=50&page=$page")" || {
+                echo "curl failed reading page $page"; exit 1; }
+            echo "page $page: http $CODE"
+            if [ "$CODE" != "200" ]; then
+              echo "the runs API answered $CODE, not 200"; head -c 200 "$RUNNER_TEMP/runs.json" || true; exit 1
+            fi
             read -r COUNT HIT < <(RUNS_JSON="$RUNNER_TEMP/runs.json" GATE_SHA="$TARGET_SHA" "$NODE" <<'NODE'
           const fs = require('fs');
           const runs = JSON.parse(fs.readFileSync(process.env.RUNS_JSON, 'utf8')).workflow_runs || [];
@@ -171,9 +188,11 @@ jobs:
             r.workflow_id === 'gate.yml' &&
             r.commit_sha === process.env.GATE_SHA &&
             r.status === 'success').length;
-          process.stdout.write(`${runs.length} ${hit}`);
+          // A newline matters: `read` reports failure at EOF without one, and under `set -e`
+          // that aborted this step silently, one line before the page report.
+          process.stdout.write(`${runs.length} ${hit}\n`);
           NODE
-            )
+            ) || true
             echo "page $page: runs=$COUNT successful_gate_runs=$HIT"
             if [ "${HIT:-0}" -gt 0 ]; then FOUND=1; break; fi
             if [ "${COUNT:-1}" -eq 0 ]; then echo "no gate run for this commit"; exit 1; fi
