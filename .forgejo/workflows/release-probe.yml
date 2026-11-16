@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Check out
-        if: inputs.stage == 'checkout' || inputs.stage == 'resolve' || inputs.stage == 'tools' || inputs.stage == 'preflight'
+        if: inputs.stage != ''
         uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
