@@ -9,6 +9,10 @@ on:
         description: checkout | resolve | tools | preflight
         required: true
         type: string
+      tag:
+        description: release tag
+        required: false
+        type: string
 
 jobs:
   probe:
@@ -103,7 +107,7 @@ jobs:
         run: |
           set -eu
           # What the release workflow does today: substitute the input into the shell.
-          TAG="${{ github.event.inputs.tag }}"
+          TAG="${{ inputs.tag }}"
           echo "expression gave: [$TAG]"
           [ "$TAG" = "v1.0.0" ] || { echo "expression did not give the tag"; exit 1; }
 
