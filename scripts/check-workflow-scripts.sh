@@ -105,7 +105,8 @@ for wf in "${workflows[@]}"; do
         rc=1
       fi
     done <<<"$tags"
-  done < <(grep -nE '^ *run: \|' "$wf" | cut -d: -f1)
+  # A step may write `run: |` on its own line or inline after the list dash; both are blocks.
+  done < <(grep -nE '^ *(- )?run: \|' "$wf" | cut -d: -f1)
 done
 
 [ "$rc" -eq 0 ] && echo "workflow scripts parse"
