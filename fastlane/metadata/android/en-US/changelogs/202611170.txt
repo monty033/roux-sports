@@ -1,0 +1,2 @@
+Version names are now dates, starting with this release. Nothing about the app changed except the number you see
+in Settings: this places 2026.11.17 after 1.0.1 so the update installs normally.

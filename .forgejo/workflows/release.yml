@@ -145,6 +145,44 @@ jobs:
           fi
           echo "versionName matches: $VERSION_NAME"
 
+          # 1b. The name and the code follow the date rule, and the code is the one the name implies.
+          # scripts/check-version.sh owns the rule; the release build checks the same thing on the APK.
+          VERSION_CODE="$(sed -n 's/^[[:space:]]*versionCode = \([0-9]*\).*$/\1/p' app/build.gradle.kts | head -1)"
+          [ -n "$VERSION_CODE" ] || { echo "could not read versionCode"; exit 1; }
+          ./scripts/check-version.sh "$VERSION_NAME" "$VERSION_CODE"
+
+          # 1c. The code must exceed every release already tagged, or an install would refuse the
+          # update. The checkout has full history and tags, so this is the real record rather than a
+          # file that can drift.
+          # Skipped by commit, not by name: a tag that was force-moved to this commit is the release
+          # being cut, but one that still points elsewhere is an earlier release that must be beaten.
+          RELEASE_COMMIT="$(git rev-parse HEAD)"
+          PREV=""
+          while read -r tag; do
+            [ -n "$tag" ] || continue
+            [ "$(git rev-parse "$tag^{commit}" 2>/dev/null)" = "$RELEASE_COMMIT" ] && continue
+            c="$(git cat-file -p "$tag:app/build.gradle.kts" 2>/dev/null \
+              | sed -n 's/^[[:space:]]*versionCode = \([0-9]*\).*/\1/p' | head -1)"
+            [ -n "$c" ] && PREV="$PREV$c $tag\n"
+          done < <(git tag -l 'v[0-9]*' --merged HEAD)
+          HIGHEST="$(printf "%b" "$PREV" | sort -n | tail -1)"
+          if [ -n "$HIGHEST" ]; then
+            PREV_CODE="${HIGHEST%% *}"
+            PREV_TAG="${HIGHEST##* }"
+            echo "highest earlier release: $PREV_TAG code $PREV_CODE"
+            if [ "$VERSION_CODE" -le "$PREV_CODE" ]; then
+              echo "versionCode $VERSION_CODE does not exceed $PREV_CODE from $PREV_TAG"; exit 1
+            fi
+          fi
+
+          # 1d. The changelog for this version code exists and has been written.
+          CHANGELOG="fastlane/metadata/android/en-US/changelogs/$VERSION_CODE.txt"
+          [ -f "$CHANGELOG" ] || { echo "missing $CHANGELOG"; exit 1; }
+          if head -1 "$CHANGELOG" | grep -q '^TODO'; then
+            echo "$CHANGELOG still contains the TODO placeholder"; exit 1
+          fi
+          echo "changelog present: $CHANGELOG"
+
           # 2. The tagged commit is on main. A tag on a side branch is an accident, not a release.
           git fetch --quiet origin main
           if ! git merge-base --is-ancestor "$TARGET_SHA" FETCH_HEAD; then
