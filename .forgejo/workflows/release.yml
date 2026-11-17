@@ -759,7 +759,10 @@ jobs:
 
           TAG="${INPUT_TAG:-${GITHUB_REF_NAME:-}}"
           [ -n "$TAG" ] || { echo "no tag to mirror"; exit 1; }
-          API="${GITHUB_API_URL:-https://git.montycasa.net/api/v1}/repos/${GITHUB_REPOSITORY:?}"
+          # The runner advertises GITHUB_API_URL over plain http on its internal address, and every request
+          # here is https-only, so that value is not usable. The public API is pinned instead, with an
+          # override so the step can be exercised against something else.
+          API="${FORGEJO_API_BASE:-https://git.montycasa.net/api/v1}/repos/${GITHUB_REPOSITORY:?}"
           MIRROR_URL="https://github.com/${GITHUB_MIRROR}/releases/tag/${TAG}"
 
           # The build job ships the APK alone on purpose: the publisher recomputes the checksum from the bytes
