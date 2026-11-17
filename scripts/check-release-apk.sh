@@ -2,7 +2,7 @@
 # Audit of the built release APK (plan S10.2). It proves:
 #   1. every permission the APK requests is in the recorded allowlist below;
 #   2. no entry in the APK belongs to Firebase or Google Play services;
-#   3. the badging package is net.montycasa.roux, versionName 1.0.0 and versionCode 1.
+#   3. the badging package is net.montycasa.roux and the versionName/versionCode match app/build.gradle.kts.
 # Usage: check-release-apk.sh [APK]    APK defaults to the single APK in app/build/outputs/apk/release.
 #        check-release-apk.sh --self-test    needs no APK; feeds the permission check a list containing
 #                                            android.permission.READ_CONTACTS and exits 1 because it is rejected.
@@ -22,8 +22,6 @@
 set -euo pipefail
 
 EXPECTED_PACKAGE=net.montycasa.roux
-EXPECTED_VERSION_NAME=1.0.0
-EXPECTED_VERSION_CODE=1
 
 # The permission allowlist, recorded from `aapt2 dump permissions` on the release APK built from this tree.
 # Two are the app's own (manifest): INTERNET for the NHL endpoints and logos, POST_NOTIFICATIONS for alerts.
@@ -83,6 +81,17 @@ fi
 
 script_dir="$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")" || fail "could not resolve the script directory"
 project_root="$(dirname -- "$script_dir")"
+
+# The expected version is read from the build file rather than pinned here. Pinning it means every
+# version bump fails the release build at this audit - which is what happened the first time the
+# release pipeline built 1.0.1 - while the property this check exists for is that the APK matches
+# what the source declares, not that the source still says 1.0.0.
+gradle_file="$project_root/app/build.gradle.kts"
+[ -f "$gradle_file" ] || fail "build file not found: $gradle_file"
+EXPECTED_VERSION_NAME="${EXPECTED_VERSION_NAME:-$(sed -n 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"\(.*\)"[[:space:]]*$/\1/p' "$gradle_file" | head -n 1)}"
+EXPECTED_VERSION_CODE="${EXPECTED_VERSION_CODE:-$(sed -n 's/^[[:space:]]*versionCode[[:space:]]*=[[:space:]]*\([0-9][0-9]*\).*$/\1/p' "$gradle_file" | head -n 1)}"
+[ -n "$EXPECTED_VERSION_NAME" ] || fail "could not read versionName from $gradle_file"
+[ -n "$EXPECTED_VERSION_CODE" ] || fail "could not read versionCode from $gradle_file"
 
 resolve_tool() {
   local name="$1" found
