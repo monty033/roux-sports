@@ -59,9 +59,11 @@ class AppContainerTest {
             "a release build must not carry the fallback: ${app.container.version}",
             app.container.version != "dev",
         )
+        // The release versions are dates: YYYY.MM.DD, and YYYY.MM.DD.N for a later release on the same day.
+        // Pinned here so a debug marker ("dev", a build suffix) cannot pass as a release version.
         assertTrue(
             "the version must look like a release version, not a debug marker: ${app.container.version}",
-            Regex("""\d+\.\d+\.\d+""").matches(app.container.version),
+            Regex("""\d{4}\.\d{2}\.\d{2}(\.\d)?""").matches(app.container.version),
         )
     }
 

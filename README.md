@@ -49,7 +49,7 @@ sha256sum -c roux-sports-<version>.apk.sha256
 apksigner verify --print-certs roux-sports-<version>.apk
 ```
 
-The certificate reads `CN=Patrick Montgomery, OU=Roux Sports`. `apksigner` lives in the Android SDK, which the
+The certificate reads `CN=Roux Sports, OU=Roux Sports, O=Roux Sports, C=US`. `apksigner` lives in the Android SDK, which the
 flake provides, so `nix develop --command apksigner …` works if you have the dev shell.
 
 ### Updating

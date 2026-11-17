@@ -33,7 +33,7 @@ class AboutSectionTest {
         rule.setContent { RouxTheme { AboutSection() } }
     }
 
-    @Test fun theSectionNamesTheBuildVersionAndTheLicence() {
+    @Test fun theSectionNamesTheBuildVersionAndTheLicense() {
         showSection()
 
         rule.onNodeWithText("Roux Sports ${BuildConfig.VERSION_NAME}").assertIsDisplayed()
