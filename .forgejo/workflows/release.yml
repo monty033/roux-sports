@@ -74,6 +74,14 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.ref }}
 
+      - name: Check the workflow's own scripts parse
+        # A missing continuation line in the publisher is invisible to YAML and to actionlint, and it only
+        # surfaces after the build finishes, when the runner refuses to parse the script it was handed. This
+        # runs in seconds and fails the release before anything is built.
+        run: |
+          set -eu
+          scripts/check-workflow-scripts.sh .forgejo/workflows/release.yml
+
       - name: Resolve the target
         # The tag comes from the event, so it is untrusted input: it is passed in the environment (never
         # spliced into shell source) and validated against a strict shape before anything uses it.
@@ -559,6 +567,7 @@ jobs:
               # different digest and a byte comparison would refuse every redundant run. A published
               # release for a tag is final; to ship again, bump the version.
               read -r PUB_APK_ID PUB_SUM_ID PUB_ID PUB_TARGET < <(REL_JSON="$RUNNER_TEMP/releases.json" \
+                WANT_TAG="$TARGET_TAG" APK_NAME="$(basename "$APK")" SUM_NAME="$(basename "$SUM")" "$NODE" <<'NODE'
           const fs = require('fs');
           const all = JSON.parse(fs.readFileSync(process.env.REL_JSON, 'utf8'));
           const rel = all.find((r) => r.tag_name === process.env.WANT_TAG && r.draft !== true);
