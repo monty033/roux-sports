@@ -779,12 +779,24 @@ jobs:
 
           auth=(-H "Authorization: token ${FORGEJO_TOKEN:?}")
 
+          # The private copy carries the public release's description, copied from GitHub. GitHub is read
+          # anonymously: the repository is public and nothing here needs a credential. If GitHub cannot be read,
+          # the one-line pointer is used so the release still gets a description.
+          PUBLIC_BODY=""; PUBLIC_FETCHED=0
+          PUB_JSON="$RUNNER_TEMP/public-release.json"
+          if "$CURL" -q -sS --proto =https --proto-redir =https -o "$PUB_JSON" \
+               "https://api.github.com/repos/$GITHUB_MIRROR/releases/tags/$TAG" 2>/dev/null; then
+            PUBLIC_BODY="$(REL_JSON="$PUB_JSON" "$NODE" -e 'const fs=require("fs");try{const r=JSON.parse(fs.readFileSync(process.env.REL_JSON,"utf8"));process.stdout.write(typeof r.body==="string"?r.body:"")}catch(e){}')"
+            [ -n "$PUBLIC_BODY" ] && PUBLIC_FETCHED=1
+          fi
+          [ -n "$PUBLIC_BODY" ] || PUBLIC_BODY="Signed release ${TAG}. The assets are byte-identical to the public mirror: ${MIRROR_URL}"
+
           # Does this repository already have the release?
           CODE="$("$CURL" -q -sS --proto =https --proto-redir =https -o "$RUNNER_TEMP/existing.json" \
             -w '%{http_code}' "${auth[@]}" "$API/releases/tags/$TAG")" || { echo "could not read the release"; exit 1; }
 
           if [ "$CODE" = "404" ]; then
-            BODY="Signed release ${TAG}. The assets are byte-identical to the public mirror: ${MIRROR_URL}"
+            BODY="$PUBLIC_BODY"
             REL_JSON="$RUNNER_TEMP/rel.json" TAG="$TAG" BODY="$BODY" "$NODE" <<'NODE'
           const fs = require('fs');
           const body = { tag_name: process.env.TAG, name: process.env.TAG, body: process.env.BODY,
@@ -812,6 +824,15 @@ jobs:
           NODE
           )
           [ -n "${REL_ID:-}" ] || { echo "could not read the release id"; exit 1; }
+          # A release that already exists keeps its assets; its description follows the public one, so a run
+          # that finds the release backfills the notes instead of leaving the one-line pointer.
+          if [ "$CODE" = "200" ] && [ "$PUBLIC_FETCHED" = 1 ]; then
+            PATCH_JSON="$(PUBLIC_BODY="$PUBLIC_BODY" "$NODE" -e 'process.stdout.write(JSON.stringify({body:process.env.PUBLIC_BODY}))')"
+            PATCH_CODE="$("$CURL" -q -sS --proto =https --proto-redir =https -o /dev/null -w '%{http_code}' "${auth[@]}" \
+              -H 'Content-Type: application/json' -X PATCH -d "$PATCH_JSON" "$API/releases/$REL_ID")"
+            [ "$PATCH_CODE" = "200" ] || { echo "could not refresh the mirror description: $PATCH_CODE"; exit 1; }
+            echo "refreshed the mirror description -> $PATCH_CODE"
+          fi
 
           upload() { # name, path
             local name="$1" path="$2" code
