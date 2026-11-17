@@ -11,9 +11,56 @@ Source: [github.com/monty033/roux-sports](https://github.com/monty033/roux-sport
 happens on a self-hosted Forgejo instance that is not reachable from the internet; the mirror is what outside
 readers can follow.
 
-**Current state: Stage 10 of 11 — release readiness.** Scores, standings, teams, team detail (schedule, players,
-league-relative team stats), player detail, game detail and team alerts are all built and on `main`. What remains is
-the release itself: the About screen, and publishing a signed 1.0.0.
+**Current state: released.** Scores, standings, teams, team detail (schedule, players, league-relative team
+stats), player detail, game detail and team alerts are all built, on `main`, and shipped. Install instructions are
+below; the newest release is on the [releases page](https://github.com/monty033/roux-sports/releases/latest).
+
+## Installing
+
+Roux Sports is distributed as a signed APK on
+[GitHub Releases](https://github.com/monty033/roux-sports/releases). It is not on Google Play, and it is not in the
+official F-Droid repository. Android 12 (API 31) or newer is required.
+
+### With Obtainium, so updates arrive on their own
+
+[Obtainium](https://github.com/ImranR98/Obtainium) installs apps straight from GitHub releases and checks for new
+versions for you.
+
+1. Install Obtainium.
+2. Add app, and paste `https://github.com/monty033/roux-sports`.
+3. Install the release it offers.
+
+New releases then show up there without watching the repository.
+
+### By hand
+
+1. Open the [latest release](https://github.com/monty033/roux-sports/releases/latest).
+2. Download `roux-sports-<version>.apk`.
+3. Open the file. Android asks you to allow installing unknown apps for whichever app you opened it from — a
+   browser or a file manager. That permission is per-app and can be revoked afterwards.
+
+### Check what you downloaded
+
+Every release carries a `.sha256` beside the APK, and the APK is signed by the project key. Both passing means the
+file is the one that was published:
+
+```
+sha256sum -c roux-sports-<version>.apk.sha256
+apksigner verify --print-certs roux-sports-<version>.apk
+```
+
+The certificate reads `CN=Patrick Montgomery, OU=Roux Sports`. `apksigner` lives in the Android SDK, which the
+flake provides, so `nix develop --command apksigner …` works if you have the dev shell.
+
+### Updating
+
+Install the new APK over the old one. Favorites, league order, alert choices and the theme live in the app's own
+private storage, which a replacement does not touch, so they survive. "Upgrading an installed release" below covers
+what Android will and will not accept.
+
+A build signed with a different key — a debug build, or one from another fork — cannot be installed over a
+published release. Android reports a signature mismatch, and the installed app has to be removed first, which does
+take its preferences with it.
 
 ## Building
 
@@ -46,7 +93,7 @@ nix --extra-experimental-features 'nix-command flakes' develop --command ./gradl
 ### The SDK comes from the flake — never run `sdkmanager`
 
 `ANDROID_HOME` points into the Nix store and is read-only. Do not run `sdkmanager`, do not
-accept licences, do not create `local.properties`, and do not let an IDE write one. Adding a
+accept licenses, do not create `local.properties`, and do not let an IDE write one. Adding a
 platform or tool means editing the flake, where the change is reviewable; mutating the SDK by
 hand produces a machine that builds differently from everyone else's and from CI.
 
@@ -120,11 +167,14 @@ at each stage.
 
 ## Release
 
-Releases are published on Forgejo releases and nowhere else.
+Public releases are [GitHub Releases](https://github.com/monty033/roux-sports/releases), published from the mirror.
+Development happens on a private Forgejo instance that is not reachable from the internet, so the mirror is what a
+reader can reach. The version rule, the tag that publishes a release and the upgrade rules are below.
 
-To build a release, run `scripts/build-release.sh` inside `nix develop`. It refuses without a `keystore.properties` and
-refuses on a dirty tree, then runs the gate, `check-metadata.sh`, `assembleRelease`, `check-release-apk.sh` and
-`apksigner verify --print-certs`, and writes `app/build/dist/roux-sports-<versionName>.apk` plus its `.sha256`.
+To build a release by hand, run `scripts/build-release.sh` inside `nix develop`. It refuses without a
+`keystore.properties` and refuses on a dirty tree, then runs the gate, `check-metadata.sh`, `assembleRelease`,
+`check-release-apk.sh` and `apksigner verify --print-certs`, and writes `app/build/dist/roux-sports-<version>.apk`
+plus its `.sha256`.
 
 Signing uses a `keystore.properties` file (gitignored, never committed) in the project root:
 
@@ -138,8 +188,8 @@ keyPassword=...
 Verify a download with:
 
 ```
-sha256sum -c roux-sports-<versionName>.apk.sha256
-apksigner verify --print-certs roux-sports-<versionName>.apk
+sha256sum -c roux-sports-<version>.apk.sha256
+apksigner verify --print-certs roux-sports-<version>.apk
 ```
 
 ### Upgrading an installed release
@@ -161,7 +211,7 @@ code = YYYYMMDD * 10 + N
 Run `scripts/bump-version.sh` to write both into `app/build.gradle.kts` from today's UTC date and the tags that
 already exist, and to create `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt`. A second release on the
 same day becomes `2026.11.17.1` with code `202611171`. Then replace the TODO line the script writes, run the gate,
-commit, and push the tag `v<versionName>` — the tag starts the release workflow, which builds, signs, verifies and
+commit, and push the tag `v<version>` — the tag starts the release workflow, which builds, signs, verifies and
 publishes.
 
 The name must be a real calendar date, the code must be the one the name implies, and the code must exceed every
@@ -175,7 +225,7 @@ The project does not rotate its signing key. Android can be told to accept a new
 existing package, but that is a deliberate migration with tooling of its own, not something this README sets up —
 if the release key is ever replaced, that migration is the work, not a rebuild.
 
-Favourites, league order, notification choices and the theme live in the app's own private storage, which an
+Favorites, league order, notification choices and the theme live in the app's own private storage, which an
 in-place replacement does not touch, so they survive a release-to-release upgrade. The cached NHL responses do not
 need to survive: they are refetched.
 
