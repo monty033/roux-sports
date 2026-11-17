@@ -559,7 +559,6 @@ jobs:
               # different digest and a byte comparison would refuse every redundant run. A published
               # release for a tag is final; to ship again, bump the version.
               read -r PUB_APK_ID PUB_SUM_ID PUB_ID PUB_TARGET < <(REL_JSON="$RUNNER_TEMP/releases.json" \
-                WANT_TAG="$TARGET_TAG" APK_NAME="$(basename "$APK")" SUM_NAME="$(basename "$SUM")" "$NODE" <<'NODE'
           const fs = require('fs');
           const all = JSON.parse(fs.readFileSync(process.env.REL_JSON, 'utf8'));
           const rel = all.find((r) => r.tag_name === process.env.WANT_TAG && r.draft !== true);
@@ -754,16 +753,17 @@ jobs:
           API="${GITHUB_API_URL:-https://git.montycasa.net/api/v1}/repos/${GITHUB_REPOSITORY:?}"
           MIRROR_URL="https://github.com/${GITHUB_MIRROR}/releases/tag/${TAG}"
 
+          # The build job ships the APK alone on purpose: the publisher recomputes the checksum from the bytes
+          # rather than trusting a sidecar that came out of the tagged checkout. This job follows the same rule,
+          # so it derives one here instead of requiring a file that is never in the artifact.
           APK="$(find dist -maxdepth 1 -type f -name '*.apk' -print -quit)"
-          SUM="$(find dist -maxdepth 1 -type f -name '*.apk.sha256' -print -quit)"
           [ -n "$APK" ] && [ -f "$APK" ] || { echo "no APK in dist"; exit 1; }
-          [ -n "$SUM" ] && [ -f "$SUM" ] || { echo "no checksum in dist"; exit 1; }
           APK_NAME="$(basename "$APK")"
-          SUM_NAME="$(basename "$SUM")"
-
           APK_SHA="$(sha256sum "$APK" | cut -d' ' -f1)"
-          SIDE_SHA="$(cut -d' ' -f1 "$SUM")"
-          [ "$APK_SHA" = "$SIDE_SHA" ] || { echo "the APK does not match its own checksum sidecar"; exit 1; }
+          SUM_NAME="${APK_NAME}.sha256"
+          printf '%s  %s\n' "$APK_SHA" "$APK_NAME" > "dist/$SUM_NAME"
+          SUM="dist/$SUM_NAME"
+
 
           auth=(-H "Authorization: token ${FORGEJO_TOKEN:?}")
 
