@@ -16,6 +16,9 @@ name: release
 #      executes with that token in scope.
 #   5. the release is created as a draft, both assets are uploaded and read back for comparison, and only
 #      then is it published. A corrupt upload therefore cannot go live.
+#   6. mirror uploads the same artifact bytes to this repository, so the private record and the public
+#      download name the same file. It does not rebuild: a second build of one commit has a different
+#      digest, which would leave two legitimate-looking APKs with different checksums for one version.
 #
 # Secrets this needs (Forgejo user-level secrets are visible to both repositories):
 #   RELEASE_PUBLISH_TOKEN   GitHub token with contents:write on the mirror
@@ -650,3 +653,124 @@ jobs:
           set -e
           rm -f "$SCRIPT"
           exit "$rc"
+
+  mirror:
+    # The same bytes, in this repository. GitHub is where a reader downloads from; this is where the project
+    # keeps its own record, and the two must not disagree about what v<version> was.
+    #
+    # It uploads the artifact the build job produced rather than rebuilding here: a second build of the same
+    # commit yields a different APK digest (the build is not reproducible), which would make "the 2026.11.17.1
+    # APK" ambiguous - one file in each place, different checksums, both legitimate-looking.
+    needs: publish
+    runs-on: nixos
+    timeout-minutes: 15
+    # Creating a release and uploading assets needs write; the workflow's default is read.
+    permissions:
+      contents: write
+    env:
+      BASH_ENV: ""
+      ENV: ""
+    steps:
+      - name: Fetch the built APK
+        uses: https://data.forgejo.org/actions/download-artifact@v3
+        with:
+          name: release-apk
+          path: dist
+
+      - name: Mirror the release into this repository
+        # No checkout in this job, so no code from the tagged commit is present to run with the token in
+        # scope. The only input is the two artifact files, both hashed before anything is uploaded.
+        env:
+          FORGEJO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          set -eu
+          CURL="$(command -v curl || true)"
+          NODE="$(command -v node || true)"
+          [ -n "$CURL" ] || { echo "curl is not on this runner's PATH"; exit 1; }
+          [ -n "$NODE" ] || { echo "node is not on this runner's PATH"; exit 1; }
+
+          TAG="${INPUT_TAG:-${GITHUB_REF_NAME:-}}"
+          [ -n "$TAG" ] || { echo "no tag to mirror"; exit 1; }
+          API="${GITHUB_API_URL:-https://git.montycasa.net/api/v1}/repos/${GITHUB_REPOSITORY:?}"
+          MIRROR_URL="https://github.com/${GITHUB_MIRROR}/releases/tag/${TAG}"
+
+          APK="$(find dist -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          SUM="$(find dist -maxdepth 1 -type f -name '*.apk.sha256' -print -quit)"
+          [ -n "$APK" ] && [ -f "$APK" ] || { echo "no APK in dist"; exit 1; }
+          [ -n "$SUM" ] && [ -f "$SUM" ] || { echo "no checksum in dist"; exit 1; }
+          APK_NAME="$(basename "$APK")"
+          SUM_NAME="$(basename "$SUM")"
+
+          APK_SHA="$(sha256sum "$APK" | cut -d' ' -f1)"
+          SIDE_SHA="$(cut -d' ' -f1 "$SUM")"
+          [ "$APK_SHA" = "$SIDE_SHA" ] || { echo "the APK does not match its own checksum sidecar"; exit 1; }
+
+          auth=(-H "Authorization: token ${FORGEJO_TOKEN:?}")
+
+          # Does this repository already have the release?
+          CODE="$("$CURL" -q -sS --proto =https --proto-redir =https -o "$RUNNER_TEMP/existing.json" \
+            -w '%{http_code}' "${auth[@]}" "$API/releases/tags/$TAG")" || { echo "could not read the release"; exit 1; }
+
+          if [ "$CODE" = "404" ]; then
+            BODY="Signed release ${TAG}. The assets are byte-identical to the public mirror: ${MIRROR_URL}"
+            REL_JSON="$RUNNER_TEMP/rel.json" TAG="$TAG" BODY="$BODY" "$NODE" <<'NODE'
+          const fs = require('fs');
+          const body = { tag_name: process.env.TAG, name: process.env.TAG, body: process.env.BODY,
+                         draft: false, prerelease: false };
+          fs.writeFileSync(process.env.REL_JSON, JSON.stringify(body));
+          NODE
+            CODE="$("$CURL" -q -sS --proto =https --proto-redir =https -o "$RUNNER_TEMP/created.json" \
+              -w '%{http_code}' "${auth[@]}" -H 'Content-Type: application/json' \
+              --data-binary "@$RUNNER_TEMP/rel.json" "$API/releases")"
+            [ "$CODE" = "201" ] || { echo "creating the release returned $CODE"; head -c 400 "$RUNNER_TEMP/created.json"; exit 1; }
+            cp "$RUNNER_TEMP/created.json" "$RUNNER_TEMP/existing.json"
+            echo "created the release for $TAG"
+          elif [ "$CODE" != "200" ]; then
+            echo "reading the release returned $CODE"; exit 1
+          else
+            echo "the release for $TAG already exists"
+          fi
+
+          read -r REL_ID HAVE_APK HAVE_SUM < <(REL_JSON="$RUNNER_TEMP/existing.json" \
+            APK_NAME="$APK_NAME" SUM_NAME="$SUM_NAME" "$NODE" <<'NODE'
+          const fs = require('fs');
+          const rel = JSON.parse(fs.readFileSync(process.env.REL_JSON, 'utf8'));
+          const has = (n) => ((rel.assets || []).some((a) => a.name === n) ? 1 : 0);
+          console.log(`${rel.id} ${has(process.env.APK_NAME)} ${has(process.env.SUM_NAME)}`);
+          NODE
+          )
+          [ -n "${REL_ID:-}" ] || { echo "could not read the release id"; exit 1; }
+
+          upload() { # name, path
+            local name="$1" path="$2" code
+            code="$("$CURL" -q -sS --proto =https --proto-redir =https -o "$RUNNER_TEMP/asset.json" \
+              -w '%{http_code}' "${auth[@]}" -H 'Content-Type: application/octet-stream' \
+              --data-binary "@$path" "$API/releases/$REL_ID/assets?name=$name")"
+            case "$code" in 201|200) echo "uploaded $name" ;; *) echo "uploading $name returned $code"; exit 1 ;; esac
+          }
+          [ "$HAVE_APK" = "1" ] || upload "$APK_NAME" "$APK"
+          [ "$HAVE_SUM" = "1" ] || upload "$SUM_NAME" "$SUM"
+
+          # Read back what the server holds, and compare the APK byte for byte.
+          "$CURL" -q -sS --proto =https --proto-redir =https -o "$RUNNER_TEMP/final.json" "${auth[@]}" \
+            "$API/releases/tags/$TAG" || { echo "could not read the release back"; exit 1; }
+          read -r ASSET_URL SIZE < <(REL_JSON="$RUNNER_TEMP/final.json" APK_NAME="$APK_NAME" "$NODE" <<'NODE'
+          const fs = require('fs');
+          const rel = JSON.parse(fs.readFileSync(process.env.REL_JSON, 'utf8'));
+          const a = (rel.assets || []).find((x) => x.name === process.env.APK_NAME);
+          // The asset bytes are served from the release download URL this server advertises. This
+          // Forgejo version has no /releases/assets/<id> content endpoint: it answers 404 with a short
+          // text body, which a naive read-back hashes happily and then reports as a corrupt upload.
+          console.log(a ? `${a.browser_download_url} ${a.size}` : 'NONE 0');
+          NODE
+          )
+          [ "${ASSET_URL:-NONE}" != "NONE" ] || { echo "the release does not carry $APK_NAME"; exit 1; }
+          STSIZE="$(stat -c %s "$APK")"
+          [ "$SIZE" = "$STSIZE" ] || { echo "stored size $SIZE does not match $STSIZE"; exit 1; }
+          "$CURL" -q -sS -L --proto =https --proto-redir =https -o "$RUNNER_TEMP/stored.apk" "${auth[@]}" \
+            "$ASSET_URL"
+          STORED_SHA="$(sha256sum "$RUNNER_TEMP/stored.apk" | cut -d' ' -f1)"
+          [ "$STORED_SHA" = "$APK_SHA" ] || { echo "stored APK digest $STORED_SHA does not match $APK_SHA"; exit 1; }
+          rm -f "$RUNNER_TEMP/stored.apk"
+          echo "mirrored $TAG: $APK_NAME matches $APK_SHA"
