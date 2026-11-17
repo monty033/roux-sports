@@ -46,7 +46,7 @@ check_pair() {
   [ -n "$name" ] || fail "versionName is empty"
   [ -n "$code" ] || fail "versionCode is empty"
   derived="$(derive "$name")"
-  [ -n "$derived" ] || fail "versionName '$name' is not a release version (expected YYYY.MM.DD or YYYY.MM.DD.N)"
+  [ -n "$derived" ] || fail "versionName '$name' is not a release version (expected YYYY.MM.DD or YYYY.MM.DD.N, N 1-9)"
   derived_name="${derived% *}"
   derived_code="${derived#* }"
   case "$code" in
@@ -71,7 +71,8 @@ self_test() {
   done
   # rejected pairs: malformed names, impossible dates, codes that do not follow, hyphen form
   for case_name in "1.0.2:102" "2026.11.16-1:202611160" "2026.1.18:202601180" \
-                   "2026.11.18.0:202611180" "2026.11.10:20261111" "2026.02.30:202602300" \
+                   "2026.11.18.0:202611180" "2026.11.18.10:2026111810" "2026.11.18.99:2026111899" \
+                   "2026.02.30:202602300" \
                    "2026.13.01:202613010" "2026.11.18:202611181" "2026.11.18.1:202611180" \
                    "2026.11.18:abc" "dev:1" ":1"; do
     name="${case_name%:*}"; code="${case_name##*:}"
