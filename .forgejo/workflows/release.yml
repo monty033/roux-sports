@@ -53,7 +53,11 @@ env:
   GITHUB_MIRROR: monty033/roux-sports
   # The certificate this project ships. A release signed by anything else is not ours, so the build step
   # fails rather than publishing it. Rotating the signing key means changing this line.
-  EXPECTED_CERT_SHA256: 6dd177eef48595e217cc660a72fcb05ca4eae4979d1484936941b01721893a21
+  #
+  # Pinned on purpose, and never read from keystore.properties: a value derived from the keystore under test
+  # would agree with any key, including an attacker's. This is the one place the identity is asserted from
+  # outside the build. Current key: CN=Roux Sports, OU=Roux Sports, O=Roux Sports, C=US, valid to 2056.
+  EXPECTED_CERT_SHA256: 2f9febb780c626151ba4b3492e14211678ab4ff0cf611272ba2216a12c8d4f9f
 
 jobs:
   build:
