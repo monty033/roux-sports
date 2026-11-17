@@ -145,8 +145,10 @@ apk_code="$(printf '%s\n' "$badging" | sed -n "s/^package: .*versionCode='\([^']
 [ "$apk_version" = "$gradle_version" ] || fail "the APK carries versionName '$apk_version' but the build declares '$gradle_version'"
 [ "$apk_code" = "$gradle_code" ] || fail "the APK carries versionCode '$apk_code' but the build declares '$gradle_code'"
 [ "$apk_version" != "dev" ] || fail "the APK carries the 'dev' fallback as its version"
-printf '%s\n' "$apk_version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' \
-  || fail "versionName '$apk_version' is not a release version (expected N.N.N)"
+# The name and code must follow the date rule, and the code must be the one the name implies.
+# scripts/check-version.sh owns that rule so the release build and the release workflow cannot drift.
+"$script_dir/check-version.sh" "$apk_version" "$apk_code" >/dev/null \
+  || fail "versionName '$apk_version' with versionCode '$apk_code' is not a release version (expected YYYY.MM.DD, optionally .N, with code YYYYMMDD*10+N)"
 pass "(5) the signed APK carries versionName $apk_version (code $apk_code) from app/build.gradle.kts, with no dev fallback"
 
 printf 'RELEASE SIGNING OK\n'

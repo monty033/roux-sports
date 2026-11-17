@@ -124,7 +124,7 @@ Releases are published on Forgejo releases and nowhere else.
 
 To build a release, run `scripts/build-release.sh` inside `nix develop`. It refuses without a `keystore.properties` and
 refuses on a dirty tree, then runs the gate, `check-metadata.sh`, `assembleRelease`, `check-release-apk.sh` and
-`apksigner verify --print-certs`, and writes `app/build/dist/roux-sports-1.0.0.apk` plus its `.sha256`.
+`apksigner verify --print-certs`, and writes `app/build/dist/roux-sports-<versionName>.apk` plus its `.sha256`.
 
 Signing uses a `keystore.properties` file (gitignored, never committed) in the project root:
 
@@ -138,8 +138,8 @@ keyPassword=...
 Verify a download with:
 
 ```
-sha256sum -c roux-sports-1.0.0.apk.sha256
-apksigner verify --print-certs roux-sports-1.0.0.apk
+sha256sum -c roux-sports-<versionName>.apk.sha256
+apksigner verify --print-certs roux-sports-<versionName>.apk
 ```
 
 ### Upgrading an installed release
@@ -149,10 +149,27 @@ identity, and its `versionCode` is not lower than the installed one. A lower `ve
 Android refuses it. `adb install -r` is the same replacement request from a terminal — it keeps app data, and it
 does not permit a downgrade either.
 
-Bump the `versionCode` in `app/build.gradle.kts` for every release even though an equal one would install: two
-different builds sharing a code cannot be told apart after the fact, and the moment one has to be rolled back, the
-lower code is exactly what Android refuses. `versionName` is the label people read; `versionCode` is the integer
-Android compares.
+`versionName` is the label people read; `versionCode` is the integer Android compares. Both are derived from a date,
+so nobody does the arithmetic by hand:
+
+```
+name = YYYY.MM.DD            first release of a day       (UTC date)
+     = YYYY.MM.DD.N          Nth release of that day, 1..9
+code = YYYYMMDD * 10 + N
+```
+
+Run `scripts/bump-version.sh` to write both into `app/build.gradle.kts` from today's UTC date and the tags that
+already exist, and to create `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt`. A second release on the
+same day becomes `2026.11.17.1` with code `202611171`. Then replace the TODO line the script writes, run the gate,
+commit, and push the tag `v<versionName>` — the tag starts the release workflow, which builds, signs, verifies and
+publishes.
+
+The name must be a real calendar date, the code must be the one the name implies, and the code must exceed every
+release already tagged; `scripts/check-version.sh` enforces the first two, and the release preflight enforces the
+third before a key or a token is in scope. `scripts/check-version.sh --self-test` runs the accept/reject table.
+
+Bump for every release even though an equal code would install: two different builds sharing a code cannot be told
+apart after the fact, and the moment one has to be rolled back, the lower code is exactly what Android refuses.
 
 The project does not rotate its signing key. Android can be told to accept a new signing certificate for an
 existing package, but that is a deliberate migration with tooling of its own, not something this README sets up —
