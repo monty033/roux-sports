@@ -1877,3 +1877,46 @@ You also sign off each stage's Pixel 9 checklist.
 | Sonnet | 6 |
 | Opus | 0 |
 | **Total** | **69** |
+
+---
+
+# NFL parity: source authorization (2026-11-18)
+
+The NFL work adds a second league to an app that ships NHL only. This section is the canonical record of what Patrick
+authorized and what that permission does not cover. The staged plan is `nfl-plan.md` (10 stages, 27 steps, written
+2026-11-17 against `main` at `0b5cbe8`); the endpoint and shape record is `nfl-sources.md`.
+
+## Decisions recorded
+
+| # | decision | answer |
+|---|---|---|
+| D1 | data source | ESPN's public site API. Unofficial, anonymous, no key, no backend. Chosen over a paid official feed; accepted that it can change without notice |
+| D2 | data host | `site.api.espn.com` allowed, for the NFL client only |
+| D3 | image host | `a.espncdn.com` allowed, for team logos and player headshots |
+
+D4 through D13 in `nfl-plan.md` are still open and are answered as the stage that needs each one is reached. None of
+them blocks Stage 0 or Stage 1.
+
+## Authorized hosts
+
+| host | use | authorized |
+|---|---|---|
+| `site.api.espn.com` | all NFL data | 2026-11-18 |
+| `a.espncdn.com` | NFL logos, headshots | 2026-11-18 |
+| `api-web.nhle.com`, `assets.nhle.com`, `api.nhle.com` | NHL, unchanged | earlier |
+
+**The allowlist is per client, not global.** The NFL client must never reach an NHL host, and the NHL client must never
+reach `site.api.espn.com` or `a.espncdn.com`. A global allowlist would pass a code review and still let a bug in one
+league's adapter bill another league's host, which is the failure this rule exists to prevent. `NhlHttpClientFactory`
+enforces the NHL set today; Stage 3 adds the NFL set beside it, and `NetworkHostAuditTest` grows the union with the
+per-client split asserted.
+
+## What this authorization does not cover
+
+- **No third host.** `site.web.api.espn.com` is not authorized. If a captured payload proves a call needs it, that is a
+  new decision recorded here first.
+- **No parser before a live fixture.** Stage 1.2 captures real in-progress payloads on 2026-11-19 (dry run) and
+  2026-11-22 (the Sunday window). No Stage 3 or later parser step starts until those fixtures exist. The NHL game page
+  shipped a parser built against pre-game skeletons; the sections appeared only at puck drop.
+- **No unreviewed model change.** The abbreviation collision in `nfl-plan.md` §0.1 (PHI, PIT, BUF, DAL, DET, MIN, SEA,
+  CAR, WSH, CHI mean an NHL club today) is a storage migration and lands as its own stage before any NFL screen.
