@@ -3,6 +3,7 @@ package net.montycasa.roux.domain.policy
 import net.montycasa.roux.domain.model.ClubGame
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 import org.junit.Assert.assertEquals
@@ -11,8 +12,8 @@ import kotlin.time.Instant
 
 class ClubGameStatusTest {
     private val now = Instant.parse("2026-11-03T12:00:00Z")
-    private val toronto = TeamKey("TOR")
-    private val boston = TeamKey("BOS")
+    private val toronto = TeamKey(League.NHL, "TOR")
+    private val boston = TeamKey(League.NHL, "BOS")
 
     @Test
     fun aFutureGameShowsItsStartTime() {
@@ -127,7 +128,7 @@ class ClubGameStatusTest {
         scheduleState: String? = null,
     ): ClubGame =
         ClubGame(
-            id = GameId("2026020001"),
+            id = GameId(League.NHL, "2026020001"),
             date = "2026-11-03",
             startTimeUtc = start?.let(Instant::parse),
             home = TeamRef(home),

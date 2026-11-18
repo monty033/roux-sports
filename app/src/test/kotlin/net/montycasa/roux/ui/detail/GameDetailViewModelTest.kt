@@ -20,6 +20,7 @@ import net.montycasa.roux.domain.model.GameLanding
 import net.montycasa.roux.domain.model.GameRightRail
 import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.GoalieLine
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.PeriodScoring
 import net.montycasa.roux.domain.model.PlayerRef
 import net.montycasa.roux.domain.model.ShotTotals
@@ -91,7 +92,7 @@ class GameDetailViewModelTest {
         state: GameState,
         details: GameDetailRepository,
     ) = GameDetailViewModel(
-        gameId = GameId("2026020188"),
+        gameId = GameId(League.NHL, "2026020188"),
         state = state,
         details = details,
         clock = Clock.System,

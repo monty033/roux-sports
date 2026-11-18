@@ -30,6 +30,7 @@ import net.montycasa.roux.domain.model.GameLanding
 import net.montycasa.roux.domain.model.GameRightRail
 import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.GoalieSeason
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.RankedStat
 import net.montycasa.roux.domain.model.SeasonRecord
 import net.montycasa.roux.domain.model.SkaterSeason
@@ -279,11 +280,11 @@ class PreGameSpokenScreenTest {
     private companion object {
         val game =
             Game(
-                id = GameId("2026020301"),
+                id = GameId(League.NHL, "2026020301"),
                 date = "2026-11-10",
                 state = GameState.Scheduled,
-                away = TeamRef(TeamKey("UTA"), name = "Mammoth"),
-                home = TeamRef(TeamKey("PHI"), name = "Flyers"),
+                away = TeamRef(TeamKey(League.NHL, "UTA"), name = "Mammoth"),
+                home = TeamRef(TeamKey(League.NHL, "PHI"), name = "Flyers"),
                 startTimeUtc = Instant.parse("2026-11-11T00:00:00Z"),
             )
 

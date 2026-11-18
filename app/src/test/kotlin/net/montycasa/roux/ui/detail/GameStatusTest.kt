@@ -4,6 +4,7 @@ import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
@@ -14,7 +15,14 @@ import org.junit.Test
 import java.time.ZoneId
 
 class GameStatusTest {
-    private val game = Game(GameId("1"), "2026-10-26", GameState.Live(), TeamRef(TeamKey("PHI")), TeamRef(TeamKey("CBJ")))
+    private val game =
+        Game(
+            GameId(League.NHL, "1"),
+            "2026-10-26",
+            GameState.Live(),
+            TeamRef(TeamKey(League.NHL, "PHI")),
+            TeamRef(TeamKey(League.NHL, "CBJ")),
+        )
 
     @Test
     fun intermissionSuppressesClock() {

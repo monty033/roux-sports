@@ -28,6 +28,7 @@ import net.montycasa.roux.domain.model.GameLanding
 import net.montycasa.roux.domain.model.GameRightRail
 import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.GoalieSeason
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.RankedStat
 import net.montycasa.roux.domain.model.SeasonRecord
 import net.montycasa.roux.domain.model.SeasonSeriesGame
@@ -295,11 +296,11 @@ class PreGameDetailScreenTest {
     private companion object {
         val scheduled =
             Game(
-                id = GameId("2026020286"),
+                id = GameId(League.NHL, "2026020286"),
                 date = "2026-11-10",
                 state = GameState.Scheduled,
-                away = TeamRef(TeamKey("COL"), name = "Avalanche"),
-                home = TeamRef(TeamKey("TOR"), name = "Maple Leafs"),
+                away = TeamRef(TeamKey(League.NHL, "COL"), name = "Avalanche"),
+                home = TeamRef(TeamKey(League.NHL, "TOR"), name = "Maple Leafs"),
                 startTimeUtc = Instant.parse("2026-11-11T00:00:00Z"),
             )
 

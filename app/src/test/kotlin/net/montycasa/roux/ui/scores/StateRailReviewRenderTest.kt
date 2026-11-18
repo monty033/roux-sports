@@ -15,6 +15,7 @@ import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
@@ -47,8 +48,8 @@ class StateRailReviewRenderTest {
     @get:Rule
     val rule = createComposeRule()
 
-    private val away = TeamRef(TeamKey("BOS"), name = "Boston Bruins")
-    private val home = TeamRef(TeamKey("TOR"), name = "Toronto Maple Leafs")
+    private val away = TeamRef(TeamKey(League.NHL, "BOS"), name = "Boston Bruins")
+    private val home = TeamRef(TeamKey(League.NHL, "TOR"), name = "Toronto Maple Leafs")
 
     private fun game(
         id: String,
@@ -57,7 +58,7 @@ class StateRailReviewRenderTest {
         period: PeriodInfo? = null,
     ): Game =
         Game(
-            id = GameId(id),
+            id = GameId(League.NHL, id),
             date = "2026-10-26",
             state = state,
             away = away,

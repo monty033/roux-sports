@@ -10,6 +10,7 @@ import net.montycasa.roux.data.Fixtures
 import net.montycasa.roux.data.cache.ResponseCache
 import net.montycasa.roux.data.net.NhlApi
 import net.montycasa.roux.data.net.NhlHttpClientFactory
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.TeamKey
 import okio.Path.Companion.toPath
 import okio.fakefilesystem.FakeFileSystem
@@ -35,7 +36,7 @@ class ClubRosterRepositoryImplTest {
         runBlocking {
             val harness = harness()
 
-            harness.repository.roster(TeamKey("ANA"))
+            harness.repository.roster(TeamKey(League.NHL, "ANA"))
 
             assertEquals(listOf("/v1/roster/ANA/current"), harness.requests)
         }
@@ -44,10 +45,10 @@ class ClubRosterRepositoryImplTest {
     fun aSecondReadInsideSixHoursDoesNotCallTheApi() =
         runBlocking {
             val harness = harness()
-            harness.repository.roster(TeamKey("ANA"))
+            harness.repository.roster(TeamKey(League.NHL, "ANA"))
 
             harness.clock.advance(5.hours)
-            harness.repository.roster(TeamKey("ANA"))
+            harness.repository.roster(TeamKey(League.NHL, "ANA"))
 
             assertEquals(1, harness.requests.size)
         }
@@ -56,10 +57,10 @@ class ClubRosterRepositoryImplTest {
     fun aReadPastSixHoursRefetches() =
         runBlocking {
             val harness = harness()
-            harness.repository.roster(TeamKey("ANA"))
+            harness.repository.roster(TeamKey(League.NHL, "ANA"))
 
             harness.clock.advance(6.hours + 1.minutes)
-            harness.repository.roster(TeamKey("ANA"))
+            harness.repository.roster(TeamKey(League.NHL, "ANA"))
 
             assertEquals(2, harness.requests.size)
         }
@@ -80,7 +81,7 @@ class ClubRosterRepositoryImplTest {
                     }
                 }
 
-            val result = harness.repository.roster(TeamKey("ANA"))
+            val result = harness.repository.roster(TeamKey(League.NHL, "ANA"))
 
             assertEquals(
                 listOf("/v1/roster/ANA/current", "/v1/roster/ANA/2026-11-03"),

@@ -17,6 +17,7 @@ import net.montycasa.roux.domain.model.ClubSchedule
 import net.montycasa.roux.domain.model.ClubStats
 import net.montycasa.roux.domain.model.Conference
 import net.montycasa.roux.domain.model.Division
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.Season
 import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.model.TeamKey
@@ -37,7 +38,7 @@ import org.junit.Test
 class TeamDetailViewModelTest {
     private val scheduler = TestCoroutineScheduler()
     private val stores = mutableListOf<ViewModelStore>()
-    private val tor = TeamKey("TOR")
+    private val tor = TeamKey(League.NHL, "TOR")
 
     @Before
     fun setUp() {
@@ -262,7 +263,7 @@ private class FakeStats : ClubStatsRepository {
 
 private val toronto =
     StandingRow(
-        team = TeamRef(TeamKey("TOR"), name = "Toronto Maple Leafs", shortName = "Maple Leafs"),
+        team = TeamRef(TeamKey(League.NHL, "TOR"), name = "Toronto Maple Leafs", shortName = "Maple Leafs"),
         gp = 12,
         w = 9,
         l = 2,
@@ -278,7 +279,7 @@ private val toronto =
 
 private val boston =
     StandingRow(
-        team = TeamRef(TeamKey("BOS"), name = "Boston Bruins", shortName = "Bruins"),
+        team = TeamRef(TeamKey(League.NHL, "BOS"), name = "Boston Bruins", shortName = "Bruins"),
         gp = 12,
         w = 8,
         l = 3,

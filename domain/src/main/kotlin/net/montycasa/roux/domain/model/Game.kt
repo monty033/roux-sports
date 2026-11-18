@@ -2,9 +2,9 @@ package net.montycasa.roux.domain.model
 
 import kotlin.time.Instant
 
-/** An opaque identifier for a game in the NHL feed. */
-@JvmInline
-value class GameId(
+/** An opaque identifier for a game in its league's feed; the same value can name different games in different leagues. */
+data class GameId(
+    val league: League,
     val value: String,
 )
 

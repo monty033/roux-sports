@@ -29,6 +29,7 @@ import net.montycasa.roux.domain.model.GoalModifier
 import net.montycasa.roux.domain.model.GoalStrength
 import net.montycasa.roux.domain.model.GoalieLine
 import net.montycasa.roux.domain.model.GoalieSeason
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.PenaltyEvent
 import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.PeriodScoring
@@ -80,11 +81,11 @@ internal object AuditStates {
     private val scoreIndex = listOf(DateIndexEntry("2025-10-28", 2), DateIndexEntry(scoreDate, 0))
     private val scoreGame =
         Game(
-            id = GameId("2025020123"),
+            id = GameId(League.NHL, "2025020123"),
             date = scoreDate,
             state = GameState.Scheduled,
-            home = TeamRef(TeamKey("TOR"), name = "Toronto Maple Leafs"),
-            away = TeamRef(TeamKey("MTL"), name = "Montréal Canadiens"),
+            home = TeamRef(TeamKey(League.NHL, "TOR"), name = "Toronto Maple Leafs"),
+            away = TeamRef(TeamKey(League.NHL, "MTL"), name = "Montréal Canadiens"),
             startTimeUtc = Instant.parse("2025-10-25T23:00:00Z"),
             // The audit needs a real networks line so the rail's supporting type is measured too, not only
             // the start time above it.
@@ -97,7 +98,7 @@ internal object AuditStates {
 
     // Toronto is this audit's favourite team, so the accent stripe is photographed wherever the fixture
     // shows this matchup. The empty states below have no rows and so show no accent either way.
-    private val auditFavourites = setOf(TeamKey("TOR"))
+    private val auditFavourites = setOf(TeamKey(League.NHL, "TOR"))
     private val scoresFresh =
         ScoresUiState(
             scoreDate,
@@ -118,7 +119,7 @@ internal object AuditStates {
             rows =
                 listOf(
                     scoreGame.copy(
-                        id = GameId("2025030411"),
+                        id = GameId(League.NHL, "2025030411"),
                         date = "2026-06-14",
                         state = GameState.Final,
                         homeScore = 2,
@@ -139,7 +140,7 @@ internal object AuditStates {
             rows =
                 listOf(
                     scoreGame.copy(
-                        id = GameId("2026020001"),
+                        id = GameId(League.NHL, "2026020001"),
                         date = "2026-09-29",
                         state = GameState.Final,
                         homeScore = 4,
@@ -199,11 +200,11 @@ internal object AuditStates {
 
     internal val detailGame =
         Game(
-            id = GameId("2026020229"),
+            id = GameId(League.NHL, "2026020229"),
             date = "2026-11-01",
             state = GameState.Final,
-            home = TeamRef(TeamKey("PHI"), name = "Flyers"),
-            away = TeamRef(TeamKey("UTA"), name = "Mammoth"),
+            home = TeamRef(TeamKey(League.NHL, "PHI"), name = "Flyers"),
+            away = TeamRef(TeamKey(League.NHL, "UTA"), name = "Mammoth"),
             homeScore = 6,
             awayScore = 3,
         )
@@ -211,7 +212,7 @@ internal object AuditStates {
     // Game 4 of a first-round series tied 2–2: the hero's line is the standing after this game, not a finished series.
     private val playoffGame =
         detailGame.copy(
-            id = GameId("2026030104"),
+            id = GameId(League.NHL, "2026030104"),
             series =
                 SeriesStatus(
                     round = 1,
@@ -457,7 +458,7 @@ internal object AuditStates {
     // hero's two records. Two finished meetings make the series standing a tie, which is the case the card words least.
     private val preGameGame =
         detailGame.copy(
-            id = GameId("2026020301"),
+            id = GameId(League.NHL, "2026020301"),
             date = "2026-11-10",
             state = GameState.Scheduled,
             homeScore = null,

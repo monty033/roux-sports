@@ -15,6 +15,7 @@ import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.ClubSchedule
 import net.montycasa.roux.domain.model.Conference
 import net.montycasa.roux.domain.model.Division
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.LeagueClub
 import net.montycasa.roux.domain.model.LeagueSummary
 import net.montycasa.roux.domain.model.StandingRow
@@ -302,7 +303,7 @@ class TeamStatsTest {
                 TeamDetailScreen(
                     state =
                         TeamDetailUiState(
-                            teamKey = TeamKey("ANA"),
+                            teamKey = TeamKey(League.NHL, "ANA"),
                             row = anaRow,
                             isLoading = false,
                             schedule = Loadable(ClubSchedule(season = "20262027", games = emptyList()), Freshness.Fresh, null),
@@ -324,7 +325,7 @@ class TeamStatsTest {
 
     private val anaRow =
         StandingRow(
-            team = TeamRef(TeamKey("ANA"), name = "Anaheim Ducks", shortName = "Ducks"),
+            team = TeamRef(TeamKey(League.NHL, "ANA"), name = "Anaheim Ducks", shortName = "Ducks"),
             gp = 14,
             w = 6,
             l = 7,

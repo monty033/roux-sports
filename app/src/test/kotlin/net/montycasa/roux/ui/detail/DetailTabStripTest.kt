@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.ui.common.TeamNames
@@ -51,7 +52,7 @@ class DetailTabStripTest {
 
     private val pills = listOf("Game", "CBJ", "UTA")
 
-    private fun club(abbrev: String): TeamRef = TeamRef(TeamKey(abbrev), name = abbrev)
+    private fun club(abbrev: String): TeamRef = TeamRef(TeamKey(League.NHL, abbrev), name = abbrev)
 
     private fun nickname(abbrev: String): String = TeamNames.cityAndName(club(abbrev)).second
 

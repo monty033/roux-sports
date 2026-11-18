@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.captureRoboImage
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.ui.teams.TeamAlerts
@@ -39,7 +40,7 @@ class TeamAlertsSheetScreenshotTest {
 
     @Test
     fun theSheetOffAndPartlyOnInBothThemes() {
-        val row = TeamRef(TeamKey("ANA"), name = "Anaheim Ducks")
+        val row = TeamRef(TeamKey(League.NHL, "ANA"), name = "Anaheim Ducks")
         val dark = mutableStateOf(false)
         val alerts = mutableStateOf(TeamAlerts(team = row))
         rule.setContent {

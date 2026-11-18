@@ -13,6 +13,7 @@ import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.ScoreDay
 import net.montycasa.roux.domain.model.TeamKey
@@ -66,11 +67,11 @@ class GameWatchRunTest {
         finalKind: FinalKind? = null,
         period: PeriodInfo? = null,
     ) = Game(
-        id = GameId(gameId),
+        id = GameId(League.NHL, gameId),
         date = "2025-01-01",
         state = state,
-        home = TeamRef(TeamKey("MTL")),
-        away = TeamRef(TeamKey("TOR")),
+        home = TeamRef(TeamKey(League.NHL, "MTL")),
+        away = TeamRef(TeamKey(League.NHL, "TOR")),
         startTimeUtc = now - 30.minutes,
         awayScore = away,
         homeScore = home,
@@ -85,7 +86,7 @@ class GameWatchRunTest {
 
     private fun intermission(period: Int = 1) =
         Alert.Intermission(
-            gameId = GameId(gameId),
+            gameId = GameId(League.NHL, gameId),
             period = period,
             awayAbbrev = "TOR",
             homeAbbrev = "MTL",
@@ -160,7 +161,7 @@ class GameWatchRunTest {
      * Alerts are opt-in now, so a test that expects one has to ask for it. Until this helper existed these fixtures
      * relied on the old default being on, which made "nothing posted" and "the alert was off" look identical.
      */
-    private suspend fun DataStorePreferencesRepository.enableAlerts(team: TeamKey = TeamKey("TOR")) {
+    private suspend fun DataStorePreferencesRepository.enableAlerts(team: TeamKey = TeamKey(League.NHL, "TOR")) {
         setTeamAlertPreferences(team, TeamAlertPreferences(start = true, goals = true))
     }
 
@@ -185,7 +186,7 @@ class GameWatchRunTest {
     fun aLiveFavouriteIsClaimedAndAnnouncedOnce() =
         runBlocking {
             val preferences = preferences()
-            preferences.setFavourites(setOf(TeamKey("TOR")))
+            preferences.setFavourites(setOf(TeamKey(League.NHL, "TOR")))
             preferences.enableAlerts()
             val poster = RecordingPoster()
             val scheduler = RecordingScheduler()
@@ -205,7 +206,7 @@ class GameWatchRunTest {
     fun aNewGoalIsAnnouncedAndTheNextOneIsNot() =
         runBlocking {
             val preferences = preferences()
-            preferences.setFavourites(setOf(TeamKey("TOR")))
+            preferences.setFavourites(setOf(TeamKey(League.NHL, "TOR")))
             preferences.enableAlerts()
             val poster = RecordingPoster()
             val scheduler = RecordingScheduler()
@@ -226,7 +227,7 @@ class GameWatchRunTest {
 
             assertEquals("the new total is announced", 1, goal.posted)
             assertEquals("the same total again is not", 0, repeat.posted)
-            assertEquals(Alert.Goal(GameId(gameId), goalCount = 2, awayScore = 2, homeScore = 0), poster.posted.single())
+            assertEquals(Alert.Goal(GameId(League.NHL, gameId), goalCount = 2, awayScore = 2, homeScore = 0), poster.posted.single())
         }
 
     @Test
@@ -246,7 +247,7 @@ class GameWatchRunTest {
     fun aFinishedGameWithTheFinalSwitchOffPostsNothingAndIsNotFollowedFurther() =
         runBlocking {
             val preferences = preferences()
-            preferences.setFavourites(setOf(TeamKey("TOR")))
+            preferences.setFavourites(setOf(TeamKey(League.NHL, "TOR")))
             preferences.enableAlerts()
             val poster = RecordingPoster()
             val scheduler = RecordingScheduler()
@@ -268,7 +269,7 @@ class GameWatchRunTest {
     fun aRunOnAFinalGamePostsOnceAndSchedulesNoFurtherPass() =
         runBlocking {
             val preferences = preferences()
-            preferences.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(final = true))
+            preferences.setTeamAlertPreferences(TeamKey(League.NHL, "TOR"), TeamAlertPreferences(final = true))
             val poster = RecordingPoster()
             val scheduler = RecordingScheduler()
             val ended = game(state = GameState.Final, away = 3, home = 2, finalKind = FinalKind.OT)
@@ -280,7 +281,7 @@ class GameWatchRunTest {
             assertEquals(1, first.posted)
             assertEquals("the claim, not the schedule, keeps a final from repeating", 0, second.posted)
             assertEquals(
-                listOf<Alert>(Alert.Final(GameId(gameId), awayScore = 3, homeScore = 2, finalKind = FinalKind.OT)),
+                listOf<Alert>(Alert.Final(GameId(League.NHL, gameId), awayScore = 3, homeScore = 2, finalKind = FinalKind.OT)),
                 poster.posted.toList(),
             )
             assertEquals("a final ends the chain, whatever the outcome", emptyList<Pair<String, Duration>>(), scheduler.repeated)
@@ -291,7 +292,7 @@ class GameWatchRunTest {
     fun aFinalThatCouldNotBePostedIsNotClaimedAndStillEndsTheChain() =
         runBlocking {
             val preferences = preferences()
-            preferences.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(final = true))
+            preferences.setTeamAlertPreferences(TeamKey(League.NHL, "TOR"), TeamAlertPreferences(final = true))
             val scheduler = RecordingScheduler()
             val ended = game(state = GameState.Final, away = 3, home = 2)
 
@@ -308,7 +309,7 @@ class GameWatchRunTest {
     fun aFinalWithAMissingScorePostsNothingClaimsNothingAndEndsTheChain() =
         runBlocking {
             val preferences = preferences()
-            preferences.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(final = true))
+            preferences.setTeamAlertPreferences(TeamKey(League.NHL, "TOR"), TeamAlertPreferences(final = true))
             val poster = RecordingPoster()
             val scheduler = RecordingScheduler()
             val ended = game(state = GameState.Final, away = null, home = 2)
@@ -326,7 +327,7 @@ class GameWatchRunTest {
     fun aFinalOutsideTheWindowIsNotAnnouncedEvenWhenItsLedgerRowWasSwept() =
         runBlocking {
             val preferences = preferences()
-            preferences.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(final = true))
+            preferences.setTeamAlertPreferences(TeamKey(League.NHL, "TOR"), TeamAlertPreferences(final = true))
             val poster = RecordingPoster()
             val yesterdays = game(state = GameState.Final, away = 3, home = 2).copy(startTimeUtc = now - 30.hours)
 
@@ -344,7 +345,7 @@ class GameWatchRunTest {
         runBlocking {
             val preferences = preferences()
             // No favourites at all: the bell on a team is the whole request.
-            preferences.setTeamAlertPreferences(TeamKey("MTL"), TeamAlertPreferences(start = true))
+            preferences.setTeamAlertPreferences(TeamKey(League.NHL, "MTL"), TeamAlertPreferences(start = true))
             val poster = RecordingPoster()
             val scheduler = RecordingScheduler()
 
@@ -360,7 +361,7 @@ class GameWatchRunTest {
     fun aFinalOnlySwitchOnTheOpposingTeamIsEnoughForTheFinal() =
         runBlocking {
             val preferences = preferences()
-            preferences.setTeamAlertPreferences(TeamKey("MTL"), TeamAlertPreferences(final = true))
+            preferences.setTeamAlertPreferences(TeamKey(League.NHL, "MTL"), TeamAlertPreferences(final = true))
             val poster = RecordingPoster()
             val ended = game(state = GameState.Final, away = 3, home = 2)
 
@@ -368,7 +369,7 @@ class GameWatchRunTest {
                 .run(gameId)
 
             assertEquals(
-                listOf<Alert>(Alert.Final(GameId(gameId), awayScore = 3, homeScore = 2, finalKind = null)),
+                listOf<Alert>(Alert.Final(GameId(League.NHL, gameId), awayScore = 3, homeScore = 2, finalKind = null)),
                 poster.posted.toList(),
             )
         }
@@ -377,7 +378,7 @@ class GameWatchRunTest {
     fun aLiveGameAsksToBeCheckedAgainOnThePollPolicyCadence() =
         runBlocking {
             val preferences = preferences()
-            preferences.setFavourites(setOf(TeamKey("TOR")))
+            preferences.setFavourites(setOf(TeamKey(League.NHL, "TOR")))
             preferences.enableAlerts()
             val scheduler = RecordingScheduler()
 
@@ -394,7 +395,7 @@ class GameWatchRunTest {
     fun aServerPauseIsHonouredByTheFollowUp() =
         runBlocking {
             val preferences = preferences()
-            preferences.setFavourites(setOf(TeamKey("TOR")))
+            preferences.setFavourites(setOf(TeamKey(League.NHL, "TOR")))
             preferences.enableAlerts()
             val scheduler = RecordingScheduler()
             val pause =
@@ -417,7 +418,7 @@ class GameWatchRunTest {
     fun aSlateThatCouldNotBeLoadedAsksForARetry() =
         runBlocking {
             val preferences = preferences()
-            preferences.setFavourites(setOf(TeamKey("TOR")))
+            preferences.setFavourites(setOf(TeamKey(League.NHL, "TOR")))
             preferences.enableAlerts()
             val failed = Loadable<ScoreDay>(null, Freshness.Missing, LoadError.Network)
 
@@ -432,7 +433,7 @@ class GameWatchRunTest {
     fun aGameTheFeedStillCallsScheduledIsWatchedFurther() =
         runBlocking {
             val preferences = preferences()
-            preferences.setFavourites(setOf(TeamKey("TOR")))
+            preferences.setFavourites(setOf(TeamKey(League.NHL, "TOR")))
             preferences.enableAlerts()
             val poster = RecordingPoster()
             val scheduler = RecordingScheduler()
@@ -451,7 +452,7 @@ class GameWatchRunTest {
     fun aGameStillPlayingAfterMidnightIsFoundInThePreviousDay() =
         runBlocking {
             val preferences = preferences()
-            preferences.setFavourites(setOf(TeamKey("TOR")))
+            preferences.setFavourites(setOf(TeamKey(League.NHL, "TOR")))
             preferences.enableAlerts()
             val poster = RecordingPoster()
             // 02:00Z on the 2nd is still the evening of the 1st in New York; the slate it belongs to is the 1st.
@@ -495,7 +496,7 @@ class GameWatchRunTest {
     fun aBlockedPosterDoesNotSpendTheClaim() =
         runBlocking {
             val preferences = preferences()
-            preferences.setFavourites(setOf(TeamKey("TOR")))
+            preferences.setFavourites(setOf(TeamKey(League.NHL, "TOR")))
             preferences.enableAlerts()
             val blocked = RecordingPoster { false }
             val scheduler = RecordingScheduler()
@@ -521,7 +522,7 @@ class GameWatchRunTest {
     fun aSilencedGoalsChannelDoesNotSpendTheGoal() =
         runBlocking {
             val preferences = preferences()
-            preferences.setFavourites(setOf(TeamKey("TOR")))
+            preferences.setFavourites(setOf(TeamKey(League.NHL, "TOR")))
             preferences.enableAlerts()
             val scheduler = RecordingScheduler()
             var current = game(away = 1, home = 0)
@@ -537,14 +538,14 @@ class GameWatchRunTest {
             val allAllowed = RecordingPoster()
             val after = run(FakeScores { Loadable(day(current), Freshness.Fresh, null) }, scheduler, allAllowed, preferences).run(gameId)
             assertEquals(1, after.posted)
-            assertEquals(Alert.Goal(GameId(gameId), goalCount = 2, awayScore = 2, homeScore = 0), allAllowed.posted.single())
+            assertEquals(Alert.Goal(GameId(League.NHL, gameId), goalCount = 2, awayScore = 2, homeScore = 0), allAllowed.posted.single())
         }
 
     @Test
     fun anIntermissionIsPostedOnceForTwoPollsAndClaimedForItsPeriod() =
         runBlocking {
             val preferences = preferences()
-            preferences.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(intermission = true))
+            preferences.setTeamAlertPreferences(TeamKey(League.NHL, "TOR"), TeamAlertPreferences(intermission = true))
             val poster = RecordingPoster()
             val scheduler = RecordingScheduler()
             val current = game(period = period(1))
@@ -567,7 +568,7 @@ class GameWatchRunTest {
     fun theSecondPeriodsIntermissionIsASeparateAlert() =
         runBlocking {
             val preferences = preferences()
-            preferences.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(intermission = true))
+            preferences.setTeamAlertPreferences(TeamKey(League.NHL, "TOR"), TeamAlertPreferences(intermission = true))
             val poster = RecordingPoster()
             val scheduler = RecordingScheduler()
             var current = game(period = period(1))
@@ -586,7 +587,7 @@ class GameWatchRunTest {
     fun aGameAlreadyBackInPlayOnFirstSightGetsNoRetroactiveIntermission() =
         runBlocking {
             val preferences = preferences()
-            preferences.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(intermission = true))
+            preferences.setTeamAlertPreferences(TeamKey(League.NHL, "TOR"), TeamAlertPreferences(intermission = true))
             val poster = RecordingPoster()
             val scheduler = RecordingScheduler()
             val current = game(period = period(2, inIntermission = false))
@@ -601,7 +602,7 @@ class GameWatchRunTest {
     fun theIntermissionSwitchOffPostsNothingEvenWhenGoalsAreOn() =
         runBlocking {
             val preferences = preferences()
-            preferences.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(goals = true))
+            preferences.setTeamAlertPreferences(TeamKey(League.NHL, "TOR"), TeamAlertPreferences(goals = true))
             val poster = RecordingPoster()
             val scheduler = RecordingScheduler()
             val current = game(period = period(1))
@@ -616,7 +617,7 @@ class GameWatchRunTest {
     fun anIntermissionThatCannotBePostedIsNotClaimed() =
         runBlocking {
             val preferences = preferences()
-            preferences.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(intermission = true))
+            preferences.setTeamAlertPreferences(TeamKey(League.NHL, "TOR"), TeamAlertPreferences(intermission = true))
             val scheduler = RecordingScheduler()
             val current = game(period = period(1))
             val blocked = RecordingPoster { false }
@@ -639,7 +640,7 @@ class GameWatchRunTest {
     fun theClaimStopsTwoPollsThatBothSawTheBreakFromPostingTwice() =
         runBlocking {
             val backing = preferences()
-            backing.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(intermission = true))
+            backing.setTeamAlertPreferences(TeamKey(League.NHL, "TOR"), TeamAlertPreferences(intermission = true))
             // Both passes decide from a ledger that has not yet seen the other's claim. The decider cannot tell them
             // apart; only the atomic claim can, which is why the claim is the rule that makes the alert at-most-once.
             val staleLedger =

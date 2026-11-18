@@ -12,6 +12,7 @@ import net.montycasa.roux.domain.model.DateIndexEntry
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.ui.theme.RouxDarkAccents
@@ -65,7 +66,7 @@ class FavouriteAccentTest {
 
     @Test
     fun aFavouriteClubAccentsItsCardAndLeavesTheOthersAlone() {
-        launch(favourites = setOf(TeamKey("TOR")))
+        launch(favourites = setOf(TeamKey(League.NHL, "TOR")))
 
         assertAccented(tag(awayFavourite))
         assertAccented(tag(homeFavourite))
@@ -74,7 +75,7 @@ class FavouriteAccentTest {
 
     @Test
     fun aMatchupBetweenTwoFavouritesCarriesOneAccent() {
-        launch(favourites = setOf(TeamKey("TOR"), TeamKey("MTL")))
+        launch(favourites = setOf(TeamKey(League.NHL, "TOR"), TeamKey(League.NHL, "MTL")))
 
         // One stripe, not one per favourite club: the band is 4 dp and it is painted once.
         assertAccented(tag(bothFavourite))
@@ -95,7 +96,7 @@ class FavouriteAccentTest {
     fun theAllGamesListStillAccentsTheFavourites() {
         // The filter is off, so every game is on the list and the favourites are not pinned to the top.
         // The accent follows the teams, not the order: the order also depends on live and final state.
-        launch(favourites = setOf(TeamKey("TOR")), favouritesOnly = false)
+        launch(favourites = setOf(TeamKey(League.NHL, "TOR")), favouritesOnly = false)
 
         assertAccented(tag(awayFavourite))
         assertAccented(tag(homeFavourite))
@@ -106,7 +107,7 @@ class FavouriteAccentTest {
     fun theOffSeasonFullSlateAccentsOnlyTheGamesInvolvingFavourites() {
         // The off-season shows every game of the last day, favourites or not.
         launch(
-            favourites = setOf(TeamKey("TOR")),
+            favourites = setOf(TeamKey(League.NHL, "TOR")),
             offSeason = OffSeasonUi("2025-10-25", "2026-09-19", "2025–26"),
         )
 
@@ -116,7 +117,7 @@ class FavouriteAccentTest {
 
     @Test
     fun theAccentIsTheSameOrangeInTheDarkTheme() {
-        launch(favourites = setOf(TeamKey("TOR")), dark = true)
+        launch(favourites = setOf(TeamKey(League.NHL, "TOR")), dark = true)
 
         assertAccented(tag(awayFavourite), dark = true)
         assertNotAccented(tag(neither), dark = true)
@@ -198,11 +199,11 @@ class FavouriteAccentTest {
         home: String,
     ): Game =
         Game(
-            id = GameId(id),
+            id = GameId(League.NHL, id),
             date = date,
             state = GameState.Scheduled,
-            away = TeamRef(TeamKey(away), name = club(away)),
-            home = TeamRef(TeamKey(home), name = club(home)),
+            away = TeamRef(TeamKey(League.NHL, away), name = club(away)),
+            home = TeamRef(TeamKey(League.NHL, home), name = club(home)),
             startTimeUtc = Instant.parse("2025-10-25T23:00:00Z"),
         )
 

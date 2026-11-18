@@ -2,6 +2,7 @@ package net.montycasa.roux.domain.policy
 
 import net.montycasa.roux.domain.model.Conference
 import net.montycasa.roux.domain.model.Division
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
@@ -15,7 +16,7 @@ class StandingsGroupingTest {
     private val rows =
         (0 until 32).map { index ->
             StandingRow(
-                TeamRef(TeamKey("T$index")),
+                TeamRef(TeamKey(League.NHL, "T$index")),
                 10,
                 5,
                 4,

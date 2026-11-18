@@ -20,6 +20,7 @@ import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.League
 import okio.FileSystem
 import okio.Path.Companion.toOkioPath
 import org.junit.Assert.assertEquals
@@ -42,7 +43,7 @@ import kotlin.time.Instant
  * The cache decision is the behaviour, so these tests count requests rather than assert on timing.
  */
 class GameDetailRepositoryImplTest {
-    private val gameId = GameId("2026020188")
+    private val gameId = GameId(League.NHL, "2026020188")
     private val directories = mutableListOf<java.nio.file.Path>()
 
     @org.junit.After

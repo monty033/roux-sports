@@ -29,6 +29,7 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.ui.reach.reachTargets
@@ -97,7 +98,13 @@ class ScoresHeaderTest {
     fun headerStaysAboveTheScrollingList() {
         val games =
             (0..20).map {
-                Game(GameId("game-$it"), "2026-10-27", GameState.Scheduled, TeamRef(TeamKey("BOS")), TeamRef(TeamKey("TOR")))
+                Game(
+                    GameId(League.NHL, "game-$it"),
+                    "2026-10-27",
+                    GameState.Scheduled,
+                    TeamRef(TeamKey(League.NHL, "BOS")),
+                    TeamRef(TeamKey(League.NHL, "TOR")),
+                )
             }
         rule.setContent {
             RouxTheme {

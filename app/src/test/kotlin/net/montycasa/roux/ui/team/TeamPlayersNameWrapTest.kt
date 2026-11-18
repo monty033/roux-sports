@@ -10,6 +10,7 @@ import net.montycasa.roux.domain.model.ClubRoster
 import net.montycasa.roux.domain.model.ClubSchedule
 import net.montycasa.roux.domain.model.ClubStats
 import net.montycasa.roux.domain.model.GoalieStat
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.RosterPlayer
 import net.montycasa.roux.domain.model.SkaterStat
 import net.montycasa.roux.domain.model.TeamKey
@@ -44,7 +45,7 @@ class TeamPlayersNameWrapTest {
                     TeamDetailScreen(
                         state =
                             TeamDetailUiState(
-                                teamKey = TeamKey("TOR"),
+                                teamKey = TeamKey(League.NHL, "TOR"),
                                 isLoading = false,
                                 schedule = Loadable(ClubSchedule(season = "20262027", games = emptyList()), Freshness.Fresh, null),
                                 roster = Loadable(roster, Freshness.Fresh, null),

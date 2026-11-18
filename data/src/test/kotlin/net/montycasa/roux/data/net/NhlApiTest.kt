@@ -8,6 +8,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.runBlocking
 import net.montycasa.roux.domain.model.GameId
+import net.montycasa.roux.domain.model.League
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -37,14 +38,20 @@ class NhlApiTest {
     fun clubStatsUsesTheSeasonAndRegularSeasonGameType() = assertPath("/v1/club-stats/ANA/20262027/2") { clubStats("ANA", "20262027") }
 
     @Test
-    fun gamecenterLandingUsesExactPath() = assertPath("/v1/gamecenter/2026020123/landing") { gamecenterLanding(GameId("2026020123")) }
+    fun gamecenterLandingUsesExactPath() =
+        assertPath("/v1/gamecenter/2026020123/landing") {
+            gamecenterLanding(GameId(League.NHL, "2026020123"))
+        }
 
     @Test
-    fun gamecenterBoxscoreUsesExactPath() = assertPath("/v1/gamecenter/2026020123/boxscore") { gamecenterBoxscore(GameId("2026020123")) }
+    fun gamecenterBoxscoreUsesExactPath() =
+        assertPath("/v1/gamecenter/2026020123/boxscore") {
+            gamecenterBoxscore(GameId(League.NHL, "2026020123"))
+        }
 
     @Test
     fun gamecenterRightRailUsesExactPath() =
-        assertPath("/v1/gamecenter/2026020123/right-rail") { gamecenterRightRail(GameId("2026020123")) }
+        assertPath("/v1/gamecenter/2026020123/right-rail") { gamecenterRightRail(GameId(League.NHL, "2026020123")) }
 
     /**
      * A traversal attempt must die at the URL builder, having built nothing. Checking the exception
@@ -54,7 +61,7 @@ class NhlApiTest {
     fun traversalGameIdIsRejectedBeforeAnyRequest() =
         withResponse { api, engine ->
             assertThrows(IllegalArgumentException::class.java) {
-                runBlocking { api.gamecenterLanding(GameId("../x")) }
+                runBlocking { api.gamecenterLanding(GameId(League.NHL, "../x")) }
             }
             assertTrue("No request may be built for a rejected id", engine.requestHistory.isEmpty())
         }
@@ -82,9 +89,9 @@ class NhlApiTest {
             )
             ) {
                 for (call in listOf<suspend NhlApi.() -> Unit>(
-                    { gamecenterLanding(GameId(bad)) },
-                    { gamecenterBoxscore(GameId(bad)) },
-                    { gamecenterRightRail(GameId(bad)) },
+                    { gamecenterLanding(GameId(League.NHL, bad)) },
+                    { gamecenterBoxscore(GameId(League.NHL, bad)) },
+                    { gamecenterRightRail(GameId(League.NHL, bad)) },
                 )) {
                     assertThrows("'$bad' must be rejected", IllegalArgumentException::class.java) {
                         runBlocking { api.call() }
@@ -100,8 +107,8 @@ class NhlApiTest {
      */
     @Test
     fun gameIdItselfDoesNotValidate() {
-        GameId("../x")
-        GameId("")
+        GameId(League.NHL, "../x")
+        GameId(League.NHL, "")
     }
 
     @Test
@@ -112,9 +119,9 @@ class NhlApiTest {
             api.standings("2026-10-25")
             api.seasons()
             api.roster("ANA")
-            api.gamecenterLanding(GameId("2026020123"))
-            api.gamecenterBoxscore(GameId("2026020123"))
-            api.gamecenterRightRail(GameId("2026020123"))
+            api.gamecenterLanding(GameId(League.NHL, "2026020123"))
+            api.gamecenterBoxscore(GameId(League.NHL, "2026020123"))
+            api.gamecenterRightRail(GameId(League.NHL, "2026020123"))
 
             val paths = engine.requestHistory.map { it.url.encodedPath }
             assertEquals(8, paths.size)

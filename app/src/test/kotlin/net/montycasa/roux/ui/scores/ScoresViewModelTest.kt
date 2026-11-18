@@ -26,6 +26,7 @@ import net.montycasa.roux.domain.model.DateIndexEntry
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.ScoreDay
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
@@ -72,12 +73,12 @@ class ScoresViewModelTest {
         runTest {
             val final = game(id = "final", state = GameState.Final, home = "MTL")
             val upcoming = game(id = "upcoming", state = GameState.Pre)
-            val live = game(id = "live", home = "BOS").copy(away = TeamRef(TeamKey("NYR")))
+            val live = game(id = "live", home = "BOS").copy(away = TeamRef(TeamKey(League.NHL, "NYR")))
             val favoriteLive = game(id = "favorite-live", home = "MTL").copy(startTimeUtc = origin)
-            val early = live.copy(id = GameId("early"), startTimeUtc = origin - 1.hours)
+            val early = live.copy(id = GameId(League.NHL, "early"), startTimeUtc = origin - 1.hours)
             val scores = FakeScoresRepository(testScheduler)
             scores.respond = { date, _ -> freshDay(date, listOf(final, upcoming, live, favoriteLive, early)) }
-            val preferences = FakePreferencesRepository(setOf(TeamKey("MTL")), storedOnly = false)
+            val preferences = FakePreferencesRepository(setOf(TeamKey(League.NHL, "MTL")), storedOnly = false)
             val viewModel = viewModel(scores, preferences)
             viewModel.uiState.test {
                 awaitItem()
@@ -380,7 +381,7 @@ class ScoresViewModelTest {
             val other = game(id = "other", home = "NYR")
             val scores = FakeScoresRepository(testScheduler)
             scores.respond = { date, _ -> freshDay(date, listOf(other, favourite)) }
-            val preferences = FakePreferencesRepository(teams = setOf(TeamKey("MTL")))
+            val preferences = FakePreferencesRepository(teams = setOf(TeamKey(League.NHL, "MTL")))
             val viewModel = viewModel(scores, preferences)
 
             viewModel.uiState.test {
@@ -516,7 +517,7 @@ class ScoresViewModelTest {
             val withMtl = game(date = "2026-10-28", id = "mtl-game", home = "MTL")
             val withBos = game(date = "2026-10-28", id = "bos-game", home = "BOS")
             scores.cache("2026-10-28", ScoreDay("2026-10-28", listOf(withMtl, withBos), index, 0))
-            val preferences = FakePreferencesRepository(teams = setOf(TeamKey("MTL")))
+            val preferences = FakePreferencesRepository(teams = setOf(TeamKey(League.NHL, "MTL")))
             val viewModel = viewModel(scores, preferences)
 
             viewModel.uiState.test {
@@ -525,14 +526,14 @@ class ScoresViewModelTest {
                 viewModel.selectDate("2026-10-27")
                 runCurrent()
                 val warmed = expectMostRecentItem()
-                assertEquals(setOf(TeamKey("MTL")), warmed.favouriteTeams)
+                assertEquals(setOf(TeamKey(League.NHL, "MTL")), warmed.favouriteTeams)
                 assertEquals(listOf(withMtl), warmed.rowsByDate["2026-10-28"])
 
                 // A favourite chosen elsewhere, with the dates and the selection exactly as they were.
-                preferences.emitFavourites(setOf(TeamKey("BOS")))
+                preferences.emitFavourites(setOf(TeamKey(League.NHL, "BOS")))
                 runCurrent()
                 val reFiltered = expectMostRecentItem()
-                assertEquals(setOf(TeamKey("BOS")), reFiltered.favouriteTeams)
+                assertEquals(setOf(TeamKey(League.NHL, "BOS")), reFiltered.favouriteTeams)
                 assertEquals(
                     "the cached neighbour must be filtered by the settings uiState now exposes",
                     listOf(withBos),
@@ -573,7 +574,7 @@ class ScoresViewModelTest {
             val withMtl = game(date = "2026-10-28", id = "mtl-game", home = "MTL")
             val withBos = game(date = "2026-10-28", id = "bos-game", home = "BOS")
             scores.cache("2026-10-28", ScoreDay("2026-10-28", listOf(withMtl, withBos), index, 0))
-            val preferences = FakePreferencesRepository(teams = setOf(TeamKey("MTL")))
+            val preferences = FakePreferencesRepository(teams = setOf(TeamKey(League.NHL, "MTL")))
             val viewModel = viewModel(scores, preferences)
 
             viewModel.uiState.test {
@@ -582,7 +583,7 @@ class ScoresViewModelTest {
                 viewModel.selectDate("2026-10-27")
                 runCurrent()
                 val warmed = expectMostRecentItem()
-                assertEquals(setOf(TeamKey("MTL")), warmed.favouriteTeams)
+                assertEquals(setOf(TeamKey(League.NHL, "MTL")), warmed.favouriteTeams)
                 assertEquals(listOf(withMtl), warmed.rowsByDate["2026-10-28"])
 
                 // The neighbour has been read once. From here a read of that page waits, so the window between a
@@ -593,12 +594,12 @@ class ScoresViewModelTest {
                 scores.cacheGateDate = "2026-10-28"
                 scores.cacheGate = gate
                 try {
-                    preferences.emitFavourites(setOf(TeamKey("BOS")))
+                    preferences.emitFavourites(setOf(TeamKey(League.NHL, "BOS")))
                     runCurrent()
                     val reFanned = expectMostRecentItem()
                     assertEquals(
                         "the state the pager reads must already report the new favourites",
-                        setOf(TeamKey("BOS")),
+                        setOf(TeamKey(League.NHL, "BOS")),
                         reFanned.favouriteTeams,
                     )
                     assertEquals(
@@ -634,7 +635,7 @@ class ScoresViewModelTest {
 
                 runCurrent()
                 val settled = viewModel.uiState.value
-                assertEquals(setOf(TeamKey("BOS")), settled.favouriteTeams)
+                assertEquals(setOf(TeamKey(League.NHL, "BOS")), settled.favouriteTeams)
                 assertFalse(settled.favouritesOnly)
                 assertEquals(listOf(withBos, withMtl), settled.rowsByDate["2026-10-28"])
                 cancelAndIgnoreRemainingEvents()
@@ -685,7 +686,7 @@ class ScoresViewModelTest {
             val scores = FakeScoresRepository(testScheduler)
             val favourite = game(id = "favourite", home = "MTL")
             val other =
-                game(id = "final", home = "FLA").copy(away = TeamRef(TeamKey("EDM")))
+                game(id = "final", home = "FLA").copy(away = TeamRef(TeamKey(League.NHL, "EDM")))
             scores.respond = { date, _ ->
                 when (date) {
                     "2026-07-20" -> offSeasonDay(date)
@@ -693,7 +694,7 @@ class ScoresViewModelTest {
                 }
             }
             scores.resolveOpeningNight = { null }
-            val preferences = FakePreferencesRepository(teams = setOf(TeamKey("MTL")))
+            val preferences = FakePreferencesRepository(teams = setOf(TeamKey(League.NHL, "MTL")))
             val viewModel =
                 viewModel(
                     scores,
@@ -953,18 +954,18 @@ class ScoresViewModelTest {
         runTest {
             val scores = FakeScoresRepository(testScheduler)
             scores.respond = { date, _ -> freshDay(date, listOf(game(date = date, home = "MTL"))) }
-            val preferences = FakePreferencesRepository(teams = setOf(TeamKey("MTL"), TeamKey("TOR")))
+            val preferences = FakePreferencesRepository(teams = setOf(TeamKey(League.NHL, "MTL"), TeamKey(League.NHL, "TOR")))
             val viewModel = viewModel(scores, preferences)
 
             viewModel.uiState.test {
                 awaitItem()
                 runCurrent()
-                assertEquals(setOf(TeamKey("MTL"), TeamKey("TOR")), expectMostRecentItem().favouriteTeams)
+                assertEquals(setOf(TeamKey(League.NHL, "MTL"), TeamKey(League.NHL, "TOR")), expectMostRecentItem().favouriteTeams)
 
                 // A favourite chosen elsewhere reaches the screen the way it reaches the filter.
-                preferences.emitFavourites(setOf(TeamKey("BOS")))
+                preferences.emitFavourites(setOf(TeamKey(League.NHL, "BOS")))
                 runCurrent()
-                assertEquals(setOf(TeamKey("BOS")), expectMostRecentItem().favouriteTeams)
+                assertEquals(setOf(TeamKey(League.NHL, "BOS")), expectMostRecentItem().favouriteTeams)
                 cancelAndIgnoreRemainingEvents()
             }
         }
@@ -981,11 +982,15 @@ class ScoresViewModelTest {
                         game(
                             date = date,
                             state = GameState.Live(critical = true),
-                        ).copy(id = GameId("other"), home = TeamRef(TeamKey("BOS")), away = TeamRef(TeamKey("NYR"))),
+                        ).copy(
+                            id = GameId(League.NHL, "other"),
+                            home = TeamRef(TeamKey(League.NHL, "BOS")),
+                            away = TeamRef(TeamKey(League.NHL, "NYR")),
+                        ),
                     ),
                 )
             }
-            val preferences = FakePreferencesRepository(setOf(TeamKey("TOR")), storedOnly = true)
+            val preferences = FakePreferencesRepository(setOf(TeamKey(League.NHL, "TOR")), storedOnly = true)
             val viewModel = viewModel(scores, preferences)
             viewModel.uiState.test {
                 awaitItem()
@@ -1113,7 +1118,7 @@ class ScoresViewModelTest {
                 runCurrent()
                 assertEquals(0, viewModel.drawerState.value.favouriteCount)
 
-                preferences.emitFavourites(setOf(TeamKey("TOR"), TeamKey("MTL")))
+                preferences.emitFavourites(setOf(TeamKey(League.NHL, "TOR"), TeamKey(League.NHL, "MTL")))
                 runCurrent()
                 assertEquals(2, viewModel.drawerState.value.favouriteCount)
 
@@ -1458,11 +1463,11 @@ private fun game(
     home: String = "MTL",
 ): Game =
     Game(
-        id = GameId(id),
+        id = GameId(League.NHL, id),
         date = date,
         state = state,
-        home = TeamRef(TeamKey(home)),
-        away = TeamRef(TeamKey("TOR")),
+        home = TeamRef(TeamKey(League.NHL, home)),
+        away = TeamRef(TeamKey(League.NHL, "TOR")),
         startTimeUtc = origin - 6.minutes,
     )
 

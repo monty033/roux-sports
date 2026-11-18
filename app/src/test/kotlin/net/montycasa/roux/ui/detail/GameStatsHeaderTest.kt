@@ -12,6 +12,7 @@ import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameRightRail
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.ShotTotals
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
@@ -56,11 +57,11 @@ class GameStatsHeaderTest {
 
     private val game =
         Game(
-            id = GameId("2026020188"),
+            id = GameId(League.NHL, "2026020188"),
             date = "2026-10-26",
             state = GameState.Final,
-            home = TeamRef(TeamKey("PHI"), name = "Flyers"),
-            away = TeamRef(TeamKey("CBJ"), name = "Blue Jackets"),
+            home = TeamRef(TeamKey(League.NHL, "PHI"), name = "Flyers"),
+            away = TeamRef(TeamKey(League.NHL, "CBJ"), name = "Blue Jackets"),
             homeScore = 4,
             awayScore = 3,
         )

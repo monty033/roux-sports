@@ -14,6 +14,7 @@ import net.montycasa.roux.data.net.NhlHttpClientFactory
 import net.montycasa.roux.data.nhl.NhlAdapter
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.TeamKey
 import okio.Path.Companion.toPath
 import okio.fakefilesystem.FakeFileSystem
@@ -55,7 +56,7 @@ class ClubScheduleRepositoryImplTest {
             val harness = harness()
             harness.clock.set("2026-06-30T12:00:00Z")
 
-            harness.repository.schedule(TeamKey("ANA"))
+            harness.repository.schedule(TeamKey(League.NHL, "ANA"))
 
             assertEquals(listOf("/v1/club-schedule-season/ANA/20252026"), harness.requests)
         }
@@ -64,10 +65,10 @@ class ClubScheduleRepositoryImplTest {
     fun aSecondReadInsideSixHoursDoesNotCallTheApi() =
         runBlocking {
             val harness = harness()
-            harness.repository.schedule(TeamKey("ANA"))
+            harness.repository.schedule(TeamKey(League.NHL, "ANA"))
 
             harness.clock.advance(5.hours)
-            harness.repository.schedule(TeamKey("ANA"))
+            harness.repository.schedule(TeamKey(League.NHL, "ANA"))
 
             assertEquals(1, harness.requests.size)
         }
@@ -76,10 +77,10 @@ class ClubScheduleRepositoryImplTest {
     fun aReadPastSixHoursRefetches() =
         runBlocking {
             val harness = harness()
-            harness.repository.schedule(TeamKey("ANA"))
+            harness.repository.schedule(TeamKey(League.NHL, "ANA"))
 
             harness.clock.advance(6.hours + 1.minutes)
-            harness.repository.schedule(TeamKey("ANA"))
+            harness.repository.schedule(TeamKey(League.NHL, "ANA"))
 
             assertEquals(2, harness.requests.size)
         }
@@ -92,11 +93,11 @@ class ClubScheduleRepositoryImplTest {
                 harness {
                     if (fail) throw IOException("offline") else null
                 }
-            val first = harness.repository.schedule(TeamKey("ANA"))
+            val first = harness.repository.schedule(TeamKey(League.NHL, "ANA"))
 
             fail = true
             harness.clock.advance(7.hours)
-            val second = harness.repository.schedule(TeamKey("ANA"))
+            val second = harness.repository.schedule(TeamKey(League.NHL, "ANA"))
 
             assertEquals(first.data, second.data)
             assertTrue(second.freshness is Freshness.Stale)
@@ -108,7 +109,7 @@ class ClubScheduleRepositoryImplTest {
         runBlocking {
             val harness = harness(clock = MutableClock("2026-07-15T12:00:00Z"), bodyFor = ::seasonWithoutGamesIsEmpty)
 
-            val read = harness.repository.schedule(TeamKey("TOR"))
+            val read = harness.repository.schedule(TeamKey(League.NHL, "TOR"))
 
             assertEquals(
                 listOf("/v1/club-schedule-season/TOR/20262027", "/v1/club-schedule-season/TOR/20252026"),
@@ -125,7 +126,7 @@ class ClubScheduleRepositoryImplTest {
         runBlocking {
             val harness = harness(clock = MutableClock("2026-11-03T12:00:00Z"), bodyFor = { Reply(HttpStatusCode.OK, seasonWithGames) })
 
-            val read = harness.repository.schedule(TeamKey("TOR"))
+            val read = harness.repository.schedule(TeamKey(League.NHL, "TOR"))
 
             assertEquals(listOf("/v1/club-schedule-season/TOR/20262027"), harness.requests)
             assertEquals("20262027", requireNotNull(read.data).season)
@@ -140,7 +141,7 @@ class ClubScheduleRepositoryImplTest {
                     bodyFor = { Reply(HttpStatusCode.NotFound, ByteArray(0)) },
                 )
 
-            val read = harness.repository.schedule(TeamKey("TOR"))
+            val read = harness.repository.schedule(TeamKey(League.NHL, "TOR"))
 
             assertEquals("an HTTP error must not ask for last season", 1, harness.requests.size)
             assertNull(read.data)
@@ -156,7 +157,7 @@ class ClubScheduleRepositoryImplTest {
                     bodyFor = { Reply(HttpStatusCode.OK, "not json".toByteArray()) },
                 )
 
-            val read = harness.repository.schedule(TeamKey("TOR"))
+            val read = harness.repository.schedule(TeamKey(League.NHL, "TOR"))
 
             assertEquals("a parse failure must not be treated as an empty season", 1, harness.requests.size)
             assertNull(read.data)
@@ -171,7 +172,7 @@ class ClubScheduleRepositoryImplTest {
                     throw IOException("offline")
                 }
 
-            val read = harness.repository.schedule(TeamKey("TOR"))
+            val read = harness.repository.schedule(TeamKey(League.NHL, "TOR"))
 
             assertEquals(1, harness.requests.size)
             assertEquals(LoadError.Network, read.error)
@@ -181,13 +182,13 @@ class ClubScheduleRepositoryImplTest {
     fun theFallbackIsCachedUnderItsOwnSeasonKeyAndServedFromThere() =
         runBlocking {
             val harness = harness(clock = MutableClock("2026-07-15T12:00:00Z"), bodyFor = ::seasonWithoutGamesIsEmpty)
-            harness.repository.schedule(TeamKey("TOR"))
+            harness.repository.schedule(TeamKey(League.NHL, "TOR"))
 
             val entries = cacheEntries(harness)
             assertEquals(listOf("club-schedule-TOR-20252026.roux"), entries)
 
             harness.clock.advance(1.hours)
-            val again = harness.repository.schedule(TeamKey("TOR"))
+            val again = harness.repository.schedule(TeamKey(League.NHL, "TOR"))
 
             // The empty current season is never stored, so it is asked again; the fallback is answered from its own entry.
             assertEquals(
@@ -217,13 +218,13 @@ class ClubScheduleRepositoryImplTest {
                     },
                 )
             // First read: the current season has games and is stored under its own key.
-            harness.repository.schedule(TeamKey("TOR"))
+            harness.repository.schedule(TeamKey(League.NHL, "TOR"))
             val currentFile = "/cache/club-schedule-TOR-20262027.roux".toPath()
             val before = harness.fileSystem.read(currentFile) { readByteString() }
 
             currentIsEmpty = true
             harness.clock.advance(7.hours)
-            val read = harness.repository.schedule(TeamKey("TOR"))
+            val read = harness.repository.schedule(TeamKey(League.NHL, "TOR"))
 
             assertEquals("the page shows the season before", "20252026", requireNotNull(read.data).season)
             val after = harness.fileSystem.read(currentFile) { readByteString() }

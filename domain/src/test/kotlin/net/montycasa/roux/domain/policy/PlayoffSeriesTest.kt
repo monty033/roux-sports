@@ -3,6 +3,7 @@ package net.montycasa.roux.domain.policy
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.SeasonSeriesGame
 import net.montycasa.roux.domain.model.SeriesStatus
 import net.montycasa.roux.domain.model.TeamKey
@@ -145,11 +146,11 @@ class PlayoffSeriesTest {
         id: Long,
         series: SeriesStatus? = null,
     ) = Game(
-        id = GameId(id.toString()),
+        id = GameId(League.NHL, id.toString()),
         date = "2026-04-19",
         state = GameState.Final,
-        home = TeamRef(TeamKey("BUF")),
-        away = TeamRef(TeamKey("BOS")),
+        home = TeamRef(TeamKey(League.NHL, "BUF")),
+        away = TeamRef(TeamKey(League.NHL, "BOS")),
         series = series,
     )
 

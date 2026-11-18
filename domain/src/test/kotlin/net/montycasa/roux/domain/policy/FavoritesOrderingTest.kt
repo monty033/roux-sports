@@ -3,6 +3,7 @@ package net.montycasa.roux.domain.policy
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 import org.junit.Assert.assertEquals
@@ -10,8 +11,8 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class FavoritesOrderingTest {
-    private val tor = TeamKey("TOR")
-    private val mtl = TeamKey("MTL")
+    private val tor = TeamKey(League.NHL, "TOR")
+    private val mtl = TeamKey(League.NHL, "MTL")
     private val games =
         listOf(
             game("bos-nyi", "BOS", "NYI"),
@@ -38,7 +39,7 @@ class FavoritesOrderingTest {
 
     @Test
     fun selectedFavoritesAbsentFromDayYieldNoRowsAndNoFavouriteGamesHint() {
-        val result = FavoritesOrdering.filter(games, setOf(TeamKey("SEA")), favoritesOnly = true)
+        val result = FavoritesOrdering.filter(games, setOf(TeamKey(League.NHL, "SEA")), favoritesOnly = true)
         assertEquals(emptyList<Game>(), result.rows)
         assertEquals(FavoritesHint.NoFavouriteGames, result.hint)
     }
@@ -82,7 +83,7 @@ class FavoritesOrderingTest {
 
     @Test
     fun favoritesOnlyOffDoesNotReportAbsentFavorites() {
-        val result = FavoritesOrdering.filter(games, setOf(TeamKey("SEA")), favoritesOnly = false)
+        val result = FavoritesOrdering.filter(games, setOf(TeamKey(League.NHL, "SEA")), favoritesOnly = false)
         assertEquals(games, result.rows)
         assertNull(result.hint)
     }
@@ -90,7 +91,7 @@ class FavoritesOrderingTest {
     @Test
     fun offSeasonAllGamesIgnoresFavoritesAndHidesTheAbsenceHint() {
         // A fan whose teams are not in the Final must still see the last games of the season.
-        val result = FavoritesOrdering.filter(games, setOf(TeamKey("SEA")), favoritesOnly = true, allGames = true)
+        val result = FavoritesOrdering.filter(games, setOf(TeamKey(League.NHL, "SEA")), favoritesOnly = true, allGames = true)
         assertEquals(games, result.rows)
         assertNull(result.hint)
     }
@@ -115,10 +116,10 @@ class FavoritesOrderingTest {
         away: String,
     ): Game =
         Game(
-            id = GameId(id),
+            id = GameId(League.NHL, id),
             date = "2026-10-26",
             state = GameState.Scheduled,
-            home = TeamRef(TeamKey(home)),
-            away = TeamRef(TeamKey(away)),
+            home = TeamRef(TeamKey(League.NHL, home)),
+            away = TeamRef(TeamKey(League.NHL, away)),
         )
 }

@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import net.montycasa.roux.domain.model.AccentColor
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.ThemeMode
 import net.montycasa.roux.domain.policy.LeagueOrder
@@ -94,7 +95,7 @@ class DataStorePreferencesRepository(
 
     override suspend fun getFavourites(): Set<TeamKey> {
         val preferences = readablePreferences() ?: return emptySet()
-        return preferences[FAVOURITES].orEmpty().mapTo(mutableSetOf(), ::TeamKey)
+        return preferences[FAVOURITES].orEmpty().mapTo(mutableSetOf()) { TeamKey(League.NHL, it) }
     }
 
     override suspend fun setFavourites(teams: Set<TeamKey>) {
@@ -448,7 +449,7 @@ class DataStorePreferencesRepository(
     override fun observeFavourites(): Flow<Set<TeamKey>> =
         readablePreferencesFlow().map { preferences ->
             // A file from a newer build is not interpreted: it answers defaults, exactly like the one-shot read.
-            preferences?.get(FAVOURITES).orEmpty().mapTo(mutableSetOf(), ::TeamKey)
+            preferences?.get(FAVOURITES).orEmpty().mapTo(mutableSetOf()) { TeamKey(League.NHL, it) }
         }
 
     override fun observeFavouritesOnly(): Flow<Boolean> =

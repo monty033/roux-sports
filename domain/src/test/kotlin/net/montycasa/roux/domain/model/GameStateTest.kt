@@ -1,5 +1,6 @@
 package net.montycasa.roux.domain.model
 
+import net.montycasa.roux.domain.model.League
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -93,11 +94,11 @@ class GameStateTest {
         val games =
             cases.mapIndexed { index, (state, _) ->
                 Game(
-                    id = GameId(index.toString()),
+                    id = GameId(League.NHL, index.toString()),
                     date = "2026-10-26",
                     state = state,
-                    home = TeamRef(TeamKey("NYR")),
-                    away = TeamRef(TeamKey("LAK")),
+                    home = TeamRef(TeamKey(League.NHL, "NYR")),
+                    away = TeamRef(TeamKey(League.NHL, "LAK")),
                 )
             }
 

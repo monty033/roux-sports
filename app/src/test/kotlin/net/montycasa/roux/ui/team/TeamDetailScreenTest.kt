@@ -21,6 +21,7 @@ import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.Conference
 import net.montycasa.roux.domain.model.Division
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.LeagueClub
 import net.montycasa.roux.domain.model.LeagueSummary
 import net.montycasa.roux.domain.model.StandingRow
@@ -49,7 +50,7 @@ class TeamDetailScreenTest {
 
     private val toronto =
         StandingRow(
-            team = TeamRef(TeamKey("TOR"), name = "Toronto Maple Leafs", shortName = "Maple Leafs"),
+            team = TeamRef(TeamKey(League.NHL, "TOR"), name = "Toronto Maple Leafs", shortName = "Maple Leafs"),
             gp = 12,
             w = 9,
             l = 2,
@@ -69,7 +70,7 @@ class TeamDetailScreenTest {
 
     @Test
     fun theHeaderShowsTheRecordPointsAndThreePlacesFromTheRow() {
-        show(TeamDetailUiState(TeamKey("TOR"), row = toronto, isLoading = false))
+        show(TeamDetailUiState(TeamKey(League.NHL, "TOR"), row = toronto, isLoading = false))
 
         rule.onNodeWithTag("team.name").assertIsDisplayed().assertTextEquals("Toronto Maple Leafs")
         rule.onNodeWithTag("team.record").assertIsDisplayed()
@@ -88,7 +89,7 @@ class TeamDetailScreenTest {
     /** The division-and-conference line is gone: its own tag and its old wording are absent from the screen. */
     @Test
     fun theDivisionAndConferenceLineIsNoLongerShown() {
-        show(TeamDetailUiState(TeamKey("TOR"), row = toronto, isLoading = false))
+        show(TeamDetailUiState(TeamKey(League.NHL, "TOR"), row = toronto, isLoading = false))
 
         rule.onNodeWithTag("team.division").assertDoesNotExist()
         rule.onAllNodesWithText("Eastern Conference · Atlantic Division").assertCountEquals(0)
@@ -100,7 +101,7 @@ class TeamDetailScreenTest {
      */
     @Test
     fun aFailedStandingsLoadSaysNothingAboutTheRecordRatherThanClaimingItIsMissing() {
-        show(TeamDetailUiState(TeamKey("ANA"), row = null, isLoading = false, error = LoadError.Network))
+        show(TeamDetailUiState(TeamKey(League.NHL, "ANA"), row = null, isLoading = false, error = LoadError.Network))
 
         rule.onNodeWithTag("team.name").assertIsDisplayed().assertTextEquals("Anaheim Ducks")
         rule.onNodeWithText("The standings table doesn’t have this team’s record yet.").assertDoesNotExist()
@@ -116,7 +117,7 @@ class TeamDetailScreenTest {
                 RouxTheme {
                     Box(Modifier.width(360.dp)) {
                         TeamDetailScreen(
-                            state = TeamDetailUiState(TeamKey("TOR"), row = toronto, isLoading = false),
+                            state = TeamDetailUiState(TeamKey(League.NHL, "TOR"), row = toronto, isLoading = false),
                             onBack = {},
                         )
                     }
@@ -151,7 +152,7 @@ class TeamDetailScreenTest {
 
     @Test
     fun anAbsentRowShowsTheCrestAndNameButNoNumericRecord() {
-        show(TeamDetailUiState(TeamKey("ANA"), row = null, isLoading = false))
+        show(TeamDetailUiState(TeamKey(League.NHL, "ANA"), row = null, isLoading = false))
 
         rule.onNodeWithTag("team.crest").assertIsDisplayed()
         rule.onNodeWithTag("team.name").assertIsDisplayed().assertTextEquals("Anaheim Ducks")
@@ -173,7 +174,7 @@ class TeamDetailScreenTest {
         // A different pair of values from the fixture: if either field were substituted for the other, this fails.
         show(
             TeamDetailUiState(
-                TeamKey("TOR"),
+                TeamKey(League.NHL, "TOR"),
                 row = toronto.copy(conferenceSequence = 8, leagueSequence = 1),
                 isLoading = false,
             ),
@@ -188,7 +189,7 @@ class TeamDetailScreenTest {
     fun anUnnumberedPlaceIsOmittedRatherThanPrinted() {
         show(
             TeamDetailUiState(
-                TeamKey("TOR"),
+                TeamKey(League.NHL, "TOR"),
                 row = toronto.copy(divisionSequence = 0),
                 isLoading = false,
             ),
@@ -214,7 +215,7 @@ class TeamDetailScreenTest {
                         TeamDetailScreen(
                             state =
                                 TeamDetailUiState(
-                                    TeamKey("TOR"),
+                                    TeamKey(League.NHL, "TOR"),
                                     row = toronto.copy(conference = Conference.Unknown(longConference)),
                                     isLoading = false,
                                 ),
@@ -252,7 +253,7 @@ class TeamDetailScreenTest {
 
     @Test
     fun preSeasonHeaderShowsLastSeasonsRecordLabelledAsFinalAndNoPlaces() {
-        showAt(TeamDetailUiState(TeamKey("ANA"), row = null, isLoading = false, leagueStats = league()), preSeason)
+        showAt(TeamDetailUiState(TeamKey(League.NHL, "ANA"), row = null, isLoading = false, leagueStats = league()), preSeason)
 
         rule.onNodeWithTag("team.record").assertTextEquals("42-30-10")
         rule.onNodeWithTag("team.points").assertTextEquals("94 points")
@@ -268,7 +269,7 @@ class TeamDetailScreenTest {
     fun aFailedStandingsLoadNeverFallsBackToLastSeasonsRecord() {
         showAt(
             TeamDetailUiState(
-                TeamKey("ANA"),
+                TeamKey(League.NHL, "ANA"),
                 row = null,
                 isLoading = false,
                 error = LoadError.Network,
@@ -286,7 +287,7 @@ class TeamDetailScreenTest {
     @Test
     fun aCurrentSeasonTableIsNeverLabelledAsLastSeason() {
         showAt(
-            TeamDetailUiState(TeamKey("ANA"), row = null, isLoading = false, leagueStats = league(season = "20262027")),
+            TeamDetailUiState(TeamKey(League.NHL, "ANA"), row = null, isLoading = false, leagueStats = league(season = "20262027")),
             preSeason,
         )
 
@@ -298,7 +299,7 @@ class TeamDetailScreenTest {
     @Test
     fun aClubMissingFromLastSeasonsTableStillSaysNoRecord() {
         showAt(
-            TeamDetailUiState(TeamKey("TOR"), row = null, isLoading = false, leagueStats = league()),
+            TeamDetailUiState(TeamKey(League.NHL, "TOR"), row = null, isLoading = false, leagueStats = league()),
             preSeason,
         )
 
@@ -310,7 +311,7 @@ class TeamDetailScreenTest {
     @Test
     fun aPreSeasonHeaderWaitsForTheLeagueTableRatherThanClaimingNoRecord() {
         showAt(
-            TeamDetailUiState(TeamKey("ANA"), row = null, isLoading = false, isLeagueStatsLoading = true),
+            TeamDetailUiState(TeamKey(League.NHL, "ANA"), row = null, isLoading = false, isLeagueStatsLoading = true),
             preSeason,
         )
 
@@ -327,7 +328,7 @@ class TeamDetailScreenTest {
         val torontoLastSeason = LeagueClub(teamName = "Toronto Maple Leafs", wins = 40, losses = 30, otLosses = 12, points = 92)
         showAt(
             TeamDetailUiState(
-                TeamKey("TOR"),
+                TeamKey(League.NHL, "TOR"),
                 row = toronto,
                 isLoading = false,
                 leagueStats = league(season = "20242025", club = torontoLastSeason),

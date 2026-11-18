@@ -1,5 +1,6 @@
 package net.montycasa.roux.domain.model
 
+import net.montycasa.roux.domain.model.League
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -43,7 +44,14 @@ class PlayerMugshotTest {
 
     @Test
     fun theGamePrefersItsDateAndFallsBackToTheStartInstant() {
-        val dated = Game(GameId("1"), "2026-03-14", GameState.Final, TeamRef(TeamKey("PHI")), TeamRef(TeamKey("CBJ")))
+        val dated =
+            Game(
+                GameId(League.NHL, "1"),
+                "2026-03-14",
+                GameState.Final,
+                TeamRef(TeamKey(League.NHL, "PHI")),
+                TeamRef(TeamKey(League.NHL, "CBJ")),
+            )
         val routeless = dated.copy(date = "", startTimeUtc = kotlin.time.Instant.parse("2026-03-14T23:00:00Z"))
         val blank = dated.copy(date = "", startTimeUtc = null)
         assertEquals(2025, PlayerMugshot.seasonStartYear(dated))

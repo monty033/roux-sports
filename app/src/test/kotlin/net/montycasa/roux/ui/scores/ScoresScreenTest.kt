@@ -34,6 +34,7 @@ import net.montycasa.roux.domain.model.DateIndexEntry
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.domain.policy.FavoritesHint
@@ -65,11 +66,11 @@ class ScoresScreenTest {
     private val fresh = ScoresUiState(date, today = date, freshness = Freshness.Fresh, dateIndex = index)
     private val game =
         Game(
-            id = GameId("2025020123"),
+            id = GameId(League.NHL, "2025020123"),
             date = date,
             state = GameState.Scheduled,
-            home = TeamRef(TeamKey("TOR"), name = "Toronto Maple Leafs"),
-            away = TeamRef(TeamKey("MTL"), name = "Montréal Canadiens"),
+            home = TeamRef(TeamKey(League.NHL, "TOR"), name = "Toronto Maple Leafs"),
+            away = TeamRef(TeamKey(League.NHL, "MTL"), name = "Montréal Canadiens"),
             startTimeUtc = Instant.parse("2025-10-25T23:00:00Z"),
         )
     private val stale =
@@ -81,7 +82,7 @@ class ScoresScreenTest {
         ScoresUiState(
             selectedDate = "2026-06-14",
             today = "2026-07-20",
-            rows = listOf(game.copy(id = GameId("2025030411"), date = "2026-06-14", state = GameState.Final)),
+            rows = listOf(game.copy(id = GameId(League.NHL, "2025030411"), date = "2026-06-14", state = GameState.Final)),
             freshness = Freshness.Fresh,
             dateIndex = listOf(DateIndexEntry("2026-06-14", 1), DateIndexEntry("2026-07-20", 0)),
             offSeason = OffSeasonUi("2026-06-14", "2026-09-19", "2025–26"),
@@ -98,7 +99,7 @@ class ScoresScreenTest {
         ScoresUiState(
             selectedDate = "2026-09-29",
             today = "2026-07-20",
-            rows = listOf(game.copy(id = GameId("2026020001"), date = "2026-09-29", state = GameState.Final)),
+            rows = listOf(game.copy(id = GameId(League.NHL, "2026020001"), date = "2026-09-29", state = GameState.Final)),
             freshness = Freshness.Fresh,
             dateIndex = listOf(DateIndexEntry("2026-06-14", 1), DateIndexEntry("2026-09-29", 1)),
             offSeason =
@@ -350,7 +351,7 @@ class ScoresScreenTest {
     @Test
     @Config(qualifiers = "en-rUS-w411dp-h923dp-mdpi")
     fun gameCardsAreSeventySixDpWithEightDpPageGaps() {
-        val next = game.copy(id = GameId("2025020124"))
+        val next = game.copy(id = GameId(League.NHL, "2025020124"))
         launchScreen(fresh.copy(rows = listOf(game, next)))
         val first = rule.onNodeWithTag("scores.game.${game.id.value}")
         val second = rule.onNodeWithTag("scores.game.${next.id.value}")
@@ -376,7 +377,7 @@ class ScoresScreenTest {
     @Test
     @Config(qualifiers = "en-rUS-w360dp-h780dp-mdpi")
     fun gameCardGapEqualsReachMinimumAndTheWholeDayStillScrolls() {
-        val games = (0..11).map { game.copy(id = GameId("game-$it")) }
+        val games = (0..11).map { game.copy(id = GameId(League.NHL, "game-$it")) }
         launchScreen(fresh.copy(rows = games))
         val first = rule.onNodeWithTag("scores.game.${games[0].id.value}")
         val second = rule.onNodeWithTag("scores.game.${games[1].id.value}")

@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
@@ -50,11 +51,11 @@ class GameRowWideRailTest {
 
     private val stress =
         Game(
-            id = GameId("2026020001"),
+            id = GameId(League.NHL, "2026020001"),
             date = "2026-10-26",
             state = GameState.Live(critical = true),
-            away = TeamRef(TeamKey("BOS"), name = "Boston Bruins"),
-            home = TeamRef(TeamKey("TOR"), name = "Toronto Maple Leafs"),
+            away = TeamRef(TeamKey(League.NHL, "BOS"), name = "Boston Bruins"),
+            home = TeamRef(TeamKey(League.NHL, "TOR"), name = "Toronto Maple Leafs"),
             startTimeUtc = Instant.parse("2026-10-26T23:00:00Z"),
             awayScore = 103,
             homeScore = 102,

@@ -12,6 +12,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import net.montycasa.roux.data.Fixtures
 import net.montycasa.roux.domain.model.Conference
 import net.montycasa.roux.domain.model.Division
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.TeamKey
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -236,7 +237,7 @@ class StandingsAdapterTest {
                 assertTrue("A valid abbreviation must parse: $result", result is ParseResult.Success)
                 val rows = (result as ParseResult.Success).value
                 assertEquals(32, rows.size)
-                assertEquals(TeamKey("CAR"), rows.first().team.key)
+                assertEquals(TeamKey(League.NHL, "CAR"), rows.first().team.key)
             } else {
                 assertTrue("Blank abbreviation '$abbreviation' must fail the whole table: $result", result is ParseResult.Failure)
                 val reason = (result as ParseResult.Failure).reason
@@ -347,6 +348,7 @@ class StandingsAdapterTest {
 
         assertEquals(
             TeamKey(
+                League.NHL,
                 first
                     .getValue("teamAbbrev")
                     .jsonObject

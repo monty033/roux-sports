@@ -3,6 +3,7 @@ package net.montycasa.roux.domain.policy
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 import org.junit.Assert.assertEquals
@@ -56,7 +57,7 @@ class ScoresOrderingTest {
         val favoriteFinal = game("favorite-final", GameState.Final, 18, "TOR")
         assertEquals(
             listOf(favoriteLive, live, favoriteFinal),
-            ScoresOrdering.order(listOf(favoriteFinal, live, favoriteLive), setOf(TeamKey("TOR"))),
+            ScoresOrdering.order(listOf(favoriteFinal, live, favoriteLive), setOf(TeamKey(League.NHL, "TOR"))),
         )
     }
 
@@ -67,11 +68,11 @@ class ScoresOrderingTest {
         home: String = "MTL",
     ): Game =
         Game(
-            id = GameId(id),
+            id = GameId(League.NHL, id),
             date = "2026-10-26",
             state = state,
-            home = TeamRef(TeamKey(home)),
-            away = TeamRef(TeamKey("BOS")),
+            home = TeamRef(TeamKey(League.NHL, home)),
+            away = TeamRef(TeamKey(League.NHL, "BOS")),
             startTimeUtc = Instant.parse("2026-10-26T$hour:00:00Z"),
         )
 }
