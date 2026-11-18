@@ -15,6 +15,13 @@
 #               played, so this mode refuses to run rather than capture a corpus
 #               that never sampled LIVE - a parser test written against a half
 #               corpus would pass and mean nothing.
+#   nfl-base    the same idea for ESPN's NFL feed: scoreboards, teams, standings,
+#               two teams' roster/schedule/statistics, one finished game, and one
+#               athlete per position group. Runs any time.
+#   nfl-live    a game that is actually being played. Refuses unless the scoreboard
+#               shows one, and rolls back if the summary it gets has neither drives
+#               nor a situation - which is what a pre-game payload looks like, and
+#               the exact mistake the NHL game page made.
 set -euo pipefail
 
 # These are the dates the committed fixtures were captured from.
@@ -24,14 +31,16 @@ FUTURE_DAY=2026-10-26
 API=https://api-web.nhle.com/v1
 
 usage() {
-    printf 'Usage:\n  %s base\n  %s gamecenter [--final GAME_ID] [--live GAME_ID]\n' "$0" "$0" >&2
+    printf 'Usage:\n  %s base\n  %s gamecenter [--final GAME_ID] [--live GAME_ID]\n  %s nfl-base\n  %s nfl-live [--event EVENT_ID]\n' "$0" "$0" "$0" "$0" >&2
     printf '\nWithout --final/--live the ids are chosen from the slate: the final one from\n' >&2
     printf '%s, the live one from score/now.\n' "$GAME_DAY" >&2
+    printf '\nWithout --event the NFL live game is the first in-progress event on the\n' >&2
+    printf 'scoreboard. nfl-live refuses to run when no game is being played.\n' >&2
 }
 
 MODE=${1:-}
 case $MODE in
-    base | gamecenter) shift ;;
+    base | gamecenter | nfl-base | nfl-live) shift ;;
     *)
         usage
         exit 2
@@ -49,6 +58,15 @@ while [[ $# -gt 0 ]]; do
                 exit 2
             fi
             if [[ $1 == --final ]]; then FINAL_ID=$2; else LIVE_ID=$2; fi
+            shift 2
+            ;;
+        --event)
+            if [[ $# -lt 2 || -z ${2:-} ]]; then
+                printf 'ERROR: --event needs an ESPN event id\n' >&2
+                usage
+                exit 2
+            fi
+            LIVE_ID=$2
             shift 2
             ;;
         *)
@@ -76,7 +94,7 @@ complete=0
 cleanup() {
     if [[ $complete -ne 1 ]]; then
         printf 'Capture failed; removing staging directory: %s\n' "$STAGING" >&2
-        if [[ $MODE == gamecenter ]]; then
+        if [[ $MODE == gamecenter || $MODE == nfl-base || $MODE == nfl-live ]]; then
             # The target holds the base corpus too, so it is restored whole from the copy taken
             # before the first file was installed rather than file by file.
             if [[ -d "$STAGING/previous" ]]; then
@@ -148,6 +166,26 @@ validate_body() {
         # the game is live and both teams are named - and tighten once the sample says more.
         gc-live-boxscore.json) shape='(.gameState | . == "LIVE" or . == "CRIT") and (.awayTeam.abbrev | type == "string") and (.homeTeam.abbrev | type == "string")' ;;
         gc-live-right-rail.json) shape='.gameInfo | type == "object"' ;;
+        # NFL fixtures, same contract: each pins the thing that makes the artifact worth
+        # keeping. A Sunday scoreboard with three games is not the Sunday sample. A live
+        # summary with no drives and no situation is a pre-game skeleton that happens to
+        # have been fetched during a game - the rollback exists so it cannot replace a
+        # corpus that had real live data in it.
+        nfl-summary-live.json) shape='((.drives.previous // [] | length) > 0) or (.situation != null)' ;;
+        nfl-scoreboard-sunday-*.json) shape='(.events | type == "array") and ((.events | length) >= 8)' ;;
+        nfl-scoreboard-emptyday.json) shape='(.events | type == "array") and ((.events | length) == 0)' ;;
+        nfl-scoreboard-*.json) shape='(.events | type == "array") and ((.leagues | length) > 0)' ;;
+        nfl-teams.json) shape='([.sports[0].leagues[0].teams[]] | length) == 32' ;;
+        nfl-standings.json) shape='(.children | length) == 2' ;;
+        nfl-roster-*.json) shape='(.athletes | type == "array") and ((.athletes | length) > 0)' ;;
+        nfl-schedule-*.json) shape='(.events | type == "array") and ((.events | length) > 0)' ;;
+        nfl-stats-*.json) shape='.team | type == "object"' ;;
+        nfl-summary-final.json) shape='(.boxscore.teams | length) == 2' ;;
+        nfl-athlete-*.json) shape='(.athlete.id != null) and ((.athlete.headshot.href | type) == "string")' ;;
+        # A player with no games returns only `filters`: no `seasonTypes`, no columns. That is the
+        # shape the player page must survive, so it is captured rather than treated as an error.
+        nfl-gamelog-empty.json) shape='(.filters | type == "array") and (.seasonTypes == null)' ;;
+        nfl-gamelog-*.json) shape='(.seasonTypes | type == "array") and ((.seasonTypes | length) > 0)' ;;
         *) printf 'ERROR: no shape check defined for %s\n' "$name" >&2; return 1 ;;
     esac
     if ! jq -e "$shape" "$file" > /dev/null; then
@@ -233,6 +271,229 @@ if [[ $MODE == base ]]; then
     mv -- "$CAPTURE" "$TARGET"
     complete=1
     printf 'Captured 7 base fixtures in %s\n' "$TARGET"
+    exit 0
+fi
+
+if [[ $MODE == nfl-base || $MODE == nfl-live ]]; then
+    NFL_SITE=${NFL_SITE_BASE:-https://site.api.espn.com/apis}
+    NFL_DATA="$NFL_SITE/site/v2/sports/football/nfl"
+    NFL_COMMON="$NFL_SITE/common/v3/sports/football/nfl"
+    ROOT="$REPO_ROOT/data/src/test/resources/fx-nfl"
+    mkdir -p -- "$ROOT"
+    # One corpus per label. Without an explicit label the newest corpus is continued, so a live
+    # capture taken days after the base capture lands beside it instead of starting a corpus that
+    # holds only the live half.
+    # `grep` exits 1 when the corpus is new and there is nothing to match, which under `pipefail`
+    # and `set -e` would end the run before it captured anything.
+    NFL_LABEL=${NFL_CAPTURE_LABEL:-$(ls -1 -- "$ROOT" 2> /dev/null | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' | sort | tail -1 || true)}
+    NFL_LABEL=${NFL_LABEL:-$(date -u +%Y-%m-%d)}
+    if [[ ! $NFL_LABEL =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+        printf 'ERROR: NFL capture label must be YYYY-MM-DD, got %s\n' "$NFL_LABEL" >&2
+        exit 1
+    fi
+    TARGET="$ROOT/$NFL_LABEL"
+    # The staging directory made for the NHL corpus is unused here. Leaving it behind litters the
+    # fixture tree with an empty .capture-* directory after every NFL run.
+    rm -rf -- "$STAGING"
+    STAGING=$(mktemp -d "$ROOT/.capture-$NFL_LABEL.XXXXXX")
+    CAPTURE="$STAGING/capture"
+    mkdir -- "$CAPTURE"
+    {
+        printf 'NFL capture label: %s\n' "$NFL_LABEL"
+        printf 'Source: %s - ESPN public site API, unofficial, no key. Authorized 2026-11-18; docs/nfl-sources.md records what it carries.\n' "$NFL_DATA"
+        printf 'transfer_bytes: curl size_download (body before decompression). stored_bytes: bytes on disk after decompression.\n\n'
+    } > "$CAPTURE/SIZES.txt"
+
+    # A day's scoreboard, cached so the search for sample days costs one request per day, once.
+    nfl_day() {
+        local day=$1 file="$STAGING/day-${1//-/}.json"
+        if [[ ! -e $file ]]; then
+            curl --compressed --silent --show-error --connect-timeout 20 --max-time 60 \
+                --output "$file" "$NFL_DATA/scoreboard?dates=${day//-/}" || return 1
+        fi
+        jq -r '(.events // []) | length' "$file" 2> /dev/null
+    }
+
+    # Two Sundays with a full slate, most recent first. Derived rather than pinned: a pinned
+    # Sunday silently becomes an off-season day a few months later, and the capture would keep
+    # succeeding against a stale sample.
+    find_sundays() {
+        local found=() back day count
+        for ((back = 0; back < 60 && ${#found[@]} < 2; back++)); do
+            day=$(date -u -d "$(date -u +%Y-%m-%d) - $back days" +%Y-%m-%d)
+            [[ $(date -u -d "$day" +%u) == 7 ]] || continue
+            count=$(nfl_day "$day") || return 1
+            [[ $count -ge 8 ]] && found+=("$day")
+        done
+        [[ ${#found[@]} == 2 ]] || return 1
+        printf '%s %s' "${found[0]}" "${found[1]}"
+    }
+
+    # A day with no games at all: an empty slate is a distinct state, not a failure.
+    find_empty_day() {
+        local back day count
+        for ((back = 1; back <= 21; back++)); do
+            day=$(date -u -d "$(date -u +%Y-%m-%d) - $back days" +%Y-%m-%d)
+            count=$(nfl_day "$day") || return 1
+            [[ $count == 0 ]] && { printf '%s' "$day"; return 0; }
+        done
+        return 1
+    }
+
+    # The athlete set is chosen by position group, because a quarterback's game log and a
+    # kicker's are not the same table and a parser tested on one is untested on the other.
+    nfl_athletes() {
+        jq -r --arg want "$2" \
+            '[.athletes[]?.items[]?] | map(select(.position.abbreviation as $p | ($want | split(",")) | index($p))) | .[0:4][] | .id // empty' \
+            "$1"
+    }
+
+    # The first name at a position is often a player with no games played, whose game log is an
+    # empty payload. Probe before capturing so the corpus holds a real table for each position
+    # group, and keep one empty sample on purpose.
+    nfl_athlete_with_games() {
+        local roster=$1 want=$2 candidate
+        for candidate in $(nfl_athletes "$roster" "$want"); do
+            if curl -q --compressed --silent --show-error --connect-timeout 20 --max-time 60 \
+                "$NFL_COMMON/athletes/$candidate/gamelog" 2> /dev/null |
+                jq -e '(.seasonTypes | length) > 0' > /dev/null 2>&1; then
+                printf '%s' "$candidate"
+                return 0
+            fi
+        done
+        return 1
+    }
+
+    # One player with no games at all, for the page that has to survive an empty log.
+    nfl_athlete_without_games() {
+        local roster=$1 candidate
+        # Defense first, then everyone: the first twelve names on a roster are the offensive
+        # starters, and a starter has a game log. The empty-log case lives further down the depth chart.
+        for candidate in $(jq -r '[ (.athletes[]? | select(.position == "defense") | .items[]?.id), (.athletes[]? | .items[]?.id) ] | .[0:24][]' "$roster"); do
+            if curl -q --compressed --silent --show-error --connect-timeout 20 --max-time 60 \
+                "$NFL_COMMON/athletes/$candidate/gamelog" 2> /dev/null |
+                jq -e '(.seasonTypes | length) > 0' > /dev/null 2>&1; then
+                continue
+            fi
+            printf '%s' "$candidate"
+            return 0
+        done
+        return 1
+    }
+
+    if [[ $MODE == nfl-base ]]; then
+        if ! SUNDAYS=$(find_sundays) || [[ -z $SUNDAYS ]]; then
+            printf 'ERROR: found fewer than two Sundays with eight or more games\n' >&2
+            exit 1
+        fi
+        read -r SUNDAY_A SUNDAY_B <<< "$SUNDAYS"
+        if ! EMPTY_DAY_NFL=$(find_empty_day); then
+            printf 'ERROR: found no day in the last three weeks with zero games\n' >&2
+            exit 1
+        fi
+        printf 'Sampling Sundays %s and %s; empty day %s\n' "$SUNDAY_A" "$SUNDAY_B" "$EMPTY_DAY_NFL"
+        {
+            printf 'Sample days: Sunday A %s; Sunday B %s; empty day %s\n' "$SUNDAY_A" "$SUNDAY_B" "$EMPTY_DAY_NFL"
+        } >> "$CAPTURE/SIZES.txt"
+
+        capture_body nfl-scoreboard-today.json "$NFL_DATA/scoreboard"
+        capture_body nfl-scoreboard-sunday-a.json "$NFL_DATA/scoreboard?dates=${SUNDAY_A//-/}"
+        capture_body nfl-scoreboard-sunday-b.json "$NFL_DATA/scoreboard?dates=${SUNDAY_B//-/}"
+        capture_body nfl-scoreboard-emptyday.json "$NFL_DATA/scoreboard?dates=${EMPTY_DAY_NFL//-/}"
+        capture_body nfl-teams.json "$NFL_DATA/teams"
+        capture_body nfl-standings.json "$NFL_SITE/v2/sports/football/nfl/standings"
+
+        FINAL_EVENT=$(jq -r '[.events[] | select(.status.type.state == "post")][0].id // empty' \
+            "$CAPTURE/nfl-scoreboard-sunday-a.json")
+        if [[ -z $FINAL_EVENT ]]; then
+            printf 'ERROR: no finished game on %s to sample\n' "$SUNDAY_A" >&2
+            exit 1
+        fi
+        abbr_of() {
+            jq -r --arg id "$FINAL_EVENT" --arg side "$1" \
+                '.events[] | select(.id == $id) | .competitions[0].competitors[] | select(.homeAway == $side) | .team.abbreviation' \
+                "$CAPTURE/nfl-scoreboard-sunday-a.json"
+        }
+        AWAY=$(abbr_of away)
+        HOME=$(abbr_of home)
+        if [[ -z $AWAY || -z $HOME ]]; then
+            printf 'ERROR: could not read both teams from event %s\n' "$FINAL_EVENT" >&2
+            exit 1
+        fi
+        for side in away home; do
+            abbr=$([[ $side == away ]] && printf '%s' "$AWAY" || printf '%s' "$HOME")
+            capture_body "nfl-roster-$side.json" "$NFL_DATA/teams/$abbr/roster"
+            capture_body "nfl-schedule-$side.json" "$NFL_DATA/teams/$abbr/schedule"
+            capture_body "nfl-stats-$side.json" "$NFL_DATA/teams/$abbr/statistics"
+        done
+        capture_body nfl-summary-final.json "$NFL_DATA/summary?event=$FINAL_EVENT"
+
+        for group in QB WR DE,OLB PK; do
+            token=${group%%,*}
+            if [[ $token == PK ]]; then token=K; fi
+            if ! athlete=$(nfl_athlete_with_games "$CAPTURE/nfl-roster-home.json" "$group"); then
+                printf 'ERROR: no %s on the %s roster has a game log; the sample would be incomplete\n' "$group" "$HOME" >&2
+                exit 1
+            fi
+            capture_body "nfl-athlete-$token.json" "$NFL_COMMON/athletes/$athlete"
+            capture_body "nfl-gamelog-$token.json" "$NFL_COMMON/athletes/$athlete/gamelog"
+        done
+        if empty_athlete=$(nfl_athlete_without_games "$CAPTURE/nfl-roster-home.json"); then
+            capture_body nfl-gamelog-empty.json "$NFL_COMMON/athletes/$empty_athlete/gamelog"
+        else
+            printf 'WARNING: every probed player has a game log, so no empty-log sample was taken\n' >&2
+        fi
+
+        if [[ -e $TARGET ]]; then
+            mv -- "$TARGET" "$STAGING/previous"
+        fi
+        mv -- "$CAPTURE" "$TARGET"
+        complete=1
+        printf 'Captured %s NFL fixtures in %s\n' "$(find "$TARGET" -name '*.json' | wc -l)" "$TARGET"
+        printf '  final event %s: %s at %s\n' "$FINAL_EVENT" "$AWAY" "$HOME"
+        exit 0
+    fi
+
+    # nfl-live: the whole point is a game in progress. Without one this mode refuses, because a
+    # corpus that never sampled live would let every parser test pass against a pre-game skeleton.
+    capture_body nfl-scoreboard-live.json "$NFL_DATA/scoreboard"
+    if [[ -z $LIVE_ID ]]; then
+        LIVE_ID=$(jq -r '[.events[] | select(.status.type.state == "in")][0].id // empty' \
+            "$CAPTURE/nfl-scoreboard-live.json")
+    fi
+    if [[ -z $LIVE_ID ]]; then
+        printf 'ERROR: no NFL game is in progress, so there is no live sample to take.\n' >&2
+        printf 'That sample is the reason this mode exists. Run it during a game.\n' >&2
+        exit 1
+    fi
+    state=$(jq -r --arg id "$LIVE_ID" '.events[] | select(.id == $id) | .status.type.state' \
+        "$CAPTURE/nfl-scoreboard-live.json")
+    if [[ $state != in ]]; then
+        printf 'ERROR: event %s is not in progress (state %s), so it is not a live sample.\n' \
+            "$LIVE_ID" "${state:-unknown}" >&2
+        exit 1
+    fi
+    printf 'Sampling live event %s\n' "$LIVE_ID"
+    capture_body nfl-summary-live.json "$NFL_DATA/summary?event=$LIVE_ID"
+
+    if [[ -e $TARGET ]]; then
+        cp -a -- "$TARGET" "$STAGING/previous"
+    fi
+    mkdir -p -- "$TARGET"
+    for name in nfl-scoreboard-live.json nfl-summary-live.json; do
+        cp -p -- "$CAPTURE/$name" "$TARGET/$name"
+    done
+    # Replace only the live lines, leaving the base corpus entries and the header intact.
+    if [[ -e $TARGET/SIZES.txt ]]; then
+        grep -vE '^nfl-(scoreboard|summary)-live\.json' -- "$TARGET/SIZES.txt" > "$STAGING/SIZES.txt" || true
+    fi
+    grep -E '^nfl-(scoreboard|summary)-live\.json' -- "$CAPTURE/SIZES.txt" >> "$STAGING/SIZES.txt"
+    mv -- "$STAGING/SIZES.txt" "$TARGET/SIZES.txt"
+    complete=1
+    printf 'Captured the live NFL sample in %s\n' "$TARGET"
+    printf '  %s: drives=%s situation=%s\n' "$LIVE_ID" \
+        "$(jq -r '(.drives.previous // []) | length' "$TARGET/nfl-summary-live.json")" \
+        "$(jq -r 'if .situation then "present" else "absent" end' "$TARGET/nfl-summary-live.json")"
     exit 0
 fi
 

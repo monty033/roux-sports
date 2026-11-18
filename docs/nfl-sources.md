@@ -11,6 +11,10 @@ consumes this document is `nfl-plan.md`.
 Probed 2026-11-17 with anonymous `GET`s: no key, no account, no cookies. Sizes are as received. No live game existed at
 probe time, so every live shape below is **unverified until Stage 1.2 captures one**.
 
+Captured with `scripts/capture-fixtures.sh nfl-base`, which writes the `nfl-*` fixtures and a `SIZES.txt` into
+`data/src/test/resources/fx-nfl/<label>/`. `nfl-live` adds a scoreboard and a summary taken while a game is being
+played, and refuses to run when nothing is in progress.
+
 ## The hosts
 
 | host | carries | authorized |
@@ -41,6 +45,9 @@ Absent, so no screen may assume it:
 - **A league-leaders endpoint.** `/apis/site/v2/sports/football/nfl/leaders` returns **404**. Leaders exist per game
   (`summary.leaders`) and per team (`teams/{abbr}/statistics`); a league view has to be assembled from those.
 - **A bare athlete query.** `/apis/common/v3/sports/football/nfl/athletes` without a path id returns **400**.
+- **A game log for a player who has not played.** The game log answers with `{"filters": [...]}` and nothing else —
+  no `seasonTypes`, no columns. Confirmed on a defensive end the roster lists. The player page must render that as
+  "no games yet", not as a parse failure, and the capture keeps one such payload on purpose.
 
 ## The image host
 
