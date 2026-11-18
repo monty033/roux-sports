@@ -14,6 +14,7 @@ import net.montycasa.roux.domain.model.DateIndexEntry
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.ScoreDay
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
@@ -60,11 +61,11 @@ class DailyReconcileWorkerTest {
             games =
                 listOf(
                     Game(
-                        id = GameId("2025020123"),
+                        id = GameId(League.NHL, "2025020123"),
                         date = "2025-01-01",
                         state = GameState.Scheduled,
-                        home = TeamRef(TeamKey("MTL")),
-                        away = TeamRef(TeamKey("TOR")),
+                        home = TeamRef(TeamKey(League.NHL, "MTL")),
+                        away = TeamRef(TeamKey(League.NHL, "TOR")),
                         startTimeUtc = now + 2.hours,
                     ),
                 ),
@@ -153,7 +154,7 @@ class DailyReconcileWorkerTest {
     fun theWorkerReconcilesTheDayItIsAskedToWatch() =
         runBlocking {
             val preferences = preferences()
-            preferences.setFavourites(setOf(TeamKey("TOR")))
+            preferences.setFavourites(setOf(TeamKey(League.NHL, "TOR")))
             val scheduler = RecordingScheduler()
 
             val result =
@@ -171,14 +172,14 @@ class DailyReconcileWorkerTest {
         runBlocking {
             val preferences = preferences()
             // Nobody is a favourite: the switch on Toronto is the whole request.
-            preferences.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(final = true))
+            preferences.setTeamAlertPreferences(TeamKey(League.NHL, "TOR"), TeamAlertPreferences(final = true))
             val scheduler = RecordingScheduler()
 
             worker(reconciler(FakeScores { Loadable(slate, Freshness.Fresh, null) }, scheduler, preferences)).doWork()
 
             val call = scheduler.calls.single()
-            assertEquals(TeamAlertPreferences(final = true), call.alertPreferences(TeamKey("TOR")))
-            assertEquals(TeamAlertPreferences(), call.alertPreferences(TeamKey("MTL")))
+            assertEquals(TeamAlertPreferences(final = true), call.alertPreferences(TeamKey(League.NHL, "TOR")))
+            assertEquals(TeamAlertPreferences(), call.alertPreferences(TeamKey(League.NHL, "MTL")))
         }
 
     @Test

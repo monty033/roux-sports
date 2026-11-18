@@ -14,6 +14,7 @@ import kotlinx.coroutines.test.setMain
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.AccentColor
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
@@ -38,7 +39,7 @@ import java.util.concurrent.CopyOnWriteArrayList
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class TeamsViewModelNotificationsTest {
-    private val toronto = TeamRef(TeamKey("TOR"), name = "Toronto Maple Leafs", shortName = "Maple Leafs")
+    private val toronto = TeamRef(TeamKey(League.NHL, "TOR"), name = "Toronto Maple Leafs", shortName = "Maple Leafs")
 
     @Before
     fun useTestMainDispatcher() {
@@ -83,7 +84,7 @@ class TeamsViewModelNotificationsTest {
 
         val writes = CopyOnWriteArrayList<Pair<TeamKey, TeamAlertPreferences>>()
 
-        override suspend fun getFavourites(): Set<TeamKey> = setOf(TeamKey("TOR"))
+        override suspend fun getFavourites(): Set<TeamKey> = setOf(TeamKey(League.NHL, "TOR"))
 
         override suspend fun setFavourites(teams: Set<TeamKey>) = Unit
 
@@ -255,7 +256,7 @@ class TeamsViewModelNotificationsTest {
             advanceUntilIdle()
             assertTrue(
                 "the row is stale until the sheet closes; that is the refresh this test exercises",
-                TeamKey("TOR") !in viewModel.uiState.value.alerting,
+                TeamKey(League.NHL, "TOR") !in viewModel.uiState.value.alerting,
             )
 
             viewModel.closeAlerts()
@@ -263,7 +264,7 @@ class TeamsViewModelNotificationsTest {
 
             assertTrue(
                 "the bell must follow the switch without a restart",
-                TeamKey("TOR") in viewModel.uiState.value.alerting,
+                TeamKey(League.NHL, "TOR") in viewModel.uiState.value.alerting,
             )
         }
 
@@ -281,7 +282,7 @@ class TeamsViewModelNotificationsTest {
             advanceUntilIdle()
 
             assertEquals(
-                listOf(TeamKey("TOR") to TeamAlertPreferences(goals = true)),
+                listOf(TeamKey(League.NHL, "TOR") to TeamAlertPreferences(goals = true)),
                 preferences.writes,
             )
             assertTrue(
@@ -310,7 +311,7 @@ class TeamsViewModelNotificationsTest {
             assertEquals(
                 "only intermission changed from the copy the store has now",
                 listOf(
-                    TeamKey("TOR") to
+                    TeamKey(League.NHL, "TOR") to
                         TeamAlertPreferences(
                             start = false,
                             goals = true,
@@ -338,7 +339,7 @@ class TeamsViewModelNotificationsTest {
 
             assertEquals(
                 listOf(
-                    TeamKey("TOR") to
+                    TeamKey(League.NHL, "TOR") to
                         TeamAlertPreferences(
                             start = true,
                             upcoming = true,
@@ -363,7 +364,7 @@ class TeamsViewModelNotificationsTest {
             advanceUntilIdle()
 
             assertEquals(
-                listOf(TeamKey("TOR") to TeamAlertPreferences(upcoming = false, upcomingLeadMinutes = 60)),
+                listOf(TeamKey(League.NHL, "TOR") to TeamAlertPreferences(upcoming = false, upcomingLeadMinutes = 60)),
                 preferences.writes,
             )
         }
@@ -386,7 +387,7 @@ class TeamsViewModelNotificationsTest {
             assertEquals(
                 "the write must apply the one change to the current stored copy, not to the sheet's stale one",
                 listOf(
-                    TeamKey("TOR") to
+                    TeamKey(League.NHL, "TOR") to
                         TeamAlertPreferences(
                             start = false,
                             goals = false,
@@ -408,7 +409,7 @@ class TeamsViewModelNotificationsTest {
         runTest {
             val viewModel =
                 viewModel(
-                    FakePreferences(final = true, onlyTeam = TeamKey("TOR")),
+                    FakePreferences(final = true, onlyTeam = TeamKey(League.NHL, "TOR")),
                     FakeStandings(teamStandings()),
                 )
             observe(viewModel)
@@ -416,11 +417,11 @@ class TeamsViewModelNotificationsTest {
 
             assertTrue(
                 "a final-score alert is still an alert, so the row must show a ringing bell",
-                TeamKey("TOR") in viewModel.uiState.value.alerting,
+                TeamKey(League.NHL, "TOR") in viewModel.uiState.value.alerting,
             )
             assertFalse(
                 "and a club with no switches is not swept in by the same answer",
-                TeamKey("MTL") in viewModel.uiState.value.alerting,
+                TeamKey(League.NHL, "MTL") in viewModel.uiState.value.alerting,
             )
         }
 
@@ -458,7 +459,7 @@ class TeamsViewModelNotificationsTest {
     @Test
     fun openingAnotherTeamDoesNotLeaveTheFirstOnesSwitchBehind() =
         runTest {
-            val montreal = TeamRef(TeamKey("MTL"), name = "Montréal Canadiens", shortName = "Canadiens")
+            val montreal = TeamRef(TeamKey(League.NHL, "MTL"), name = "Montréal Canadiens", shortName = "Canadiens")
             val preferences = FakePreferences(start = true, goals = true)
             val viewModel = viewModel(preferences)
             observe(viewModel)

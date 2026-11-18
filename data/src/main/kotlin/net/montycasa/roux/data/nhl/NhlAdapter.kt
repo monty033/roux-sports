@@ -25,6 +25,7 @@ import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.ScheduleBlock
 import net.montycasa.roux.domain.model.ScheduleDay
@@ -222,7 +223,7 @@ internal object NhlAdapter {
                 StandingRow(
                     team =
                         TeamRef(
-                            key = TeamKey(abbreviation),
+                            key = TeamKey(League.NHL, abbreviation),
                             name = row.teamName?.default,
                             // Place-free club name. A blank common name is absence, not a name.
                             shortName = row.teamCommonName?.default?.takeIf { it.isNotBlank() },
@@ -316,7 +317,7 @@ internal object NhlAdapter {
                 gameOutcome != null ||
                 rawState.trim().equals("OFF", ignoreCase = true)
         return ClubGame(
-            id = GameId(gameId.toString()),
+            id = GameId(League.NHL, gameId.toString()),
             date = gameDate,
             startTimeUtc = startTimeUTC?.let { Instant.parseOrNull(it) },
             venue = venue?.default?.takeIf { it.isNotBlank() },
@@ -340,7 +341,7 @@ internal object NhlAdapter {
                 .joinToString(" ")
                 .takeIf { it.isNotBlank() }
         return TeamRef(
-            key = TeamKey(abbreviation),
+            key = TeamKey(League.NHL, abbreviation),
             name = fullName,
             shortName = common,
             logoUrl = logo,
@@ -368,7 +369,7 @@ internal object NhlAdapter {
                 )
             }
         return Game(
-            id = GameId(gameId.toString()),
+            id = GameId(League.NHL, gameId.toString()),
             date = date,
             state = GameState.fromFeed(state),
             home = home,
@@ -418,7 +419,7 @@ internal object NhlAdapter {
     private fun TeamDto.toTeamRef(): TeamRef? {
         val abbreviation = abbrev?.takeIf { it.isNotBlank() } ?: return null
         return TeamRef(
-            key = TeamKey(abbreviation),
+            key = TeamKey(League.NHL, abbreviation),
             name = name?.default,
             logoUrl = logo,
             // No score fixture carries darkLogo today (the schedule fixture does); retain it

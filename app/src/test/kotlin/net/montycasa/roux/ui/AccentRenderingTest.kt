@@ -8,6 +8,7 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onRoot
 import net.montycasa.roux.domain.model.AccentColor
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.ui.drawer.LeaguesPanel
@@ -101,7 +102,7 @@ class AccentRenderingTest {
                 TeamAlertsSheet(
                     alerts =
                         TeamAlerts(
-                            team = TeamRef(TeamKey("ANA"), name = "Anaheim Ducks"),
+                            team = TeamRef(TeamKey(League.NHL, "ANA"), name = "Anaheim Ducks"),
                             start = true,
                             upcoming = true,
                             leadMinutes = 30,

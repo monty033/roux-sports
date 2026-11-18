@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.captureRoboImage
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.ui.reach.ReachTargetTag
@@ -142,7 +143,7 @@ class TeamsScreenTest {
 
     @Test
     fun aNullNameShowsTheAbbreviationAndLabelsItsToggle() {
-        val team = TeamRef(TeamKey("TOR"))
+        val team = TeamRef(TeamKey(League.NHL, "TOR"))
         launchScreen(fresh.copy(rows = listOf(team)))
         // Twice on purpose: without a name the abbreviation is the row's label, and the crest falls back to the same
         // abbreviation when the feed has no artwork. Both are correct; the toggle still names itself with it.
@@ -153,7 +154,7 @@ class TeamsScreenTest {
 
     @Test
     fun aRowShowsTheFullClubNameIncludingTheCity() {
-        val toronto = TeamRef(TeamKey("TOR"), name = "Toronto Maple Leafs", shortName = "Maple Leafs")
+        val toronto = TeamRef(TeamKey(League.NHL, "TOR"), name = "Toronto Maple Leafs", shortName = "Maple Leafs")
         launchScreen(fresh.copy(rows = listOf(toronto)))
 
         rule.onNodeWithText("Toronto Maple Leafs").assertIsDisplayed()
@@ -168,8 +169,8 @@ class TeamsScreenTest {
     fun fullNamesKeepOneLineAndControlsAt412dpAndBothFontScales() = assertFullNameLayout()
 
     private fun assertFullNameLayout() {
-        val long = TeamRef(TeamKey("CBJ"), name = "Columbus Blue Jackets", shortName = "Blue Jackets")
-        val toronto = TeamRef(TeamKey("TOR"), name = "Toronto Maple Leafs", shortName = "Maple Leafs")
+        val long = TeamRef(TeamKey(League.NHL, "CBJ"), name = "Columbus Blue Jackets", shortName = "Blue Jackets")
+        val toronto = TeamRef(TeamKey(League.NHL, "TOR"), name = "Toronto Maple Leafs", shortName = "Maple Leafs")
         launchScreen(fresh.copy(rows = listOf(long, toronto)))
 
         listOf(1f, 2f).forEach { scale ->
@@ -390,7 +391,7 @@ class TeamsScreenTest {
     @Test
     fun togglingAFavouriteLeavesTheRowWhereItWas() {
         launchScreen()
-        val tor = teams.first { it.key == TeamKey("TOR") }
+        val tor = teams.first { it.key == TeamKey(League.NHL, "TOR") }
         val before = rule.onNodeWithTag("teams.row.${tor.abbrev}").fetchSemanticsNode().boundsInRoot
 
         rule.runOnIdle {

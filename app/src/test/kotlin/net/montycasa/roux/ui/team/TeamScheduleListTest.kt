@@ -40,6 +40,7 @@ import net.montycasa.roux.domain.model.Conference
 import net.montycasa.roux.domain.model.Division
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
@@ -113,7 +114,7 @@ class TeamScheduleListTest {
                     zone = TimeZone.of("America/Toronto"),
                     ioDispatcher = Dispatchers.Unconfined,
                 )
-            val games = requireNotNull(runBlocking { repository.schedule(TeamKey("ANA")).data }).games
+            val games = requireNotNull(runBlocking { repository.schedule(TeamKey(League.NHL, "ANA")).data }).games
             val rows =
                 scheduleListModel(games, Locale.US)
                     .entries
@@ -207,7 +208,8 @@ class TeamScheduleListTest {
 
     @Test
     fun aHomeGameReadsDateCrestThenVersusTheNicknameOnly() {
-        val home = game("home", "2026-11-05T20:00:00Z", GameState.Scheduled, home = TeamKey("TOR"), away = TeamKey("BOS"))
+        val home =
+            game("home", "2026-11-05T20:00:00Z", GameState.Scheduled, home = TeamKey(League.NHL, "TOR"), away = TeamKey(League.NHL, "BOS"))
         showList(listOf(home))
         rule.waitForIdle()
 
@@ -225,7 +227,8 @@ class TeamScheduleListTest {
 
     @Test
     fun anAwayGameReadsAtTheNickname() {
-        val away = game("away", "2026-11-05T20:00:00Z", GameState.Scheduled, home = TeamKey("BOS"), away = TeamKey("TOR"))
+        val away =
+            game("away", "2026-11-05T20:00:00Z", GameState.Scheduled, home = TeamKey(League.NHL, "BOS"), away = TeamKey(League.NHL, "TOR"))
         showList(listOf(away))
         rule.waitForIdle()
 
@@ -253,8 +256,8 @@ class TeamScheduleListTest {
                 "2026-11-01T20:00:00Z",
                 GameState.Final,
                 finished = true,
-                home = TeamKey("BOS"),
-                away = TeamKey("TOR"),
+                home = TeamKey(League.NHL, "BOS"),
+                away = TeamKey(League.NHL, "TOR"),
                 homeScore = 3,
                 awayScore = 5,
             )
@@ -365,7 +368,7 @@ class TeamScheduleListTest {
             RouxTheme {
                 Box(Modifier.fillMaxWidth().height(360.dp)) {
                     TeamScheduleList(
-                        teamKey = TeamKey("TOR"),
+                        teamKey = TeamKey(League.NHL, "TOR"),
                         schedule = scheduled(games),
                         isRefreshing = false,
                         onRetry = {},
@@ -386,7 +389,7 @@ class TeamScheduleListTest {
                 TeamDetailScreen(
                     state =
                         TeamDetailUiState(
-                            teamKey = TeamKey("TOR"),
+                            teamKey = TeamKey(League.NHL, "TOR"),
                             row = toronto,
                             isLoading = false,
                             schedule = schedule,
@@ -423,14 +426,14 @@ class TeamScheduleListTest {
         start: String,
         state: GameState,
         finished: Boolean = false,
-        home: TeamKey = TeamKey("TOR"),
-        away: TeamKey = TeamKey("BOS"),
+        home: TeamKey = TeamKey(League.NHL, "TOR"),
+        away: TeamKey = TeamKey(League.NHL, "BOS"),
         homeScore: Int? = null,
         awayScore: Int? = null,
     ): ClubGame {
         val instant = Instant.parse(start)
         return ClubGame(
-            id = GameId(id),
+            id = GameId(League.NHL, id),
             date = start.substring(0, 10),
             startTimeUtc = instant,
             home = teamRef(home),
@@ -451,7 +454,7 @@ class TeamScheduleListTest {
 
     private val toronto =
         StandingRow(
-            team = TeamRef(TeamKey("TOR"), name = "Toronto Maple Leafs", shortName = "Maple Leafs"),
+            team = TeamRef(TeamKey(League.NHL, "TOR"), name = "Toronto Maple Leafs", shortName = "Maple Leafs"),
             gp = 12,
             w = 9,
             l = 2,

@@ -18,6 +18,7 @@ import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.AccentColor
 import net.montycasa.roux.domain.model.Conference
 import net.montycasa.roux.domain.model.Division
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.Season
 import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.model.TeamKey
@@ -40,8 +41,8 @@ import kotlin.time.Instant
 class TeamsViewModelTest {
     private val scheduler = TestCoroutineScheduler()
     private val stores = mutableListOf<ViewModelStore>()
-    private val tor = TeamKey("TOR")
-    private val mtl = TeamKey("MTL")
+    private val tor = TeamKey(League.NHL, "TOR")
+    private val mtl = TeamKey(League.NHL, "MTL")
 
     @Before
     fun setUp() {
@@ -57,7 +58,7 @@ class TeamsViewModelTest {
     @Test
     fun allThirtyTwoTeamsAreSortedByNameWithSortedFavouritesFirst() =
         runTest {
-            val favourites = setOf(tor, mtl, TeamKey("BOS"))
+            val favourites = setOf(tor, mtl, TeamKey(League.NHL, "BOS"))
             val viewModel = viewModel(preferences = FakePreferences(favourites))
             viewModel.uiState.test {
                 awaitItem()
@@ -126,7 +127,7 @@ class TeamsViewModelTest {
     @Test
     fun aSuspendedWriteCannotLoseAConcurrentToggle() =
         runTest {
-            val preferences = FakePreferences(setOf(TeamKey("BOS")))
+            val preferences = FakePreferences(setOf(TeamKey(League.NHL, "BOS")))
             val gate = CompletableDeferred<Unit>()
             preferences.beforeWrite = { gate.await() }
             val viewModel = viewModel(preferences = preferences)
@@ -136,12 +137,12 @@ class TeamsViewModelTest {
             viewModel.toggle(mtl)
             runCurrent()
             assertEquals(1, preferences.writes.size)
-            assertEquals(setOf(TeamKey("BOS")), preferences.teams)
+            assertEquals(setOf(TeamKey(League.NHL, "BOS")), preferences.teams)
             gate.complete(Unit)
             runCurrent()
-            val expected = setOf(TeamKey("BOS"), tor, mtl)
+            val expected = setOf(TeamKey(League.NHL, "BOS"), tor, mtl)
             assertEquals(expected, preferences.teams)
-            assertEquals(listOf(setOf(TeamKey("BOS"), tor), expected), preferences.writes)
+            assertEquals(listOf(setOf(TeamKey(League.NHL, "BOS"), tor), expected), preferences.writes)
             viewModel.uiState.test {
                 awaitItem()
                 runCurrent()
@@ -622,7 +623,7 @@ internal fun teamStandings(): List<StandingRow> =
         "WSH" to "Washington Capitals",
     ).map { (abbrev, name) ->
         StandingRow(
-            team = TeamRef(TeamKey(abbrev), name),
+            team = TeamRef(TeamKey(League.NHL, abbrev), name),
             gp = 0,
             w = 0,
             l = 0,

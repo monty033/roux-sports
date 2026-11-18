@@ -1,5 +1,6 @@
 package net.montycasa.roux.ui.common
 
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 import org.junit.Assert.assertEquals
@@ -59,7 +60,7 @@ class TeamNamesTest {
 
     @Test
     fun aClubInTheTableIsWrittenCityThenName() {
-        val (city, name) = TeamNames.cityAndName(TeamRef(TeamKey("PHI"), name = "Flyers"))
+        val (city, name) = TeamNames.cityAndName(TeamRef(TeamKey(League.NHL, "PHI"), name = "Flyers"))
 
         assertEquals("Philadelphia", city)
         assertEquals("Flyers", name)
@@ -67,7 +68,7 @@ class TeamNamesTest {
 
     @Test
     fun aClubOutsideTheTableFallsBackToWhatTheFeedSaid() {
-        val (city, name) = TeamNames.cityAndName(TeamRef(TeamKey("XYZ"), name = "Metropolitans"))
+        val (city, name) = TeamNames.cityAndName(TeamRef(TeamKey(League.NHL, "XYZ"), name = "Metropolitans"))
 
         assertNull(city)
         assertEquals("Metropolitans", name)
@@ -75,7 +76,7 @@ class TeamNamesTest {
 
     @Test
     fun aClubWithNothingButAnAbbreviationStillRenders() {
-        val (city, name) = TeamNames.cityAndName(TeamRef(TeamKey("XYZ")))
+        val (city, name) = TeamNames.cityAndName(TeamRef(TeamKey(League.NHL, "XYZ")))
 
         assertNull(city)
         assertEquals("XYZ", name)

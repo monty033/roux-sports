@@ -11,6 +11,7 @@ import net.montycasa.roux.data.cache.ResponseCache
 import net.montycasa.roux.data.net.NhlApi
 import net.montycasa.roux.data.net.NhlHttpClientFactory
 import net.montycasa.roux.domain.LoadError
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.TeamKey
 import okio.Path.Companion.toPath
 import okio.fakefilesystem.FakeFileSystem
@@ -47,7 +48,7 @@ class ClubStatsRepositoryImplTest {
         runBlocking {
             val harness = harness()
 
-            harness.repository.stats(TeamKey("ANA"))
+            harness.repository.stats(TeamKey(League.NHL, "ANA"))
 
             assertEquals(listOf("/v1/club-stats/ANA/20262027/2"), harness.requests)
         }
@@ -56,10 +57,10 @@ class ClubStatsRepositoryImplTest {
     fun aSecondReadInsideSixHoursDoesNotCallTheApi() =
         runBlocking {
             val harness = harness()
-            harness.repository.stats(TeamKey("ANA"))
+            harness.repository.stats(TeamKey(League.NHL, "ANA"))
 
             harness.clock.advance(5.hours)
-            harness.repository.stats(TeamKey("ANA"))
+            harness.repository.stats(TeamKey(League.NHL, "ANA"))
 
             assertEquals(1, harness.requests.size)
         }
@@ -68,10 +69,10 @@ class ClubStatsRepositoryImplTest {
     fun aReadPastSixHoursRefetches() =
         runBlocking {
             val harness = harness()
-            harness.repository.stats(TeamKey("ANA"))
+            harness.repository.stats(TeamKey(League.NHL, "ANA"))
 
             harness.clock.advance(6.hours + 1.minutes)
-            harness.repository.stats(TeamKey("ANA"))
+            harness.repository.stats(TeamKey(League.NHL, "ANA"))
 
             assertEquals(2, harness.requests.size)
         }
@@ -80,7 +81,7 @@ class ClubStatsRepositoryImplTest {
     fun theStatsEntryIsItsOwnCacheKind() =
         runBlocking {
             val harness = harness()
-            harness.repository.stats(TeamKey("ANA"))
+            harness.repository.stats(TeamKey(League.NHL, "ANA"))
 
             assertEquals(listOf("club-stats-ANA-20262027.roux"), cacheEntries(harness))
         }
@@ -93,7 +94,7 @@ class ClubStatsRepositoryImplTest {
                     if (path.contains("/20262027/")) Reply(HttpStatusCode.OK, emptySeason) else Reply(HttpStatusCode.OK, payload)
                 }
 
-            val read = harness.repository.stats(TeamKey("ANA"))
+            val read = harness.repository.stats(TeamKey(League.NHL, "ANA"))
 
             assertEquals(
                 listOf("/v1/club-stats/ANA/20262027/2", "/v1/club-stats/ANA/20252026/2"),
@@ -111,7 +112,7 @@ class ClubStatsRepositoryImplTest {
         runBlocking {
             val harness = harness(clock = MutableClock("2026-11-03T12:00:00Z"))
 
-            val read = harness.repository.stats(TeamKey("ANA"))
+            val read = harness.repository.stats(TeamKey(League.NHL, "ANA"))
 
             assertEquals(listOf("/v1/club-stats/ANA/20262027/2"), harness.requests)
             assertEquals("20262027", requireNotNull(read.data).season)
@@ -125,7 +126,7 @@ class ClubStatsRepositoryImplTest {
                     Reply(HttpStatusCode.NotFound, ByteArray(0))
                 }
 
-            val read = harness.repository.stats(TeamKey("ANA"))
+            val read = harness.repository.stats(TeamKey(League.NHL, "ANA"))
 
             assertEquals("an HTTP error must not show last season's totals as current", 1, harness.requests.size)
             assertNull(read.data)
@@ -142,7 +143,7 @@ class ClubStatsRepositoryImplTest {
                     Reply(HttpStatusCode.OK, oneGroupOnly.toByteArray())
                 }
 
-            val read = harness.repository.stats(TeamKey("ANA"))
+            val read = harness.repository.stats(TeamKey(League.NHL, "ANA"))
 
             assertEquals("a broken reply is not an empty season", 1, harness.requests.size)
             assertNull(read.data)
@@ -157,7 +158,7 @@ class ClubStatsRepositoryImplTest {
                     if (path.contains("/20262027/")) Reply(HttpStatusCode.OK, emptySeason) else Reply(HttpStatusCode.OK, payload)
                 }
 
-            harness.repository.stats(TeamKey("ANA"))
+            harness.repository.stats(TeamKey(League.NHL, "ANA"))
 
             assertEquals(listOf("club-stats-ANA-20252026.roux"), cacheEntries(harness))
         }

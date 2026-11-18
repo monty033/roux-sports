@@ -30,6 +30,7 @@ import net.montycasa.roux.domain.model.Division
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.GoalieStat
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.RosterPlayer
 import net.montycasa.roux.domain.model.SkaterStat
 import net.montycasa.roux.domain.model.StandingRow
@@ -528,7 +529,7 @@ class TeamPlayersTest {
                 TeamDetailScreen(
                     state =
                         TeamDetailUiState(
-                            teamKey = TeamKey("TOR"),
+                            teamKey = TeamKey(League.NHL, "TOR"),
                             row = toronto,
                             isLoading = false,
                             schedule = Loadable(ClubSchedule(season = "20262027", games = listOf(game)), Freshness.Fresh, null),
@@ -649,17 +650,17 @@ class TeamPlayersTest {
 
     private val game =
         ClubGame(
-            id = GameId("next"),
+            id = GameId(League.NHL, "next"),
             date = "2026-11-05",
             startTimeUtc = Instant.parse("2026-11-05T20:00:00Z"),
-            home = TeamRef(TeamKey("TOR")),
-            away = TeamRef(TeamKey("BOS")),
+            home = TeamRef(TeamKey(League.NHL, "TOR")),
+            away = TeamRef(TeamKey(League.NHL, "BOS")),
             state = GameState.Scheduled,
         )
 
     private val toronto =
         StandingRow(
-            team = TeamRef(TeamKey("TOR"), name = "Toronto Maple Leafs", shortName = "Maple Leafs"),
+            team = TeamRef(TeamKey(League.NHL, "TOR"), name = "Toronto Maple Leafs", shortName = "Maple Leafs"),
             gp = 12,
             w = 9,
             l = 2,

@@ -96,6 +96,7 @@ import net.montycasa.roux.domain.model.ClubGame
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.PlayerGame
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
@@ -702,7 +703,7 @@ private fun teamArguments(): List<NamedNavArgument> = listOf(navArgument("teamKe
 /** Null when the route carries no club, so the caller backs out rather than opening a page with no identity. */
 internal fun teamKeyFromRoute(entry: NavBackStackEntry): TeamKey? {
     val abbrev = entry.arguments?.getString("teamKey")?.takeIf { it.isNotBlank() } ?: return null
-    return TeamKey(abbrev)
+    return TeamKey(League.NHL, abbrev)
 }
 
 /* ---------------------------------------------------------------------------------------------------------------
@@ -810,12 +811,12 @@ internal fun PlayerGame.toGame(): Game? {
     val date = gameDate ?: return null
     val (homeAbbrev, awayAbbrev) = if (home) club to opponent else opponent to club
     return Game(
-        id = GameId(gameId.toString()),
+        id = GameId(League.NHL, gameId.toString()),
         date = date,
         // A log holds finished games, so the page opens in its final state.
         state = GameState.Final,
-        home = TeamRef(TeamKey(homeAbbrev)),
-        away = TeamRef(TeamKey(awayAbbrev)),
+        home = TeamRef(TeamKey(League.NHL, homeAbbrev)),
+        away = TeamRef(TeamKey(League.NHL, awayAbbrev)),
     )
 }
 
@@ -885,13 +886,13 @@ internal fun gameFromRoute(entry: NavBackStackEntry): Game? {
     val home = args.getString("home")?.takeIf { it.isNotBlank() } ?: return null
     val start = args.getString("start")?.toLongOrNull()?.takeIf { it > 0 }
     return Game(
-        id = GameId(id),
+        id = GameId(League.NHL, id),
         date = "",
         state = decodeState(args.getString("state")),
         // The crest travels with the route so the hero is drawn from the row the reader tapped, not from an endpoint
         // that may not have answered yet. A missing URL is fine: the badge falls back to the club's abbreviation.
-        home = TeamRef(TeamKey(home), logoUrl = args.getString("homeLogo")?.takeIf { it.isNotBlank() }),
-        away = TeamRef(TeamKey(away), logoUrl = args.getString("awayLogo")?.takeIf { it.isNotBlank() }),
+        home = TeamRef(TeamKey(League.NHL, home), logoUrl = args.getString("homeLogo")?.takeIf { it.isNotBlank() }),
+        away = TeamRef(TeamKey(League.NHL, away), logoUrl = args.getString("awayLogo")?.takeIf { it.isNotBlank() }),
         homeScore = args.getString("homeScore")?.toIntOrNull()?.takeIf { it >= 0 },
         awayScore = args.getString("awayScore")?.toIntOrNull()?.takeIf { it >= 0 },
         startTimeUtc = start?.let { Instant.fromEpochSeconds(it) },

@@ -48,6 +48,7 @@ import net.montycasa.roux.domain.model.GoalEvent
 import net.montycasa.roux.domain.model.GoalModifier
 import net.montycasa.roux.domain.model.GoalStrength
 import net.montycasa.roux.domain.model.GoalieLine
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.PeriodScoring
 import net.montycasa.roux.domain.model.PeriodShots
@@ -189,11 +190,11 @@ class GameDetailScreenTest {
 
     private val game =
         Game(
-            id = GameId("2026020188"),
+            id = GameId(League.NHL, "2026020188"),
             date = "2026-10-26",
             state = GameState.Final,
-            home = TeamRef(TeamKey("PHI"), name = "Flyers"),
-            away = TeamRef(TeamKey("CBJ"), name = "Blue Jackets"),
+            home = TeamRef(TeamKey(League.NHL, "PHI"), name = "Flyers"),
+            away = TeamRef(TeamKey(League.NHL, "CBJ"), name = "Blue Jackets"),
             homeScore = 4,
             awayScore = 3,
         )
@@ -644,7 +645,7 @@ class GameDetailScreenTest {
             withGoals(AuditStates.fullGoals.filter { it.period == 3 }),
             shownGame =
                 game.copy(
-                    away = TeamRef(TeamKey("UTA"), name = "Mammoth"),
+                    away = TeamRef(TeamKey(League.NHL, "UTA"), name = "Mammoth"),
                     awayScore = 3,
                     homeScore = 6,
                 ),

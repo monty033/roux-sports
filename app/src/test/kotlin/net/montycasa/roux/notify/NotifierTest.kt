@@ -14,6 +14,7 @@ import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.domain.policy.Alert
@@ -43,11 +44,11 @@ class NotifierTest {
 
     private val game =
         Game(
-            id = GameId(gameId),
+            id = GameId(League.NHL, gameId),
             date = "2025-02-01",
             state = GameState.Live(),
-            home = TeamRef(TeamKey("MTL"), name = "Montréal Canadiens"),
-            away = TeamRef(TeamKey("TOR"), name = "Toronto Maple Leafs"),
+            home = TeamRef(TeamKey(League.NHL, "MTL"), name = "Montréal Canadiens"),
+            away = TeamRef(TeamKey(League.NHL, "TOR"), name = "Toronto Maple Leafs"),
             awayScore = 2,
             homeScore = 1,
         )
@@ -67,11 +68,11 @@ class NotifierTest {
     private fun goal(
         away: Int = 2,
         home: Int = 1,
-    ) = Alert.Goal(GameId(gameId), away + home, away, home)
+    ) = Alert.Goal(GameId(League.NHL, gameId), away + home, away, home)
 
     private fun intermission(period: Int = 1) =
         Alert.Intermission(
-            gameId = GameId(gameId),
+            gameId = GameId(League.NHL, gameId),
             period = period,
             awayAbbrev = "TOR",
             homeAbbrev = "MTL",
@@ -102,7 +103,7 @@ class NotifierTest {
 
     @Test
     fun aStartArrivesOnTheStartChannel() {
-        notifier.post(Alert.GameStart(GameId(gameId), goalBaseline = 0), game)
+        notifier.post(Alert.GameStart(GameId(League.NHL, gameId), goalBaseline = 0), game)
 
         val notification = posted().single()
         assertEquals("TOR at MTL", notification.extras.getString(Notification.EXTRA_TITLE))
@@ -135,7 +136,7 @@ class NotifierTest {
 
     @Test
     fun aStartAndAGoalForTheSameGameAreSeparateNotifications() {
-        notifier.post(Alert.GameStart(GameId(gameId), goalBaseline = 0), game)
+        notifier.post(Alert.GameStart(GameId(League.NHL, gameId), goalBaseline = 0), game)
         notifier.post(goal(), game)
 
         assertEquals("the start and the goal are different news", 2, posted().size)
@@ -193,13 +194,13 @@ class NotifierTest {
         // The answer to "is there news?" does not depend on whether the user allowed notifications.
         shadowOf(application).denyPermissions(Manifest.permission.POST_NOTIFICATIONS)
 
-        assertEquals(NotificationOutcome.NothingToPost, notifier.post(Alert.Baseline(GameId(gameId), 3), game))
+        assertEquals(NotificationOutcome.NothingToPost, notifier.post(Alert.Baseline(GameId(League.NHL, gameId), 3), game))
         assertEquals(emptyList<Notification>(), posted())
     }
 
     @Test
     fun aGoalWithNoScoreDoesNotInventOne() {
-        notifier.post(Alert.Goal(GameId(gameId), goalCount = 1, awayScore = null, homeScore = null), game)
+        notifier.post(Alert.Goal(GameId(League.NHL, gameId), goalCount = 1, awayScore = null, homeScore = null), game)
 
         val title =
             posted()
@@ -214,11 +215,11 @@ class NotifierTest {
     private val shortNamed =
         game.copy(
             state = GameState.Final,
-            home = TeamRef(TeamKey("MTL"), name = "Montréal Canadiens", shortName = "Canadiens"),
-            away = TeamRef(TeamKey("TOR"), name = "Toronto Maple Leafs", shortName = "Maple Leafs"),
+            home = TeamRef(TeamKey(League.NHL, "MTL"), name = "Montréal Canadiens", shortName = "Canadiens"),
+            away = TeamRef(TeamKey(League.NHL, "TOR"), name = "Toronto Maple Leafs", shortName = "Maple Leafs"),
         )
 
-    private fun final(kind: FinalKind?) = Alert.Final(GameId(gameId), awayScore = 3, homeScore = 2, finalKind = kind)
+    private fun final(kind: FinalKind?) = Alert.Final(GameId(League.NHL, gameId), awayScore = 3, homeScore = 2, finalKind = kind)
 
     private fun titleOf(notification: Notification): String? = notification.extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
 
@@ -235,7 +236,7 @@ class NotifierTest {
 
     @Test
     fun eachAlertTypeLandsOnItsOwnChannel() {
-        notifier.post(Alert.GameStart(GameId(gameId), goalBaseline = 0), shortNamed)
+        notifier.post(Alert.GameStart(GameId(League.NHL, gameId), goalBaseline = 0), shortNamed)
         notifier.post(goal(), shortNamed)
         notifier.post(intermission(), shortNamed)
         notifier.post(final(FinalKind.REG), shortNamed)
@@ -314,14 +315,14 @@ class NotifierTest {
         notifier.post(final(null), game)
         assertEquals("Final: Toronto Maple Leafs 3, Montréal Canadiens 2", titleOf(posted().single()))
 
-        val bare = game.copy(home = TeamRef(TeamKey("MTL")), away = TeamRef(TeamKey("TOR")))
+        val bare = game.copy(home = TeamRef(TeamKey(League.NHL, "MTL")), away = TeamRef(TeamKey(League.NHL, "TOR")))
         notifier.post(final(null), bare)
         assertEquals("Final: TOR 3, MTL 2", titleOf(posted().single()))
     }
 
     @Test
     fun aFinalReplacesNeitherAGoalNorAStartNotification() {
-        val start = notifier.post(Alert.GameStart(GameId(gameId), goalBaseline = 0), shortNamed) as NotificationOutcome.Posted
+        val start = notifier.post(Alert.GameStart(GameId(League.NHL, gameId), goalBaseline = 0), shortNamed) as NotificationOutcome.Posted
         val goal = notifier.post(goal(), shortNamed) as NotificationOutcome.Posted
         val final = notifier.post(final(FinalKind.OT), shortNamed) as NotificationOutcome.Posted
 
@@ -363,7 +364,7 @@ class NotifierTest {
         assertEquals(NotificationOutcome.NotPosted(NotificationOutcome.Reason.NotificationsOff), outcome)
         assertEquals("nothing reaches the tray through a silenced channel", emptyList<Notification>(), posted())
         // And the other channel is untouched by it.
-        assertTrue(notifier.post(Alert.GameStart(GameId(gameId), 0), game) is NotificationOutcome.Posted)
+        assertTrue(notifier.post(Alert.GameStart(GameId(League.NHL, gameId), 0), game) is NotificationOutcome.Posted)
     }
 
     @Test

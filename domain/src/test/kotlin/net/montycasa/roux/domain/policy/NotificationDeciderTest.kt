@@ -4,6 +4,7 @@ import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
@@ -26,7 +27,7 @@ import kotlin.time.Instant
 class NotificationDeciderTest {
     private val decider = NotificationDecider()
     private val now = Instant.parse("2025-01-01T00:00:00Z")
-    private val gameId = GameId("2025020123")
+    private val gameId = GameId(League.NHL, "2025020123")
 
     private fun game(
         state: GameState = GameState.Live(),
@@ -39,8 +40,8 @@ class NotificationDeciderTest {
         id = gameId,
         date = "2025-02-01",
         state = state,
-        home = TeamRef(TeamKey("MTL"), name = "Montréal Canadiens"),
-        away = TeamRef(TeamKey("TOR"), name = "Toronto Maple Leafs"),
+        home = TeamRef(TeamKey(League.NHL, "MTL"), name = "Montréal Canadiens"),
+        away = TeamRef(TeamKey(League.NHL, "TOR"), name = "Toronto Maple Leafs"),
         awayScore = awayScore,
         homeScore = homeScore,
         startTimeUtc = start,

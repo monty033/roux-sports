@@ -21,6 +21,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import net.montycasa.roux.MainActivity
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.repo.TeamAlertPreferences
 import net.montycasa.roux.ui.scores.ScoreFixture
@@ -37,7 +38,7 @@ import org.robolectric.annotation.Config
 /** Toronto's game in the captured slate, and the only one these tests move. */
 private const val TORONTO_GAME = "2026020176"
 
-private val TORONTO = TeamKey("TOR")
+private val TORONTO = TeamKey(League.NHL, "TOR")
 
 /**
  * The capture is one finished evening, so every game in it is Final and nothing in it is ever watched. The

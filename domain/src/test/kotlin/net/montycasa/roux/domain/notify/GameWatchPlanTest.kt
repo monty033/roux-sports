@@ -4,6 +4,7 @@ import net.montycasa.roux.domain.model.DateIndexEntry
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.ScoreDay
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
@@ -30,11 +31,11 @@ class GameWatchPlanTest {
         home: String = "MTL",
         away: String = "TOR",
     ) = Game(
-        id = GameId(id),
+        id = GameId(League.NHL, id),
         date = "2025-02-01",
         state = state,
-        home = TeamRef(TeamKey(home)),
-        away = TeamRef(TeamKey(away)),
+        home = TeamRef(TeamKey(League.NHL, home)),
+        away = TeamRef(TeamKey(League.NHL, away)),
         startTimeUtc = start,
     )
 
@@ -151,7 +152,15 @@ class GameWatchPlanTest {
     @Test
     fun aTeamIsFollowedByItsSwitchesAloneWhetherOrNotItIsAFavourite() {
         // The plan is never told who the favourites are: only the opposing team has a switch on, and that is enough.
-        val onlyBoston = { team: TeamKey -> if (team == TeamKey("BOS")) TeamAlertPreferences(goals = true) else TeamAlertPreferences() }
+        val onlyBoston = { team: TeamKey ->
+            if (team ==
+                TeamKey(League.NHL, "BOS")
+            ) {
+                TeamAlertPreferences(goals = true)
+            } else {
+                TeamAlertPreferences()
+            }
+        }
 
         assertEquals(
             listOf("2025020123"),

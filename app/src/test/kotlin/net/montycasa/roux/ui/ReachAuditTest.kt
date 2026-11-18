@@ -34,6 +34,7 @@ import net.montycasa.roux.domain.model.GameLanding
 import net.montycasa.roux.domain.model.GameRightRail
 import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.GoalieLine
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.PeriodScoring
 import net.montycasa.roux.domain.model.PeriodShots
 import net.montycasa.roux.domain.model.PlayerRef
@@ -98,11 +99,11 @@ class ReachAuditTest {
     private val scoreIndex = listOf(DateIndexEntry("2025-10-28", 2), DateIndexEntry(scoreDate, 0))
     private val scoreGame =
         Game(
-            id = GameId("2025020123"),
+            id = GameId(League.NHL, "2025020123"),
             date = scoreDate,
             state = GameState.Scheduled,
-            home = TeamRef(TeamKey("TOR"), name = "Toronto Maple Leafs"),
-            away = TeamRef(TeamKey("MTL"), name = "Montréal Canadiens"),
+            home = TeamRef(TeamKey(League.NHL, "TOR"), name = "Toronto Maple Leafs"),
+            away = TeamRef(TeamKey(League.NHL, "MTL"), name = "Montréal Canadiens"),
             startTimeUtc = Instant.parse("2025-10-25T23:00:00Z"),
         )
     private val scoresFresh = ScoresUiState(scoreDate, today = scoreDate, freshness = Freshness.Fresh, dateIndex = scoreIndex)
@@ -124,11 +125,11 @@ class ReachAuditTest {
             rows =
                 listOf(
                     Game(
-                        id = GameId("2026020001"),
+                        id = GameId(League.NHL, "2026020001"),
                         date = "2026-09-29",
                         state = GameState.Final,
-                        home = TeamRef(TeamKey("TOR"), name = "Toronto Maple Leafs"),
-                        away = TeamRef(TeamKey("MTL"), name = "Montréal Canadiens"),
+                        home = TeamRef(TeamKey(League.NHL, "TOR"), name = "Toronto Maple Leafs"),
+                        away = TeamRef(TeamKey(League.NHL, "MTL"), name = "Montréal Canadiens"),
                         homeScore = 4,
                         awayScore = 2,
                     ),
@@ -197,11 +198,11 @@ class ReachAuditTest {
 
     private val detailGame =
         Game(
-            id = GameId("2026020188"),
+            id = GameId(League.NHL, "2026020188"),
             date = "2026-10-26",
             state = GameState.Final,
-            home = TeamRef(TeamKey("PHI"), name = "Flyers"),
-            away = TeamRef(TeamKey("CBJ"), name = "Blue Jackets"),
+            home = TeamRef(TeamKey(League.NHL, "PHI"), name = "Flyers"),
+            away = TeamRef(TeamKey(League.NHL, "CBJ"), name = "Blue Jackets"),
             homeScore = 4,
             awayScore = 3,
         )

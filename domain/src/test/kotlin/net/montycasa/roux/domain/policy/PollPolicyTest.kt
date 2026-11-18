@@ -4,6 +4,7 @@ import net.montycasa.roux.domain.model.FinalKind
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
@@ -376,11 +377,11 @@ class PollPolicyTest {
         finalKind: FinalKind? = null,
     ): Game =
         Game(
-            id = GameId("1"),
+            id = GameId(League.NHL, "1"),
             date = today,
             state = state,
-            home = TeamRef(TeamKey("PHI")),
-            away = TeamRef(TeamKey("ANA")),
+            home = TeamRef(TeamKey(League.NHL, "PHI")),
+            away = TeamRef(TeamKey(League.NHL, "ANA")),
             startTimeUtc = start,
             period = period,
             finalKind = finalKind,

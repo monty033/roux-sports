@@ -1,8 +1,22 @@
 package net.montycasa.roux.domain.model
 
-/** A team's abbreviation as supplied by the NHL feed. */
-@JvmInline
-value class TeamKey(
+/**
+ * A league the app reads. [id] is the stable string that persisted keys and [net.montycasa.roux.domain.policy.LeagueOrder]
+ * use; it is the same for every reader of the value, so it must not change.
+ */
+enum class League(
+    val id: String,
+) {
+    NHL("nhl"),
+    NFL("nfl"),
+}
+
+/**
+ * A team's abbreviation as supplied by its league's feed. The abbreviation alone is not unique: ten NFL abbreviations
+ * also name an NHL club, so the league is part of the identity.
+ */
+data class TeamKey(
+    val league: League,
     val abbrev: String,
 )
 

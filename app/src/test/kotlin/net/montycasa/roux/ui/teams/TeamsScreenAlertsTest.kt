@@ -18,6 +18,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.repo.UpcomingLead
 import net.montycasa.roux.ui.theme.RouxTheme
 import org.junit.Assert.assertEquals
@@ -41,7 +42,7 @@ class TeamsScreenAlertsTest {
     private val row =
         net.montycasa.roux.domain.model.TeamRef(
             net.montycasa.roux.domain.model
-                .TeamKey("TOR"),
+                .TeamKey(League.NHL, "TOR"),
             name = "Toronto Maple Leafs",
         )
 
@@ -78,7 +79,7 @@ class TeamsScreenAlertsTest {
         val other =
             net.montycasa.roux.domain.model.TeamRef(
                 net.montycasa.roux.domain.model
-                    .TeamKey("MTL"),
+                    .TeamKey(League.NHL, "MTL"),
                 name = "Montréal Canadiens",
             )
         var opened: net.montycasa.roux.domain.model.TeamRef? = null

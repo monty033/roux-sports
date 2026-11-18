@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import net.montycasa.roux.domain.model.AccentColor
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.ThemeMode
 import net.montycasa.roux.domain.repo.NotificationLedgerEntry
@@ -222,12 +223,12 @@ class DataStorePreferencesRepositoryTest {
             val directory = newDirectory()
             val first = newScope()
             DataStorePreferencesRepository(directory, first)
-                .setFavourites(setOf(TeamKey("TOR"), TeamKey("MTL")))
+                .setFavourites(setOf(TeamKey(League.NHL, "TOR"), TeamKey(League.NHL, "MTL")))
             closeScope(first)
 
             val second = newScope()
             assertEquals(
-                setOf(TeamKey("TOR"), TeamKey("MTL")),
+                setOf(TeamKey(League.NHL, "TOR"), TeamKey(League.NHL, "MTL")),
                 openWhenReleased(directory, second).getFavourites(),
             )
             closeScope(second)
@@ -322,7 +323,7 @@ class DataStorePreferencesRepositoryTest {
 
                 assertEquals(
                     "changing the factory must not lose what was already saved",
-                    setOf(TeamKey("TOR"), TeamKey("MTL")),
+                    setOf(TeamKey(League.NHL, "TOR"), TeamKey(League.NHL, "MTL")),
                     repository.getFavourites(),
                 )
 
@@ -331,7 +332,7 @@ class DataStorePreferencesRepositoryTest {
                 assertEquals(false, repository.getFavouritesOnly())
                 assertEquals(
                     "writing through the new store must not drop the legacy favourites",
-                    setOf(TeamKey("TOR"), TeamKey("MTL")),
+                    setOf(TeamKey(League.NHL, "TOR"), TeamKey(League.NHL, "MTL")),
                     repository.getFavourites(),
                 )
             } finally {
@@ -350,9 +351,9 @@ class DataStorePreferencesRepositoryTest {
                 repository.observeFavourites().test {
                     assertEquals("a store with nothing saved is empty, not absent", emptySet<TeamKey>(), awaitItem())
 
-                    repository.setFavourites(setOf(TeamKey("TOR")))
+                    repository.setFavourites(setOf(TeamKey(League.NHL, "TOR")))
 
-                    assertEquals("an observer must see the write without asking again", setOf(TeamKey("TOR")), awaitItem())
+                    assertEquals("an observer must see the write without asking again", setOf(TeamKey(League.NHL, "TOR")), awaitItem())
                     cancelAndIgnoreRemainingEvents()
                 }
             } finally {
@@ -386,7 +387,7 @@ class DataStorePreferencesRepositoryTest {
             val scope = newScope()
             try {
                 val repository = DataStorePreferencesRepository(directory, scope)
-                val preferences = repository.getTeamAlertPreferences(TeamKey("TOR"))
+                val preferences = repository.getTeamAlertPreferences(TeamKey(League.NHL, "TOR"))
 
                 assertFalse("game-start alerts must not arrive without an opt-in", preferences.start)
                 assertFalse("goal alerts must not arrive without an opt-in", preferences.goals)
@@ -401,22 +402,22 @@ class DataStorePreferencesRepositoryTest {
             val directory = newDirectory()
             val first = newScope()
             val writer = DataStorePreferencesRepository(directory, first)
-            writer.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(start = false, goals = true))
-            writer.setTeamAlertPreferences(TeamKey("MTL"), TeamAlertPreferences(start = true, goals = false))
+            writer.setTeamAlertPreferences(TeamKey(League.NHL, "TOR"), TeamAlertPreferences(start = false, goals = true))
+            writer.setTeamAlertPreferences(TeamKey(League.NHL, "MTL"), TeamAlertPreferences(start = true, goals = false))
             closeScope(first)
 
             val second = newScope()
             val reader = openWhenReleased(directory, second)
             assertEquals(
                 TeamAlertPreferences(start = false, goals = true),
-                reader.getTeamAlertPreferences(TeamKey("TOR")),
+                reader.getTeamAlertPreferences(TeamKey(League.NHL, "TOR")),
             )
             assertEquals(
                 TeamAlertPreferences(start = true, goals = false),
-                reader.getTeamAlertPreferences(TeamKey("MTL")),
+                reader.getTeamAlertPreferences(TeamKey(League.NHL, "MTL")),
             )
             // One team's controls must not leak into a team that was never configured.
-            assertEquals(TeamAlertPreferences(), reader.getTeamAlertPreferences(TeamKey("BOS")))
+            assertEquals(TeamAlertPreferences(), reader.getTeamAlertPreferences(TeamKey(League.NHL, "BOS")))
             closeScope(second)
         }
 
@@ -428,14 +429,14 @@ class DataStorePreferencesRepositoryTest {
             val repository = DataStorePreferencesRepository(directory, scope)
             assertEquals(false, repository.anyTeamAlertsOn())
 
-            repository.setFavourites(setOf(TeamKey("TOR")))
-            repository.setTeamAlertPreferences(TeamKey("MTL"), TeamAlertPreferences(start = false, goals = false))
+            repository.setFavourites(setOf(TeamKey(League.NHL, "TOR")))
+            repository.setTeamAlertPreferences(TeamKey(League.NHL, "MTL"), TeamAlertPreferences(start = false, goals = false))
             assertEquals(false, repository.anyTeamAlertsOn())
 
-            repository.setTeamAlertPreferences(TeamKey("MTL"), TeamAlertPreferences(final = true))
+            repository.setTeamAlertPreferences(TeamKey(League.NHL, "MTL"), TeamAlertPreferences(final = true))
             assertEquals(true, repository.anyTeamAlertsOn())
 
-            repository.setTeamAlertPreferences(TeamKey("MTL"), TeamAlertPreferences())
+            repository.setTeamAlertPreferences(TeamKey(League.NHL, "MTL"), TeamAlertPreferences())
             assertEquals(false, repository.anyTeamAlertsOn())
             closeScope(scope)
         }
@@ -497,7 +498,7 @@ class DataStorePreferencesRepositoryTest {
             assertEquals(emptySet<TeamKey>(), repository.getFavourites())
             assertEquals(true, repository.getFavouritesOnly())
             assertEquals(listOf("nhl", "nfl", "mlb"), repository.getLeagueOrder())
-            assertEquals(TeamAlertPreferences(), repository.getTeamAlertPreferences(TeamKey("TOR")))
+            assertEquals(TeamAlertPreferences(), repository.getTeamAlertPreferences(TeamKey(League.NHL, "TOR")))
             closeScope(scope)
         }
 
@@ -564,18 +565,18 @@ class DataStorePreferencesRepositoryTest {
             assertEquals(emptySet<TeamKey>(), repository.getFavourites())
             assertEquals(true, repository.getFavouritesOnly())
             assertEquals(listOf("nhl", "nfl", "mlb"), repository.getLeagueOrder())
-            assertEquals(TeamAlertPreferences(), repository.getTeamAlertPreferences(TeamKey("TOR")))
+            assertEquals(TeamAlertPreferences(), repository.getTeamAlertPreferences(TeamKey(League.NHL, "TOR")))
             assertEquals(null, repository.getNotificationLedgerEntry("2024020001"))
             assertEquals(false, repository.isWritable())
             // Every mutator must refuse, not just the one this test used to check: a write that
             // slipped through would stamp the marker back to 1 and strand the newer file.
             val refusals: List<suspend () -> Unit> =
                 listOf(
-                    { repository.setFavourites(setOf(TeamKey("MTL"))) },
+                    { repository.setFavourites(setOf(TeamKey(League.NHL, "MTL"))) },
                     { repository.setFavouritesOnly(false) },
-                    { repository.setTeamAlertPreferences(TeamKey("MTL"), TeamAlertPreferences(upcomingLeadMinutes = 60)) },
+                    { repository.setTeamAlertPreferences(TeamKey(League.NHL, "MTL"), TeamAlertPreferences(upcomingLeadMinutes = 60)) },
                     { repository.setLeagueOrder(listOf("mlb", "nhl", "nfl")) },
-                    { repository.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(start = false, goals = false)) },
+                    { repository.setTeamAlertPreferences(TeamKey(League.NHL, "TOR"), TeamAlertPreferences(start = false, goals = false)) },
                     {
                         repository.setNotificationLedgerEntry(
                             "2024020002",
@@ -621,7 +622,7 @@ class DataStorePreferencesRepositoryTest {
             )
             repository.getFavourites()
             repository.getFavouritesOnly()
-            repository.getTeamAlertPreferences(TeamKey("TOR"))
+            repository.getTeamAlertPreferences(TeamKey(League.NHL, "TOR"))
             closeScope(scope)
 
             val readerScope = newScope()
@@ -638,7 +639,7 @@ class DataStorePreferencesRepositoryTest {
         runTest {
             val directory = newDirectory()
             val writerScope = newScope()
-            DataStorePreferencesRepository(directory, writerScope).setFavourites(setOf(TeamKey("TOR")))
+            DataStorePreferencesRepository(directory, writerScope).setFavourites(setOf(TeamKey(League.NHL, "TOR")))
             // DataStore refuses two live instances over one file, so the writer has to close first.
             closeScope(writerScope)
 
@@ -1134,7 +1135,7 @@ class DataStorePreferencesRepositoryTest {
             val scope = newScope()
             try {
                 val repository = DataStorePreferencesRepository(newDirectory(), scope)
-                val preferences = repository.getTeamAlertPreferences(TeamKey("TOR"))
+                val preferences = repository.getTeamAlertPreferences(TeamKey(League.NHL, "TOR"))
 
                 assertEquals(TeamAlertPreferences(), preferences)
                 assertEquals(
@@ -1165,7 +1166,7 @@ class DataStorePreferencesRepositoryTest {
             try {
                 assertEquals(
                     TeamAlertPreferences(start = true, goals = true),
-                    openWhenReleased(directory, second).getTeamAlertPreferences(TeamKey("TOR")),
+                    openWhenReleased(directory, second).getTeamAlertPreferences(TeamKey(League.NHL, "TOR")),
                 )
             } finally {
                 closeScope(second)
@@ -1186,7 +1187,7 @@ class DataStorePreferencesRepositoryTest {
             for ((name, preferences, keyName) in switches) {
                 val directory = newDirectory()
                 val writerScope = newScope()
-                DataStorePreferencesRepository(directory, writerScope).setTeamAlertPreferences(TeamKey("TOR"), preferences)
+                DataStorePreferencesRepository(directory, writerScope).setTeamAlertPreferences(TeamKey(League.NHL, "TOR"), preferences)
                 closeScope(writerScope)
 
                 val readerScope = newScope()
@@ -1194,7 +1195,7 @@ class DataStorePreferencesRepositoryTest {
                     assertEquals(
                         "only $name was switched on, so only $name may read back on",
                         preferences,
-                        openWhenReleased(directory, readerScope).getTeamAlertPreferences(TeamKey("TOR")),
+                        openWhenReleased(directory, readerScope).getTeamAlertPreferences(TeamKey(League.NHL, "TOR")),
                     )
                 } finally {
                     closeScope(readerScope)
@@ -1224,7 +1225,7 @@ class DataStorePreferencesRepositoryTest {
             val scope = newScope()
             try {
                 val repository = DataStorePreferencesRepository(newDirectory(), scope)
-                assertEquals(30, repository.getTeamAlertPreferences(TeamKey("TOR")).upcomingLeadMinutes)
+                assertEquals(30, repository.getTeamAlertPreferences(TeamKey(League.NHL, "TOR")).upcomingLeadMinutes)
             } finally {
                 closeScope(scope)
             }
@@ -1237,7 +1238,10 @@ class DataStorePreferencesRepositoryTest {
                 val directory = newDirectory()
                 val writerScope = newScope()
                 DataStorePreferencesRepository(directory, writerScope)
-                    .setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(upcoming = true, upcomingLeadMinutes = minutes))
+                    .setTeamAlertPreferences(
+                        TeamKey(League.NHL, "TOR"),
+                        TeamAlertPreferences(upcoming = true, upcomingLeadMinutes = minutes),
+                    )
                 closeScope(writerScope)
 
                 val readerScope = newScope()
@@ -1245,7 +1249,7 @@ class DataStorePreferencesRepositoryTest {
                     assertEquals(
                         "a stored $minutes must read back as $minutes",
                         minutes,
-                        openWhenReleased(directory, readerScope).getTeamAlertPreferences(TeamKey("TOR")).upcomingLeadMinutes,
+                        openWhenReleased(directory, readerScope).getTeamAlertPreferences(TeamKey(League.NHL, "TOR")).upcomingLeadMinutes,
                     )
                 } finally {
                     closeScope(readerScope)
@@ -1259,10 +1263,14 @@ class DataStorePreferencesRepositoryTest {
             val scope = newScope()
             try {
                 val repository = DataStorePreferencesRepository(newDirectory(), scope)
-                repository.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(upcomingLeadMinutes = 60))
+                repository.setTeamAlertPreferences(TeamKey(League.NHL, "TOR"), TeamAlertPreferences(upcomingLeadMinutes = 60))
 
-                assertEquals("the team that was written", 60, repository.getTeamAlertPreferences(TeamKey("TOR")).upcomingLeadMinutes)
-                assertEquals("a team that was not", 30, repository.getTeamAlertPreferences(TeamKey("MTL")).upcomingLeadMinutes)
+                assertEquals(
+                    "the team that was written",
+                    60,
+                    repository.getTeamAlertPreferences(TeamKey(League.NHL, "TOR")).upcomingLeadMinutes,
+                )
+                assertEquals("a team that was not", 30, repository.getTeamAlertPreferences(TeamKey(League.NHL, "MTL")).upcomingLeadMinutes)
             } finally {
                 closeScope(scope)
             }
@@ -1286,7 +1294,7 @@ class DataStorePreferencesRepositoryTest {
                     assertEquals(
                         "a stored $illegal is not a legal lead",
                         30,
-                        repository.getTeamAlertPreferences(TeamKey("TOR")).upcomingLeadMinutes,
+                        repository.getTeamAlertPreferences(TeamKey(League.NHL, "TOR")).upcomingLeadMinutes,
                     )
                 } finally {
                     closeScope(scope)
@@ -1301,9 +1309,9 @@ class DataStorePreferencesRepositoryTest {
             val scope = newScope()
             try {
                 val repository = DataStorePreferencesRepository(directory, scope)
-                repository.setTeamAlertPreferences(TeamKey("TOR"), TeamAlertPreferences(upcomingLeadMinutes = 45))
+                repository.setTeamAlertPreferences(TeamKey(League.NHL, "TOR"), TeamAlertPreferences(upcomingLeadMinutes = 45))
 
-                assertEquals("the read", 30, repository.getTeamAlertPreferences(TeamKey("TOR")).upcomingLeadMinutes)
+                assertEquals("the read", 30, repository.getTeamAlertPreferences(TeamKey(League.NHL, "TOR")).upcomingLeadMinutes)
             } finally {
                 closeScope(scope)
             }

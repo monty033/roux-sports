@@ -12,6 +12,7 @@ import net.montycasa.roux.domain.model.Division
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.GoalieStat
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.LeagueClub
 import net.montycasa.roux.domain.model.LeagueSummary
 import net.montycasa.roux.domain.model.PlayerCareer
@@ -369,7 +370,7 @@ internal object DetailPageFixtures {
 
     // ----- Club ------------------------------------------------------------------------------------------------------
 
-    private val mapleLeafs = TeamRef(TeamKey("TOR"), name = "Toronto Maple Leafs", shortName = "Maple Leafs")
+    private val mapleLeafs = TeamRef(TeamKey(League.NHL, "TOR"), name = "Toronto Maple Leafs", shortName = "Maple Leafs")
 
     private val clubRow =
         StandingRow(
@@ -396,9 +397,9 @@ internal object DetailPageFixtures {
         homeScore: Int? = null,
         awayScore: Int? = null,
     ): ClubGame {
-        val toronto = TeamRef(TeamKey("TOR"), name = "Toronto Maple Leafs", shortName = "Maple Leafs")
+        val toronto = TeamRef(TeamKey(League.NHL, "TOR"), name = "Toronto Maple Leafs", shortName = "Maple Leafs")
         return ClubGame(
-            id = GameId(id),
+            id = GameId(League.NHL, id),
             date = date,
             startTimeUtc = Instant.parse("${date}T23:00:00Z"),
             venue = "Scotiabank Arena",
@@ -416,7 +417,7 @@ internal object DetailPageFixtures {
             game(
                 "2026020101",
                 "2026-10-12",
-                TeamRef(TeamKey("MTL"), name = "Montréal Canadiens", shortName = "Canadiens"),
+                TeamRef(TeamKey(League.NHL, "MTL"), name = "Montréal Canadiens", shortName = "Canadiens"),
                 home = true,
                 state = GameState.Final,
                 homeScore = 4,
@@ -425,7 +426,7 @@ internal object DetailPageFixtures {
             game(
                 "2026020114",
                 "2026-10-15",
-                TeamRef(TeamKey("BOS"), name = "Boston Bruins", shortName = "Bruins"),
+                TeamRef(TeamKey(League.NHL, "BOS"), name = "Boston Bruins", shortName = "Bruins"),
                 home = false,
                 state = GameState.Final,
                 homeScore = 3,
@@ -434,7 +435,7 @@ internal object DetailPageFixtures {
             game(
                 "2026020138",
                 "2026-10-20",
-                TeamRef(TeamKey("OTT"), name = "Ottawa Senators", shortName = "Senators"),
+                TeamRef(TeamKey(League.NHL, "OTT"), name = "Ottawa Senators", shortName = "Senators"),
                 home = true,
                 state = GameState.Final,
                 homeScore = 2,
@@ -443,7 +444,7 @@ internal object DetailPageFixtures {
             game(
                 "2026020162",
                 "2026-10-28",
-                TeamRef(TeamKey("NYR"), name = "New York Rangers", shortName = "Rangers"),
+                TeamRef(TeamKey(League.NHL, "NYR"), name = "New York Rangers", shortName = "Rangers"),
                 home = false,
                 state = GameState.Final,
                 homeScore = 3,
@@ -452,7 +453,7 @@ internal object DetailPageFixtures {
             game(
                 "2026020189",
                 "2026-11-02",
-                TeamRef(TeamKey("TBL"), name = "Tampa Bay Lightning", shortName = "Lightning"),
+                TeamRef(TeamKey(League.NHL, "TBL"), name = "Tampa Bay Lightning", shortName = "Lightning"),
                 home = true,
                 state = GameState.Final,
                 homeScore = 5,
@@ -461,7 +462,7 @@ internal object DetailPageFixtures {
             game(
                 "2026020214",
                 "2026-11-07",
-                TeamRef(TeamKey("DET"), name = "Detroit Red Wings", shortName = "Red Wings"),
+                TeamRef(TeamKey(League.NHL, "DET"), name = "Detroit Red Wings", shortName = "Red Wings"),
                 home = false,
                 state = GameState.Scheduled,
             ),
@@ -622,7 +623,7 @@ internal object DetailPageFixtures {
 
     val teamState =
         TeamDetailUiState(
-            teamKey = TeamKey("TOR"),
+            teamKey = TeamKey(League.NHL, "TOR"),
             row = clubRow,
             isLoading = false,
             schedule = clubSeason(clubSchedule),

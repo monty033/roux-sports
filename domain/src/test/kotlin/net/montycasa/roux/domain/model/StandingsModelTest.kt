@@ -1,5 +1,6 @@
 package net.montycasa.roux.domain.model
 
+import net.montycasa.roux.domain.model.League
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -102,7 +103,7 @@ class StandingsModelTest {
     fun rowRetainsTeamAssetsAndFeedRankingsIncludingZeroWildcardSequence() {
         val team =
             TeamRef(
-                key = TeamKey("CAR"),
+                key = TeamKey(League.NHL, "CAR"),
                 name = "Carolina Hurricanes",
                 logoUrl = "https://assets.nhle.com/logos/nhl/svg/CAR_light.svg",
                 darkLogoUrl = "https://assets.nhle.com/logos/nhl/svg/CAR_dark.svg",
@@ -141,7 +142,7 @@ class StandingsModelTest {
 
     private fun row(otl: Int?): StandingRow =
         StandingRow(
-            team = TeamRef(TeamKey("CAR")),
+            team = TeamRef(TeamKey(League.NHL, "CAR")),
             gp = 15,
             w = 10,
             l = 3,

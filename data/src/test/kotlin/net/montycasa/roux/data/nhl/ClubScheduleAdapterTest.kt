@@ -9,6 +9,7 @@ import kotlinx.serialization.json.jsonObject
 import net.montycasa.roux.data.Fixtures
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.League
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -32,7 +33,7 @@ class ClubScheduleAdapterTest {
         val games = (NhlAdapter.parseClubSchedule(fixture) as ParseResult.Success).value
         val first = games.first()
 
-        assertEquals(GameId("2026010009"), first.id)
+        assertEquals(GameId(League.NHL, "2026010009"), first.id)
         assertEquals("2026-09-20", first.date)
         assertEquals(Instant.parse("2026-09-20T20:00:00Z"), first.startTimeUtc)
         assertEquals("Honda Center", first.venue)

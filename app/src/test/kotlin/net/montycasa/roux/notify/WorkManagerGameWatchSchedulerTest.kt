@@ -12,6 +12,7 @@ import net.montycasa.roux.domain.model.DateIndexEntry
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.ScoreDay
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
@@ -64,11 +65,11 @@ class WorkManagerGameWatchSchedulerTest {
         home: String = "MTL",
         away: String = "TOR",
     ) = Game(
-        id = GameId(gameId),
+        id = GameId(League.NHL, gameId),
         date = "2025-02-01",
         state = state,
-        home = TeamRef(TeamKey(home)),
-        away = TeamRef(TeamKey(away)),
+        home = TeamRef(TeamKey(League.NHL, home)),
+        away = TeamRef(TeamKey(League.NHL, away)),
         startTimeUtc = now + startInHours.hours,
     )
 
