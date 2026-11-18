@@ -1,0 +1,27 @@
+NFL capture label: 2026-11-18
+Source: https://site.api.espn.com/apis/site/v2/sports/football/nfl - ESPN public site API, unofficial, no key. Authorized 2026-11-18; docs/nfl-sources.md records what it carries.
+transfer_bytes: curl size_download (body before decompression). stored_bytes: bytes on disk after decompression.
+
+Sample days: Sunday A 2026-11-15; Sunday B 2026-11-08; empty day 2026-11-17
+nfl-scoreboard-today.json transfer_bytes=19694 stored_bytes=236477 url=https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard
+nfl-scoreboard-sunday-a.json transfer_bytes=11260 stored_bytes=106808 url=https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=20261115
+nfl-scoreboard-sunday-b.json transfer_bytes=12155 stored_bytes=115422 url=https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=20261108
+nfl-scoreboard-emptyday.json transfer_bytes=1164 stored_bytes=5050 url=https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=20261117
+nfl-teams.json transfer_bytes=7470 stored_bytes=148848 url=https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams
+nfl-standings.json transfer_bytes=8468 stored_bytes=157567 url=https://site.api.espn.com/apis/v2/sports/football/nfl/standings
+nfl-roster-away.json transfer_bytes=28486 stored_bytes=373875 url=https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/NE/roster
+nfl-schedule-away.json transfer_bytes=14050 stored_bytes=313886 url=https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/NE/schedule
+nfl-stats-away.json transfer_bytes=12409 stored_bytes=88135 url=https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/NE/statistics
+nfl-roster-home.json transfer_bytes=29638 stored_bytes=393303 url=https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/DET/roster
+nfl-schedule-home.json transfer_bytes=13223 stored_bytes=304990 url=https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/DET/schedule
+nfl-stats-home.json transfer_bytes=12423 stored_bytes=88127 url=https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/DET/statistics
+nfl-summary-final.json transfer_bytes=49332 stored_bytes=573284 url=https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401873053
+nfl-athlete-QB.json transfer_bytes=9758 stored_bytes=94260 url=https://site.api.espn.com/apis/common/v3/sports/football/nfl/athletes/3044720
+nfl-gamelog-QB.json transfer_bytes=2632 stored_bytes=31127 url=https://site.api.espn.com/apis/common/v3/sports/football/nfl/athletes/3044720/gamelog
+nfl-athlete-WR.json transfer_bytes=7075 stored_bytes=73488 url=https://site.api.espn.com/apis/common/v3/sports/football/nfl/athletes/2580216
+nfl-gamelog-WR.json transfer_bytes=2901 stored_bytes=40524 url=https://site.api.espn.com/apis/common/v3/sports/football/nfl/athletes/2580216/gamelog
+nfl-athlete-DE.json transfer_bytes=10325 stored_bytes=101939 url=https://site.api.espn.com/apis/common/v3/sports/football/nfl/athletes/4372099
+nfl-gamelog-DE.json transfer_bytes=4509 stored_bytes=88260 url=https://site.api.espn.com/apis/common/v3/sports/football/nfl/athletes/4372099/gamelog
+nfl-athlete-K.json transfer_bytes=5689 stored_bytes=47022 url=https://site.api.espn.com/apis/common/v3/sports/football/nfl/athletes/4689936
+nfl-gamelog-K.json transfer_bytes=4515 stored_bytes=87822 url=https://site.api.espn.com/apis/common/v3/sports/football/nfl/athletes/4689936/gamelog
+nfl-gamelog-empty.json transfer_bytes=197 stored_bytes=398 url=https://site.api.espn.com/apis/common/v3/sports/football/nfl/athletes/4710422/gamelog
