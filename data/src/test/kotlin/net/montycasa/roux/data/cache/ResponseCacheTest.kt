@@ -118,6 +118,46 @@ class ResponseCacheTest {
         }
 
     @Test
+    fun nflScoreAndScoreWithTheSameIdDoNotCollide() =
+        withCache { _, cache, _ ->
+            val nfl = CacheKey(CacheKind.NflScore, "2026-11-22")
+            cache.put(nfl, RAW, FETCHED_AT)
+
+            assertNull(
+                "an NFL score must not be readable as an NHL score with the same id",
+                cache.get(CacheKey(CacheKind.Score, "2026-11-22")),
+            )
+            assertArrayEquals(RAW, cache.get(nfl)!!.bytes)
+        }
+
+    @Test
+    fun nflScoreEvictionDoesNotEvictScore() =
+        withCache { fs, cache, clock ->
+            val score = CacheKey(CacheKind.Score, "older")
+            cache.put(score, RAW, FETCHED_AT)
+            repeat(31) { index ->
+                clock.advance()
+                cache.put(CacheKey(CacheKind.NflScore, "$index"), RAW, FETCHED_AT)
+            }
+
+            assertArrayEquals(RAW, cache.get(score)!!.bytes)
+            assertEquals(31, entriesIn(fs).size)
+        }
+
+    @Test
+    fun everyCacheKindPrefixIsDistinctFromEveryOther() {
+        for (a in CacheKind.entries) {
+            for (b in CacheKind.entries) {
+                if (a == b) continue
+                assertFalse(
+                    "${a.name}'s prefix '${a.prefix}-' must not prefix ${b.name}'s '${b.prefix}-'",
+                    "${b.prefix}-".startsWith("${a.prefix}-"),
+                )
+            }
+        }
+    }
+
+    @Test
     fun equalWriteTimesEvictByFileName() =
         withCache { _, cache, _ ->
             listOf("c", "a", "b", "d").forEach {
