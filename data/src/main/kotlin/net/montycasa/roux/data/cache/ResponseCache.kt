@@ -55,6 +55,13 @@ enum class CacheKind(
     DetailLanding(20, "detail-landing"),
     DetailBoxscore(20, "detail-boxscore"),
     DetailRightRail(20, "detail-right-rail"),
+
+    // NFL kinds get their own league-qualified prefixes so their eviction budgets never cross the
+    // NHL ones. A busy NFL Sunday can evict the oldest NFL day without touching the NHL score a fan
+    // is still reading. NflScore mirrors the per-day Score budget; NflWeek holds one entry per week
+    // of a season, which a few dozen slots covers.
+    NflScore(30, "nfl-score"),
+    NflWeek(32, "nfl-week"),
 }
 
 data class CacheKey(
