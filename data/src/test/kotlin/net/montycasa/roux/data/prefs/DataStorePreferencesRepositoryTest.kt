@@ -366,7 +366,7 @@ class DataStorePreferencesRepositoryTest {
         runTest {
             val directory = newDirectory()
             // Written by a build that understands more than this one: readable, but not interpretable here.
-            writeRawLedgerEntry(directory, gameId = "game-1", version = 2, favourites = setOf("TOR"))
+            writeRawLedgerEntry(directory, gameId = "game-1", version = 3, favourites = setOf("TOR"))
 
             val scope = newScope()
             try {
@@ -648,7 +648,7 @@ class DataStorePreferencesRepositoryTest {
                 openRawStore(directory, readerScope)
                     .data
                     .first()
-            assertEquals(1, stored[intPreferencesKey("prefs_version")])
+            assertEquals(2, stored[intPreferencesKey("prefs_version")])
             closeScope(readerScope)
         }
 
@@ -767,7 +767,7 @@ class DataStorePreferencesRepositoryTest {
                 goalCount = 1,
                 startNotified = false,
                 updatedAt = 1L,
-                version = 2,
+                version = 3,
             )
 
             val scope = newScope()
@@ -782,7 +782,7 @@ class DataStorePreferencesRepositoryTest {
             val readerScope = newScope()
             try {
                 val stored = openRawStore(directory, readerScope).data.first()
-                assertEquals("the newer build's marker must survive", 2, stored[intPreferencesKey("prefs_version")])
+                assertEquals("the newer build's marker must survive", 3, stored[intPreferencesKey("prefs_version")])
                 assertEquals("and its ledger must be untouched", 1, stored[intPreferencesKey("ledger_goals_game-1")])
                 assertEquals(false, stored[booleanPreferencesKey("ledger_start_game-1")])
                 assertEquals(1L, stored[longPreferencesKey("ledger_time_game-1")])
@@ -1155,8 +1155,8 @@ class DataStorePreferencesRepositoryTest {
             try {
                 // An upgrade: the file holds the two switches the previous build wrote and nothing else.
                 openRawStore(directory, first).edit { stored ->
-                    stored[booleanPreferencesKey("team_TOR_alerts_start")] = true
-                    stored[booleanPreferencesKey("team_TOR_alerts_goals")] = true
+                    stored[booleanPreferencesKey("team_nhl:TOR_alerts_start")] = true
+                    stored[booleanPreferencesKey("team_nhl:TOR_alerts_goals")] = true
                 }
             } finally {
                 closeScope(first)
@@ -1178,11 +1178,11 @@ class DataStorePreferencesRepositoryTest {
         runTest {
             val switches =
                 listOf(
-                    Triple("start", TeamAlertPreferences(start = true), "team_TOR_alerts_start"),
-                    Triple("goals", TeamAlertPreferences(goals = true), "team_TOR_alerts_goals"),
-                    Triple("intermission", TeamAlertPreferences(intermission = true), "team_TOR_alerts_intermission"),
-                    Triple("final", TeamAlertPreferences(final = true), "team_TOR_alerts_final"),
-                    Triple("upcoming", TeamAlertPreferences(upcoming = true), "team_TOR_alerts_upcoming"),
+                    Triple("start", TeamAlertPreferences(start = true), "team_nhl:TOR_alerts_start"),
+                    Triple("goals", TeamAlertPreferences(goals = true), "team_nhl:TOR_alerts_goals"),
+                    Triple("intermission", TeamAlertPreferences(intermission = true), "team_nhl:TOR_alerts_intermission"),
+                    Triple("final", TeamAlertPreferences(final = true), "team_nhl:TOR_alerts_final"),
+                    Triple("upcoming", TeamAlertPreferences(upcoming = true), "team_nhl:TOR_alerts_upcoming"),
                 )
             for ((name, preferences, keyName) in switches) {
                 val directory = newDirectory()
@@ -1283,7 +1283,7 @@ class DataStorePreferencesRepositoryTest {
                 val directory = newDirectory()
                 val rawScope = newScope()
                 try {
-                    openRawStore(directory, rawScope).edit { it[intPreferencesKey("team_TOR_alerts_upcoming_lead")] = illegal }
+                    openRawStore(directory, rawScope).edit { it[intPreferencesKey("team_nhl:TOR_alerts_upcoming_lead")] = illegal }
                 } finally {
                     closeScope(rawScope)
                 }
@@ -1321,7 +1321,7 @@ class DataStorePreferencesRepositoryTest {
             val rawScope = newScope()
             try {
                 val raw = openRawStore(directory, rawScope).data.first()
-                assertEquals("the stored value", 30, raw[intPreferencesKey("team_TOR_alerts_upcoming_lead")])
+                assertEquals("the stored value", 30, raw[intPreferencesKey("team_nhl:TOR_alerts_upcoming_lead")])
             } finally {
                 closeScope(rawScope)
             }
@@ -1376,7 +1376,7 @@ class DataStorePreferencesRepositoryTest {
         runTest {
             val directory = newDirectory()
             val at = Instant.parse("2025-01-01T00:00:00Z")
-            writeRawLedgerEntry(directory, gameId = "game-1", goalCount = 1, startNotified = false, updatedAt = 1L, version = 2)
+            writeRawLedgerEntry(directory, gameId = "game-1", goalCount = 1, startNotified = false, updatedAt = 1L, version = 3)
 
             val scope = newScope()
             try {
@@ -1391,7 +1391,7 @@ class DataStorePreferencesRepositoryTest {
             val readerScope = newScope()
             try {
                 val stored = openRawStore(directory, readerScope).data.first()
-                assertEquals(2, stored[intPreferencesKey("prefs_version")])
+                assertEquals(3, stored[intPreferencesKey("prefs_version")])
                 assertNull(stored[booleanPreferencesKey("ledger_final_game-1")])
                 assertNull(stored[intPreferencesKey("ledger_intermission_game-1")])
                 assertNull(stored[booleanPreferencesKey("ledger_upcoming_game-1")])
