@@ -183,6 +183,47 @@ class DataStorePreferencesMigrationTest {
             )
         }
 
+    @Test
+    fun aLegacySwitchAndItsQualifiedTwinBothOnStillCountsAsOn() =
+        runTest {
+            val directory = newDirectory()
+            writeVersionOneFile(directory)
+
+            // The upgrade materialises a switch without changing it: both names are on. The scan must not read the
+            // qualified key as a reason to stop looking, because the switch really is on.
+            withRepository(directory) { repository ->
+                repository.setTeamAlertPreferences(
+                    TeamKey(League.NHL, "PHI"),
+                    TeamAlertPreferences(start = true, goals = true, upcomingLeadMinutes = 60),
+                )
+                assertTrue(repository.anyTeamAlertsOn())
+            }
+            val stored = withRawStore(directory) { it.data.first() }
+            assertEquals(true, stored[booleanPreferencesKey("team_PHI_alerts_start")])
+            assertEquals(true, stored[booleanPreferencesKey("team_nhl:PHI_alerts_start")])
+        }
+
+    @Test
+    fun removingAVisibleFavouriteIsNotResurrected() =
+        runTest {
+            val directory = newDirectory()
+            writeVersionOneFile(directory)
+            withRawStore(directory) { store ->
+                store.edit { stored -> stored[FAVOURITES] = setOf("PHI", "CAR", "mlb:NYY") }
+            }
+
+            // Keeping unnamed tokens must not keep ones the person can see and removes.
+            withRepository(directory) { repository -> repository.setFavourites(setOf(TeamKey(League.NHL, "PHI"))) }
+
+            var stored: Set<String>? = null
+            withRawStore(directory) { store -> stored = store.data.first()[FAVOURITES] }
+            assertEquals(
+                "CAR was removed, PHI was kept, and the unnamed token still waits for its league",
+                setOf("nhl:PHI", "mlb:NYY"),
+                stored,
+            )
+        }
+
     private companion object {
         const val FILE_NAME = "roux.preferences_pb"
 
