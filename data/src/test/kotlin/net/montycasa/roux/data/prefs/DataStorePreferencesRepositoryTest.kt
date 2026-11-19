@@ -1155,8 +1155,8 @@ class DataStorePreferencesRepositoryTest {
             try {
                 // An upgrade: the file holds the two switches the previous build wrote and nothing else.
                 openRawStore(directory, first).edit { stored ->
-                    stored[booleanPreferencesKey("team_nhl:TOR_alerts_start")] = true
-                    stored[booleanPreferencesKey("team_nhl:TOR_alerts_goals")] = true
+                    stored[booleanPreferencesKey("team_TOR_alerts_start")] = true
+                    stored[booleanPreferencesKey("team_TOR_alerts_goals")] = true
                 }
             } finally {
                 closeScope(first)

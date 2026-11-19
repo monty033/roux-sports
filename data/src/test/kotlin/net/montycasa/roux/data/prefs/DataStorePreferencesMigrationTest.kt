@@ -107,19 +107,80 @@ class DataStorePreferencesMigrationTest {
                 repository.setTeamAlertPreferences(TeamKey(League.NFL, "PHI"), TeamAlertPreferences(final = true))
             }
 
-            // Nothing legacy is in this file, so the scan can only be answering from the qualified name.
+            // Nothing legacy is in this file, so the scan can only be answering from the qualified name. Every team key is
+            // listed, not only the enabled ones: a legacy name written with `false` would otherwise go unnoticed.
             val stored = withRawStore(directory) { it.data.first() }
             assertEquals(
-                listOf("team_nfl:PHI_alerts_final"),
+                "every switch is written under a qualified name, and none under a bare one",
+                setOf(
+                    "team_nfl:PHI_alerts_start",
+                    "team_nfl:PHI_alerts_goals",
+                    "team_nfl:PHI_alerts_intermission",
+                    "team_nfl:PHI_alerts_final",
+                    "team_nfl:PHI_alerts_upcoming",
+                    "team_nfl:PHI_alerts_upcoming_lead",
+                ),
                 stored
                     .asMap()
-                    .filter { it.value == true }
                     .keys
-                    .map { it.name },
+                    .map { it.name }
+                    .filter { it.contains("_alerts_") }
+                    .toSet(),
             )
             withRepository(directory) { repository ->
                 assertTrue(repository.anyTeamAlertsOn())
             }
+        }
+
+    @Test
+    fun turningASwitchOffAfterTheUpgradeStopsCountingItAsOn() =
+        runTest {
+            val directory = newDirectory()
+            writeVersionOneFile(directory)
+
+            // The v1 file has start and goals on for PHI. Turning both off must leave nothing on: the legacy keys are
+            // still in the file, and counting them would keep the app's "nobody wants alerts" fast path dead forever.
+            withRepository(directory) { repository ->
+                assertTrue(repository.anyTeamAlertsOn())
+                repository.setTeamAlertPreferences(TeamKey(League.NHL, "PHI"), TeamAlertPreferences())
+                assertEquals(
+                    "a switch turned off must stop counting, even though the legacy key still says true",
+                    false,
+                    repository.anyTeamAlertsOn(),
+                )
+            }
+
+            val stored = withRawStore(directory) { it.data.first() }
+            assertEquals("the legacy keys are kept", true, stored[booleanPreferencesKey("team_PHI_alerts_start")])
+            assertEquals(false, stored[booleanPreferencesKey("team_nhl:PHI_alerts_start")])
+        }
+
+    @Test
+    fun aFavouriteThisBuildCannotNameIsHiddenButNotDeleted() =
+        runTest {
+            val directory = newDirectory()
+            withRawStore(directory) { store ->
+                store.edit { stored ->
+                    stored[FAVOURITES] = setOf("PHI", "mlb:NYY")
+                }
+            }
+
+            withRepository(directory) { repository ->
+                assertEquals(
+                    "a league this build does not know is hidden, not guessed at",
+                    setOf(TeamKey(League.NHL, "PHI")),
+                    repository.getFavourites(),
+                )
+                // Toggling any team rewrites the whole set; the token this build cannot name must survive that.
+                repository.setFavourites(setOf(TeamKey(League.NHL, "PHI"), TeamKey(League.NFL, "PHI")))
+            }
+
+            val stored = withRawStore(directory) { it.data.first() }
+            assertEquals(
+                "a later build that knows the league must still find the choice",
+                setOf("nhl:PHI", "nfl:PHI", "mlb:NYY"),
+                stored[FAVOURITES],
+            )
         }
 
     private companion object {

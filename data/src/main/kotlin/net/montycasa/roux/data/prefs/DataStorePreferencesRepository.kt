@@ -99,7 +99,9 @@ class DataStorePreferencesRepository(
         requireWritable()
         store.edit { preferences ->
             preferences[VERSION] = PREFERENCES_VERSION
-            preferences[FAVOURITES] = teams.mapTo(mutableSetOf()) { favouriteToken(it) }
+            // A token this build cannot name is written back untouched. Dropping it would delete a team a person starred
+            // the moment they toggled any other team, and no later build could recover it.
+            preferences[FAVOURITES] = unnamedFavouriteTokens(preferences) + teams.mapTo(mutableSetOf()) { favouriteToken(it) }
         }
     }
 
@@ -145,8 +147,18 @@ class DataStorePreferencesRepository(
 
     override suspend fun anyTeamAlertsOn(): Boolean {
         val preferences = readablePreferences() ?: return false
-        return preferences.asMap().any { (key, value) ->
-            value == true && key.name.startsWith("team_") && "_alerts_" in key.name
+        val entries = preferences.asMap()
+        // Every team key that exists, on or off: a qualified key stored as `false` is still the truth for that switch.
+        val names = entries.keys.mapTo(mutableSetOf()) { it.name }
+        return entries.any { (key, value) ->
+            val name = key.name
+            if (value != true || !name.startsWith("team_") || "_alerts_" !in name) return@any false
+            if (':' in name) return@any true
+            // A bare name is the NHL-only build's form. When the same team and switch also has a qualified name, the
+            // qualified value is the truth - including when it is `false`. Without this, a switch turned off after the
+            // upgrade still counts as on, because the legacy key is kept and never updated.
+            val parts = name.removePrefix("team_").split("_alerts_", limit = 2)
+            parts.size != 2 || "team_nhl:${parts[0]}_alerts_${parts[1]}" !in names
         }
     }
 
@@ -510,6 +522,15 @@ class DataStorePreferencesRepository(
     }
 
     private fun favouriteToken(team: TeamKey) = "${team.league.id}:${team.abbrev}"
+
+    /**
+     * Stored favourites this build cannot name, kept so a save cannot delete them.
+     *
+     * They are hidden from the app - [decodeFavourites] leaves them out - but a later build that knows that league must
+     * still find the person's choice where they left it.
+     */
+    private fun unnamedFavouriteTokens(preferences: Preferences?): Set<String> =
+        preferences?.get(FAVOURITES).orEmpty().filterTo(mutableSetOf()) { decodeFavourite(it) == null }
 
     /**
      * Alert switches are keyed by league as well, so NHL PHI and NFL PHI hold separate switches. The qualified name is the
