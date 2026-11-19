@@ -93,16 +93,15 @@ class DataStorePreferencesRepository(
         }
     }
 
-    override suspend fun getFavourites(): Set<TeamKey> {
-        val preferences = readablePreferences() ?: return emptySet()
-        return preferences[FAVOURITES].orEmpty().mapTo(mutableSetOf()) { TeamKey(League.NHL, it) }
-    }
+    override suspend fun getFavourites(): Set<TeamKey> = decodeFavourites(readablePreferences())
 
     override suspend fun setFavourites(teams: Set<TeamKey>) {
         requireWritable()
         store.edit { preferences ->
             preferences[VERSION] = PREFERENCES_VERSION
-            preferences[FAVOURITES] = teams.mapTo(mutableSetOf()) { it.abbrev }
+            // A token this build cannot name is written back untouched. Dropping it would delete a team a person starred
+            // the moment they toggled any other team, and no later build could recover it.
+            preferences[FAVOURITES] = unnamedFavouriteTokens(preferences) + teams.mapTo(mutableSetOf()) { favouriteToken(it) }
         }
     }
 
@@ -137,19 +136,29 @@ class DataStorePreferencesRepository(
         val defaults = TeamAlertPreferences()
         val preferences = readablePreferences() ?: return defaults
         return TeamAlertPreferences(
-            start = preferences[startKey(team)] ?: defaults.start,
-            goals = preferences[goalsKey(team)] ?: defaults.goals,
-            intermission = preferences[intermissionKey(team)] ?: defaults.intermission,
-            final = preferences[finalKey(team)] ?: defaults.final,
-            upcoming = preferences[upcomingKey(team)] ?: defaults.upcoming,
-            upcomingLeadMinutes = UpcomingLead.coerce(preferences[upcomingLeadKey(team)]),
+            start = preferences.alertValue(team, "start") { booleanPreferencesKey(it) } ?: defaults.start,
+            goals = preferences.alertValue(team, "goals") { booleanPreferencesKey(it) } ?: defaults.goals,
+            intermission = preferences.alertValue(team, "intermission") { booleanPreferencesKey(it) } ?: defaults.intermission,
+            final = preferences.alertValue(team, "final") { booleanPreferencesKey(it) } ?: defaults.final,
+            upcoming = preferences.alertValue(team, "upcoming") { booleanPreferencesKey(it) } ?: defaults.upcoming,
+            upcomingLeadMinutes = UpcomingLead.coerce(preferences.alertValue(team, "upcoming_lead") { intPreferencesKey(it) }),
         )
     }
 
     override suspend fun anyTeamAlertsOn(): Boolean {
         val preferences = readablePreferences() ?: return false
-        return preferences.asMap().any { (key, value) ->
-            value == true && key.name.startsWith("team_") && "_alerts_" in key.name
+        val entries = preferences.asMap()
+        // Every team key that exists, on or off: a qualified key stored as `false` is still the truth for that switch.
+        val names = entries.keys.mapTo(mutableSetOf()) { it.name }
+        return entries.any { (key, value) ->
+            val name = key.name
+            if (value != true || !name.startsWith("team_") || "_alerts_" !in name) return@any false
+            if (':' in name) return@any true
+            // A bare name is the NHL-only build's form. When the same team and switch also has a qualified name, the
+            // qualified value is the truth - including when it is `false`. Without this, a switch turned off after the
+            // upgrade still counts as on, because the legacy key is kept and never updated.
+            val parts = name.removePrefix("team_").split("_alerts_", limit = 2)
+            parts.size != 2 || "team_nhl:${parts[0]}_alerts_${parts[1]}" !in names
         }
     }
 
@@ -447,10 +456,8 @@ class DataStorePreferencesRepository(
     }
 
     override fun observeFavourites(): Flow<Set<TeamKey>> =
-        readablePreferencesFlow().map { preferences ->
-            // A file from a newer build is not interpreted: it answers defaults, exactly like the one-shot read.
-            preferences?.get(FAVOURITES).orEmpty().mapTo(mutableSetOf()) { TeamKey(League.NHL, it) }
-        }
+        // A file from a newer build is not interpreted: it answers defaults, exactly like the one-shot read.
+        readablePreferencesFlow().map { decodeFavourites(it) }
 
     override fun observeFavouritesOnly(): Flow<Boolean> =
         readablePreferencesFlow().map { preferences ->
@@ -498,17 +505,68 @@ class DataStorePreferencesRepository(
         return gameId
     }
 
-    private fun startKey(team: TeamKey) = booleanPreferencesKey("team_${team.abbrev}_alerts_start")
+    /**
+     * Favourites are stored as "<leagueId>:<abbrev>" so that "PHI" names both clubs without ambiguity. A bare token is the
+     * NHL-only build's form. Both readers go through this one decoder, because two decoders would drift apart.
+     */
+    private fun decodeFavourites(preferences: Preferences?): Set<TeamKey> =
+        preferences?.get(FAVOURITES).orEmpty().mapNotNullTo(mutableSetOf()) { decodeFavourite(it) }
 
-    private fun goalsKey(team: TeamKey) = booleanPreferencesKey("team_${team.abbrev}_alerts_goals")
+    private fun decodeFavourite(token: String): TeamKey? {
+        val separator = token.indexOf(':')
+        if (separator < 0) return TeamKey(League.NHL, token)
+        // Split at the first colon only. A prefix that names no league this build knows is a team it cannot name, so the
+        // token is dropped rather than read as an NHL club: inventing one from the leftover text would star the wrong team.
+        val league = League.entries.firstOrNull { it.id == token.substring(0, separator) } ?: return null
+        return TeamKey(league, token.substring(separator + 1))
+    }
 
-    private fun intermissionKey(team: TeamKey) = booleanPreferencesKey("team_${team.abbrev}_alerts_intermission")
+    private fun favouriteToken(team: TeamKey) = "${team.league.id}:${team.abbrev}"
 
-    private fun finalKey(team: TeamKey) = booleanPreferencesKey("team_${team.abbrev}_alerts_final")
+    /**
+     * Stored favourites this build cannot name, kept so a save cannot delete them.
+     *
+     * They are hidden from the app - [decodeFavourites] leaves them out - but a later build that knows that league must
+     * still find the person's choice where they left it.
+     */
+    private fun unnamedFavouriteTokens(preferences: Preferences?): Set<String> =
+        preferences?.get(FAVOURITES).orEmpty().filterTo(mutableSetOf()) { decodeFavourite(it) == null }
 
-    private fun upcomingKey(team: TeamKey) = booleanPreferencesKey("team_${team.abbrev}_alerts_upcoming")
+    /**
+     * Alert switches are keyed by league as well, so NHL PHI and NFL PHI hold separate switches. The qualified name is the
+     * only one ever written. The bare-abbreviation name is still read; see [alertValue].
+     */
+    private fun alertKeyName(
+        team: TeamKey,
+        switch: String,
+    ) = "team_${team.league.id}:${team.abbrev}_alerts_$switch"
 
-    private fun upcomingLeadKey(team: TeamKey) = intPreferencesKey("team_${team.abbrev}_alerts_upcoming_lead")
+    /**
+     * One alert switch as stored. The qualified key wins. The bare-abbreviation key is consulted only when the qualified
+     * one is absent and the team is NHL, because only the NHL-only build could have written it. A legacy key for any other
+     * league would be a switch that was never set for that team, so it is never read.
+     */
+    private fun <T> Preferences.alertValue(
+        team: TeamKey,
+        switch: String,
+        key: (String) -> Preferences.Key<T>,
+    ): T? {
+        this[key(alertKeyName(team, switch))]?.let { return it }
+        if (team.league != League.NHL) return null
+        return this[key("team_${team.abbrev}_alerts_$switch")]
+    }
+
+    private fun startKey(team: TeamKey) = booleanPreferencesKey(alertKeyName(team, "start"))
+
+    private fun goalsKey(team: TeamKey) = booleanPreferencesKey(alertKeyName(team, "goals"))
+
+    private fun intermissionKey(team: TeamKey) = booleanPreferencesKey(alertKeyName(team, "intermission"))
+
+    private fun finalKey(team: TeamKey) = booleanPreferencesKey(alertKeyName(team, "final"))
+
+    private fun upcomingKey(team: TeamKey) = booleanPreferencesKey(alertKeyName(team, "upcoming"))
+
+    private fun upcomingLeadKey(team: TeamKey) = intPreferencesKey(alertKeyName(team, "upcoming_lead"))
 
     private fun finalNotifiedKey(gameId: String) = booleanPreferencesKey(FINAL_NOTIFIED_PREFIX + requireUsableGameId(gameId))
 
@@ -524,7 +582,9 @@ class DataStorePreferencesRepository(
 
     private companion object {
         const val FILE_NAME = "roux.preferences_pb"
-        const val PREFERENCES_VERSION = 1
+
+        // 2: favourites and alert switches are league-qualified. A version-1 build refuses to write this file.
+        const val PREFERENCES_VERSION = 2
         const val DEFAULT_FAVOURITES_ONLY = true
 
         const val GOAL_COUNT_PREFIX = "ledger_goals_"

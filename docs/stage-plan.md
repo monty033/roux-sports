@@ -1894,7 +1894,21 @@ authorized and what that permission does not cover. The staged plan is `nfl-plan
 | D2 | data host | `site.api.espn.com` allowed, for the NFL client only |
 | D3 | image host | `a.espncdn.com` allowed, for team logos and player headshots |
 
-D4 through D13 in `nfl-plan.md` are still open and are answered as the stage that needs each one is reached. None of
+### D4 — the notification ledger stays league-less until notifications exist
+
+Step 2.2 qualifies stored favourites and per-team alert switches, because those are the keys that hold a person's saved
+state and would silently un-star a team or switch an alert off. The notification ledger keys (`ledger_goals_<id>` and
+friends) are **not** qualified in 2.2, although the stage plan listed them there.
+
+Two reasons. Qualifying them means the ledger methods take a league-aware game identity instead of a `String`, which
+touches 172 test call sites and would bury the migration review in mechanical churn. And nothing can write an NFL entry
+until the NFL notifier exists, which the same plan puts last. So no collision is reachable in between: the ledger is only
+written for games the app is watching, and no NFL game is watched before Stage 7.
+
+The debt is explicit rather than dropped: Stage 7 qualifies the ledger keys and its tests prove an NHL entry written
+before the change is still read, in the same way 2.2's tests prove the favourites upgrade.
+
+D5 through D13 in `nfl-plan.md` are still open and are answered as the stage that needs each one is reached. None of
 them blocks Stage 0 or Stage 1.
 
 ## Authorized hosts
