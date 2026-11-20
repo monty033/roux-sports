@@ -80,6 +80,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.NamedNavArgument
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -114,6 +115,7 @@ import net.montycasa.roux.ui.drawer.LeaguesSheetState
 import net.montycasa.roux.ui.drawer.leagueChipLabel
 import net.montycasa.roux.ui.drawer.leagueCrestId
 import net.montycasa.roux.ui.drawer.rememberLeaguesSheetSettler
+import net.montycasa.roux.ui.league.LeagueNotReady
 import net.montycasa.roux.ui.player.PlayerDetailScreen
 import net.montycasa.roux.ui.player.PlayerDetailViewModel
 import net.montycasa.roux.ui.reach.Reach
@@ -154,12 +156,13 @@ enum class TopLevelDestination(
 @Composable
 fun RouxNavHost(
     modifier: Modifier = Modifier,
+    /** Injectable so a test can navigate by route; the app always takes the default. */
+    navController: NavHostController = rememberNavController(),
     /** A game a notification was tapped for, opened once the slate it belongs to is loaded. */
     requestedGame: GameRequest? = null,
     /** Called once the request has been acted on, so the same tap twice is a second navigation rather than none. */
     onRequestHandled: () -> Unit = {},
 ) {
-    val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
 
@@ -443,6 +446,8 @@ fun RouxNavHost(
                         if (game == null) {
                             // A link we cannot read is not a crash; it is a dead end, so leave.
                             LaunchedEffect(Unit) { navController.popBackStack() }
+                        } else if (!leagueHasPages(game.id.league)) {
+                            LeagueNotReady(onBack = { navController.popBackStack() })
                         } else {
                             DetailDestination(
                                 container = container,
@@ -480,6 +485,8 @@ fun RouxNavHost(
                         if (teamKey == null) {
                             // A link that names no club is not a crash; it goes back to where it came from.
                             LaunchedEffect(Unit) { navController.popBackStack() }
+                        } else if (!leagueHasPages(teamKey.league)) {
+                            LeagueNotReady(onBack = { navController.popBackStack() })
                         } else {
                             TeamDetailDestination(
                                 container = container,
@@ -694,17 +701,40 @@ private fun glyph(
  * The abbreviation is the only identity every entry point has, and it is small enough to survive a process
  * restoration in the back stack. Everything else on the page comes from the standings cache.
  */
-internal const val TEAM_ROUTE = "team/{teamKey}"
+internal const val TEAM_ROUTE = "team/{teamKey}?league={league}"
 
-internal fun teamRoute(team: TeamKey): String = "team/${Uri.encode(team.abbrev)}"
+internal fun teamRoute(team: TeamKey): String = "team/${Uri.encode(team.abbrev)}?league=${Uri.encode(team.league.id)}"
 
-private fun teamArguments(): List<NamedNavArgument> = listOf(navArgument("teamKey") { type = NavType.StringType })
+private fun teamArguments(): List<NamedNavArgument> =
+    listOf(
+        navArgument("teamKey") { type = NavType.StringType },
+        navArgument("league") {
+            type = NavType.StringType
+            nullable = true
+            defaultValue = null
+        },
+    )
 
 /** Null when the route carries no club, so the caller backs out rather than opening a page with no identity. */
 internal fun teamKeyFromRoute(entry: NavBackStackEntry): TeamKey? {
     val abbrev = entry.arguments?.getString("teamKey")?.takeIf { it.isNotBlank() } ?: return null
-    return TeamKey(League.NHL, abbrev)
+    val league = leagueFromRouteArg(entry.arguments?.getString("league")) ?: return null
+    return TeamKey(league, abbrev)
 }
+
+/**
+ * The league a route names. A route with no league is NHL, which is what every route carried before leagues were
+ * named. A league the app does not know is null, so the caller backs out rather than guessing.
+ * The argument is the lowercase [League.id], the same string persisted in preferences; "NFL" is unknown.
+ */
+internal fun leagueFromRouteArg(raw: String?): League? =
+    if (raw.isNullOrBlank()) League.NHL else League.entries.firstOrNull { it.id == raw }
+
+/**
+ * Whether a league's club and game pages exist yet. Only NHL does: its pages call NHL endpoints, so any other league
+ * takes the placeholder instead. Remove a league from here only when its own pages are built.
+ */
+internal fun leagueHasPages(league: League): Boolean = league == League.NHL
 
 /* ---------------------------------------------------------------------------------------------------------------
  * The game page's route
@@ -740,7 +770,7 @@ internal const val PAGER_TAG = "pages.pager"
 
 internal const val DETAIL_ROUTE =
     "detail/{gameId}?away={away}&home={home}&awayLogo={awayLogo}&homeLogo={homeLogo}" +
-        "&awayScore={awayScore}&homeScore={homeScore}&state={state}&start={start}"
+        "&awayScore={awayScore}&homeScore={homeScore}&state={state}&start={start}&league={league}"
 
 /**
  * A game a notification asked for.
@@ -778,7 +808,8 @@ internal fun detailRoute(game: Game): String =
         "&awayScore=${game.awayScore ?: MISSING_SCORE}" +
         "&homeScore=${game.homeScore ?: MISSING_SCORE}" +
         "&state=${Uri.encode(encodeState(game.state))}" +
-        "&start=${game.startTimeUtc?.epochSeconds ?: MISSING_SCORE}"
+        "&start=${game.startTimeUtc?.epochSeconds ?: MISSING_SCORE}" +
+        "&league=${Uri.encode(game.id.league.id)}"
 
 /**
  * A schedule row opens the same page as a scores row. Finished schedule games carry their scores on
@@ -876,6 +907,11 @@ private fun detailArguments(): List<NamedNavArgument> =
             nullable = true
             defaultValue = null
         },
+        navArgument("league") {
+            type = NavType.StringType
+            nullable = true
+            defaultValue = null
+        },
     )
 
 /** Null when the link carries nothing playable - the caller then backs out rather than showing a guess. */
@@ -885,14 +921,15 @@ internal fun gameFromRoute(entry: NavBackStackEntry): Game? {
     val away = args.getString("away")?.takeIf { it.isNotBlank() } ?: return null
     val home = args.getString("home")?.takeIf { it.isNotBlank() } ?: return null
     val start = args.getString("start")?.toLongOrNull()?.takeIf { it > 0 }
+    val league = leagueFromRouteArg(args.getString("league")) ?: return null
     return Game(
-        id = GameId(League.NHL, id),
+        id = GameId(league, id),
         date = "",
         state = decodeState(args.getString("state")),
         // The crest travels with the route so the hero is drawn from the row the reader tapped, not from an endpoint
         // that may not have answered yet. A missing URL is fine: the badge falls back to the club's abbreviation.
-        home = TeamRef(TeamKey(League.NHL, home), logoUrl = args.getString("homeLogo")?.takeIf { it.isNotBlank() }),
-        away = TeamRef(TeamKey(League.NHL, away), logoUrl = args.getString("awayLogo")?.takeIf { it.isNotBlank() }),
+        home = TeamRef(TeamKey(league, home), logoUrl = args.getString("homeLogo")?.takeIf { it.isNotBlank() }),
+        away = TeamRef(TeamKey(league, away), logoUrl = args.getString("awayLogo")?.takeIf { it.isNotBlank() }),
         homeScore = args.getString("homeScore")?.toIntOrNull()?.takeIf { it >= 0 },
         awayScore = args.getString("awayScore")?.toIntOrNull()?.takeIf { it >= 0 },
         startTimeUtc = start?.let { Instant.fromEpochSeconds(it) },
@@ -910,7 +947,7 @@ private fun DetailDestination(
     // Keyed by the game and its state: a rotation from scheduled to live is a different polling contract.
     val detail: GameDetailViewModel =
         viewModel(
-            key = "detail:${game.id.value}:${encodeState(game.state)}",
+            key = "detail:${game.id.league.id}:${game.id.value}:${encodeState(game.state)}",
             factory =
                 viewModelFactory {
                     initializer {
@@ -945,7 +982,7 @@ private fun TeamDetailDestination(
     // Keyed by club so a second club cannot inherit the first one's loaded row.
     val detail: TeamDetailViewModel =
         viewModel(
-            key = "team:${teamKey.abbrev}",
+            key = "team:${teamKey.league.id}:${teamKey.abbrev}",
             factory =
                 viewModelFactory {
                     initializer {
