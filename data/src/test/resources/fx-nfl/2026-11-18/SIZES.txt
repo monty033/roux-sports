@@ -25,3 +25,6 @@ nfl-gamelog-DE.json transfer_bytes=4509 stored_bytes=88260 url=https://site.api.
 nfl-athlete-K.json transfer_bytes=5689 stored_bytes=47022 url=https://site.api.espn.com/apis/common/v3/sports/football/nfl/athletes/4689936
 nfl-gamelog-K.json transfer_bytes=4515 stored_bytes=87822 url=https://site.api.espn.com/apis/common/v3/sports/football/nfl/athletes/4689936/gamelog
 nfl-gamelog-empty.json transfer_bytes=197 stored_bytes=398 url=https://site.api.espn.com/apis/common/v3/sports/football/nfl/athletes/4710422/gamelog
+nfl-summary-pregame.json stored_bytes=137178 url=https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401873066 (kickoff 2026-11-20T01:15Z, IND @ HOU)
+nfl-scoreboard-live.json transfer_bytes=19685 stored_bytes=228282 url=https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard
+nfl-summary-live.json transfer_bytes=38699 stored_bytes=388843 url=https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401873066
