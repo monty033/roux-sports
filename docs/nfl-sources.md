@@ -230,7 +230,7 @@ under the names the parsers read. Two in-progress states exist, not four.
 | `STATUS_POSTPONED` | **not observed** | — |
 | `STATUS_CANCELED` | **not observed** | — |
 
-Eight of the states the step asks for never occurred in this window, so no model may claim them. Overtime is
+Eight of the states the step asks for are not observed in this corpus, so no model may claim them. Overtime is
 observed **only as a finished game** (period 5, `Final/OT`), never while it was being played, so an in-progress
 overtime state is still unproven and its clock and situation are unknown.
 

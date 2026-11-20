@@ -10,7 +10,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.security.MessageDigest
@@ -641,7 +640,7 @@ class NflScoreboardCensusTest {
             SCOREBOARDS.values
                 .flatMap { board ->
                     board.events().filter { it.statusTriple()?.startsWith("STATUS_IN_PROGRESS|") == true }
-                }.mapNotNull {
+                }.map {
                     it["status"]
                         ?.jsonObject
                         ?.get("period")
@@ -670,7 +669,7 @@ class NflScoreboardCensusTest {
             SCOREBOARDS.values
                 .flatMap { board ->
                     board.events().filter { it.statusTriple()?.startsWith("STATUS_FINAL|") == true }
-                }.mapNotNull {
+                }.map {
                     it["status"]
                         ?.jsonObject
                         ?.get("displayClock")
@@ -687,7 +686,8 @@ class NflScoreboardCensusTest {
         assertEquals("3", SCOREBOARD_2205.inProgressPeriod())
         assertEquals("14:12", SCOREBOARD_2205.inProgressClock())
 
-        // Halftime, end of period, period 2, period 4 and overtime never occurred in this window.
+        // Halftime, end of period, periods 2 and 4, and in-progress overtime are not observed in this corpus:
+        // the game may well have passed through them, and this window did not sample it.
         val observedPeriods = setOf(SCOREBOARD_2055.inProgressPeriod(), SCOREBOARD_2205.inProgressPeriod())
         assertEquals(setOf("1", "3"), observedPeriods)
     }
