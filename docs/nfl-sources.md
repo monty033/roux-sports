@@ -196,6 +196,172 @@ request is the late game and its `date` is on the **following UTC day**, so a da
 Command: `grep -oP '"score":"\K[0-9]+' <file> | paste - -` and count equal pairs. No final tie exists in this corpus;
 the 13 equal scores in `today` are pre-kickoff placeholders and must not be read as a tie result.
 
+## Stage 1.3b census — the live captures (2026-11-19)
+
+Captured during IND @ HOU at Houston, kickoff `2026-11-20T01:15Z` (20:15 ET on 11-19), by the unattended capture
+window. Same `fx-nfl/2026-11-18/` label as the base corpus.
+
+| file | state | period | clock | taken |
+|---|---|---|---|---|
+| `nfl-summary-pregame.json` | `STATUS_SCHEDULED` (`pre`, `false`) | absent | absent | 20:05, T-10 |
+| `live/scoreboard-2055.json`, `live/summary-2055.json` | `STATUS_IN_PROGRESS` (`in`, `false`) | 1 | `1:28` | 20:55, T+40 |
+| `live/scoreboard-2205.json`, `live/summary-2205.json` | `STATUS_IN_PROGRESS` (`in`, `false`) | 3 | `14:12` | 22:05, T+110 |
+| `nfl-summary-final.json` | `STATUS_FINAL` (`post`, `true`) | absent | absent | base corpus |
+
+`nfl-summary-live.json` and `nfl-scoreboard-live.json` are byte-for-byte copies of `live/summary-2205.json` and
+`live/scoreboard-2205.json` (identical SHA-256 each), not extra states: the script installs the latest live sample
+under the names the parsers read. Two in-progress states exist, not four.
+
+### 1. States observed, and states the corpus does not contain
+
+| state | observed | evidence |
+|---|---|---|
+| `STATUS_SCHEDULED` | yes | pregame summary; 12 of 13 events in each live scoreboard |
+| `STATUS_FINAL` | yes | base corpus, 25 completed games |
+| `STATUS_IN_PROGRESS`, period 1 | yes | `live/scoreboard-2055.json`, clock `1:28` |
+| `STATUS_IN_PROGRESS`, period 3 | yes | `live/scoreboard-2205.json`, clock `14:12` |
+| `STATUS_FINAL`, period 5+ (overtime) | yes | base corpus: `nfl-scoreboard-sunday-b.json`, CLE @ NO `401873039`, 23–22, `detail` = `Final/OT`, five `linescores` per club |
+| `STATUS_IN_PROGRESS`, period 2 | **not observed** | — |
+| `STATUS_IN_PROGRESS`, period 4 | **not observed** | — |
+| `STATUS_HALFTIME` | **not observed** | — |
+| `STATUS_END_PERIOD` | **not observed** | — |
+| in progress, period 5+ (overtime) | **not observed** | — |
+| `STATUS_DELAYED` | **not observed** | — |
+| `STATUS_POSTPONED` | **not observed** | — |
+| `STATUS_CANCELED` | **not observed** | — |
+
+Eight of the states the step asks for are not observed in this corpus, so no model may claim them. Overtime is
+observed **only as a finished game** (period 5, `Final/OT`), never while it was being played, so an in-progress
+overtime state is still unproven and its clock and situation are unknown.
+
+The census test asserts that the only state names in every payload it reads are `STATUS_SCHEDULED`,
+`STATUS_IN_PROGRESS` and `STATUS_FINAL`; that the only in-progress periods are 1 and 3; and that the only final
+periods are 4 and 5. It reads seven scoreboard payloads — the four base captures, the two timed captures, and the
+`nfl-scoreboard-live.json` alias the capture script overwrites — plus five summaries, the `nfl-summary-live.json`
+alias included, and it asserts that each alias is byte-identical to its timed twin. Adding a halftime,
+end-of-period or delayed state to any of those files fails it until this table is updated first. A brand-new
+fixture dropped into the directory is not picked up, because the file list is fixed in the test.
+
+Eight rows are listed as not observed: in-progress periods 2 and 4, in-progress overtime, halftime, end of period,
+delayed, postponed and canceled. The canceled row is kept as a precaution; the step names delayed and postponed.
+
+Three of those eight are gaps in the **record**, not in the game. The two samples are Q1 `1:28` and Q3 `14:12` of the
+same event, so the game passed through the second quarter, halftime and the end of Q2 between them and this window
+did not sample any of it. The step asked for a mid-game Q2 capture and a halftime capture; neither was taken, and
+that is the gap to close in the next window. No model may infer a halftime or end-of-period shape from this corpus —
+it is missing because it was not collected, not because it does not exist.
+
+### 2. Where the situation lives, and what it carries
+
+`competitions[].situation` exists only on the single in-progress event of each live scoreboard — 1 of 13 events —
+and never on a scheduled event. It is absent from all 25 completed games in the base corpus.
+
+| field | 2055 (period 1, `1:28`) | 2205 (period 3, `14:12`) |
+|---|---|---|
+| `down` | 1 | 2 |
+| `distance` | 10 | 9 |
+| `yardLine` | 48 | 41 |
+| `isRedZone` | false | false |
+| `possession` | `"11"` | `"34"` |
+| `downDistanceText` | `1st & 10 at HOU 48` | `2nd & 9 at HOU 41` |
+| `shortDownDistanceText` | `1st & 10` | `2nd & 9` |
+| `possessionText` | `HOU 48` | `HOU 41` |
+| `homeTimeouts` / `awayTimeouts` | 3 / 3 | 3 / 3 |
+
+- `possession` is a **team id in a string**, matching `competitors[].team.id` in the same competition: `"11"` is
+  IND and `"34"` is HOU. It is the field to read for who has the ball; `situation.lastPlay.team.id` names a club
+  too and happens to equal it in both captures, but it describes the last play's club rather than the current
+  possession, so use `possession`.
+- `possessionText` is **field position, not the possessing club.** The 2055 capture reads `HOU 48` while
+  Indianapolis has the ball. Reading it as the offense is wrong.
+- `yardLine` is a **field coordinate measured from the home club's goal line**: 0 at the home goal, 100 at the
+  away goal. An away club on its own 20 is therefore `80`, and a home club on its own 41 is `41`. This is proven
+  across **43 drive starts** in three payloads (6 in 2055, 13 in 2205, 24 in the final, whose home club is DET rather
+  than HOU) with no exception, and `situation.yardLine` follows the same coordinate system.
+- The two captures and the final are not the same game: the final is NE @ DET, so any rule derived from "HOU" alone
+  is wrong. The home club has to be read from `competitors[]` every time.
+- `isRedZone` was `false` in both states, so the `true` case is unobserved.
+- `lastPlay` sits inside `situation` and carries `id`, `text`, `team`, `type`, `start`, `end`, `statYardage`,
+  `scoreValue`, `probability`, `drive` and `athletesInvolved`. It has **no** `down`, `distance` or `yardLine` key
+  at all — the live down and distance exist only on `situation` itself, and a lookup for them on the play returns
+  absent, not a value.
+
+### 3. The summary payload's shape changes with state
+
+| top-level section | pregame | in progress | final |
+|---|---|---|---|
+| `drives` | no | yes | yes |
+| `scoringPlays` | no | yes | yes |
+| `videos` | no | yes | yes |
+| `article` | yes | no | yes |
+| `predictor` | yes | no | no |
+| `lastFiveGames` | yes | no | no |
+| `ticketsInfo` | yes | no | no |
+
+A live summary drops the entire pre-game tail and gains three sections; the final keeps `article`. Beyond these
+seven the shape is not fixed either: `live/summary-2055.json` carries a root `tuneInPrompt` key that
+`live/summary-2205.json` does not, so a live summary gains a fourth section sometimes. Any parser that requires
+`drives`, `scoringPlays` or `videos`, or that requires `article`, throws in one of these states.
+
+### 4. Plays are never on the header
+
+The summary's `header.competitions[0]` has **no `plays` key at all**, in every state including the final. Plays
+live under `drives`: `drives.previous[].plays` and `drives.current.plays`.
+
+| file | `plays` on the header | `drives.previous` | `drives.current` | plays under `drives` |
+|---|---|---|---|---|
+| pregame | absent | 0 | absent | 0 |
+| 2055 | absent | 5 | present | 41 |
+| 2205 | absent | 12 | present | 96 |
+| final | absent | 24 | absent | 181 |
+
+A finished game has **no** `drives.current`, so the current-drive block must be optional in both directions.
+
+### 5. `linescores` differ between the scoreboard and the summary payload
+
+This is the field where the two payloads disagree, and the difference matters because Stage 3.2 maps the
+scoreboard while the game page reads the summary.
+
+| payload | entry shape | `value` | `period` |
+|---|---|---|---|
+| scoreboard (`competitions[].competitors[].linescores`) | `{"value": 7.0, "displayValue": "7", "period": 1}` | **numeric**, `7.0` | present, 1-based |
+| summary (`header.competitions[0].competitors[].linescores`) | `{"displayValue": "7"}` | **absent** | absent |
+
+Summary payloads, per competitor:
+
+| file | `linescores` entries | `value` key |
+|---|---|---|
+| pregame | 0 (whole field absent) | — |
+| 2055 | 1 | absent |
+| 2205 | 3 | absent |
+| final | 4 | absent |
+
+So a parser reading the scoreboard gets a number and a period index; a parser reading the summary gets only
+`displayValue`. Reading `value` on a summary yields nothing, and reading `displayValue` alone on a scoreboard
+throws away the period it belongs to. An absent key is not a null one: `"value": null` appears nowhere in this
+payload family, and a lookup that cannot tell the two apart will pass either way.
+
+The entry count tracks the periods played (1, 3 and 4 here; 5 for the overtime final in `sunday-b`), so it is not
+a fixed four-column table.
+
+### 6. The pre-game skeleton is T-10, not T-15
+
+The step asks for a skeleton at T-15. The window opened at 20:05 against a 20:15 kickoff, so the recorded skeleton
+is **T-10**. It already carries the pre-kickoff shape that mattered — no `period` or `clock` key at all, no
+`drives`, no `linescores`, no `situation` — and a game at T-15 has the same shape. No true T-15 capture is in the
+corpus.
+
+### 7. The two payloads also disagree on a finished game's period and clock
+
+| payload | final `period` | final `displayClock` | `detail` |
+|---|---|---|---|
+| scoreboard | `4`, or `5` after overtime (25 of 25 completed games) | `0:00` | `Final`, or `Final/OT` |
+| summary | absent | absent | `Final` |
+
+A parser that treats "carries a period" as "in progress" marks every finished game on the scores screen as live.
+The `status.type.name` is the only safe discriminator, and this is the second reason not to infer state from a
+neighbouring field.
+
 ## What the census must still establish
 
 The scoreboard questions in this list are answered by the Stage 1.3a census above; the rest stay open until their
@@ -203,10 +369,14 @@ fixtures are censused, one table per question, each with the command that produc
 a guess:
 
 - The `status.type.name` values actually used across all states, including halftime, end of period, delayed, postponed
-  and overtime.
+  and overtime. **Partly answered:** 1.3b records scheduled, in progress and final, and an overtime final appears in
+  `sunday-b`. Halftime, end of period, delayed, postponed, canceled and in-progress overtime are still unobserved.
 - Where the live situation lives (`competitions[].situation`: `down`, `distance`, `yardLine`, `possession`, `isRedZone`)
-  and whether it exists outside an in-progress game.
-- `linescores[]` per quarter: presence before kickoff, shape in overtime.
+  and whether it exists outside an in-progress game. **Answered by 1.3b:** only on an in-progress event, never on a
+  scheduled or final one.
+- `linescores[]` per quarter: presence before kickoff, shape in overtime. **Answered:** absent before kickoff; the
+  scoreboard carries a numeric `value` plus a `period` index, the summary carries only `displayValue`; an overtime
+  final has five entries.
 - Which of the 21 standings fields carry ties, win percentage and seeding, and whether a tied record appears as a field
   at zero.
 - Roster unit names and position abbreviations.
