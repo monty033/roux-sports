@@ -265,6 +265,9 @@ private fun JsonObject.summaryStatusName(): String? =
         ?.jsonPrimitive
         ?.content
 
+private fun JsonObject.summaryHasStatusField(field: String): Boolean =
+    summaryCompetition()["status"]?.jsonObject?.containsKey(field) == true
+
 private fun JsonObject.summaryStatusField(field: String): String? =
     summaryCompetition()["status"]
         ?.jsonObject
@@ -602,8 +605,8 @@ class NflScoreboardCensusTest {
     @Test
     fun onlyTheDocumentedStatesAppearAnywhereInTheCorpus() {
         // A fixture carrying STATUS_HALFTIME, STATUS_END_PERIOD, or a delayed or postponed game must update the
-        // Stage 1.3b table in docs/nfl-sources.md first, or this fails. Scans all six scoreboards, the two live
-        // ones included, so a new capture dropped into the corpus cannot pass unasserted.
+        // Stage 1.3b table in docs/nfl-sources.md first, or this fails. Scans all seven scoreboard payloads, the
+        // two timed captures and their alias included, so the files the capture script overwrites cannot drift.
         val names =
             (
                 SCOREBOARDS.values.flatMap { board ->
@@ -898,11 +901,18 @@ class NflScoreboardCensusTest {
     @Test
     fun pregameAndFinalReportNoPeriodOrClock() {
         assertEquals("STATUS_SCHEDULED", PREGAME_SUMMARY.summaryStatusName())
-        assertNull(PREGAME_SUMMARY.summaryStatusField("period"))
-        assertNull(PREGAME_SUMMARY.summaryStatusField("displayClock"))
+        // Absent, not null: containsKey is the only assertion that can tell the two apart.
+        assertFalse(PREGAME_SUMMARY.summaryHasStatusField("period"))
+        assertFalse(PREGAME_SUMMARY.summaryHasStatusField("displayClock"))
 
         assertEquals("STATUS_FINAL", FINAL_SUMMARY.summaryStatusName())
-        assertNull(FINAL_SUMMARY.summaryStatusField("period"))
-        assertNull(FINAL_SUMMARY.summaryStatusField("displayClock"))
+        assertFalse(FINAL_SUMMARY.summaryHasStatusField("period"))
+        assertFalse(FINAL_SUMMARY.summaryHasStatusField("displayClock"))
+
+        // The in-progress summaries do carry them, and they agree with the scoreboards of the same capture.
+        assertEquals("1", SUMMARY_2055.summaryStatusField("period"))
+        assertEquals("1:28", SUMMARY_2055.summaryStatusField("displayClock"))
+        assertEquals("3", SUMMARY_2205.summaryStatusField("period"))
+        assertEquals("14:12", SUMMARY_2205.summaryStatusField("displayClock"))
     }
 }

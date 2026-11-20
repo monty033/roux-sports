@@ -203,10 +203,10 @@ window. Same `fx-nfl/2026-11-18/` label as the base corpus.
 
 | file | state | period | clock | taken |
 |---|---|---|---|---|
-| `nfl-summary-pregame.json` | `STATUS_SCHEDULED` (`pre`, `false`) | null | null | 20:05, T-10 |
+| `nfl-summary-pregame.json` | `STATUS_SCHEDULED` (`pre`, `false`) | absent | absent | 20:05, T-10 |
 | `live/scoreboard-2055.json`, `live/summary-2055.json` | `STATUS_IN_PROGRESS` (`in`, `false`) | 1 | `1:28` | 20:55, T+40 |
 | `live/scoreboard-2205.json`, `live/summary-2205.json` | `STATUS_IN_PROGRESS` (`in`, `false`) | 3 | `14:12` | 22:05, T+110 |
-| `nfl-summary-final.json` | `STATUS_FINAL` (`post`, `true`) | null | null | base corpus |
+| `nfl-summary-final.json` | `STATUS_FINAL` (`post`, `true`) | absent | absent | base corpus |
 
 `nfl-summary-live.json` and `nfl-scoreboard-live.json` are byte-for-byte copies of `live/summary-2205.json` and
 `live/scoreboard-2205.json` (identical SHA-256 each), not extra states: the script installs the latest live sample
@@ -234,15 +234,22 @@ Eight of the states the step asks for never occurred in this window, so no model
 observed **only as a finished game** (period 5, `Final/OT`), never while it was being played, so an in-progress
 overtime state is still unproven and its clock and situation are unknown.
 
-The census test asserts that the only state names anywhere in the corpus are `STATUS_SCHEDULED`,
+The census test asserts that the only state names in every payload it reads are `STATUS_SCHEDULED`,
 `STATUS_IN_PROGRESS` and `STATUS_FINAL`; that the only in-progress periods are 1 and 3; and that the only final
-periods are 4 and 5. It reads every scoreboard payload — the four base captures, the two timed captures, and the
-`nfl-scoreboard-live.json` alias the capture script overwrites — plus every summary, the `nfl-summary-live.json`
-alias included, and it asserts that each alias is byte-identical to its timed twin. Adding a fixture with a
-halftime, end-of-period or delayed state fails it until this table is updated first.
+periods are 4 and 5. It reads seven scoreboard payloads — the four base captures, the two timed captures, and the
+`nfl-scoreboard-live.json` alias the capture script overwrites — plus five summaries, the `nfl-summary-live.json`
+alias included, and it asserts that each alias is byte-identical to its timed twin. Adding a halftime,
+end-of-period or delayed state to any of those files fails it until this table is updated first. A brand-new
+fixture dropped into the directory is not picked up, because the file list is fixed in the test.
 
 Eight rows are listed as not observed: in-progress periods 2 and 4, in-progress overtime, halftime, end of period,
-delayed, postponed and canceled. `STATUS_CANCELED` is in the step's list along with the two other interruptions.
+delayed, postponed and canceled. The canceled row is kept as a precaution; the step names delayed and postponed.
+
+Three of those eight are gaps in the **record**, not in the game. The two samples are Q1 `1:28` and Q3 `14:12` of the
+same event, so the game passed through the second quarter, halftime and the end of Q2 between them and this window
+did not sample any of it. The step asked for a mid-game Q2 capture and a halftime capture; neither was taken, and
+that is the gap to close in the next window. No model may infer a halftime or end-of-period shape from this corpus —
+it is missing because it was not collected, not because it does not exist.
 
 ### 2. Where the situation lives, and what it carries
 
@@ -291,14 +298,15 @@ and never on a scheduled event. It is absent from all 25 completed games in the 
 | `lastFiveGames` | yes | no | no |
 | `ticketsInfo` | yes | no | no |
 
-A live summary drops the entire pre-game tail and gains three sections; the final keeps `article`. Any parser that
-requires `drives`, `scoringPlays` or `videos`, or that requires `article`, throws in one of these states.
+A live summary drops the entire pre-game tail and gains three sections; the final keeps `article`. Beyond these
+seven the shape is not fixed either: `live/summary-2055.json` carries a root `tuneInPrompt` key that
+`live/summary-2205.json` does not, so a live summary gains a fourth section sometimes. Any parser that requires
+`drives`, `scoringPlays` or `videos`, or that requires `article`, throws in one of these states.
 
 ### 4. Plays are never on the header
 
 The summary's `header.competitions[0]` has **no `plays` key at all**, in every state including the final. Plays
-live under `drives`: `drives.previous[].plays` and `drives.current.plays`. The table's `0` is the count a reader
-would get, not the stored shape — the shape is absent.
+live under `drives`: `drives.previous[].plays` and `drives.current.plays`.
 
 | file | `plays` on the header | `drives.previous` | `drives.current` | plays under `drives` |
 |---|---|---|---|---|
@@ -339,8 +347,9 @@ a fixed four-column table.
 ### 6. The pre-game skeleton is T-10, not T-15
 
 The step asks for a skeleton at T-15. The window opened at 20:05 against a 20:15 kickoff, so the recorded skeleton
-is **T-10**. It already carries the pre-kickoff shape that mattered — `period` null, `clock` null, no `drives`, no
-`linescores`, no `situation` — and a game at T-15 has the same shape. No true T-15 capture is in the corpus.
+is **T-10**. It already carries the pre-kickoff shape that mattered — no `period` or `clock` key at all, no
+`drives`, no `linescores`, no `situation` — and a game at T-15 has the same shape. No true T-15 capture is in the
+corpus.
 
 ### 7. The two payloads also disagree on a finished game's period and clock
 
