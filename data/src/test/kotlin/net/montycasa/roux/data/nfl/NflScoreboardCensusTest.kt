@@ -43,6 +43,7 @@ private val FIXTURES =
         TODAY_NAME to load(TODAY_NAME),
         EMPTY_DAY_NAME to load(EMPTY_DAY_NAME),
     )
+private val WEEK_NAMES = listOf("nfl-scoreboard-week-11.json", "nfl-scoreboard-week-12.json", "nfl-scoreboard-week-1.json")
 private val SUNDAY_A = FIXTURES.getValue(SUNDAY_A_NAME)
 private val SUNDAY_B = FIXTURES.getValue(SUNDAY_B_NAME)
 private val TODAY = FIXTURES.getValue(TODAY_NAME)
@@ -914,5 +915,41 @@ class NflScoreboardCensusTest {
         assertEquals("1:28", SUMMARY_2055.summaryStatusField("displayClock"))
         assertEquals("3", SUMMARY_2205.summaryStatusField("period"))
         assertEquals("14:12", SUMMARY_2205.summaryStatusField("displayClock"))
+    }
+
+    /**
+     * Week scoreboards exist so the schedule can be skipped by game day. A week that holds one day would hide the
+     * empty days the feature is meant to skip, so each captured week must span at least two distinct game dates.
+     */
+    @Test
+    fun everyWeekScoreboardSpansSeveralGameDays() {
+        for (name in WEEK_NAMES) {
+            val dates =
+                load(name)
+                    .events()
+                    .map { event ->
+                        event["date"]
+                            ?.jsonPrimitive
+                            ?.content
+                            .orEmpty()
+                            .take(10)
+                    }.toSet()
+
+            assertTrue("$name spans only ${dates.size} game day(s): $dates", dates.size >= 2)
+        }
+    }
+
+    @Test
+    fun theWeekCapturesAreRecordedInTheSizesLog() {
+        val sizes =
+            NflScoreboardCensusTest::class.java
+                .getResourceAsStream("/fx-nfl/$CAPTURE/SIZES.txt")
+                ?.use { it.readBytes().toString(Charsets.UTF_8) }
+                ?: error("SIZES.txt not found for $CAPTURE")
+
+        for (week in listOf(11, 12, 1)) {
+            assertTrue("week $week is not in SIZES.txt", sizes.contains("nfl-scoreboard-week-$week.json "))
+            assertTrue("week $week URL is not recorded", sizes.contains("seasontype=2&week=$week"))
+        }
     }
 }

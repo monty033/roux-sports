@@ -18,6 +18,8 @@
 #   nfl-base    the same idea for ESPN's NFL feed: scoreboards, teams, standings,
 #               two teams' roster/schedule/statistics, one finished game, and one
 #               athlete per position group. Runs any time.
+#   nfl-week    the week scoreboards for the current week, the next week and week 1, so the
+#               census can check that a week spans several game days. Runs any time.
 #   nfl-live    a game that is actually being played. Refuses unless the scoreboard
 #               shows one, and rolls back if the summary it gets has neither drives
 #               nor a situation - which is what a pre-game payload looks like, and
@@ -31,7 +33,7 @@ FUTURE_DAY=2026-10-26
 API=https://api-web.nhle.com/v1
 
 usage() {
-    printf 'Usage:\n  %s base\n  %s gamecenter [--final GAME_ID] [--live GAME_ID]\n  %s nfl-base\n  %s nfl-live [--event EVENT_ID]\n' "$0" "$0" "$0" "$0" >&2
+    printf 'Usage:\n  %s base\n  %s gamecenter [--final GAME_ID] [--live GAME_ID]\n  %s nfl-base\n  %s nfl-week\n  %s nfl-live [--event EVENT_ID]\n' "$0" "$0" "$0" "$0" "$0" >&2
     printf '\nWithout --final/--live the ids are chosen from the slate: the final one from\n' >&2
     printf '%s, the live one from score/now.\n' "$GAME_DAY" >&2
     printf '\nWithout --event the NFL live game is the first in-progress event on the\n' >&2
@@ -40,7 +42,7 @@ usage() {
 
 MODE=${1:-}
 case $MODE in
-    base | gamecenter | nfl-base | nfl-live) shift ;;
+    base | gamecenter | nfl-base | nfl-week | nfl-live) shift ;;
     *)
         usage
         exit 2
@@ -94,7 +96,7 @@ complete=0
 cleanup() {
     if [[ $complete -ne 1 ]]; then
         printf 'Capture failed; removing staging directory: %s\n' "$STAGING" >&2
-        if [[ $MODE == gamecenter || $MODE == nfl-base || $MODE == nfl-live ]]; then
+        if [[ $MODE == gamecenter || $MODE == nfl-base || $MODE == nfl-week || $MODE == nfl-live ]]; then
             # The target holds the base corpus too, so it is restored whole from the copy taken
             # before the first file was installed rather than file by file.
             if [[ -d "$STAGING/previous" ]]; then
@@ -172,6 +174,8 @@ validate_body() {
         # have been fetched during a game - the rollback exists so it cannot replace a
         # corpus that had real live data in it.
         nfl-summary-live.json) shape='((.drives.previous // [] | length) > 0) or (.situation != null)' ;;
+        # A week spans several game days. A one-day scoreboard saved under a week name must fail here.
+        nfl-scoreboard-week-*.json) shape='(.events | type == "array") and ((.events | length) > 0) and (([.events[].date[0:10]] | unique | length) >= 2)' ;;
         nfl-scoreboard-sunday-*.json) shape='(.events | type == "array") and ((.events | length) >= 8)' ;;
         nfl-scoreboard-emptyday.json) shape='(.events | type == "array") and ((.events | length) == 0)' ;;
         nfl-scoreboard-*.json) shape='(.events | type == "array") and ((.leagues | length) > 0)' ;;
@@ -271,6 +275,62 @@ if [[ $MODE == base ]]; then
     mv -- "$CAPTURE" "$TARGET"
     complete=1
     printf 'Captured 7 base fixtures in %s\n' "$TARGET"
+    exit 0
+fi
+
+if [[ $MODE == nfl-week ]]; then
+    NFL_SITE=${NFL_SITE_BASE:-https://site.api.espn.com/apis}
+    NFL_DATA="$NFL_SITE/site/v2/sports/football/nfl"
+    ROOT="$REPO_ROOT/data/src/test/resources/fx-nfl"
+    mkdir -p -- "$ROOT"
+    # Glob order is lexical, and labels are YYYY-MM-DD, so the last match is the newest corpus.
+    NFL_LABEL=${NFL_CAPTURE_LABEL:-}
+    if [[ -z $NFL_LABEL ]]; then
+        for dir in "$ROOT"/*/; do
+            name=$(basename -- "$dir")
+            if [[ $name =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then NFL_LABEL=$name; fi
+        done
+    fi
+    NFL_LABEL=${NFL_LABEL:-$(date -u +%Y-%m-%d)}
+    if [[ ! $NFL_LABEL =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+        printf 'ERROR: NFL capture label must be YYYY-MM-DD, got %s\n' "$NFL_LABEL" >&2
+        exit 1
+    fi
+    TARGET="$ROOT/$NFL_LABEL"
+    rm -rf -- "$STAGING"
+    STAGING=$(mktemp -d "$ROOT/.capture-$NFL_LABEL.XXXXXX")
+    CAPTURE="$STAGING/capture"
+    mkdir -- "$CAPTURE"
+    {
+        printf 'NFL capture label: %s\n' "$NFL_LABEL"
+        printf 'Source: %s - ESPN public site API, unofficial, no key. Authorized 2026-11-18; docs/nfl-sources.md records what it carries.\n' "$NFL_DATA"
+        printf 'transfer_bytes: curl size_download (body before decompression). stored_bytes: bytes on disk after decompression.\n\n'
+    } > "$CAPTURE/SIZES.txt"
+
+    # Weeks are named by the ESPN week number, so a later capture of the same week replaces the file.
+    WEEKS=(11 12 1)
+    WEEK_FILES=()
+    for week in "${WEEKS[@]}"; do
+        name=nfl-scoreboard-week-$week.json
+        WEEK_FILES+=("$name")
+        capture_body "$name" "$NFL_DATA/scoreboard?seasontype=2&week=$week"
+    done
+
+    if [[ -e $TARGET ]]; then
+        cp -a -- "$TARGET" "$STAGING/previous"
+    fi
+    mkdir -p -- "$TARGET"
+    for name in "${WEEK_FILES[@]}"; do
+        cp -p -- "$CAPTURE/$name" "$TARGET/$name"
+    done
+    # Replace only the week lines, leaving the base corpus entries and the header intact.
+    if [[ -e $TARGET/SIZES.txt ]]; then
+        grep -vE '^nfl-scoreboard-week-' -- "$TARGET/SIZES.txt" > "$STAGING/SIZES.txt" || true
+    fi
+    grep -E '^nfl-scoreboard-week-' -- "$CAPTURE/SIZES.txt" >> "$STAGING/SIZES.txt"
+    mv -- "$STAGING/SIZES.txt" "$TARGET/SIZES.txt"
+    complete=1
+    printf 'Captured %s week scoreboards in %s\n' "${#WEEK_FILES[@]}" "$TARGET"
     exit 0
 fi
 
