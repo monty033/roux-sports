@@ -16,6 +16,7 @@ import okio.Path.Companion.toPath
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -209,6 +210,24 @@ class AppContainerTest {
             runBlocking { container.close() }
             engine.close()
             directory.deleteRecursively()
+        }
+    }
+
+    /**
+     * The NFL repository is built on the ESPN client, not the NHL one, and it is a separate instance from the NHL
+     * loader over the same cache. The request the mock engine sees is the proof of which client it is wired to.
+     */
+    @Test
+    fun theNflScoresRepositoryReadsThroughTheEspnClient() {
+        withMockedContainer { container, engine ->
+            runBlocking { container.nflScores.loadDay("2026-11-22", "2026-11-22") }
+
+            assertEquals(listOf("site.api.espn.com"), engine.requestHistory.map { it.url.host })
+            assertNotSame(
+                "the two leagues must not share one repository instance",
+                container.scores,
+                container.nflScores,
+            )
         }
     }
 
