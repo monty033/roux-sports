@@ -402,3 +402,16 @@ the week it is named for, for its game days, and for its state mix:
 
 Week 11 is a partial slate because the Thursday game is the only one already finished. Every logo is served from
 `a.espncdn.com`, the one ESPN host the app is authorized to reach.
+
+## Broadcast shape (Stage 3.2a)
+
+The census recorded that `broadcasts` exists on a competition but not what an entry holds. Reading the corpus
+settles it: each entry is an object with `market` as a plain string and `names` as a list of network names.
+
+```json
+{"market": "national", "names": ["CBS"]}
+```
+
+Networks seen across the corpus: CBS, Fox, NBC, ESPN, NFL Net, Prime Video, Netflix. The `market` is `national` on
+every entry observed, so it does not distinguish one game from another. A DTO that expects `market` to be an object
+fails to decode the whole scoreboard rather than one game, so this is worth stating plainly.
