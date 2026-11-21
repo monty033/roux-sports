@@ -25,6 +25,8 @@ class NetworkHostAuditTest {
         mapOf(
             "app/src/main/kotlin/net/montycasa/roux/ui/settings/AboutSection.kt" to setOf("github.com"),
             "data/src/main/kotlin/net/montycasa/roux/data/net/NhlHttpClientFactory.kt" to setOf("git.montycasa.net"),
+            // The ESPN client is the only place its logo host is named. Its User-Agent names the project, as the NHL one does.
+            "data/src/main/kotlin/net/montycasa/roux/data/net/EspnHttpClientFactory.kt" to setOf("git.montycasa.net", "a.espncdn.com"),
         )
 
     @Test
@@ -71,6 +73,22 @@ class NetworkHostAuditTest {
         assertEquals(
             listOf("app/src/main/kotlin/Other.kt: unlisted host git.montycasa.net"),
             violationsIn(mapOf("app/src/main/kotlin/Other.kt" to agent)),
+        )
+    }
+
+    @Test
+    fun theEspnLogoHostIsNamedOnlyInItsClient() {
+        val logo = "val logo = \"https://a.espncdn.com/i/teamlogos/nfl/500/phi.png\""
+
+        assertEquals(
+            listOf("app/src/main/kotlin/Other.kt: unlisted host a.espncdn.com"),
+            violationsIn(
+                mapOf("app/src/main/kotlin/Other.kt" to logo),
+            ),
+        )
+        assertEquals(
+            emptyList<String>(),
+            violationsIn(mapOf("data/src/main/kotlin/net/montycasa/roux/data/net/EspnHttpClientFactory.kt" to logo)),
         )
     }
 

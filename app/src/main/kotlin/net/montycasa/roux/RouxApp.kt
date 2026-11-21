@@ -20,6 +20,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import net.montycasa.roux.data.cache.ResponseCache
+import net.montycasa.roux.data.net.EspnHttpClientFactory
 import net.montycasa.roux.data.net.NhlApi
 import net.montycasa.roux.data.net.NhlHttpClientFactory
 import net.montycasa.roux.data.prefs.DataStorePreferencesRepository
@@ -144,7 +145,12 @@ open class RouxApp :
             .Builder(context)
             .serviceLoaderEnabled(false)
             .components {
-                add(KtorNetworkFetcherFactory(httpClient = container.httpClient))
+                add(
+                    LogoFetcherRouter(
+                        nhl = KtorNetworkFetcherFactory(httpClient = container.httpClient),
+                        espn = KtorNetworkFetcherFactory(httpClient = container.espnHttpClient),
+                    ),
+                )
                 add(SvgDecoder.Factory())
             }.build()
 
@@ -186,6 +192,9 @@ class AppContainer(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) {
     val httpClient: HttpClient = NhlHttpClientFactory.create(engine, version)
+
+    /** The ESPN boundary for NFL logos only. Separate from [httpClient] so neither league reaches the other's hosts. */
+    val espnHttpClient: HttpClient = EspnHttpClientFactory.create(engine, version)
 
     /** Undocumented NHL API behind the allowlist that [httpClient] enforces. */
     val api: NhlApi = NhlApi(httpClient)
