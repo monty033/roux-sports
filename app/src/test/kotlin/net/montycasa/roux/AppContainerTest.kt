@@ -231,6 +231,21 @@ class AppContainerTest {
         }
     }
 
+    /**
+     * The NHL half of the same proof: the NHL repository reads through the NHL client and nothing else. The NFL half is
+     * [theNflScoresRepositoryReadsThroughTheEspnClient]; together they show each league's repository on its own host.
+     */
+    @Test
+    fun theNhlScoresRepositoryReadsThroughTheNhlClient() {
+        withMockedContainer { container, engine ->
+            runBlocking { container.scores.loadDay("2026-11-22", "2026-11-22") }
+
+            val hosts = engine.requestHistory.map { it.url.host }
+            assertTrue("the NHL repository must reach the network", hosts.isNotEmpty())
+            assertEquals(setOf("api-web.nhle.com"), hosts.toSet())
+        }
+    }
+
     /** The cache lives in app-private storage, so a stale response cannot be read or planted by another app. */
     @Test
     fun cacheDirectoryIsUnderFilesDir() {

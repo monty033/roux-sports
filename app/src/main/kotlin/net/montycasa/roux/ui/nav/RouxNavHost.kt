@@ -172,7 +172,9 @@ fun RouxNavHost(
         viewModel(
             factory =
                 viewModelFactory {
-                    initializer { ScoresViewModel(container.scores, container.preferences, container.clock) }
+                    initializer {
+                        ScoresViewModel(container.scores, container.preferences, container.clock, container.nflScores)
+                    }
                 },
         )
     // My Teams is a destination that spans leagues, not a league: there is no table to read there, so Standings

@@ -26,6 +26,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.plus
@@ -34,6 +35,7 @@ import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.Game
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.ScoreDay
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.policy.DateStrip
@@ -60,6 +62,10 @@ class ScoresViewModel(
     private val scores: ScoresRepository,
     private val preferences: PreferencesRepository,
     private val clock: Clock,
+    /**
+     * NFL's feed. Required rather than defaulted: a default of [scores] would route NFL reads to NHL and still compile.
+     */
+    private val nflScores: ScoresRepository,
     /** The device's zone: the league day is this phone's civil date, so it is injected rather than assumed. */
     private val deviceZone: TimeZone = TimeZone.currentSystemDefault(),
     /** Jitter source for the failure backoff, injected so a test can pin the multiplier. */
@@ -67,8 +73,9 @@ class ScoresViewModel(
 ) : ViewModel() {
     private val selectedDate = MutableStateFlow(DateStrip.defaultSelection(emptyList(), leagueDay()))
 
-    // The off-season card's window, discovered from the dark day's feed and kept for this session.
-    private val offSeason = MutableStateFlow<OffSeasonUi?>(null)
+    // The off-season card's window, discovered from each league's dark day and kept for this session. Per league:
+    // NHL's last game is no answer for NFL, and a card learned from one league must not be drawn for the other.
+    private val offSeason = MutableStateFlow<Map<League, OffSeasonUi>>(emptyMap())
 
     // The default switch is a launch decision, not a property of every reload. Once this session has
     // resolved a day, midnight or a refresh must not move the selection again.
@@ -87,6 +94,17 @@ class ScoresViewModel(
     // Which league row the drawer highlights when the filter is off. Only the user's choice: the persisted order is
     // an ordering, not a selection.
     private val chosenLeague = MutableStateFlow<String?>(null)
+
+    /**
+     * The league the feed is read from, decided by the drawer's own selection.
+     *
+     * My Teams spans leagues rather than being one, so while it is selected the feed stays NHL: an NFL favourite cannot
+     * exist until Stage 5. Distinct, so a favourite change or a reorder never restarts a read.
+     */
+    private val routedLeague: Flow<League> =
+        combine(settings(), chosenLeague) { settings, chosen ->
+            if (settings.only) League.NHL else League.entries.firstOrNull { it.id == chosen } ?: League.NHL
+        }.distinctUntilChanged()
 
     /**
      * What the drawer draws, independent of the feed.
@@ -124,13 +142,14 @@ class ScoresViewModel(
 
     private val dayState: StateFlow<ScoresUiState> =
         combine(
-            combine(selectedDate, leagueDays(), refreshTrigger) { date, today, trigger ->
-                Request(date, today, trigger)
+            combine(selectedDate, leagueDays(), refreshTrigger, routedLeague) { date, today, trigger, league ->
+                Request(date, today, trigger, league)
             }.flatMapLatest { request -> pollDay(request) },
             settings(),
             offSeason,
-        ) { load, settings, season ->
+        ) { load, settings, seasons ->
             val day = load.value.data
+            val season = seasons[load.league]
             // Re-evaluate the selected day's own window. The off-season copy is kept only while the
             // page is the last game day or a dark day: moving to the regular season removes the card
             // and restores the favourites filter.
@@ -189,44 +208,46 @@ class ScoresViewModel(
         )
 
     /**
-     * What every day this screen has seen had on disk, keyed by date; it accumulates, see where it is written.
+     * What every day this screen has seen had on disk, keyed by league and date; it accumulates, see where it is written.
      *
      * Unfiltered on purpose: the cache knows the games, not the favourites, so a settings change can re-filter
-     * what is already here instead of reading the disk again.
+     * what is already here instead of reading the disk again. Both leagues are kept: [uiState] exposes only the
+     * selected one, so switching league and back never draws the other league's games for a shared date.
      */
-    private val rowsByDate = MutableStateFlow<Map<String, List<Game>>>(emptyMap())
+    private val rowsByDate = MutableStateFlow<Map<RememberedDay, List<Game>>>(emptyMap())
 
     /**
-     * What the neighbour pages are read from: which dates sit beside the selection, and nothing else.
+     * What the neighbour pages are read from: which dates sit beside the selection, in which league, and nothing else.
      *
      * The settings are deliberately absent. What the cache holds for a date does not depend on the favourites,
      * so a changed favourite set must not send the reader back to the disk - the filter is applied where the
-     * state is built, from the snapshot that state exposes. Derived from [dayState] alone there is no second
-     * collection of the settings to disagree with it, and a poll tick, a freshness change or an error leaves
-     * these two fields identical, which is what keeps the read unstarted.
+     * state is built, from the snapshot that state exposes. The league is the one settings-derived input, and it is
+     * distinct: a favourite change leaves it where it was, so a poll tick, a freshness change or an error leaves
+     * these fields identical, which is what keeps the read unstarted.
      */
     private data class NeighbourRequest(
         val dates: List<String>,
         val selected: String,
+        val league: League,
     )
 
     /**
      * The day on screen reduced to what decides which pages are read, and made distinct on it.
      *
-     * Derived first: [dayState] itself changes on every poll, and only a moved date or a moved selection can
-     * change what the reader has to fetch.
+     * Derived first: [dayState] itself changes on every poll, and only a moved date, a moved selection or a moved
+     * league can change what the reader has to fetch.
      */
     private val neighbourRequest: Flow<NeighbourRequest> =
-        dayState
-            .map { day ->
-                NeighbourRequest(
-                    dates = day.dateIndex.map { it.date }.distinct(),
-                    selected = day.selectedDate,
-                )
-            }.distinctUntilChanged()
+        combine(dayState, routedLeague) { day, league ->
+            NeighbourRequest(
+                dates = day.dateIndex.map { it.date }.distinct(),
+                selected = day.selectedDate,
+                league = league,
+            )
+        }.distinctUntilChanged()
 
     /**
-     * What each day beside the selection had on disk, unfiltered, keyed by date.
+     * What each day beside the selection had on disk, unfiltered, keyed by league and date.
      *
      * A transformLatest rather than a collector in init: it runs only while the UI is subscribed, restarts when the
      * request changes and leaves nothing running in a test that never collects. It warms the neighbours with the same
@@ -234,9 +255,9 @@ class ScoresViewModel(
      * path can never turn into a request of its own. It reads and remembers, nothing else: the favourites are not
      * consulted here, so a settings change re-filters what is already held rather than reading the disk again.
      */
-    private val neighbourRows: Flow<Map<String, List<Game>>> =
+    private val neighbourRows: Flow<Map<RememberedDay, List<Game>>> =
         neighbourRequest
-            .transformLatest { (dates, selected) ->
+            .transformLatest { (dates, selected, league) ->
                 val at = dates.indexOf(selected)
                 // The selection is included: a page draws from this map the moment it settles, and the day you settle on
                 // has to have an entry of its own before its load lands.
@@ -246,7 +267,11 @@ class ScoresViewModel(
                         .distinct()
                 if (wanted.isEmpty()) return@transformLatest
                 val today = leagueDay()
-                val fresh = wanted.associateWith { date -> scores.cachedDay(date, today)?.games.orEmpty() }
+                val repository = repositoryFor(league)
+                val fresh =
+                    wanted.associate { date ->
+                        RememberedDay(league, date) to repository.cachedDay(date, today)?.games.orEmpty()
+                    }
                 // Accumulated, not replaced: the day you settle on is no longer beside the selection, so replacing the
                 // map took its rows away at the exact moment the page needed them and the list drew one blank frame.
                 // Bounded so a long session cannot grow it without limit.
@@ -276,30 +301,38 @@ class ScoresViewModel(
      * re-filters what is already remembered; only a moved selection sends the reader back to the cache.
      */
     val uiState: StateFlow<ScoresUiState> =
-        combine(dayState, neighbourRows) { day, beside -> day.copy(rowsByDate = rowsFor(day, beside)) }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ScoresUiState(selectedDate.value, leagueDay()))
+        combine(dayState, neighbourRows, routedLeague) { day, beside, league ->
+            day.copy(rowsByDate = rowsFor(day, beside, league))
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ScoresUiState(selectedDate.value, leagueDay()))
 
     /**
-     * The remembered days under [day]'s own snapshot: the same favourites that ordered [ScoresUiState.rows] and
-     * that will draw the accent on these rows.
+     * The remembered days of the selected league under [day]'s own snapshot: the same favourites that ordered
+     * [ScoresUiState.rows] and that will draw the accent on these rows.
      *
-     * The off-season window is read as the session holds it, exactly as the read path did before, so the last
-     * games are still shown in full regardless of the favourites.
+     * The other league's days stay in the store and are not exposed. The off-season window is read as the session
+     * holds it for this league, exactly as the read path did before, so the last games are still shown in full
+     * regardless of the favourites.
      */
     private fun rowsFor(
         day: ScoresUiState,
-        beside: Map<String, List<Game>>,
-    ): Map<String, List<Game>> =
-        beside.mapValues { (date, games) ->
-            val filtered =
-                FavoritesOrdering.filter(
-                    games,
-                    day.favouriteTeams,
-                    day.favouritesOnly,
-                    allGames = offSeason.value?.lastGameDate == date,
-                )
-            ScoresOrdering.order(filtered.rows, day.favouriteTeams)
-        }
+        beside: Map<RememberedDay, List<Game>>,
+        league: League,
+    ): Map<String, List<Game>> {
+        val season = offSeason.value[league]
+        return beside
+            .filterKeys { it.league == league }
+            .mapKeys { it.key.date }
+            .mapValues { (date, games) ->
+                val filtered =
+                    FavoritesOrdering.filter(
+                        games,
+                        day.favouriteTeams,
+                        day.favouritesOnly,
+                        allGames = season?.lastGameDate == date,
+                    )
+                ScoresOrdering.order(filtered.rows, day.favouriteTeams)
+            }
+    }
 
     /** Loads immediately, even when the cadence has stopped. A pull also reaches past a fresh cache. */
     fun refresh() {
@@ -373,16 +406,18 @@ class ScoresViewModel(
      * only outcome is an error is noise on a battery.
      */
     private fun schedulePrefetch(
+        league: League,
         date: String,
         today: String,
         hasSlate: Boolean,
     ) {
         prefetchJob?.cancel()
         if (!hasSlate) return
+        val repository = repositoryFor(league)
         prefetchJob =
             viewModelScope.launch {
                 delay(PREFETCH_SETTLE_MS)
-                scores.prefetchAdjacent(date, today)
+                repository.prefetchAdjacent(date, today)
             }
     }
 
@@ -420,22 +455,28 @@ class ScoresViewModel(
 
         // Opening night is resolved once per session, on the launch dark day only. A null answer is a
         // normal "not known yet" and never becomes an error on this screen.
-        val knownOpening = offSeason.value?.openingNight
+        val league = request.league
+        val knownOpening = offSeason.value[league]?.openingNight
         val opening =
             if (!offSeasonDefaultApplied && darkDay != null && stillToday && nextGameDate != null) {
-                scores.openingNight(nextGameDate)?.let { OpeningNightUi(it, seasonLabel(it)) }
+                repositoryFor(league).openingNight(nextGameDate)?.let { OpeningNightUi(it, seasonLabel(it, league)) }
             } else {
                 knownOpening
             }
 
         if (lastGameDate != null) {
-            offSeason.value =
-                OffSeasonUi(
-                    lastGameDate = lastGameDate,
-                    nextGameDate = nextGameDate,
-                    seasonLabel = seasonLabel(lastGameDate),
-                    openingNight = opening,
-                )
+            offSeason.update { seasons ->
+                seasons +
+                    (
+                        league to
+                            OffSeasonUi(
+                                lastGameDate = lastGameDate,
+                                nextGameDate = nextGameDate,
+                                seasonLabel = seasonLabel(lastGameDate, league),
+                                openingNight = opening,
+                            )
+                    )
+            }
         }
         // A dark feed with no previous date has no finals landing; the session is still resolved.
         if (offSeasonDefaultApplied) return false
@@ -452,16 +493,38 @@ class ScoresViewModel(
         return true
     }
 
-    /** `20252026` becomes the card's `2025–26`. */
-    private fun seasonLabel(day: String): String {
-        val season = LeagueCalendar.seasonId(day)
-        return "${season.take(4)}–${season.takeLast(2)}"
-    }
+    /**
+     * The card's season for [day] in [league]: NHL names its season by the span, so `20252026` is `2025–26`; NFL names
+     * it by the year it starts, so the same July cut-over gives `2026`.
+     */
+    private fun seasonLabel(
+        day: String,
+        league: League,
+    ): String =
+        when (league) {
+            League.NHL -> {
+                val season = LeagueCalendar.seasonId(day)
+                "${season.take(4)}–${season.takeLast(2)}"
+            }
+
+            League.NFL -> {
+                LeagueCalendar.seasonStartYear(LocalDate.parse(day)).toString()
+            }
+        }
+
+    /** One repository per league, and this is the only place a league is turned into one. */
+    private fun repositoryFor(league: League): ScoresRepository =
+        when (league) {
+            League.NHL -> scores
+            League.NFL -> nflScores
+        }
 
     private fun pollDay(request: Request): Flow<DayLoad> =
         flow {
+            // The request carries the league, and a change of league restarts this flow, so one repository serves it all.
+            val repository = repositoryFor(request.league)
             var value: Loadable<ScoreDay> =
-                retained?.takeIf { it.date == request.date }?.value
+                retained?.takeIf { it.date == request.date && it.league == request.league }?.value
                     ?: Loadable(null, Freshness.Missing, null)
             // Only a new upstream start announces progress: a pull-to-refresh, a date change, or the
             // midnight rollover, each of which begins a fresh flow. A cadence tick loads silently,
@@ -476,20 +539,20 @@ class ScoresViewModel(
             var forceNext = request.trigger.force
             while (currentCoroutineContext().isActive) {
                 if (announceProgress) {
-                    emit(DayLoad(request.date, request.today, value, refreshing = true))
+                    emit(DayLoad(request.date, request.today, value, refreshing = true, league = request.league))
                 }
                 // Always load first on resubscription; loadDay checks FreshnessPolicy itself.
                 value =
                     if (forceNext) {
                         forceNext = false
-                        scores.refreshDay(request.date, request.today)
+                        repository.refreshDay(request.date, request.today)
                     } else {
-                        scores.loadDay(request.date, request.today)
+                        repository.loadDay(request.date, request.today)
                     }
                 if (applyOffSeasonDefault(request, value.data)) return@flow
-                val loaded = DayLoad(request.date, request.today, value, refreshing = false)
+                val loaded = DayLoad(request.date, request.today, value, refreshing = false, league = request.league)
                 retained = loaded
-                schedulePrefetch(request.date, request.today, hasSlate = value.data != null)
+                schedulePrefetch(request.league, request.date, request.today, hasSlate = value.data != null)
                 emit(loaded)
                 announceProgress = false
                 // A blocked host is a refusal, not a transport failure: asking again earns the same refusal. Stop
@@ -538,6 +601,7 @@ class ScoresViewModel(
         val date: String,
         val today: String,
         val trigger: Trigger,
+        val league: League,
     )
 
     /**
@@ -570,6 +634,13 @@ class ScoresViewModel(
         val today: String,
         val value: Loadable<ScoreDay>,
         val refreshing: Boolean,
+        val league: League,
+    )
+
+    /** Two leagues share dates, so a remembered day is named by its league as well as its date. */
+    private data class RememberedDay(
+        val league: League,
+        val date: String,
     )
 }
 
