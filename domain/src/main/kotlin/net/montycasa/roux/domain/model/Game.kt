@@ -118,6 +118,11 @@ data class Game(
     val otPeriods: Int? = null,
     /** Playoff series standing after this game; null outside the playoffs or when it did not decode. */
     val series: SeriesStatus? = null,
+    /**
+     * The playoff round this game belongs to, as the feed words it ("Wild Card", "Divisional"). Null in the regular
+     * season, and null when the feed omits it.
+     */
+    val roundLabel: String? = null,
 ) {
     // Validation of feed identifiers, dates, and missing or unexpected values belongs
     // to the adapter layer; these value types do not reject messy NHL data.
@@ -140,4 +145,8 @@ data class ScoreDay(
     val previousGameDate: String? = null,
     /** The feed's next game date, which is the first preseason game in the off-season. */
     val nextGameDate: String? = null,
+    /**
+     * The NFL week this day belongs to. Null for the NHL, whose feed has no weeks, and null when the feed omits it.
+     */
+    val week: Int? = null,
 )

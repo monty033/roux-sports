@@ -54,8 +54,9 @@ private val SCOREBOARD_2055 = load(SCOREBOARD_2055_NAME)
 private val SCOREBOARD_2205 = load(SCOREBOARD_2205_NAME)
 
 /**
- * Every scoreboard payload: the four base captures, the two taken during play, and the alias the capture script
- * overwrites on the next live run. The alias is scanned too, so a new capture cannot add a state unasserted.
+ * Every scoreboard payload: the four base captures, the three week captures, the two taken during play, and the
+ * alias the capture script overwrites on the next live run. The alias and the week files are scanned too, so a new
+ * capture cannot add a state, a period or an overtime final that goes unasserted.
  */
 private val SCOREBOARDS =
     FIXTURES +
@@ -63,7 +64,7 @@ private val SCOREBOARDS =
             SCOREBOARD_2055_NAME to SCOREBOARD_2055,
             SCOREBOARD_2205_NAME to SCOREBOARD_2205,
             SCOREBOARD_LIVE_ALIAS_NAME to load(SCOREBOARD_LIVE_ALIAS_NAME),
-        )
+        ) + WEEK_NAMES.associateWith { load(it) }
 
 private val SUMMARIES =
     mapOf(
@@ -636,6 +637,22 @@ class NflScoreboardCensusTest {
         assertEquals(setOf("CLE", "NO"), competition.competitionAbbreviations())
         assertEquals(listOf(5, 5), competition.competitionLinescoreCounts())
         assertEquals(setOf("23", "22"), competition.competitionScores())
+
+        // The week captures hold a second overtime final, in week 1. Both are finished games, so the rule has two
+        // observations rather than one.
+        val weekOvertime =
+            WEEK_NAMES.flatMap { name ->
+                load(name).events().filter { event ->
+                    event["status"]
+                        ?.jsonObject
+                        ?.get("period")
+                        ?.jsonPrimitive
+                        ?.content == "5"
+                }
+            }
+        assertEquals(1, weekOvertime.size)
+        assertEquals("Final/OT", weekOvertime.single().eventStatusDetail())
+        assertEquals("STATUS_FINAL|post|true", weekOvertime.single().statusTriple())
 
         // No in-progress event anywhere in the corpus ever reached period 5, so a live overtime is still unproven.
         val inProgressPeriods =
