@@ -20,6 +20,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import net.montycasa.roux.data.cache.ResponseCache
+import net.montycasa.roux.data.net.EspnApi
 import net.montycasa.roux.data.net.EspnHttpClientFactory
 import net.montycasa.roux.data.net.NhlApi
 import net.montycasa.roux.data.net.NhlHttpClientFactory
@@ -193,11 +194,14 @@ class AppContainer(
 ) {
     val httpClient: HttpClient = NhlHttpClientFactory.create(engine, version)
 
-    /** The ESPN boundary for NFL logos only. Separate from [httpClient] so neither league reaches the other's hosts. */
+    /** The ESPN boundary for NFL data and logos. Separate from [httpClient] so neither league reaches the other's hosts. */
     val espnHttpClient: HttpClient = EspnHttpClientFactory.create(engine, version)
 
     /** Undocumented NHL API behind the allowlist that [httpClient] enforces. */
     val api: NhlApi = NhlApi(httpClient)
+
+    /** ESPN's NFL scoreboard behind the allowlist that [espnHttpClient] enforces. */
+    val espnApi: EspnApi = EspnApi(espnHttpClient)
 
     val cacheDirectory: Path = filesDir / "nhl-cache"
 
@@ -248,8 +252,8 @@ class AppContainer(
         gameDetailRepository(api = api, cache = cache, clock = clock)
 
     /**
-     * Closes the HTTP client and cancels this container's scope, waiting for the preference store's
-     * coroutines to finish. A closed container's repositories and client must not be used again, and the
+     * Closes both HTTP clients and cancels this container's scope, waiting for the preference store's
+     * coroutines to finish. A closed container's repositories and clients must not be used again, and the
      * [scope] belongs to this container, so it must not be shared with another one.
      *
      * This waits for the scope, not for DataStore to drop its claim on the file: that happens just after
@@ -257,14 +261,19 @@ class AppContainer(
      * one container per process and never reopens, so only tests meet that window - and they retry, as
      * `DataStorePreferencesRepositoryTest.openWhenReleased` documents.
      *
-     * The client is closed in a `finally` because a caller cancelled while the join is suspended would
-     * otherwise leave it open.
+     * The clients are closed in a `finally` because a caller cancelled while the join is suspended would
+     * otherwise leave them open, and the ESPN client is closed in an inner one so that it is still closed when
+     * closing the NHL client throws.
      */
     suspend fun close() {
         try {
             scope.coroutineContext.job.cancelAndJoin()
         } finally {
-            httpClient.close()
+            try {
+                httpClient.close()
+            } finally {
+                espnHttpClient.close()
+            }
         }
     }
 }

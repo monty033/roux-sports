@@ -2,13 +2,20 @@ package net.montycasa.roux
 
 import android.Manifest
 import android.content.pm.PackageManager
+import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.respond
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.request.get
+import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
+import net.montycasa.roux.data.net.ApiResult
+import net.montycasa.roux.data.net.EspnHostNotAllowedException
 import net.montycasa.roux.data.net.HostNotAllowedException
 import okio.Path.Companion.toPath
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -19,6 +26,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
+import kotlin.io.path.createTempDirectory
 
 /**
  * S3.5: the container is the only place the app chooses its engine, clock, cache and preference store, so
@@ -124,6 +132,84 @@ class AppContainerTest {
             }
 
         assertEquals("example.com", thrown.host)
+    }
+
+    /**
+     * The two leagues' clients refuse each other's hosts as the container wires them, not just as their factories
+     * are written. The engine's recorded hosts are asserted so that a blocked request which quietly succeeded
+     * cannot pass: an exception alone says nothing about whether the engine was reached first.
+     */
+    @Test
+    fun theContainersTwoClientsRefuseEachOthersHosts() {
+        withMockedContainer { container, engine ->
+            runBlocking {
+                assertTrue(container.espnApi.scoreboard("2026-11-22") is ApiResult.Success)
+                assertEquals(listOf("site.api.espn.com"), engine.requestHistory.map { it.url.host })
+
+                val nhlRefusal =
+                    assertThrows(HostNotAllowedException::class.java) {
+                        runBlocking { container.httpClient.get("https://site.api.espn.com/x") }
+                    }
+                assertEquals("site.api.espn.com", nhlRefusal.host)
+
+                val espnRefusal =
+                    assertThrows(EspnHostNotAllowedException::class.java) {
+                        runBlocking { container.espnHttpClient.get("https://api-web.nhle.com/v1/score/2026-11-22") }
+                    }
+                assertEquals("api-web.nhle.com", espnRefusal.host)
+
+                // Neither refusal reached the engine: the one request it saw is still the allowed one.
+                assertEquals(listOf("site.api.espn.com"), engine.requestHistory.map { it.url.host })
+
+                // And each client still reaches its own host through the same shared engine.
+                assertEquals(
+                    200,
+                    container.httpClient
+                        .get("https://api-web.nhle.com/v1/score/2026-11-22")
+                        .status.value,
+                )
+                assertEquals(
+                    listOf("site.api.espn.com", "api-web.nhle.com"),
+                    engine.requestHistory.map { it.url.host },
+                )
+            }
+        }
+    }
+
+    /**
+     * Closing the container releases the ESPN client as well as the NHL one. A closed client's job completes, so
+     * `isActive` is the observable that moves; it would stay true for the ESPN client if `close()` forgot it.
+     */
+    @Test
+    fun closingTheContainerClosesBothClients() {
+        withMockedContainer { container, _ ->
+            assertTrue("the NHL client must start open", container.httpClient.coroutineContext.job.isActive)
+            assertTrue("the ESPN client must start open", container.espnHttpClient.coroutineContext.job.isActive)
+
+            runBlocking { container.close() }
+
+            assertFalse("close() must close the NHL client", container.httpClient.coroutineContext.job.isActive)
+            assertFalse("close() must close the ESPN client", container.espnHttpClient.coroutineContext.job.isActive)
+        }
+    }
+
+    /**
+     * A second container over its own temporary directory, so it cannot collide with the application's container
+     * over [RouxApp.filesDir]. The engine answers 200 to everything and keeps the request history.
+     */
+    private fun withMockedContainer(block: (AppContainer, MockEngine) -> Unit) {
+        val directory = createTempDirectory("roux-container-test").toFile()
+        val engine = MockEngine { respond("{}", HttpStatusCode.OK) }
+        val container = AppContainer(filesDir = directory.absolutePath.toPath(), engine = engine, version = "test")
+
+        try {
+            block(container, engine)
+        } finally {
+            // Closing twice is harmless, so a test that already closed the container may close it again here.
+            runBlocking { container.close() }
+            engine.close()
+            directory.deleteRecursively()
+        }
     }
 
     /** The cache lives in app-private storage, so a stale response cannot be read or planted by another app. */

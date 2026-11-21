@@ -7,7 +7,6 @@ import io.ktor.client.plugins.api.createClientPlugin
 import io.ktor.client.plugins.defaultRequest
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
-import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /** Identifies a blocked destination so support can trace an unexpected URL or redirect. */
@@ -16,11 +15,6 @@ class HostNotAllowedException(
 ) : IllegalArgumentException(
         "Blocked NHL HTTP request to host '$host'; only api-web.nhle.com, assets.nhle.com and api.nhle.com are allowed",
     )
-
-/** Keeps a server-requested pause distinct from other HTTP failures for the polling caller. */
-class RateLimited(
-    val retryAfter: Duration?,
-) : Exception("NHL HTTP 429 rate limit; retry delay: ${retryAfter ?: "unspecified (missing or invalid Retry-After)"}")
 
 /** Centralises the NHL network boundary while leaving engine ownership and version selection to callers. */
 object NhlHttpClientFactory {
