@@ -37,8 +37,16 @@ import kotlin.time.Instant
  * and only a failure with nothing cached is allowed to surface as an error. NFL days live under their own cache kind
  * so an NHL day and an NFL day can never evict or be read as each other.
  *
- * [openingNight] is left at the interface default (null) on purpose: the NFL opening night comes from the week index
- * in step 3.4, and answering null until then is honest rather than guessing from a single dated scoreboard.
+ * A blocked ESPN host and a 429 stay answers rather than faults: the first must not become a silent
+ * offline retry loop, and the second carries the pause the poller needs.
+ *
+ * A live NFL game still maps to [GameState.Unknown] until step 3.2c, so [slateOf] counts nothing as live
+ * and a game in progress takes the kickoff-bounded lifetime rather than the 25-second live one. That is
+ * the state mapping's gap, not this loader's, and it closes when the adapter learns the live states.
+ *
+ * [ScoresRepository.openingNight] is left at the interface default (null) on purpose: the NFL opening night comes from
+ * the week index in step 3.4, and answering null until then is honest rather than guessing from a single dated
+ * scoreboard.
  */
 internal class NflScoresRepositoryImpl(
     private val api: EspnApi,

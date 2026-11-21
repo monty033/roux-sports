@@ -19,6 +19,9 @@ import net.montycasa.roux.data.nfl.NflScoreboardAdapter
 import net.montycasa.roux.data.nhl.ParseResult
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
+import okio.FileSystem
+import okio.ForwardingFileSystem
+import okio.Path
 import okio.Path.Companion.toPath
 import okio.fakefilesystem.FakeFileSystem
 import org.junit.Assert.assertArrayEquals
@@ -59,6 +62,7 @@ class NflScoresRepositoryImplTest {
 
     private fun harness(
         baseUrl: String = "https://${EspnHttpClientFactory.DATA_HOST}",
+        files: (FileSystem) -> FileSystem = { delegate -> delegate },
         responder: (suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData?)? = null,
     ): Harness {
         val requests = mutableListOf<String>()
@@ -73,7 +77,7 @@ class NflScoresRepositoryImplTest {
                     )
             }
         val clock = MutableClock()
-        val cache = ResponseCache(FakeFileSystem(clock), DIRECTORY.toPath(), clock)
+        val cache = ResponseCache(files(FakeFileSystem(clock)), DIRECTORY.toPath(), clock)
         // Through the factory, so the request boundary (429 handling, host allowlist) is part of the test.
         val api = EspnApi(client = EspnHttpClientFactory.create(engine, "test-version"), baseUrl = baseUrl)
         return Harness(
@@ -277,6 +281,49 @@ class NflScoresRepositoryImplTest {
         }
 
     @Test
+    fun aCacheThatCannotBeWrittenStillReturnsTheSlateAsLocal() =
+        runBlocking {
+            val harness = harness(files = { delegate -> NflWriteFailingFileSystem(delegate) })
+
+            val loadable = harness.repository.loadDay(DAY, DAY)
+
+            assertNotNull("a cache failure must not hide a good response", loadable.data)
+            assertEquals(LoadError.Local, loadable.error)
+            assertEquals(Freshness.Fresh, loadable.freshness)
+        }
+
+    /**
+     * Speculative work promises it will not throw, and a cache write is one of the ways it could: a full disk reaches
+     * `cache.put` on this path. The catch that keeps that promise is only load-bearing if a test can fail without it.
+     */
+    @Test
+    fun prefetchAdjacentSwallowsACacheWriteFailure() =
+        runBlocking {
+            val harness = harness(files = { delegate -> NflWriteFailingFileSystem(delegate) })
+
+            harness.repository.prefetchAdjacent(DAY, DAY)
+
+            assertEquals("both neighbours are still attempted", 2, harness.requests.size)
+        }
+
+    @Test
+    fun aCachedBodyThatNoLongerParsesIsTreatedAsAbsent() =
+        runBlocking {
+            val harness = harness()
+            harness.cache.put(
+                CacheKey(CacheKind.NflScore, DAY),
+                "{\"stale\":\"schema\"}".toByteArray(),
+                harness.clock.now(),
+            )
+
+            val result = harness.repository.loadDay(DAY, DAY)
+
+            assertEquals("an unparseable cache must not block a fetch", 1, harness.requests.size)
+            assertEquals(Freshness.Fresh, result.freshness)
+            assertNotNull(result.data)
+        }
+
+    @Test
     fun cachedDayNeverRequests() =
         runBlocking {
             val harness = harness()
@@ -369,4 +416,14 @@ class NflScoresRepositoryImplTest {
         /** The compact `dates` query ESPN takes for an ISO date. */
         fun query(date: String): String = date.replace("-", "")
     }
+}
+
+/** Delegates everything to a real file system but refuses to replace a file, which is what a full disk looks like here. */
+private class NflWriteFailingFileSystem(
+    delegate: FileSystem,
+) : ForwardingFileSystem(delegate) {
+    override fun atomicMove(
+        source: Path,
+        target: Path,
+    ): Unit = throw IOException("disk full")
 }
