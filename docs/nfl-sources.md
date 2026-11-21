@@ -220,7 +220,7 @@ under the names the parsers read. Two in-progress states exist, not four.
 | `STATUS_FINAL` | yes | base corpus, 25 completed games |
 | `STATUS_IN_PROGRESS`, period 1 | yes | `live/scoreboard-2055.json`, clock `1:28` |
 | `STATUS_IN_PROGRESS`, period 3 | yes | `live/scoreboard-2205.json`, clock `14:12` |
-| `STATUS_FINAL`, period 5+ (overtime) | yes | base corpus: `nfl-scoreboard-sunday-b.json`, CLE @ NO `401873039`, 23–22, `detail` = `Final/OT`, five `linescores` per club |
+| `STATUS_FINAL`, period 5+ (overtime) | yes | two observed: `nfl-scoreboard-sunday-b.json`, CLE @ NO `401873039`, 23–22, and `nfl-scoreboard-week-1.json`, DET @ NO `401872923`, 30–31. Both carry `detail` = `Final/OT` and five `linescores` per club |
 | `STATUS_IN_PROGRESS`, period 2 | **not observed** | — |
 | `STATUS_IN_PROGRESS`, period 4 | **not observed** | — |
 | `STATUS_HALFTIME` | **not observed** | — |
@@ -232,7 +232,8 @@ under the names the parsers read. Two in-progress states exist, not four.
 
 Eight of the states the step asks for are not observed in this corpus, so no model may claim them. Overtime is
 observed **only as a finished game** (period 5, `Final/OT`), never while it was being played, so an in-progress
-overtime state is still unproven and its clock and situation are unknown.
+overtime state is still unproven and its clock and situation are unknown. Two overtime finals are now observed, one
+in the Sunday B capture and one in the week 1 capture.
 
 The census test asserts that the only state names in every payload it reads are `STATUS_SCHEDULED`,
 `STATUS_IN_PROGRESS` and `STATUS_FINAL`; that the only in-progress periods are 1 and 3; and that the only final
@@ -341,7 +342,7 @@ So a parser reading the scoreboard gets a number and a period index; a parser re
 throws away the period it belongs to. An absent key is not a null one: `"value": null` appears nowhere in this
 payload family, and a lookup that cannot tell the two apart will pass either way.
 
-The entry count tracks the periods played (1, 3 and 4 here; 5 for the overtime final in `sunday-b`), so it is not
+The entry count tracks the periods played (1, 3 and 4 here; 5 for an overtime final), so it is not
 a fixed four-column table.
 
 ### 6. The pre-game skeleton is T-10, not T-15
@@ -355,7 +356,7 @@ corpus.
 
 | payload | final `period` | final `displayClock` | `detail` |
 |---|---|---|---|
-| scoreboard | `4`, or `5` after overtime (25 of 25 completed games) | `0:00` | `Final`, or `Final/OT` |
+| scoreboard | `4`, or `5` after overtime (42 of 42 completed games) | `0:00` | `Final`, or `Final/OT` |
 | summary | absent | absent | `Final` |
 
 A parser that treats "carries a period" as "in progress" marks every finished game on the scores screen as live.

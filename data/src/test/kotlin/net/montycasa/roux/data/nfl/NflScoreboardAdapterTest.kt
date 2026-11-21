@@ -65,9 +65,21 @@ class NflScoreboardAdapterTest {
         val finals = day.games.filter { it.state == GameState.Final }
         val overtime = finals.filter { it.finalKind == FinalKind.OT }
 
-        assertEquals("exactly one overtime final in the corpus", 1, overtime.size)
+        assertEquals("one overtime final in this capture", 1, overtime.size)
         assertEquals("401873039", overtime.single().id.value)
         // Every other final is regulation, not a missing kind and not overtime.
+        assertEquals(finals.size - 1, finals.count { it.finalKind == null })
+    }
+
+    @Test
+    fun theSecondOvertimeFinalIsMarkedToo() {
+        // Week 1 holds a second overtime final, so the rule has two observations rather than one.
+        val day = parse("nfl-scoreboard-week-1.json", "2026-09-10")
+        val finals = day.games.filter { it.state == GameState.Final }
+        val overtime = finals.filter { it.finalKind == FinalKind.OT }
+
+        assertEquals("one overtime final in week 1", 1, overtime.size)
+        assertEquals("401872923", overtime.single().id.value)
         assertEquals(finals.size - 1, finals.count { it.finalKind == null })
     }
 
