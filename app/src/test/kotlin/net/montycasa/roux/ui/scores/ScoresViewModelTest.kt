@@ -1207,6 +1207,167 @@ class ScoresViewModelTest {
             assertEquals("2026-11-01", LeagueCalendar.leagueDay(now, TimeZone.of("America/Toronto")))
         }
 
+    /**
+     * With NHL selected the NFL repository is never asked anything. Each of the five reads is counted on its own, and
+     * the NHL side is shown to make all five, so the zeros are not the product of a scenario that reads nothing.
+     */
+    @Test
+    fun nhlNeverReadsNfl() =
+        runTest {
+            val nhl = FakeScoresRepository(testScheduler)
+            val nfl = FakeScoresRepository(testScheduler)
+            nhl.respond = { date, _ -> if (date == "2026-07-20") offSeasonDay(date) else freshDay(date) }
+            nhl.resolveOpeningNight = { "2026-09-29" }
+            val viewModel = routedViewModel(nhl, nfl, clock = FixedClock(Instant.parse("2026-07-20T16:00:00Z")))
+
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                viewModel.refresh()
+                runCurrent()
+                // The neighbour warm-up waits for the selection to settle.
+                advanceTimeBy(1_000)
+                runCurrent()
+                cancelAndIgnoreRemainingEvents()
+            }
+
+            assertTrue("loadDay must reach NHL", nhl.calls.isNotEmpty())
+            assertTrue("refreshDay must reach NHL", nhl.refreshCalls.isNotEmpty())
+            assertTrue("cachedDay must reach NHL", nhl.cacheReads.isNotEmpty())
+            assertTrue("prefetchAdjacent must reach NHL", nhl.prefetchCalls.isNotEmpty())
+            assertTrue("openingNight must reach NHL", nhl.openingNightCalls.isNotEmpty())
+            assertEquals("loadDay reached NFL", 0, nfl.calls.size)
+            assertEquals("refreshDay reached NFL", 0, nfl.refreshCalls.size)
+            assertEquals("cachedDay reached NFL", 0, nfl.cacheReads.size)
+            assertEquals("prefetchAdjacent reached NFL", 0, nfl.prefetchCalls.size)
+            assertEquals("openingNight reached NFL", 0, nfl.openingNightCalls.size)
+        }
+
+    /**
+     * An NFL game must not reach an NHL read, even when the NFL feed holds one for the same date.
+     *
+     * The 27th is beside the 26th, so NHL's copy of it is remembered first. The drawer then moves to NFL, which
+     * remembers the NFL copy of the same date. The selection moves away from the 27th before the drawer returns to
+     * NHL, so nothing re-reads that date under NHL: whatever the store still holds for it is what NHL draws.
+     * A store keyed by date alone would hand back the NFL copy at that point.
+     */
+    @Test
+    fun aRoutingSlipFails() =
+        runTest {
+            val day = "2026-10-27"
+            val index =
+                listOf("2026-10-25", "2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30")
+                    .map { DateIndexEntry(it, 1) }
+            val nhl = FakeScoresRepository(testScheduler)
+            val nfl = FakeScoresRepository(testScheduler)
+            val nhlCopy = game(date = day, id = "nhl-27")
+            val nflCopy = nflGame(day)
+            nhl.respond = { date, _ -> Loadable(ScoreDay(date, listOf(game(date = date)), index, 0), Freshness.Fresh, null) }
+            nhl.cache(day, ScoreDay(day, listOf(nhlCopy), index, 0))
+            nfl.respond = { date, _ -> Loadable(ScoreDay(date, listOf(nflGame(date)), index, 0), Freshness.Fresh, null) }
+            nfl.cache(day, ScoreDay(day, listOf(nflCopy), index, 0))
+            val viewModel = routedViewModel(nhl, nfl, FakePreferencesRepository(storedOnly = false))
+
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                val first = expectMostRecentItem()
+                assertTrue("an NFL game reached the NHL rows: ${first.rows}", first.rows.none { it.involvesNfl() })
+                assertEquals(listOf(nhlCopy), first.rowsByDate[day])
+
+                viewModel.selectLeague("nfl")
+                runCurrent()
+                assertEquals(listOf(nflCopy), expectMostRecentItem().rowsByDate[day])
+
+                viewModel.selectDate("2026-10-29")
+                runCurrent()
+                viewModel.selectLeague("nhl")
+                runCurrent()
+
+                val back = expectMostRecentItem()
+                assertTrue("an NFL game reached the NHL rows: ${back.rows}", back.rows.none { it.involvesNfl() })
+                assertEquals("the NHL day must be the NHL copy, not the NFL one", listOf(nhlCopy), back.rowsByDate[day])
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    /**
+     * A warm-up belongs to the league that scheduled it.
+     *
+     * The warm-up waits out a settle delay in the view model's scope, not the poll's, so restarting the poll on a
+     * league switch does not cancel it. The new league's own warm-up does cancel it - but only once its load has
+     * returned, and a warm-up fires on a timer. Football loading slower than the delay is therefore the case that
+     * leaks: the hockey `prefetchAdjacent` fires while the drawer sits on football. The second half proves the
+     * mechanism is alive, so the zero is a cancellation and not a warm-up that never existed.
+     */
+    @Test
+    fun aLeagueSwitchDropsTheWarmUpTheOtherLeagueScheduled() =
+        runTest {
+            val nhl = FakeScoresRepository(testScheduler)
+            val nfl = FakeScoresRepository(testScheduler)
+            nfl.respond = { date, _ ->
+                delay(700)
+                freshDay(date)
+            }
+            val viewModel = routedViewModel(nhl, nfl, FakePreferencesRepository(storedOnly = false))
+
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+
+                // Switch inside the settle delay, and let the delay run out while football is still loading.
+                viewModel.selectLeague("nfl")
+                runCurrent()
+                advanceTimeBy(600)
+                runCurrent()
+                assertEquals("the hockey warm-up fired after the drawer moved to football", 0, nhl.prefetchCalls.size)
+
+                advanceTimeBy(800)
+                runCurrent()
+                assertTrue("football warms its own neighbours once it loads", nfl.prefetchCalls.isNotEmpty())
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    /**
+     * The NFL card names its season by the year it starts. NHL keeps its span, and each league's own last game decides
+     * the label: the same selected day reads `2026` under NFL and `2025–26` under NHL.
+     */
+    @Test
+    fun theNflSeasonLabelIsItsStartYear() =
+        runTest {
+            val nhl = FakeScoresRepository(testScheduler)
+            val nfl = FakeScoresRepository(testScheduler)
+            nhl.respond = { date, _ -> offSeasonDay(date) }
+            // January 2027 is still the 2026 NFL season, and September 2027 starts the next one: a dark day across seasons.
+            nfl.respond = { date, _ -> offSeasonDay(date, previous = "2027-01-10", next = "2027-09-09") }
+            val viewModel = routedViewModel(nhl, nfl, clock = FixedClock(Instant.parse("2026-08-20T16:00:00Z")))
+            // A day the viewer chose is never moved by the launch default, so the card is read where it lands.
+            viewModel.selectDate("2026-08-20")
+
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                assertEquals("2025–26", expectMostRecentItem().offSeason?.seasonLabel)
+
+                viewModel.selectLeague("nfl")
+                runCurrent()
+                assertEquals("2026", expectMostRecentItem().offSeason?.seasonLabel)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    /** The same wiring as [viewModel], with the NFL fake held by the test so that its calls can be counted. */
+    private fun routedViewModel(
+        scores: FakeScoresRepository,
+        nflScores: FakeScoresRepository,
+        preferences: FakePreferencesRepository = FakePreferencesRepository(),
+        clock: Clock = SchedulerClock(testScheduler, origin),
+    ): ScoresViewModel =
+        ScoresViewModel(scores, preferences, clock, nflScores, TimeZone.of("America/Toronto"), { 0.5 }).also { viewModel ->
+            stores += ViewModelStore().apply { put("scores", viewModel) }
+        }
+
     private fun viewModel(
         scores: FakeScoresRepository,
         preferences: FakePreferencesRepository = FakePreferencesRepository(),
@@ -1214,7 +1375,7 @@ class ScoresViewModelTest {
         jitter: () -> Double = { 0.5 },
         zone: TimeZone = TimeZone.of("America/Toronto"),
     ): ScoresViewModel =
-        ScoresViewModel(scores, preferences, clock, zone, jitter).also { viewModel ->
+        ScoresViewModel(scores, preferences, clock, FakeScoresRepository(testScheduler), zone, jitter).also { viewModel ->
             stores += ViewModelStore().apply { put("scores", viewModel) }
         }
 }
@@ -1470,6 +1631,19 @@ private fun game(
         away = TeamRef(TeamKey(League.NHL, "TOR")),
         startTimeUtc = origin - 6.minutes,
     )
+
+/** An NFL game between two NFL clubs, so a read that reaches NHL's rows can be told apart from one that does not. */
+private fun nflGame(
+    date: String,
+    id: String = "phi-dal",
+): Game =
+    game(date = date, id = id).copy(
+        id = GameId(League.NFL, id),
+        home = TeamRef(TeamKey(League.NFL, "PHI")),
+        away = TeamRef(TeamKey(League.NFL, "DAL")),
+    )
+
+private fun Game.involvesNfl(): Boolean = home.key.league == League.NFL || away.key.league == League.NFL
 
 private fun freshDay(
     date: String,

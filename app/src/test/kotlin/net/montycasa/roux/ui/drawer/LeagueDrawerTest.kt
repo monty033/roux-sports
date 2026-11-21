@@ -99,7 +99,7 @@ class LeagueDrawerTest {
     ) {
         val vm =
             preferences?.let {
-                ScoresViewModel(
+                val repository =
                     object : ScoresRepository {
                         override suspend fun loadDay(
                             date: String,
@@ -110,11 +110,15 @@ class LeagueDrawerTest {
                             date: String,
                             today: String,
                         ) = Unit
-                    },
+                    }
+                ScoresViewModel(
+                    repository,
                     it,
                     object : Clock {
                         override fun now(): Instant = Instant.parse("2026-10-27T16:00:00Z")
                     },
+                    // The drawer never selects NFL in this test, so NFL's seat holds the same inert repository.
+                    repository,
                 ).also { model -> stores += ViewModelStore().apply { put("scores", model) } }
             }
         rule.setContent {
