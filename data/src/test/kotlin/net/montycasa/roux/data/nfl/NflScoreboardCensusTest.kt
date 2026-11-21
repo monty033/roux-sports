@@ -44,6 +44,7 @@ private val FIXTURES =
         EMPTY_DAY_NAME to load(EMPTY_DAY_NAME),
     )
 private val WEEK_NAMES = listOf("nfl-scoreboard-week-11.json", "nfl-scoreboard-week-12.json", "nfl-scoreboard-week-1.json")
+private val WEEK_FILES = mapOf(11 to "nfl-scoreboard-week-11.json", 12 to "nfl-scoreboard-week-12.json", 1 to "nfl-scoreboard-week-1.json")
 private val SUNDAY_A = FIXTURES.getValue(SUNDAY_A_NAME)
 private val SUNDAY_B = FIXTURES.getValue(SUNDAY_B_NAME)
 private val TODAY = FIXTURES.getValue(TODAY_NAME)
@@ -950,6 +951,70 @@ class NflScoreboardCensusTest {
         for (week in listOf(11, 12, 1)) {
             assertTrue("week $week is not in SIZES.txt", sizes.contains("nfl-scoreboard-week-$week.json "))
             assertTrue("week $week URL is not recorded", sizes.contains("seasontype=2&week=$week"))
+        }
+    }
+
+    /** Each week file must be the week its name says, in the regular season. */
+    @Test
+    fun eachWeekFileIsTheWeekItIsNamedFor() {
+        for ((week, name) in WEEK_FILES) {
+            val json = load(name)
+            assertEquals(
+                "$name week number",
+                week,
+                json["week"]!!
+                    .jsonObject["number"]!!
+                    .jsonPrimitive.content
+                    .toInt(),
+            )
+            assertEquals("$name season type", "2", json["season"]!!.jsonObject["type"]!!.jsonPrimitive.content)
+        }
+    }
+
+    /** Logos come from the one authorized ESPN host, so the week files must not name any other. */
+    @Test
+    fun theWeekFilesReachOnlyTheEspnLogoHost() {
+        for (name in WEEK_FILES.values) {
+            assertEquals("$name logo hosts", setOf("a.espncdn.com"), load(name).logoHosts())
+        }
+    }
+
+    /**
+     * Pins the state mix each week carries: week 11 has one final (the Thursday game) and twelve scheduled games,
+     * week 12 is all scheduled, and week 1 is all final. A future recapture that changes the mix fails here.
+     */
+    @Test
+    fun theWeekStatusMixIsAsCaptured() {
+        fun statusCounts(name: String): Map<String, Int> =
+            load(name)
+                .events()
+                .groupingBy { event ->
+                    event["competitions"]!!
+                        .jsonArray[0]
+                        .jsonObject["status"]!!
+                        .jsonObject["type"]!!
+                        .jsonObject["name"]!!
+                        .jsonPrimitive.content
+                }.eachCount()
+
+        assertEquals(mapOf("STATUS_FINAL" to 1, "STATUS_SCHEDULED" to 12), statusCounts("nfl-scoreboard-week-11.json"))
+        assertEquals(mapOf("STATUS_SCHEDULED" to 16), statusCounts("nfl-scoreboard-week-12.json"))
+        assertEquals(mapOf("STATUS_FINAL" to 16), statusCounts("nfl-scoreboard-week-1.json"))
+    }
+
+    /** Every game has two different teams, so a week's team count is exactly twice its game count. */
+    @Test
+    fun weekTeamCountsMatchTheGameCounts() {
+        for ((week, name) in WEEK_FILES) {
+            val games = load(name).events()
+            val teams =
+                games
+                    .flatMap {
+                        it.competitors().map { c ->
+                            c["team"]!!.jsonObject["abbreviation"]!!.jsonPrimitive.content
+                        }
+                    }.toSet()
+            assertEquals("week $week teams", games.size * 2, teams.size)
         }
     }
 }

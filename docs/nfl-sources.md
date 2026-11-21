@@ -387,3 +387,18 @@ a guess:
 
 The rule that matters more than any row: **pre-kickoff payloads are skeletons.** A parser written against one passes
 every test and fails at kickoff, which is exactly how the NHL game page went wrong.
+
+
+## Week scoreboards (Stage 1.3a)
+
+Captured by `nfl-week` from `scoreboard?seasontype=2&week=N`, season type 2 (regular season). Each file is checked for
+the week it is named for, for its game days, and for its state mix:
+
+| Week | Games | Game dates | States | Teams |
+|---|---|---|---|---|
+| 11 | 13 | 4 (Nov 20, 22, 23, 24) | 1 final, 12 scheduled | 26 |
+| 12 | 16 | 5 (Nov 26 to Dec 1) | 16 scheduled | 32 |
+| 1 | 16 | 5 (Sep 10 to 15) | 16 final | 32 |
+
+Week 11 is a partial slate because the Thursday game is the only one already finished. Every logo is served from
+`a.espncdn.com`, the one ESPN host the app is authorized to reach.
