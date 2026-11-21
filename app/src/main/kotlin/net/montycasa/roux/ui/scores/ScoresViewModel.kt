@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
@@ -77,9 +78,10 @@ class ScoresViewModel(
     // NHL's last game is no answer for NFL, and a card learned from one league must not be drawn for the other.
     private val offSeason = MutableStateFlow<Map<League, OffSeasonUi>>(emptyMap())
 
-    // The default switch is a launch decision, not a property of every reload. Once this session has
-    // resolved a day, midnight or a refresh must not move the selection again.
-    private var offSeasonDefaultApplied = false
+    // The default switch is a launch decision, not a property of every reload. Once a session has resolved a day,
+    // midnight or a refresh must not move the selection again. Tracked per league: hockey resolving at launch must
+    // not leave football's off-season card without its opening night.
+    private val resolvedLeagues = mutableSetOf<League>()
 
     // A date the viewer chose, including one chosen before the first load lands; it is never overridden.
     private var userPickedDate = false
@@ -98,13 +100,24 @@ class ScoresViewModel(
     /**
      * The league the feed is read from, decided by the drawer's own selection.
      *
-     * My Teams spans leagues rather than being one, so while it is selected the feed stays NHL: an NFL favourite cannot
-     * exist until Stage 5. Distinct, so a favourite change or a reorder never restarts a read.
+     * My Teams spans leagues rather than being one, so while it is selected the feed stays NHL: an NFL favorite cannot
+     * exist until Stage 5. Distinct, so a favorite change or a reorder never restarts a read.
+     *
+     * Shared, not cold: the day load, the neighbour read and the exposed map all ask this question, and three separate
+     * collections could answer it at three different instants - which showed as the map filtered to one league while
+     * `rows` still held the other league's slate for a frame.
+     *
+     * A pending warm-up belongs to the league that scheduled it. The warm-up lives in the view model's scope rather
+     * than the poll's, so restarting the poll cannot cancel it; the switch itself has to. Without this, flicking to
+     * football inside the settle delay still fires a hockey `prefetchAdjacent` afterwards, which is a read of the
+     * league the drawer has left.
      */
-    private val routedLeague: Flow<League> =
+    private val routedLeague: StateFlow<League> =
         combine(settings(), chosenLeague) { settings, chosen ->
             if (settings.only) League.NHL else League.entries.firstOrNull { it.id == chosen } ?: League.NHL
         }.distinctUntilChanged()
+            .onEach { prefetchJob?.cancel() }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(GRACE_MILLIS), League.NHL)
 
     /**
      * What the drawer draws, independent of the feed.
@@ -458,7 +471,7 @@ class ScoresViewModel(
         val league = request.league
         val knownOpening = offSeason.value[league]?.openingNight
         val opening =
-            if (!offSeasonDefaultApplied && darkDay != null && stillToday && nextGameDate != null) {
+            if (league !in resolvedLeagues && darkDay != null && stillToday && nextGameDate != null) {
                 repositoryFor(league).openingNight(nextGameDate)?.let { OpeningNightUi(it, seasonLabel(it, league)) }
             } else {
                 knownOpening
@@ -478,9 +491,8 @@ class ScoresViewModel(
                     )
             }
         }
-        // A dark feed with no previous date has no finals landing; the session is still resolved.
-        if (offSeasonDefaultApplied) return false
-        offSeasonDefaultApplied = true
+        // A dark feed with no previous date has no finals landing; the league is still resolved.
+        if (!resolvedLeagues.add(league)) return false
         // The resolver suspends; re-check that the viewer has not picked a date in the meantime.
         val stillSelectable =
             request.date == request.today &&

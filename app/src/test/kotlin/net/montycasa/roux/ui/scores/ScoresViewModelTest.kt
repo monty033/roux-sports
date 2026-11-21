@@ -1292,6 +1292,44 @@ class ScoresViewModelTest {
         }
 
     /**
+     * A warm-up belongs to the league that scheduled it.
+     *
+     * The warm-up waits out a settle delay in the view model's scope, not the poll's, so restarting the poll on a
+     * league switch does not cancel it. The new league's own warm-up does cancel it - but only once its load has
+     * returned, and a warm-up fires on a timer. Football loading slower than the delay is therefore the case that
+     * leaks: the hockey `prefetchAdjacent` fires while the drawer sits on football. The second half proves the
+     * mechanism is alive, so the zero is a cancellation and not a warm-up that never existed.
+     */
+    @Test
+    fun aLeagueSwitchDropsTheWarmUpTheOtherLeagueScheduled() =
+        runTest {
+            val nhl = FakeScoresRepository(testScheduler)
+            val nfl = FakeScoresRepository(testScheduler)
+            nfl.respond = { date, _ ->
+                delay(700)
+                freshDay(date)
+            }
+            val viewModel = routedViewModel(nhl, nfl, FakePreferencesRepository(storedOnly = false))
+
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+
+                // Switch inside the settle delay, and let the delay run out while football is still loading.
+                viewModel.selectLeague("nfl")
+                runCurrent()
+                advanceTimeBy(600)
+                runCurrent()
+                assertEquals("the hockey warm-up fired after the drawer moved to football", 0, nhl.prefetchCalls.size)
+
+                advanceTimeBy(800)
+                runCurrent()
+                assertTrue("football warms its own neighbours once it loads", nfl.prefetchCalls.isNotEmpty())
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    /**
      * The NFL card names its season by the year it starts. NHL keeps its span, and each league's own last game decides
      * the label: the same selected day reads `2026` under NFL and `2025–26` under NHL.
      */
