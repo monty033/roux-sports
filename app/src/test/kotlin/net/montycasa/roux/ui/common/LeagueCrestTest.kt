@@ -43,8 +43,18 @@ class LeagueCrestUrlTest {
     }
 
     @Test
+    fun theFootballCrestIsTheLeagueArtworkInEachVariant() {
+        assert(leagueCrestUrl("nfl", dark = false) == "https://a.espncdn.com/i/teamlogos/leagues/500/nfl.png") {
+            "a light surface drew ${leagueCrestUrl("nfl", dark = false)}"
+        }
+        assert(leagueCrestUrl("nfl", dark = true) == "https://a.espncdn.com/i/teamlogos/leagues/500-dark/nfl.png") {
+            "a dark surface drew ${leagueCrestUrl("nfl", dark = true)}"
+        }
+    }
+
+    @Test
     fun aLeagueTheAppDoesNotCarryHasNoCrest() {
-        listOf("nfl", "mlb", "nba", "myTeams", "").forEach { id ->
+        listOf("mlb", "nba", "myTeams", "").forEach { id ->
             val url = leagueCrestUrl(id, dark = false)
             assert(url == null) { "$id was given a crest: $url" }
         }
@@ -111,7 +121,7 @@ class LeagueCrestInHeaderTest {
 
     @Test
     fun aLeagueWithoutACrestKeepsThePlainPill() {
-        header(leagueLabel = "NFL", leagueId = "nfl")
+        header(leagueLabel = "MLB", leagueId = "mlb")
 
         compose.onNodeWithTag("scores.leagueChip").assertExists()
         val crests = crestCount()
