@@ -77,6 +77,22 @@ android {
         // so this measures the runtime difference alone; R8 becomes its own reviewed step.
         // Signed with the debug key so it installs over the debug build - which is exactly why it must
         // never be published, and why it is not called "release".
+        // The pre-release copy: the same app under its own package and label, so a round can be tried beside
+        // the published release instead of replacing it. Android will not install a differently-signed build
+        // over the release, and it should not: this way a test round cannot touch the favorites, alerts or
+        // saved data of the app that is actually in use.
+        // Unminified like `perf` so a device round measures behaviour and not R8, and signed with the debug
+        // key like `perf`, which is exactly why it can never be published.
+        create("dev") {
+            initWith(getByName("release"))
+            isMinifyEnabled = false
+            isShrinkResources = false
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+        }
+
         create("perf") {
             initWith(getByName("release"))
             // initWith copies the release block, so these two must be pinned back off: otherwise R8 renames

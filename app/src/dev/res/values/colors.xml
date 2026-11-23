@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Matches the field the dev foreground carries, so the artwork's edge stays invisible the way the release icon's
+      does. The rust field itself is what tells the two apps apart on a home screen.
+    -->
+    <color name="ic_launcher_background">#C4471A</color>
+</resources>
