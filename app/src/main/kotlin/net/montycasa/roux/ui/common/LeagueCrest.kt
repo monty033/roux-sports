@@ -2,14 +2,25 @@
 
 package net.montycasa.roux.ui.common
 
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import coil3.compose.AsyncImage
 import net.montycasa.roux.ui.theme.LocalRouxDark
+
+/**
+ * Whether league crests are drawn at all.
+ *
+ * Every crest is a network URL, so a screenshot that draws one records whatever the machine could reach that minute:
+ * a shield where the artwork host answered, an empty slot where it did not. A test that captures images switches
+ * artwork off and captures the same empty slot every time instead of chasing a host. The app never sets this.
+ */
+internal val LocalLeagueCrestArtwork = staticCompositionLocalOf { true }
 
 /** The tag on a league's crest, so a test can require it and a screenshot can be read. */
 internal const val LEAGUE_CREST_TAG = "league.crest"
@@ -50,6 +61,11 @@ internal fun LeagueCrest(
     size: Dp,
     modifier: Modifier = Modifier,
 ) {
+    if (!LocalLeagueCrestArtwork.current) {
+        // The slot stays: its width is part of every row's layout, and dropping it would move the league's name.
+        Spacer(modifier.size(size).testTag(LEAGUE_CREST_TAG))
+        return
+    }
     val url = leagueCrestUrl(leagueId, dark = LocalRouxDark.current) ?: return
     AsyncImage(
         model = url,

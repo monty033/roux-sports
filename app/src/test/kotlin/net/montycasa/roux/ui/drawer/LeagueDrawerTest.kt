@@ -48,6 +48,7 @@ import net.montycasa.roux.domain.repo.NotificationLedgerEntry
 import net.montycasa.roux.domain.repo.PreferencesRepository
 import net.montycasa.roux.domain.repo.ScoresRepository
 import net.montycasa.roux.domain.repo.TeamAlertPreferences
+import net.montycasa.roux.ui.common.LocalLeagueCrestArtwork
 import net.montycasa.roux.ui.reach.findReachViolations
 import net.montycasa.roux.ui.reach.reachTargets
 import net.montycasa.roux.ui.scores.DrawerUi
@@ -124,7 +125,11 @@ class LeagueDrawerTest {
         rule.setContent {
             RouxTheme(dark) {
                 val base = LocalDensity.current
-                CompositionLocalProvider(LocalDensity provides Density(base.density, fontScale)) {
+                CompositionLocalProvider(
+                    LocalDensity provides Density(base.density, fontScale),
+                    // The crests are network artwork; these captures are recorded without it.
+                    LocalLeagueCrestArtwork provides false,
+                ) {
                     sheet = remember { LeaguesSheetState() }
                     val scope = rememberCoroutineScope()
                     closeSheet = {
