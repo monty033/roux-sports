@@ -1,0 +1,15 @@
+NFL capture label: 2026-11-22
+Source: https://site.api.espn.com/apis/site/v2/sports/football/nfl - ESPN public site API, unofficial, no key.
+transfer_bytes: curl size_download (body before decompression). stored_bytes: bytes on disk after decompression.
+
+Sample: one Sunday window, 2026-11-22, five snapshots (13:50, 15:00, 16:20, 17:45, 19:15 America/New_York) against a
+full slate of 13 games, plus the pre-kickoff summary of the early game. These were captured on this day but were first
+written into the 2026-11-18 folder by a hardcoded corpus path; they were re-filed here.
+nfl-summary-pregame.json stored_bytes=140725 url=https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401873070 (kickoff 2026-11-22T18:00Z, MIA @ BUF)
+nfl-scoreboard-live.json transfer_bytes=19654 stored_bytes=209671 url=https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard
+nfl-summary-live.json transfer_bytes=46990 stored_bytes=550409 url=https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401873075
+live/scoreboard-1350.json and live/summary-1350.json
+live/scoreboard-1500.json and live/summary-1500.json
+live/scoreboard-1620.json and live/summary-1620.json
+live/scoreboard-1745.json and live/summary-1745.json
+live/scoreboard-1915.json and live/summary-1915.json
