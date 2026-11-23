@@ -6,6 +6,7 @@ import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.captureRoboImage
 import net.montycasa.roux.ui.common.LocalLeagueCrestArtwork
 import net.montycasa.roux.ui.nav.RouxNavHost
+import net.montycasa.roux.ui.scores.LocalTeamLogoArtwork
 import net.montycasa.roux.ui.scores.ScoresIntegrationApp
 import net.montycasa.roux.ui.scores.waitForFixtureScores
 import net.montycasa.roux.ui.theme.RouxTheme
@@ -82,7 +83,11 @@ class DesignParityTest {
         rule.setContent {
             RouxTheme(dark = dark) {
                 // Crests are network artwork; these captures are recorded without it.
-                CompositionLocalProvider(LocalLeagueCrestArtwork provides false) { RouxNavHost() }
+                // Crests and badges are network artwork; these captures are recorded without it.
+                CompositionLocalProvider(
+                    LocalLeagueCrestArtwork provides false,
+                    LocalTeamLogoArtwork provides false,
+                ) { RouxNavHost() }
             }
         }
         rule.waitForFixtureScores()

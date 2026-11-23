@@ -138,6 +138,15 @@ open class RouxApp :
                 .build()
 
     /**
+     * Whether badges and crests may fetch artwork.
+     *
+     * The shipped app does. A test that records screenshots overrides this to false, because the references were
+     * recorded without artwork: a capture that can reach a host records whatever that host answered that minute.
+     */
+    open val teamArtworkEnabled: Boolean
+        get() = true
+
+    /**
      * Coil shares the data client's engine and NHL host boundary. Supplying the fetcher explicitly
      * prevents Coil from choosing a client of its own for team logos.
      */

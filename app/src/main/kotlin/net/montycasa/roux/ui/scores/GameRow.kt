@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -75,6 +76,15 @@ import net.montycasa.roux.ui.theme.Roux
 /** Test tag for the logo image, so a test can assert the request was attempted. */
 const val LOGO_TAG = "gameRowLogo"
 const val CREST_TAG = "gameRowCrest"
+
+/**
+ * Whether team badges may fetch their artwork.
+ *
+ * The app fetches. A test that records a screenshot provides false, so the capture shows the abbreviation badge the
+ * references were recorded with instead of whatever a host answered that minute: a logo where the network was up, a
+ * badge where it was down. The badge stays in the layout either way, so nothing shifts.
+ */
+val LocalTeamLogoArtwork = staticCompositionLocalOf { true }
 const val STATE_CAPSULE_TAG = "gameRowStateCapsule"
 const val STATE_RAIL_TAG = "gameRowStateRail"
 const val WATCH_TAG = "gameRowWatch"
@@ -395,7 +405,7 @@ internal fun TeamLogo(
                 )
             }
         }
-        if (team.logoUrl != null) {
+        if (team.logoUrl != null && LocalTeamLogoArtwork.current) {
             AsyncImage(
                 model = team.logoUrl,
                 contentDescription = null,
