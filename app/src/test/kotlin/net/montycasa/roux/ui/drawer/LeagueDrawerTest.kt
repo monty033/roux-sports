@@ -16,6 +16,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertHeightIsEqualTo
@@ -27,6 +29,7 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -48,6 +51,7 @@ import net.montycasa.roux.domain.repo.NotificationLedgerEntry
 import net.montycasa.roux.domain.repo.PreferencesRepository
 import net.montycasa.roux.domain.repo.ScoresRepository
 import net.montycasa.roux.domain.repo.TeamAlertPreferences
+import net.montycasa.roux.ui.common.LEAGUE_CREST_TAG
 import net.montycasa.roux.ui.common.LocalLeagueCrestArtwork
 import net.montycasa.roux.ui.reach.findReachViolations
 import net.montycasa.roux.ui.reach.reachTargets
@@ -247,7 +251,11 @@ class LeagueDrawerTest {
         // Audit the panel's targets. The sheet itself carries no click action, and the scrim is the dismiss area
         // rather than a panel target.
         val targets = rule.reachTargets().filter { it.tag.startsWith("leagues.") && it.tag != "leagues.scrim" }
-        assertEquals(listOf("leagues.myTeams", "leagues.edit", "leagues.nhl", "leagues.settings"), targets.map { it.tag })
+        // Football joined the pile as a real target once it became openable; baseball stays out of it.
+        assertEquals(
+            listOf("leagues.myTeams", "leagues.edit", "leagues.nhl", "leagues.nfl", "leagues.settings"),
+            targets.map { it.tag },
+        )
         assertTrue(targets.none { it.primary })
         val root = rule.onRoot().fetchSemanticsNode().size
         val violations =
@@ -280,6 +288,18 @@ class LeagueDrawerTest {
         rule.onNodeWithTag("leagues.nhl").performClick()
         rule.waitForIdle()
         assertEquals(false, state.value.favouritesOnly)
+        rule.onNodeWithTag("leagues.sheet").assertDoesNotExist()
+    }
+
+    @Test
+    fun footballSelectionOpensFootballAndClosesTheSheet() {
+        state.value = state.value.copy(selectedLeagueId = "nhl")
+        launch()
+
+        rule.onNodeWithTag("leagues.nfl").performClick()
+        rule.waitForIdle()
+
+        assertEquals("nfl", state.value.selectedLeagueId)
         rule.onNodeWithTag("leagues.sheet").assertDoesNotExist()
     }
 
@@ -490,15 +510,26 @@ class LeagueDrawerTest {
     }
 
     @Test
-    fun unsupportedLeaguesAreDeliberatelyAbsent() {
+    fun footballIsOfferedNowThatItsScoresLoad() {
         launch()
-        // Drawn but not offered: the file lists these leagues, the app has no data for them yet, so they
-        // are greyed (.ditem.hid) and disabled rather than hidden or, worse, tappable into an empty day.
-        listOf("NFL" to "FOOTBALL", "MLB" to "BASEBALL").forEach { (league, sport) ->
-            rule.onNodeWithText(league).assertExists()
-            rule.onNodeWithText(sport).assertExists()
-            rule.onNodeWithTag("leagues.${league.lowercase()}").assertIsNotEnabled()
-        }
+
+        // The row takes a tap, and a row the app can open is allowed to show the league's crest: the crest is a
+        // promise the sport is there.
+        rule.onNodeWithText("NFL").assertExists()
+        rule.onNodeWithText("FOOTBALL").assertExists()
+        rule.onNodeWithTag("leagues.nfl").assertHasClickAction()
+        // Hockey and football carry a crest; baseball, which the app cannot open, must not borrow one.
+        rule.onAllNodesWithTag(LEAGUE_CREST_TAG, useUnmergedTree = true).assertCountEquals(2)
+    }
+
+    @Test
+    fun baseballIsStillDeliberatelyAbsent() {
+        launch()
+        // Drawn but not offered: the file lists the league, the app has no data for it, so it is greyed and
+        // disabled rather than hidden or, worse, tappable into an empty day.
+        rule.onNodeWithText("MLB").assertExists()
+        rule.onNodeWithText("BASEBALL").assertExists()
+        rule.onNodeWithTag("leagues.mlb").assertIsNotEnabled()
         // Leagues the app has never mentioned stay absent.
         listOf("NBA", "WNBA", "MLS").forEach { rule.onNodeWithText(it).assertDoesNotExist() }
     }

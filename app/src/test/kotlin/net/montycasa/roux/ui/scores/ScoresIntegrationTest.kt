@@ -156,7 +156,12 @@ class ScoresIntegrationTest {
         val logoRequests = app.requests.filter { it.host == "assets.nhle.com" }
         assertTrue(logoRequests.isNotEmpty())
         assertTrue(logoRequests.all { it.protocol.name == "https" })
-        assertEquals(setOf("api-web.nhle.com", "assets.nhle.com"), app.requests.map { it.host }.toSet())
+        // Football's crest lives on ESPN's CDN, which is the one non-NHL host the app may reach for artwork. The
+        // drawer draws it beside hockey's, so a football image request here is expected and the boundary is the point.
+        assertEquals(
+            setOf("api-web.nhle.com", "assets.nhle.com", "a.espncdn.com"),
+            app.requests.map { it.host }.toSet(),
+        )
         // A successful SVG removes the abbreviation fallback. This also exercises the SVG decoder.
         logos.indices.forEach { index ->
             val side = if (index == 0) "awayTeam" else "homeTeam"

@@ -61,6 +61,7 @@ import net.montycasa.roux.R
 import net.montycasa.roux.domain.policy.LeagueOrder
 import net.montycasa.roux.ui.common.FavouriteStar
 import net.montycasa.roux.ui.common.LeagueCrest
+import net.montycasa.roux.ui.reach.listRow
 import net.montycasa.roux.ui.reach.reachTarget
 import net.montycasa.roux.ui.scores.DrawerUi
 import net.montycasa.roux.ui.theme.Roux
@@ -313,7 +314,13 @@ private fun DrawerRow(
                 } else if (editing) {
                     Modifier
                 } else {
-                    Modifier.selectable(selected, role = Role.Tab, onClick = onClick).reachTarget(tag)
+                    Modifier
+                        .selectable(selected, role = Role.Tab, onClick = onClick)
+                        .reachTarget(tag)
+                        // The drawer's rows are one contiguous list: 56 dp rows stacked with no ditch, told apart
+                        // by their content. That is the case R4's clearance rule exempts; without this an
+                        // enabled second league would be reported as crowding the first.
+                        .listRow()
                 },
             ).testTag(tag)
             .padding(horizontal = 10.dp),
@@ -376,7 +383,7 @@ data class DrawerLeague(
 val drawerCatalog: List<DrawerLeague> =
     listOf(
         DrawerLeague("nhl", "NHL", R.string.drawer_hockey, true),
-        DrawerLeague("nfl", "NFL", R.string.drawer_football, false),
+        DrawerLeague("nfl", "NFL", R.string.drawer_football, true),
         DrawerLeague("mlb", "MLB", R.string.drawer_baseball, false),
     )
 

@@ -6,6 +6,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import net.montycasa.roux.R
 import net.montycasa.roux.ui.common.LEAGUE_CREST_TAG
 import net.montycasa.roux.ui.scores.DrawerUi
 import net.montycasa.roux.ui.theme.RouxTheme
@@ -44,24 +45,53 @@ class LeagueCrestInDrawerTest {
     private fun crestCount(): Int = compose.onAllNodesWithTag(LEAGUE_CREST_TAG, useUnmergedTree = true).fetchSemanticsNodes().size
 
     @Test
-    fun theSupportedLeagueWearsItsCrest() {
+    fun everyOpenableLeagueWearsItsCrest() {
         panel("nhl")
 
-        // The drawer lists every league, so exactly one row may carry artwork: the supported one.
-        compose
-            .onNodeWithTag("leagues.nhl", useUnmergedTree = true)
-            .assert(hasAnyDescendant(hasTestTag(LEAGUE_CREST_TAG))) { "the NHL row carried no crest" }
+        // The drawer lists every league, and exactly the openable ones may carry artwork: hockey and football.
+        listOf("nhl", "nfl").forEach { id ->
+            compose
+                .onNodeWithTag("leagues.$id", useUnmergedTree = true)
+                .assert(hasAnyDescendant(hasTestTag(LEAGUE_CREST_TAG))) { "the ${id.uppercase()} row carried no crest" }
+        }
         val crests = crestCount()
-        assert(crests == 1) { "the drawer drew $crests crests, expected exactly one" }
+        assert(crests == 2) { "the drawer drew $crests crests, expected exactly two" }
+    }
+
+    @Test
+    fun anUnopenableLeagueNeverWearsACrestEvenWhenTheAppCanDrawOne() {
+        // Football has crest artwork, so its crest alone cannot keep the row honest. What may not borrow a crest is
+        // any league the app cannot open: the drawer must not advertise a sport it has no scores for.
+        compose.setContent {
+            RouxTheme {
+                LeaguesPanel(
+                    drawer = DrawerUi(selectedLeagueId = "nhl", favouritesOnly = false),
+                    editing = false,
+                    onEditing = {},
+                    onLeagueOrder = {},
+                    onLeagueSelected = {},
+                    onFavouritesOnly = {},
+                    catalog =
+                        listOf(
+                            DrawerLeague("nhl", "NHL", R.string.drawer_hockey, true),
+                            DrawerLeague("nfl", "NFL", R.string.drawer_football, false),
+                        ),
+                )
+            }
+        }
+
+        compose
+            .onNodeWithTag("leagues.nfl", useUnmergedTree = true)
+            .assert(hasAnyDescendant(hasTestTag(LEAGUE_CREST_TAG)).not()) { "an unopenable league wore a crest" }
     }
 
     @Test
     fun aLeagueWithoutACrestDoesNotBorrowOne() {
-        panel("nfl")
+        panel("mlb")
 
-        compose.onNodeWithTag("leagues.nfl", useUnmergedTree = true).assertExists()
+        compose.onNodeWithTag("leagues.mlb", useUnmergedTree = true).assertExists()
         compose
-            .onNodeWithTag("leagues.nfl", useUnmergedTree = true)
-            .assert(hasAnyDescendant(hasTestTag(LEAGUE_CREST_TAG)).not()) { "the NFL row wore a crest" }
+            .onNodeWithTag("leagues.mlb", useUnmergedTree = true)
+            .assert(hasAnyDescendant(hasTestTag(LEAGUE_CREST_TAG)).not()) { "the MLB row wore a crest" }
     }
 }
