@@ -26,8 +26,9 @@ nfl-athlete-K.json transfer_bytes=5689 stored_bytes=47022 url=https://site.api.e
 nfl-gamelog-K.json transfer_bytes=4515 stored_bytes=87822 url=https://site.api.espn.com/apis/common/v3/sports/football/nfl/athletes/4689936/gamelog
 nfl-gamelog-empty.json transfer_bytes=197 stored_bytes=398 url=https://site.api.espn.com/apis/common/v3/sports/football/nfl/athletes/4710422/gamelog
 nfl-summary-pregame.json stored_bytes=137178 url=https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401873066 (kickoff 2026-11-20T01:15Z, IND @ HOU)
-nfl-scoreboard-live.json transfer_bytes=19685 stored_bytes=228282 url=https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard
-nfl-summary-live.json transfer_bytes=38699 stored_bytes=388843 url=https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401873066
 nfl-scoreboard-week-11.json transfer_bytes=20369 stored_bytes=236330 url=https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?seasontype=2&week=11
 nfl-scoreboard-week-12.json transfer_bytes=22864 stored_bytes=287000 url=https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?seasontype=2&week=12
 nfl-scoreboard-week-1.json transfer_bytes=14268 stored_bytes=141313 url=https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?seasontype=2&week=1
+nfl-summary-pregame.json stored_bytes=140725 url=https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401873070 (kickoff 2026-11-22T18:00Z, MIA @ BUF)
+nfl-scoreboard-live.json transfer_bytes=19654 stored_bytes=209671 url=https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard
+nfl-summary-live.json transfer_bytes=46990 stored_bytes=550409 url=https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401873075
