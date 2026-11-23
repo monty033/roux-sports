@@ -14,6 +14,7 @@ import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.League
+import net.montycasa.roux.domain.model.PeriodInfo
 import net.montycasa.roux.domain.model.ScoreDay
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
@@ -39,6 +40,10 @@ internal object NflScoreboardAdapter {
      * not yet distinguish: the corpus holds no pregame sample, so the two cannot be told apart from evidence.
      */
     private const val STATUS_PRE = "STATUS_PRE"
+    private const val STATUS_IN_PROGRESS = "STATUS_IN_PROGRESS"
+
+    /** Four quarters; a period above this one is overtime. */
+    private const val NFL_REGULATION_PERIODS = 4
 
     /** A kickoff written to the minute, with no seconds: `2026-11-22T18:00Z`. */
     private val MINUTE_PRECISION = Regex("""\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z""")
@@ -118,11 +123,13 @@ internal object NflScoreboardAdapter {
                 ?.type
                 ?.name
                 ?.takeIf { it.isNotBlank() } ?: return null
+        val livePeriod = if (statusName == STATUS_IN_PROGRESS) competition.livePeriod() else null
 
         return Game(
             id = GameId(League.NFL, id),
             date = date?.take(10)?.takeIf { it.isNotBlank() } ?: requestedDate,
-            state = statusName.toGameState(),
+            state = statusName.toGameState(livePeriod),
+            period = livePeriod,
             home = home.toTeamRef(),
             away = away.toTeamRef(),
             homeScore = home.score?.toIntOrNull(),
@@ -136,17 +143,38 @@ internal object NflScoreboardAdapter {
     /**
      * The state, from the status name alone.
      *
-     * A live game is not mapped here: the census found that the live scoreboard carries a period and a running
-     * clock, and the live mapping is a separate step. Until then a live game stays [GameState.Unknown] with its raw
-     * name, which shows as "status unavailable" rather than as a guess.
+     * A live game needs more than its name: the feed states the period and clock on the same competition, and a live
+     * name with no real period is not a fact worth inventing, so [livePeriod] decides whether this can be live at
+     * all. Finals stay finals whatever their period and clock say - the census found a final carrying period 4 and
+     * `0:00`, which is exactly what a live game never looks like.
      */
-    private fun String.toGameState(): GameState =
+    private fun String.toGameState(livePeriod: PeriodInfo?): GameState =
         when (this) {
             STATUS_FINAL -> GameState.Final
             STATUS_SCHEDULED -> GameState.Scheduled
             STATUS_PRE -> GameState.Pre
+            STATUS_IN_PROGRESS -> if (livePeriod == null) GameState.Unknown(this) else GameState.Live()
             else -> GameState.Unknown(this)
         }
+
+    /**
+     * The period and clock of a game being played, or null when the feed states no period.
+     *
+     * `running` is true for a mapped live game because an in-progress status carrying a period is the strongest
+     * statement this feed makes; it has no running flag of its own. `inIntermission` stays false and is deliberately
+     * not derived: the captured corpus holds no halftime or period-break payload, so reading a halt out of a clock
+     * would be a guess. That state is unverified here, not supported.
+     */
+    private fun NflCompetitionDto.livePeriod(): PeriodInfo? {
+        val period = status?.period?.takeIf { it > 0 } ?: return null
+        return PeriodInfo(
+            ordinal = period,
+            periodType = if (period > NFL_REGULATION_PERIODS) "OT" else "REG",
+            clock = status?.displayClock?.trim()?.takeIf { it.isNotEmpty() },
+            inIntermission = false,
+            running = true,
+        )
+    }
 
     /**
      * Whether a finished game went to overtime.
