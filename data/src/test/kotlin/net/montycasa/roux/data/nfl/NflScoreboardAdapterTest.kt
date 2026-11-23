@@ -2,6 +2,7 @@ package net.montycasa.roux.data.nfl
 
 import net.montycasa.roux.data.nhl.ParseResult
 import net.montycasa.roux.domain.model.FinalKind
+import net.montycasa.roux.domain.model.FootballSituation
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.League
@@ -274,6 +275,42 @@ class NflScoreboardAdapterTest {
         assertTrue("the feed states a start time", final.startTimeUtc != null)
         // A final is not live play, even though the scoreboard carries a period and a clock.
         assertNull(final.period)
+    }
+
+    @Test
+    fun aLiveGameCarriesTheDownAndTheTeamWithTheBall() {
+        val day = parse("live/scoreboard-1350.json", "2026-11-22", capture = "2026-11-22")
+        // The capture's second quarter: Miami has it, third and three.
+        val game = day.games.first { it.away.abbrev == "MIA" && it.state is GameState.Live }
+
+        assertEquals(
+            FootballSituation(down = 3, distance = 3, possession = "MIA", redZone = false),
+            game.football,
+        )
+    }
+
+    @Test
+    fun aSnapWithNoDownKeepsTheBallAndTheRedZone() {
+        val day = parse("live/scoreboard-1350.json", "2026-11-22", capture = "2026-11-22")
+        // The feed states down -1 between plays: Chicago is inside the twenty with no down pending.
+        val game = day.games.first { it.home.abbrev == "CHI" && it.state is GameState.Live }
+
+        assertEquals(
+            FootballSituation(down = null, distance = null, possession = "CHI", redZone = true),
+            game.football,
+        )
+    }
+
+    @Test
+    fun onlyALiveGameCarriesASnap() {
+        val day = parse("live/scoreboard-1350.json", "2026-11-22", capture = "2026-11-22")
+
+        val others = day.games.filterNot { it.state is GameState.Live }
+        assertTrue("the capture holds finished or scheduled games too", others.isNotEmpty())
+        assertTrue(
+            "a game that is not being played states no snap: ${others.filter { it.football != null }.map { it.home.abbrev }}",
+            others.all { it.football == null },
+        )
     }
 
     private fun singleGame(payload: String): Game {

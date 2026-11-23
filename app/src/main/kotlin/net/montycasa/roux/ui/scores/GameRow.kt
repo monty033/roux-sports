@@ -56,8 +56,10 @@ import coil3.compose.AsyncImage
 import net.montycasa.roux.R
 import net.montycasa.roux.domain.model.Broadcast
 import net.montycasa.roux.domain.model.FinalKind
+import net.montycasa.roux.domain.model.FootballSituation
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameState
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.TeamRef
 import net.montycasa.roux.ui.common.CAPSULE_BORDER
 import net.montycasa.roux.ui.common.CAPSULE_HORIZONTAL_PADDING
@@ -65,6 +67,7 @@ import net.montycasa.roux.ui.common.CAPSULE_PADDING
 import net.montycasa.roux.ui.common.LIVE_CLOCK_GAP
 import net.montycasa.roux.ui.common.LiveCapsule
 import net.montycasa.roux.ui.common.StateClock
+import net.montycasa.roux.ui.common.footballPeriodLabel
 import net.montycasa.roux.ui.common.periodLabel
 import net.montycasa.roux.ui.common.rememberStartTimeLabel
 import net.montycasa.roux.ui.theme.Roux
@@ -75,6 +78,7 @@ const val CREST_TAG = "gameRowCrest"
 const val STATE_CAPSULE_TAG = "gameRowStateCapsule"
 const val STATE_RAIL_TAG = "gameRowStateRail"
 const val WATCH_TAG = "gameRowWatch"
+const val SNAP_TAG = "gameRowSnap"
 const val TEAM_LINE_TAG = "gameRowTeamLine"
 
 /** The club's name, or its abbreviation where the name would have to be cut. */
@@ -481,13 +485,23 @@ private fun StateRail(
                         }
                     } else {
                         LiveCapsule(label = label, testTag = STATE_CAPSULE_TAG)
+                        // Football counts quarters; hockey counts periods. The fallback keeps an unlabelled
+                        // football period from losing its clock.
+                        val periodText =
+                            if (game.id.league == League.NFL) {
+                                footballPeriodLabel(game.period) ?: periodLabel(game.period)
+                            } else {
+                                periodLabel(game.period)
+                            }
                         StateClock(
-                            listOfNotNull(periodLabel(game.period), game.period?.clock?.takeIf { it.isNotBlank() })
+                            listOfNotNull(periodText, game.period?.clock?.takeIf { it.isNotBlank() })
                                 .joinToString(" "),
                             live = true,
                             intermission = intermission,
                         )
                     }
+                    // Who has the ball and what the down needs, for the one league that has downs.
+                    game.football?.let { SnapLine(it, width - RAIL_INSETS) }
                 }
 
                 GameState.Final -> {
@@ -537,6 +551,60 @@ private fun WatchChannels(
         overflow = TextOverflow.Ellipsis,
     )
 }
+
+/**
+ * The down and distance a live football game is on.
+ *
+ * A team between plays - after a score, on a kickoff, during a timeout - has possession but no down, so the line
+ * states what the feed states instead of inventing a down that does not exist. Inside the opponent's twenty it takes
+ * the accent colour, the same cue the live capsule carries.
+ */
+@Composable
+private fun SnapLine(
+    situation: FootballSituation,
+    maxWidth: Dp,
+) {
+    val label = snapLabel(situation) ?: return
+    Text(
+        label,
+        Modifier.width(maxWidth).testTag(SNAP_TAG),
+        style = Roux.cardTypography.shots,
+        color = if (situation.redZone) Roux.accents.signature else MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Start,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
+/** "3rd & 3", "2nd & goal", or the bare down when the feed states no distance. */
+@Composable
+private fun snapLabel(situation: FootballSituation): String? {
+    val down = downLabel(situation.down)
+    val distance = situation.distance
+    val downAndDistance =
+        when {
+            down == null -> null
+            distance == null -> down
+            distance == 0 -> stringResource(R.string.game_row_snap_goal, down)
+            else -> stringResource(R.string.game_row_snap_distance, down, distance)
+        }
+    val possession = situation.possession?.takeIf { it.isNotBlank() }
+    return when {
+        possession == null -> downAndDistance
+        downAndDistance == null -> possession
+        else -> stringResource(R.string.game_row_snap, possession, downAndDistance)
+    }
+}
+
+@Composable
+private fun downLabel(down: Int?): String? =
+    when (down) {
+        1 -> stringResource(R.string.game_row_down_first)
+        2 -> stringResource(R.string.game_row_down_second)
+        3 -> stringResource(R.string.game_row_down_third)
+        4 -> stringResource(R.string.game_row_down_fourth)
+        else -> null
+    }
 
 @Composable
 private fun FinalCapsule(kind: FinalKind?) {
@@ -636,6 +704,20 @@ private fun gameRowLiveState(game: Game): String {
         if (period.inIntermission) pieces += stringResource(R.string.game_row_intermission).lowercase()
     }
     period?.clock?.takeIf { it.isNotBlank() }?.let { pieces += it }
+    game.football?.let { situation ->
+        val snap = snapLabel(situation)
+        val possession = situation.possession
+        if (snap != null) {
+            // Spoken as a clause, not as the rail's abbreviation: "Buffalo has the ball, 3rd & 3".
+            pieces +=
+                if (possession != null && situation.down != null) {
+                    stringResource(R.string.game_row_description_snap, possession, snap)
+                } else {
+                    snap
+                }
+        }
+        if (situation.redZone) pieces += stringResource(R.string.game_row_description_red_zone)
+    }
     return pieces.joinToString(", ")
 }
 
