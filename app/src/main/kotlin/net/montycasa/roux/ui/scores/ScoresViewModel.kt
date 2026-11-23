@@ -210,6 +210,7 @@ class ScoresViewModel(
                 error = load.value.error,
                 freshness = load.value.freshness,
                 dateIndex = day?.dateIndex.orEmpty(),
+                week = day?.week,
                 offSeason = viewedSeason,
             )
         }.stateIn(

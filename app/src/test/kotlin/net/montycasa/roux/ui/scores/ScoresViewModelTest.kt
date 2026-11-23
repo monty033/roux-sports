@@ -1334,6 +1334,37 @@ class ScoresViewModelTest {
      * the label: the same selected day reads `2026` under NFL and `2025–26` under NHL.
      */
     @Test
+    fun theFootballWeekReachesTheShelfWhileHockeyHasNone() =
+        runTest {
+            val nhl = FakeScoresRepository(testScheduler)
+            val nfl = FakeScoresRepository(testScheduler)
+            nhl.respond = { date, _ -> Loadable(ScoreDay(date, listOf(game(date = date)), emptyList(), 0), Freshness.Fresh, null) }
+            // The week is the feed's, so it rides on the day rather than being derived from a date on the screen.
+            nfl.respond = { date, _ ->
+                val football =
+                    game(date = date).copy(
+                        id = GameId(League.NFL, "phi-dal"),
+                        home = TeamRef(TeamKey(League.NFL, "PHI")),
+                        away = TeamRef(TeamKey(League.NFL, "DAL")),
+                    )
+                Loadable(ScoreDay(date, listOf(football), emptyList(), 0, week = 12), Freshness.Fresh, null)
+            }
+            val viewModel = routedViewModel(nhl, nfl)
+
+            viewModel.uiState.test {
+                awaitItem()
+                runCurrent()
+                assertNull("hockey has no weeks to label", expectMostRecentItem().week)
+
+                viewModel.selectLeague("nfl")
+                runCurrent()
+
+                assertEquals(12, expectMostRecentItem().week)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
     fun theNflSeasonLabelIsItsStartYear() =
         runTest {
             val nhl = FakeScoresRepository(testScheduler)

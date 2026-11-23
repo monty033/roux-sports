@@ -52,6 +52,7 @@ fun DateStripBar(
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
     onOpenCalendar: () -> Unit = {},
+    week: Int? = null,
 ) {
     val locale = LocalConfiguration.current.locales[0]
     val date = LocalDate.parse(selectedDate)
@@ -60,6 +61,7 @@ fun DateStripBar(
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
     val todayLabel = stringResource(R.string.date_strip_today)
+    val weekLabel = week?.let { stringResource(R.string.date_strip_week, it) }
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         IconButton(
             onClick = { onSelect(items[index - 1].date) },
@@ -86,6 +88,7 @@ fun DateStripBar(
                     .testTag("scores.dateLabel")
                     .semantics(mergeDescendants = true) {
                         contentDescription = "Change date, " +
+                            (weekLabel?.let { "$it, " } ?: "") +
                             if (selectedDate == today) {
                                 "$todayLabel, ${date.format(DateTimeFormatter.ofPattern("MMM d", locale))}"
                             } else {
@@ -98,12 +101,21 @@ fun DateStripBar(
             ) {
                 val monthDay = date.format(DateTimeFormatter.ofPattern("MMM d", locale))
                 val candidates =
-                    if (selectedDate ==
-                        today
-                    ) {
-                        listOf("$todayLabel, $monthDay", todayLabel)
-                    } else {
-                        listOf(date.format(DateTimeFormatter.ofPattern("EEE, MMM d", locale)), monthDay, date.dayOfMonth.toString())
+                    buildList {
+                        // The football feed numbers its weeks. A week is worth more than a weekday to someone
+                        // deciding which day to open, so it is offered first and dropped only when the pill is too
+                        // narrow to hold it.
+                        if (weekLabel != null) add("$weekLabel · $monthDay")
+                        if (selectedDate ==
+                            today
+                        ) {
+                            add("$todayLabel, $monthDay")
+                            add(todayLabel)
+                        } else {
+                            add(date.format(DateTimeFormatter.ofPattern("EEE, MMM d", locale)))
+                            add(monthDay)
+                            add(date.dayOfMonth.toString())
+                        }
                     }
                 val width = with(density) { maxWidth.roundToPx() }
                 val label =

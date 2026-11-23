@@ -34,6 +34,7 @@ internal fun DateShelf(
     onSelect: (String) -> Unit,
     onOpenCalendar: () -> Unit,
     modifier: Modifier = Modifier,
+    week: Int? = null,
 ) {
     val rule = MaterialTheme.colorScheme.outline
     Row(
@@ -46,7 +47,7 @@ internal fun DateShelf(
             .padding(horizontal = Reach.EDGE_INSET_DP.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        DateStripBar(items, selectedDate, today, onSelect, Modifier.fillMaxWidth(), onOpenCalendar)
+        DateStripBar(items, selectedDate, today, onSelect, Modifier.fillMaxWidth(), onOpenCalendar, week)
     }
 }
 

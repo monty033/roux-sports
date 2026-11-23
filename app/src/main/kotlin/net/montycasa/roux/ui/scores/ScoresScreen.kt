@@ -44,6 +44,7 @@ import net.montycasa.roux.R
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.model.Game
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.policy.DateStrip
 import net.montycasa.roux.domain.policy.FavoritesHint
 import net.montycasa.roux.ui.common.RetryButton
@@ -295,6 +296,10 @@ fun ScoresScreen(
                                         }
                                     }
                                     items(pageRows, key = { it.id.value }) { game ->
+                                        val rowModifier =
+                                            Modifier
+                                                .padding(horizontal = CARD_SIDE_PADDING)
+                                                .testTag("scores.game.${game.id.value}")
                                         GameRow(
                                             game,
                                             narrow = narrow,
@@ -303,11 +308,14 @@ fun ScoresScreen(
                                             // row's place in the list: the order also depends on whether a
                                             // game is live or finished, so position says nothing.
                                             favourite = game.isFavourite(state.favouriteTeams),
+                                            // A football row opens nothing: the NFL game page is not built yet, and a
+                                            // row that opened the hockey page would be worse than one that does nothing.
                                             modifier =
-                                                Modifier
-                                                    .padding(horizontal = CARD_SIDE_PADDING)
-                                                    .testTag("scores.game.${game.id.value}")
-                                                    .clickable { onGameClick(game) },
+                                                if (game.id.league == League.NFL) {
+                                                    rowModifier
+                                                } else {
+                                                    rowModifier.clickable { onGameClick(game) }
+                                                },
                                         )
                                     }
                                 }
@@ -370,7 +378,14 @@ fun ScoresScreen(
                 }
 
                 // The shell lifts the modal over its tabs; a standalone screen keeps the same overlay here.
-                DateShelf(dates, state.selectedDate, state.today, onSelectDate, onOpenCalendar ?: { calendarOpen = true })
+                DateShelf(
+                    dates,
+                    state.selectedDate,
+                    state.today,
+                    onSelectDate,
+                    onOpenCalendar ?: { calendarOpen = true },
+                    week = state.week,
+                )
             }
         }
         if (calendarOpen) {

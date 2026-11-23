@@ -428,7 +428,10 @@ private fun ReorderableLeagueRow(
         label = league.label,
         trailing = stringResource(league.sport),
         tag = "leagues.${league.id}",
-        leading = { LeagueCrest(league.id, LEAGUE_CREST_SIZE) },
+        // A dimmed league draws no crest: the crest is a promise the app can show that sport, and a row it cannot
+        // open must not borrow one. Football gained a crest in 3.3c, which is why this guard exists - without it the
+        // dimmed row grew artwork and the menu's existing images moved.
+        leading = { if (league.available) LeagueCrest(league.id, LEAGUE_CREST_SIZE) },
         selected = selected,
         dimmed = !league.available,
         editing = editing,

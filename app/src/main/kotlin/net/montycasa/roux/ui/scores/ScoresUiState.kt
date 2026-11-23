@@ -59,6 +59,13 @@ data class ScoresUiState(
      */
     val offSeason: OffSeasonUi? = null,
     /**
+     * The football week this day belongs to, as the feed numbers it.
+     *
+     * Null for a league whose feed has no weeks, and null when the feed omits it, so the shelf only labels a week it
+     * was actually told about.
+     */
+    val week: Int? = null,
+    /**
      * Rows for every day the screen knows, already filtered and ordered like [rows].
      *
      * Read from the cache, never fetched for their own sake: this is what a page shows for a day the viewer is moving

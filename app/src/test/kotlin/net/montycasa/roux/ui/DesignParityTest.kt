@@ -1,8 +1,10 @@
 package net.montycasa.roux.ui
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.captureRoboImage
+import net.montycasa.roux.ui.common.LocalLeagueCrestArtwork
 import net.montycasa.roux.ui.nav.RouxNavHost
 import net.montycasa.roux.ui.scores.ScoresIntegrationApp
 import net.montycasa.roux.ui.scores.waitForFixtureScores
@@ -77,7 +79,12 @@ class DesignParityTest {
         dark: Boolean,
     ) {
         // No composable helper: Compose lint demands an uppercase name for one and ktlint forbids it.
-        rule.setContent { RouxTheme(dark = dark) { RouxNavHost() } }
+        rule.setContent {
+            RouxTheme(dark = dark) {
+                // Crests are network artwork; these captures are recorded without it.
+                CompositionLocalProvider(LocalLeagueCrestArtwork provides false) { RouxNavHost() }
+            }
+        }
         rule.waitForFixtureScores()
         rule.onRoot().captureRoboImage("src/test/screenshots/design-parity/$name.png")
     }

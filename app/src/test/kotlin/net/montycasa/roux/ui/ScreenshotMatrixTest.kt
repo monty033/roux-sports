@@ -1,5 +1,7 @@
 package net.montycasa.roux.ui
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.SemanticsActions
@@ -10,14 +12,33 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import com.github.takahirom.roborazzi.captureRoboImage
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.respond
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.headersOf
+import kotlinx.coroutines.runBlocking
+import net.montycasa.roux.data.cache.ResponseCache
+import net.montycasa.roux.data.net.EspnApi
+import net.montycasa.roux.data.repo.nflScoresRepository
+import net.montycasa.roux.domain.policy.ScoresOrdering
+import net.montycasa.roux.ui.common.LocalLeagueCrestArtwork
+import net.montycasa.roux.ui.scores.ScoresScreen
+import net.montycasa.roux.ui.scores.ScoresUiState
 import net.montycasa.roux.ui.theme.RouxTheme
+import okio.Path.Companion.toPath
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import java.nio.file.Files
+import kotlin.time.Clock
+import kotlin.time.Instant
 
 /**
  * P6: one golden per (screen state, theme) for every state in [AuditStates]. The state list is shared with
@@ -99,7 +120,10 @@ class ScreenshotMatrixTest {
         val dark = mutableStateOf(false)
         rule.setContent {
             RouxTheme(dark = dark.value) {
-                screens[index.intValue].content()
+                // Crests are network artwork; these captures are recorded without it.
+                CompositionLocalProvider(LocalLeagueCrestArtwork provides false) {
+                    screens[index.intValue].content()
+                }
             }
         }
         var captured = 0
@@ -226,4 +250,102 @@ class ScreenshotMatrixTest {
         assertEquals("one golden per (state, theme)", screens.size * 2, captured)
         if (failures.isNotEmpty()) throw AssertionError("${failures.size} screenshot mismatches", failures.first())
     }
+
+    /**
+     * The three football states in both themes, each drawn from the real NFL adapter: a golden of a hand-built day would
+     * show the screen, not whether what the adapter makes of the feed renders.
+     */
+    @Test
+    fun footballStatesInBothThemes() {
+        val states = footballStates()
+        assertEquals("football states", listOf("nfl-final", "nfl-scheduled", "nfl-empty"), states.map { it.first })
+        assertTrue("every football day loaded", states.all { it.second.error == null && it.second.loadedDate != null })
+        assertTrue("the final day has games", states[0].second.rows.isNotEmpty())
+        assertTrue("the scheduled day has games", states[1].second.rows.isNotEmpty())
+        assertTrue("the empty day has none", states[2].second.rows.isEmpty())
+        // The feed numbers the football weeks, and a day with no games states none, so the shelf has nothing to label
+        // there rather than guessing which week a gap falls in.
+        assertEquals("a week only where the feed states one", listOf(10, 12, null), states.map { it.second.week })
+
+        val index = mutableIntStateOf(0)
+        val dark = mutableStateOf(false)
+        rule.setContent {
+            RouxTheme(dark = dark.value) {
+                CompositionLocalProvider(LocalLeagueCrestArtwork provides false) {
+                    // Keyed on the state so each day starts from its own pager, as a fresh selection does in the app.
+                    key(index.intValue) { ScoresScreen(states[index.intValue].second, {}, {}, {}) }
+                }
+            }
+        }
+        var captured = 0
+        states.forEachIndexed { i, (name, _) ->
+            listOf(false, true).forEach { isDark ->
+                val theme = if (isDark) "dark" else "light"
+                rule.runOnIdle {
+                    index.intValue = i
+                    dark.value = isDark
+                }
+                rule.waitForIdle()
+                rule.onRoot().captureRoboImage("src/test/screenshots/matrix/$name-$theme.png")
+                captured++
+            }
+        }
+        assertEquals("one golden per football state and theme", states.size * 2, captured)
+    }
+
+    /** The NFL scoreboards the football goldens load, keyed by the `dates` parameter ESPN is asked for. */
+    private val nflScoreboards =
+        mapOf(
+            "20261115" to "nfl-scoreboard-sunday-a.json",
+            "20261126" to "nfl-scoreboard-week-12.json",
+            "20261117" to "nfl-scoreboard-emptyday.json",
+        )
+
+    /**
+     * Loads each football day through the public NFL repository, served from the captured scoreboards by a mock engine. The
+     * cache is a fresh directory, so every day is a network answer rather than a file left by another run.
+     */
+    private fun footballStates(): List<Pair<String, ScoresUiState>> {
+        val today = "2026-11-18"
+        val clock =
+            object : Clock {
+                override fun now(): Instant = Instant.parse("${today}T20:00:00Z")
+            }
+        val client =
+            HttpClient(
+                MockEngine { request ->
+                    val fixture = nflScoreboards[request.url.parameters["dates"]]
+                    if (fixture == null) {
+                        respond(ByteArray(0), HttpStatusCode.NotFound)
+                    } else {
+                        respond(nflFixture(fixture), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+                    }
+                },
+            )
+        val cache = ResponseCache(directory = Files.createTempDirectory("nfl-matrix").toString().toPath(), clock = clock)
+        val repository = nflScoresRepository(EspnApi(client), cache, clock)
+        return runBlocking {
+            listOf("nfl-final" to "2026-11-15", "nfl-scheduled" to "2026-11-26", "nfl-empty" to "2026-11-17").map { (name, date) ->
+                val loaded = repository.loadDay(date, today)
+                val day = loaded.data
+                name to
+                    ScoresUiState(
+                        selectedDate = date,
+                        today = today,
+                        rows = day?.games?.let { ScoresOrdering.order(it) }.orEmpty(),
+                        freshness = loaded.freshness,
+                        error = loaded.error,
+                        loadedDate = day?.date,
+                        dateIndex = day?.dateIndex.orEmpty(),
+                        week = day?.week,
+                        favouritesOnly = false,
+                    )
+            }
+        }
+    }
+
+    private fun nflFixture(name: String): ByteArray =
+        requireNotNull(javaClass.getResourceAsStream("/fx-nfl/2026-11-18/$name")) {
+            "missing NFL fixture $name"
+        }.use { it.readBytes() }
 }
