@@ -2,6 +2,7 @@ package net.montycasa.roux.data.nfl
 
 import net.montycasa.roux.data.nhl.ParseResult
 import net.montycasa.roux.domain.model.FinalKind
+import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.League
 import org.junit.Assert.assertEquals
@@ -17,10 +18,11 @@ class NflScoreboardAdapterTest {
     private fun parse(
         name: String,
         date: String,
+        capture: String = CAPTURE,
     ): net.montycasa.roux.domain.model.ScoreDay {
         val json =
             NflScoreboardAdapterTest::class.java
-                .getResourceAsStream("/fx-nfl/$CAPTURE/$name")
+                .getResourceAsStream("/fx-nfl/$capture/$name")
                 ?.use { it.readBytes().toString(Charsets.UTF_8) }
                 ?: error("Fixture resource not found: $name")
 
@@ -118,20 +120,73 @@ class NflScoreboardAdapterTest {
     }
 
     @Test
-    fun aLiveStatusIsNotGuessedAt() {
-        // The live mapping is a separate step. Until it lands, a live game must read as unknown rather than as live.
-        val json =
-            """
-            {"events":[{"id":"997","date":"2026-11-22T18:00Z","competitions":[{"competitors":[
-              {"homeAway":"home","score":"7","team":{"abbreviation":"AAA"}},
-              {"homeAway":"away","score":"3","team":{"abbreviation":"BBB"}}],
-              "status":{"type":{"name":"STATUS_IN_PROGRESS","state":"in","detail":"1:28 - 1st Quarter","completed":false},"period":1,"displayClock":"1:28"}}]}]}
-            """.trimIndent()
+    fun aLiveGameCarriesThePeriodAndClockTheFeedStates() {
+        val game = singleGame(LIVE_QUARTER_ONE)
 
-        val result = NflScoreboardAdapter.parseScoreboard(json, "2026-11-22")
-        val game = (result as ParseResult.Success).value.games.single()
+        assertEquals(GameState.Live(), game.state)
+        val period = requireNotNull(game.period) { "a live game must carry the period the feed stated" }
+        assertEquals(1, period.ordinal)
+        assertEquals("1:28", period.clock)
+        assertEquals("REG", period.periodType)
+        assertEquals(true, period.running)
+    }
+
+    @Test
+    fun aLiveGameWithNoStatedPeriodStaysUnknown() {
+        // Every in-progress game in the corpus states its period. If one ever does not, period 0 would be an invented
+        // fact, so the game stays unknown rather than reading as a live game at the top of the first quarter.
+        val game = singleGame(LIVE_WITHOUT_A_PERIOD)
 
         assertEquals(GameState.Unknown("STATUS_IN_PROGRESS"), game.state)
+        assertNull("no period may be invented", game.period)
+    }
+
+    @Test
+    fun theFourthQuarterIsStillRegulation() {
+        // The other side of the boundary: a fourth-quarter game is regulation. Without this, a threshold that reads
+        // "four or more" looks correct, because period five satisfies both.
+        val game = singleGame(LIVE_QUARTER_FOUR)
+
+        val period = requireNotNull(game.period)
+        assertEquals(4, period.ordinal)
+        assertEquals("REG", period.periodType)
+    }
+
+    @Test
+    fun aPeriodAboveTheFourthIsOvertime() {
+        val game = singleGame(LIVE_QUARTER_FIVE)
+
+        val period = requireNotNull(game.period)
+        assertEquals(5, period.ordinal)
+        assertEquals("OT", period.periodType)
+        assertEquals("4:12", period.clock)
+    }
+
+    @Test
+    fun aRealSlateMapsItsInProgressGamesLiveWithTheQuartersTheyAreIn() {
+        // The Sunday capture is real football: thirteen games, several of them being played at each snapshot.
+        val day = parse("live/scoreboard-1350.json", "2026-11-22", capture = SUNDAY)
+
+        val live = day.games.filter { it.state is GameState.Live }
+        assertTrue("the 13:50 snapshot is mid-afternoon football", live.isNotEmpty())
+        for (game in live) {
+            val period = requireNotNull(game.period) { "${game.id.value} is live without a period" }
+            assertTrue("a real quarter, not a guess", period.ordinal in 1..4)
+            assertEquals(true, period.running)
+            assertTrue("the feed states a running clock", period.clock?.matches(CLOCK) == true)
+        }
+    }
+
+    @Test
+    fun aFinishedGameInTheSameSlateCarriesNoLiveProgress() {
+        val day = parse("live/scoreboard-1350.json", "2026-11-22", capture = SUNDAY)
+
+        val finals = day.games.filter { it.state == GameState.Final }
+        assertTrue("the same snapshot already holds finals", finals.isNotEmpty())
+        for (final in finals) {
+            // The raw payload gives a final a period and a 0:00 clock. Neither may become live play.
+            assertNull("${final.id.value} is final but carries live progress", final.period)
+        }
     }
 
     @Test
@@ -221,7 +276,52 @@ class NflScoreboardAdapterTest {
         assertNull(final.period)
     }
 
+    private fun singleGame(payload: String): Game {
+        val result = NflScoreboardAdapter.parseScoreboard(payload.trimIndent(), "2026-11-22")
+        return (result as ParseResult.Success).value.games.single()
+    }
+
     private companion object {
         const val CAPTURE = "2026-11-18"
+
+        /** The Sunday capture, where the in-progress games actually are. */
+        const val SUNDAY = "2026-11-22"
+        val CLOCK = Regex("""\d{1,2}:\d{2}""")
+
+        /** One game being played, as the feed states it: name, period, clock. */
+        val LIVE_QUARTER_ONE =
+            """
+            {"events":[{"id":"997","date":"2026-11-22T18:00Z","competitions":[{"competitors":[
+              {"homeAway":"home","score":"7","team":{"abbreviation":"AAA"}},
+              {"homeAway":"away","score":"3","team":{"abbreviation":"BBB"}}],
+              "status":{"type":{"name":"STATUS_IN_PROGRESS","state":"in","detail":"1:28 - 1st Quarter","completed":false},"period":1,"displayClock":"1:28"}}]}]}
+            """.trimIndent()
+
+        /** The same live game with the period the feed owes us missing. */
+        val LIVE_WITHOUT_A_PERIOD =
+            """
+            {"events":[{"id":"996","date":"2026-11-22T18:00Z","competitions":[{"competitors":[
+              {"homeAway":"home","score":"7","team":{"abbreviation":"AAA"}},
+              {"homeAway":"away","score":"3","team":{"abbreviation":"BBB"}}],
+              "status":{"type":{"name":"STATUS_IN_PROGRESS","state":"in","detail":"1:28 - 1st Quarter","completed":false},"displayClock":"1:28"}}]}]}
+            """.trimIndent()
+
+        /** A fourth-quarter game: the last period this league calls regulation. */
+        val LIVE_QUARTER_FOUR =
+            """
+            {"events":[{"id":"994","date":"2026-11-22T18:00Z","competitions":[{"competitors":[
+              {"homeAway":"home","score":"17","team":{"abbreviation":"AAA"}},
+              {"homeAway":"away","score":"13","team":{"abbreviation":"BBB"}}],
+              "status":{"type":{"name":"STATUS_IN_PROGRESS","state":"in","detail":"6:30 - 4th Quarter","completed":false},"period":4,"displayClock":"6:30"}}]}]}
+            """.trimIndent()
+
+        /** A fifth period, which this league calls overtime. */
+        val LIVE_QUARTER_FIVE =
+            """
+            {"events":[{"id":"995","date":"2026-11-22T18:00Z","competitions":[{"competitors":[
+              {"homeAway":"home","score":"20","team":{"abbreviation":"AAA"}},
+              {"homeAway":"away","score":"20","team":{"abbreviation":"BBB"}}],
+              "status":{"type":{"name":"STATUS_IN_PROGRESS","state":"in","detail":"4:12 - OT","completed":false},"period":5,"displayClock":"4:12"}}]}]}
+            """.trimIndent()
     }
 }
