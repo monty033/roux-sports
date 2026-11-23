@@ -1,5 +1,6 @@
 package net.montycasa.roux.ui
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -22,6 +23,7 @@ import net.montycasa.roux.data.cache.ResponseCache
 import net.montycasa.roux.data.net.EspnApi
 import net.montycasa.roux.data.repo.nflScoresRepository
 import net.montycasa.roux.domain.policy.ScoresOrdering
+import net.montycasa.roux.ui.common.LocalLeagueCrestArtwork
 import net.montycasa.roux.ui.scores.ScoresScreen
 import net.montycasa.roux.ui.scores.ScoresUiState
 import net.montycasa.roux.ui.theme.RouxTheme
@@ -118,7 +120,10 @@ class ScreenshotMatrixTest {
         val dark = mutableStateOf(false)
         rule.setContent {
             RouxTheme(dark = dark.value) {
-                screens[index.intValue].content()
+                // Crests are network artwork; these captures are recorded without it.
+                CompositionLocalProvider(LocalLeagueCrestArtwork provides false) {
+                    screens[index.intValue].content()
+                }
             }
         }
         var captured = 0
@@ -258,13 +263,18 @@ class ScreenshotMatrixTest {
         assertTrue("the final day has games", states[0].second.rows.isNotEmpty())
         assertTrue("the scheduled day has games", states[1].second.rows.isNotEmpty())
         assertTrue("the empty day has none", states[2].second.rows.isEmpty())
+        // The feed numbers the football weeks, and a day with no games states none, so the shelf has nothing to label
+        // there rather than guessing which week a gap falls in.
+        assertEquals("a week only where the feed states one", listOf(10, 12, null), states.map { it.second.week })
 
         val index = mutableIntStateOf(0)
         val dark = mutableStateOf(false)
         rule.setContent {
             RouxTheme(dark = dark.value) {
-                // Keyed on the state so each day starts from its own pager, as a fresh selection does in the app.
-                key(index.intValue) { ScoresScreen(states[index.intValue].second, {}, {}, {}) }
+                CompositionLocalProvider(LocalLeagueCrestArtwork provides false) {
+                    // Keyed on the state so each day starts from its own pager, as a fresh selection does in the app.
+                    key(index.intValue) { ScoresScreen(states[index.intValue].second, {}, {}, {}) }
+                }
             }
         }
         var captured = 0
@@ -327,6 +337,7 @@ class ScreenshotMatrixTest {
                         error = loaded.error,
                         loadedDate = day?.date,
                         dateIndex = day?.dateIndex.orEmpty(),
+                        week = day?.week,
                         favouritesOnly = false,
                     )
             }

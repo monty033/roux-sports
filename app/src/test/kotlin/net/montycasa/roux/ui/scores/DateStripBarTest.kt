@@ -45,7 +45,10 @@ class DateStripBarTest {
     private var opened = 0
     private val width = mutableStateOf(360.dp)
 
-    private fun launch(today: String = "2026-10-24") {
+    private fun launch(
+        today: String = "2026-10-24",
+        week: Int? = null,
+    ) {
         rule.setContent {
             RouxTheme {
                 CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, scale.value)) {
@@ -56,10 +59,27 @@ class DateStripBarTest {
                         { selected.value = it },
                         { opened++ },
                         Modifier.width(width.value),
+                        week = week,
                     )
                 }
             }
         }
+    }
+
+    @Test fun aFootballDayIsLabelledWithItsWeek() {
+        launch(week = 12)
+
+        rule
+            .onNodeWithTag("scores.dateLabel")
+            .assertContentDescriptionEquals("Change date, Week 12, Fri, Oct 23")
+        // The pill is capped at 112dp, so the week label has to be what it actually fits.
+        rule.onNodeWithText("Week 12 · Oct 23").assertExists()
+    }
+
+    @Test fun aLeagueWithNoWeeksIsLabelledWithNone() {
+        launch()
+
+        rule.onNodeWithTag("scores.dateLabel").assertContentDescriptionEquals("Change date, Fri, Oct 23")
     }
 
     @Test fun shelfIsExactly72DpAtBothFontScales() {

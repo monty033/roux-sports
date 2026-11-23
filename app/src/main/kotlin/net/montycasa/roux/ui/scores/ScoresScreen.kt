@@ -378,7 +378,14 @@ fun ScoresScreen(
                 }
 
                 // The shell lifts the modal over its tabs; a standalone screen keeps the same overlay here.
-                DateShelf(dates, state.selectedDate, state.today, onSelectDate, onOpenCalendar ?: { calendarOpen = true })
+                DateShelf(
+                    dates,
+                    state.selectedDate,
+                    state.today,
+                    onSelectDate,
+                    onOpenCalendar ?: { calendarOpen = true },
+                    week = state.week,
+                )
             }
         }
         if (calendarOpen) {
