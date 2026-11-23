@@ -44,24 +44,26 @@ class LeagueCrestInDrawerTest {
     private fun crestCount(): Int = compose.onAllNodesWithTag(LEAGUE_CREST_TAG, useUnmergedTree = true).fetchSemanticsNodes().size
 
     @Test
-    fun theSupportedLeagueWearsItsCrest() {
+    fun everyOpenableLeagueWearsItsCrest() {
         panel("nhl")
 
-        // The drawer lists every league, so exactly one row may carry artwork: the supported one.
-        compose
-            .onNodeWithTag("leagues.nhl", useUnmergedTree = true)
-            .assert(hasAnyDescendant(hasTestTag(LEAGUE_CREST_TAG))) { "the NHL row carried no crest" }
+        // The drawer lists every league, and exactly the openable ones may carry artwork: hockey and football.
+        listOf("nhl", "nfl").forEach { id ->
+            compose
+                .onNodeWithTag("leagues.$id", useUnmergedTree = true)
+                .assert(hasAnyDescendant(hasTestTag(LEAGUE_CREST_TAG))) { "the ${id.uppercase()} row carried no crest" }
+        }
         val crests = crestCount()
-        assert(crests == 1) { "the drawer drew $crests crests, expected exactly one" }
+        assert(crests == 2) { "the drawer drew $crests crests, expected exactly two" }
     }
 
     @Test
     fun aLeagueWithoutACrestDoesNotBorrowOne() {
-        panel("nfl")
+        panel("mlb")
 
-        compose.onNodeWithTag("leagues.nfl", useUnmergedTree = true).assertExists()
+        compose.onNodeWithTag("leagues.mlb", useUnmergedTree = true).assertExists()
         compose
-            .onNodeWithTag("leagues.nfl", useUnmergedTree = true)
-            .assert(hasAnyDescendant(hasTestTag(LEAGUE_CREST_TAG)).not()) { "the NFL row wore a crest" }
+            .onNodeWithTag("leagues.mlb", useUnmergedTree = true)
+            .assert(hasAnyDescendant(hasTestTag(LEAGUE_CREST_TAG)).not()) { "the MLB row wore a crest" }
     }
 }
