@@ -12,6 +12,19 @@
     <string name="game_row_period_shootout">SO</string>
     <string name="game_row_period_unavailable">Period unavailable</string>
     <string name="game_row_intermission">Intermission</string>
+    <!-- Football counts quarters, not ordinals: "Q2" is the label a viewer reads, "2nd" is a hockey period. -->
+    <string name="game_row_football_quarter">Q%1$d</string>
+    <string name="game_row_down_first">1st</string>
+    <string name="game_row_down_second">2nd</string>
+    <string name="game_row_down_third">3rd</string>
+    <string name="game_row_down_fourth">4th</string>
+    <!-- The snap, as the rail states it: who has the ball, then the down and what it needs. -->
+    <string name="game_row_snap">%1$s · %2$s</string>
+    <string name="game_row_snap_distance">%1$s &amp; %2$d</string>
+    <string name="game_row_snap_goal">%1$s &amp; goal</string>
+    <!-- One spoken clause for the card's sentence, so a screen reader says the down once. -->
+    <string name="game_row_description_snap">%1$s has the ball, %2$s</string>
+    <string name="game_row_description_red_zone">in the red zone</string>
     <string name="game_row_live_description">Live</string>
     <!-- The rail label is drawn uppercase in final/scores-screen.html; the description stays sentence case. -->
     <string name="game_row_live_label">LIVE</string>

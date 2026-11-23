@@ -10,6 +10,7 @@ import net.montycasa.roux.data.nfl.dto.NflScoreboardDto
 import net.montycasa.roux.data.nhl.ParseResult
 import net.montycasa.roux.domain.model.Broadcast
 import net.montycasa.roux.domain.model.FinalKind
+import net.montycasa.roux.domain.model.FootballSituation
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
@@ -137,6 +138,7 @@ internal object NflScoreboardAdapter {
             finalKind = competition.finalKind(statusName),
             startTimeUtc = date.toInstantOrNull(),
             broadcasts = competition.toBroadcasts(),
+            football = competition.toFootballSituation(competitors, livePeriod),
         )
     }
 
@@ -174,6 +176,37 @@ internal object NflScoreboardAdapter {
             inIntermission = false,
             running = true,
         )
+    }
+
+    /**
+     * The snap a live game is on, or null when there is nothing honest to draw.
+     *
+     * Only a live game carries one: a final keeps whatever `situation` the feed last wrote, and that is a snapshot of
+     * a game that is over. Within a live game the feed stops stating a down between plays - after a score, on a
+     * kickoff, during a timeout - so a down outside 1-4 is dropped and the distance with it, while the possession and
+     * the red-zone flag still stand. Possession arrives as a team id, so it is resolved against this same payload's
+     * competitors; an id that names neither side is dropped rather than shown as a bare number.
+     */
+    private fun NflCompetitionDto.toFootballSituation(
+        competitors: List<NflCompetitorDto>,
+        livePeriod: PeriodInfo?,
+    ): FootballSituation? {
+        if (livePeriod == null) return null
+        val wire = situation ?: return null
+        val possession =
+            wire.possession
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { id -> competitors.firstOrNull { it.id == id } }
+                ?.team
+                ?.abbreviation
+                ?.takeIf { it.isNotBlank() }
+        val down = wire.down?.takeIf { it in 1..4 }
+        val distance = if (down == null) null else wire.distance?.takeIf { it >= 0 }
+        val redZone = wire.isRedZone == true
+        if (possession == null && down == null) return null
+
+        return FootballSituation(down = down, distance = distance, possession = possession, redZone = redZone)
     }
 
     /**

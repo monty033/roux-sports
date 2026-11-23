@@ -44,6 +44,7 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.model.Broadcast
 import net.montycasa.roux.domain.model.FinalKind
+import net.montycasa.roux.domain.model.FootballSituation
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
@@ -61,6 +62,7 @@ import net.montycasa.roux.ui.theme.contrastRatio
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -113,6 +115,14 @@ class GameRowTest {
             period = PeriodInfo(ordinal = 2, periodType = "REG", clock = "12:34"),
         )
     private val finalOt = live.copy(state = GameState.Final, finalKind = FinalKind.OT)
+    private val footballLive =
+        live.copy(
+            id = GameId(League.NFL, "401873066"),
+            away = TeamRef(TeamKey(League.NFL, "MIA")),
+            home = TeamRef(TeamKey(League.NFL, "BUF")),
+            period = PeriodInfo(ordinal = 2, periodType = "REG", clock = "11:22"),
+            football = FootballSituation(down = 3, distance = 3, possession = "MIA"),
+        )
 
     @Before
     fun setTorontoTimeZone() {
@@ -173,6 +183,67 @@ class GameRowTest {
     fun scheduledUsesTorontoWinterOffset() {
         launch(scheduled.copy(startTimeUtc = Instant.parse("2026-12-01T00:00:00Z")))
         rule.onNodeWithText("7:00 PM").assertIsDisplayed()
+    }
+
+    @Test
+    fun aLiveFootballGameSaysTheQuarterAndTheSnap() {
+        launch(footballLive)
+
+        // Football counts quarters where hockey counts periods.
+        rule.onNodeWithText("Q2 11:22").assertIsDisplayed()
+        rule.onNodeWithText("MIA · 3rd & 3").assertIsDisplayed()
+        rule.onNodeWithText("2nd 11:22").assertDoesNotExist()
+    }
+
+    @Test
+    fun aSnapWithNoDownStatesTheBallAlone() {
+        launch(footballLive.copy(football = FootballSituation(possession = "CHI", redZone = true)))
+
+        rule.onNodeWithText("CHI").assertIsDisplayed()
+        rule.onNodeWithText("CHI · 3rd & 3").assertDoesNotExist()
+    }
+
+    @Test
+    fun aGoalToGoSnapSaysGoalRatherThanZero() {
+        launch(footballLive.copy(football = FootballSituation(down = 2, distance = 0, possession = "BUF")))
+
+        rule.onNodeWithText("BUF · 2nd & goal").assertIsDisplayed()
+        rule.onNodeWithText("BUF · 2nd & 0").assertDoesNotExist()
+    }
+
+    @Test
+    fun aRedZoneSnapTakesTheAccentColour() {
+        launch(footballLive.copy(football = FootballSituation(down = 3, distance = 3, possession = "MIA", redZone = true)))
+
+        assertEquals(
+            RouxLightAccents.signature,
+            textLayout(rule.onNodeWithText("MIA · 3rd & 3")).layoutInput.style.color,
+        )
+    }
+
+    @Test
+    fun anOrdinarySnapKeepsTheQuietInk() {
+        launch(footballLive)
+
+        assertNotEquals(
+            RouxLightAccents.signature,
+            textLayout(rule.onNodeWithText("MIA · 3rd & 3")).layoutInput.style.color,
+        )
+    }
+
+    @Test
+    fun aFootballFinalCarriesNoSnap() {
+        launch(footballLive.copy(state = GameState.Final, period = null))
+
+        rule.onNodeWithTag(SNAP_TAG, useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun aHockeyLiveGameCarriesNoSnap() {
+        launch(live)
+
+        rule.onNodeWithTag(SNAP_TAG, useUnmergedTree = true).assertDoesNotExist()
+        rule.onNodeWithText("2nd 12:34").assertIsDisplayed()
     }
 
     @Test

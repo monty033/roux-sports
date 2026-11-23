@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -15,6 +16,7 @@ import net.montycasa.roux.domain.model.ThemeMode
 import net.montycasa.roux.notify.Notifier
 import net.montycasa.roux.ui.nav.GameRequest
 import net.montycasa.roux.ui.nav.RouxNavHost
+import net.montycasa.roux.ui.scores.LocalTeamLogoArtwork
 import net.montycasa.roux.ui.settings.resolveDark
 import net.montycasa.roux.ui.theme.RouxTheme
 
@@ -46,12 +48,18 @@ class MainActivity : ComponentActivity() {
             val accent by remember(preferences) { preferences.observeAccentColor() }
                 .collectAsStateWithLifecycle(initialValue = AccentColor.DEFAULT)
             RouxTheme(dark = resolveDark(mode, isSystemInDarkTheme()), accent = accent) {
-                RouxNavHost(
-                    requestedGame = requestedGame.value,
-                    // Cleared once acted on: holding it would mean the same tap, or any recomposition, navigates
-                    // again, and the screen could never be left.
-                    onRequestHandled = { requestedGame.value = null },
-                )
+                // Artwork is a network fetch: the app allows it, and a screenshot test switches it off so a capture
+                // does not depend on which host answered.
+                CompositionLocalProvider(
+                    LocalTeamLogoArtwork provides (application as RouxApp).teamArtworkEnabled,
+                ) {
+                    RouxNavHost(
+                        requestedGame = requestedGame.value,
+                        // Cleared once acted on: holding it would mean the same tap, or any recomposition, navigates
+                        // again, and the screen could never be left.
+                        onRequestHandled = { requestedGame.value = null },
+                    )
+                }
             }
         }
     }

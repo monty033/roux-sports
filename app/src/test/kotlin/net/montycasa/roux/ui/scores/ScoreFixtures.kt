@@ -21,6 +21,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import net.montycasa.roux.AppContainer
 import net.montycasa.roux.RouxApp
+import net.montycasa.roux.ui.networkFreeImageLoader
 import okio.Path.Companion.toPath
 import java.io.IOException
 import java.util.concurrent.CopyOnWriteArrayList
@@ -29,16 +30,33 @@ import kotlin.time.Instant
 
 /** Replaces only the container inputs; the real application's singleton factory still builds Coil. */
 class ScoresIntegrationApp : RouxApp() {
-    /** Each test must observe its own requests, including URLs another test answered with a 404. */
-    override fun newImageLoader(context: Context): ImageLoader =
-        super
+    /**
+     * Each test must observe its own requests, including URLs another test answered with a 404.
+     *
+     * Unless a test asks for logos, the loader has no fetchers at all. Every crest and team badge is a network URL,
+     * so a capture or an assertion that reaches the network records whatever the machine could reach that minute: a
+     * logo where the host answered, an abbreviation where it did not. The references were recorded without artwork,
+     * and this keeps a test honest to them. `components()` replaces Coil's default registry; `components { }` adds to
+     * it and leaves all eleven fetchers in place.
+     */
+    override fun newImageLoader(context: Context): ImageLoader {
+        if (!serveLogos) return networkFreeImageLoader(context)
+        return super
             .newImageLoader(context)
             .newBuilder()
             .diskCache(null)
             .build()
+    }
 
     var offline = false
     var serveLogos = false
+
+    /**
+     * Badges fetch artwork only when a test asks for logos. The references were recorded without artwork, so a
+     * capture must not depend on whether a host answered.
+     */
+    override val teamArtworkEnabled: Boolean
+        get() = serveLogos
 
     /**
      * What the day endpoint answers with, when a test needs a slate the capture cannot supply.

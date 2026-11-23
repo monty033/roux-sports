@@ -1,7 +1,13 @@
 package net.montycasa.roux.data.nfl
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import net.montycasa.roux.data.nhl.ParseResult
 import net.montycasa.roux.domain.model.FinalKind
+import net.montycasa.roux.domain.model.FootballSituation
 import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.League
@@ -274,6 +280,119 @@ class NflScoreboardAdapterTest {
         assertTrue("the feed states a start time", final.startTimeUtc != null)
         // A final is not live play, even though the scoreboard carries a period and a clock.
         assertNull(final.period)
+    }
+
+    @Test
+    fun aLiveGameCarriesTheDownAndTheTeamWithTheBall() {
+        val day = parse("live/scoreboard-1350.json", "2026-11-22", capture = "2026-11-22")
+        // The capture's second quarter: Miami has it, third and three.
+        val game = day.games.first { it.away.abbrev == "MIA" && it.state is GameState.Live }
+
+        assertEquals(
+            FootballSituation(down = 3, distance = 3, possession = "MIA", redZone = false),
+            game.football,
+        )
+    }
+
+    @Test
+    fun aSnapWithNoDownKeepsTheBallAndTheRedZone() {
+        val day = parse("live/scoreboard-1350.json", "2026-11-22", capture = "2026-11-22")
+        // The feed states down -1 between plays: Chicago is inside the twenty with no down pending.
+        val game = day.games.first { it.home.abbrev == "CHI" && it.state is GameState.Live }
+
+        assertEquals(
+            FootballSituation(down = null, distance = null, possession = "CHI", redZone = true),
+            game.football,
+        )
+    }
+
+    @Test
+    fun aFinalIgnoresASnapTheFeedLeftBehind() {
+        // The corpus holds no final with a situation, so the case the guard exists for is built from a real one: the
+        // live game's situation block is copied onto a finished game, which is what a stale snapshot looks like.
+        val parsed = Json.parseToJsonElement(fixture("live/scoreboard-1350.json", capture = "2026-11-22")) as JsonObject
+        val events = parsed["events"] as JsonArray
+        val liveSituation =
+            events
+                .map { it as JsonObject }
+                .first { it.competitionStatusName() == "STATUS_IN_PROGRESS" }
+                .competition()
+                .getValue("situation")
+        val mutated =
+            JsonObject(
+                parsed.toMutableMap().apply {
+                    put(
+                        "events",
+                        JsonArray(
+                            events.map { event ->
+                                val obj = event as JsonObject
+                                if (obj.competitionStatusName() != "STATUS_FINAL") {
+                                    obj
+                                } else {
+                                    val competition = obj.competition()
+                                    JsonObject(
+                                        obj.toMutableMap().apply {
+                                            put(
+                                                "competitions",
+                                                JsonArray(
+                                                    listOf(
+                                                        JsonObject(
+                                                            competition.toMutableMap().apply {
+                                                                put("situation", liveSituation)
+                                                            },
+                                                        ),
+                                                    ),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                            },
+                        ),
+                    )
+                },
+            ).toString()
+
+        val day =
+            when (val result = NflScoreboardAdapter.parseScoreboard(mutated, "2026-11-22")) {
+                is ParseResult.Success -> result.value
+                is ParseResult.Failure -> error("Parse failed: ${result.reason}")
+            }
+
+        assertTrue("the capture holds a final", day.games.any { it.state == GameState.Final })
+        assertTrue(
+            "a final states no snap, whatever the feed last wrote",
+            day.games.filter { it.state == GameState.Final }.all { it.football == null },
+        )
+    }
+
+    @Test
+    fun onlyALiveGameCarriesASnap() {
+        val day = parse("live/scoreboard-1350.json", "2026-11-22", capture = "2026-11-22")
+
+        val others = day.games.filterNot { it.state is GameState.Live }
+        assertTrue("the capture holds finished or scheduled games too", others.isNotEmpty())
+        assertTrue(
+            "a game that is not being played states no snap: ${others.filter { it.football != null }.map { it.home.abbrev }}",
+            others.all { it.football == null },
+        )
+    }
+
+    private fun fixture(
+        name: String,
+        capture: String,
+    ): String =
+        NflScoreboardAdapterTest::class.java
+            .getResourceAsStream("/fx-nfl/$capture/$name")
+            ?.use { it.readBytes().toString(Charsets.UTF_8) }
+            ?: error("Fixture resource not found: $name")
+
+    private fun JsonObject.competition(): JsonObject = (this["competitions"] as JsonArray)[0] as JsonObject
+
+    private fun JsonObject.competitionStatusName(): String? {
+        val status = competition()["status"] as? JsonObject ?: return null
+        val type = status["type"] as? JsonObject ?: return null
+        return type["name"]?.jsonPrimitive?.contentOrNull
     }
 
     private fun singleGame(payload: String): Game {

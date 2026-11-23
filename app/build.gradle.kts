@@ -113,6 +113,17 @@ android {
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
+            all {
+                // A unit test must never reach a real host. Every crest and team badge in the app is a network URL, so
+                // a capture that can reach one records whatever the machine could reach that minute - a logo where
+                // the host answered, an abbreviation where it did not - and the references in src/test/screenshots
+                // were recorded without artwork. Pointing every request at a closed local port fails fast, the same
+                // way on every machine and every run.
+                it.systemProperty("http.proxyHost", "127.0.0.1")
+                it.systemProperty("http.proxyPort", "1")
+                it.systemProperty("https.proxyHost", "127.0.0.1")
+                it.systemProperty("https.proxyPort", "1")
+            }
         }
     }
 

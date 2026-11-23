@@ -91,6 +91,21 @@ internal fun LiveCapsule(
     }
 }
 
+/**
+ * The quarter a football game is in, or null when the feed states a period this app has no label for.
+ *
+ * Football counts quarters where hockey counts ordinals, so "Q2" is the label a viewer reads. An extra period is
+ * still overtime, and an ordinal outside the four quarters is left to the caller's fallback rather than guessed at.
+ */
+@Composable
+internal fun footballPeriodLabel(period: PeriodInfo?): String? =
+    when {
+        period == null -> null
+        period.periodType == "OT" -> stringResource(R.string.game_row_period_overtime)
+        period.ordinal in 1..4 -> stringResource(R.string.game_row_football_quarter, period.ordinal)
+        else -> null
+    }
+
 @Composable
 internal fun periodLabel(period: PeriodInfo?): String =
     stringResource(

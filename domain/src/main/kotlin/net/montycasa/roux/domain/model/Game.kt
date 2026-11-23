@@ -93,6 +93,24 @@ data class SeriesStatus(
     val gameNumberOfSeries: Int? = null,
 )
 
+/**
+ * Where a football game stands on its current snap, from the scoreboard's `situation`.
+ *
+ * Only a live game carries one. The feed states no down between plays — after a score, on a kickoff, during a
+ * timeout — so an unusable down is dropped rather than drawn as a down that does not exist. A [distance] of zero is
+ * goal to go, which is how the feed states it.
+ */
+data class FootballSituation(
+    /** 1-4 while a play is pending; null when the feed states no real down. */
+    val down: Int? = null,
+    /** Yards to go; zero means goal to go. Null whenever [down] is. */
+    val distance: Int? = null,
+    /** The team in possession, as the abbreviation this payload uses for it. */
+    val possession: String? = null,
+    /** True inside the opponent's twenty. */
+    val redZone: Boolean = false,
+)
+
 /** A day's matchup, with optional scores and progress details from the NHL feed. */
 data class Game(
     val id: GameId,
@@ -123,6 +141,8 @@ data class Game(
      * season, and null when the feed omits it.
      */
     val roundLabel: String? = null,
+    /** Down and distance for a football game in progress; null for every other league and every other state. */
+    val football: FootballSituation? = null,
 ) {
     // Validation of feed identifiers, dates, and missing or unexpected values belongs
     // to the adapter layer; these value types do not reject messy NHL data.
