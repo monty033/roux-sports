@@ -483,7 +483,7 @@ private class FakeStandings : StandingsRepository {
     override suspend fun seasons(): Loadable<List<Season>> = error("Not used by the picker")
 }
 
-private class FakePreferences(
+internal class FakePreferences(
     var teams: Set<TeamKey> = emptySet(),
 ) : PreferencesRepository {
     override suspend fun getThemeMode() = ThemeMode.System

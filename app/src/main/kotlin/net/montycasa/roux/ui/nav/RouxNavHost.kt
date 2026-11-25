@@ -132,6 +132,7 @@ import net.montycasa.roux.ui.standings.StandingsViewModel
 import net.montycasa.roux.ui.team.TeamDetailScreen
 import net.montycasa.roux.ui.team.TeamDetailViewModel
 import net.montycasa.roux.ui.teams.TeamsScreen
+import net.montycasa.roux.ui.teams.TeamsSource
 import net.montycasa.roux.ui.teams.TeamsViewModel
 import kotlin.time.Instant
 
@@ -430,7 +431,12 @@ fun RouxNavHost(
                                 }
 
                                 TopLevelDestination.Teams -> {
-                                    TeamsDestination(onTeamClick = { key -> navController.navigate(teamRoute(key)) })
+                                    // Follows the league like Standings: football's clubs under their divisions, and
+                                    // anything else is hockey's list exactly as before.
+                                    TeamsDestination(
+                                        football = drawerUi.selectedLeagueId == League.NFL.id,
+                                        onTeamClick = { key -> navController.navigate(teamRoute(key)) },
+                                    )
                                 }
 
                                 TopLevelDestination.Standings -> {
@@ -552,24 +558,40 @@ fun RouxNavHost(
 
 /** The back stack entry owns the picker; its repositories are shared with Scores through the app. */
 @Composable
-private fun TeamsDestination(onTeamClick: (TeamKey) -> Unit) {
+private fun TeamsDestination(
+    football: Boolean,
+    onTeamClick: (TeamKey) -> Unit,
+) {
     val appContext = LocalContext.current.applicationContext
     val container = (appContext as RouxApp).container
     val teams: TeamsViewModel =
         viewModel(
+            // Both leagues' pickers live on the same back stack entry, so they need their own keys: without one the
+            // second league opened would be handed the first league's view model and draw its list.
+            key = if (football) "teams.nfl" else null,
             factory =
                 viewModelFactory {
                     initializer {
-                        TeamsViewModel(container.standings, container.preferences) {
-                            // Saving an alert changes what should be watched, so the watches are rebuilt from
-                            // the setting that was just stored - not left until the next periodic reconcile.
-                            GameWatchReconciler(
-                                preferences = container.preferences,
-                                scores = container.scores,
-                                scheduler = WorkManagerGameWatchScheduler(WorkManager.getInstance(appContext)),
-                                clock = container.clock,
-                            ).reconcile()
-                        }
+                        TeamsViewModel(
+                            source =
+                                if (football) {
+                                    TeamsSource.football(container.nflTeams)
+                                } else {
+                                    TeamsSource.hockey(container.standings)
+                                },
+                            preferences = container.preferences,
+                            favoritesFirst = !football,
+                            alertsChanged = {
+                                // Saving an alert changes what should be watched, so the watches are rebuilt from
+                                // the setting that was just stored - not left until the next periodic reconcile.
+                                GameWatchReconciler(
+                                    preferences = container.preferences,
+                                    scores = container.scores,
+                                    scheduler = WorkManagerGameWatchScheduler(WorkManager.getInstance(appContext)),
+                                    clock = container.clock,
+                                ).reconcile()
+                            },
+                        )
                     }
                 },
         )

@@ -138,6 +138,11 @@ class FreshnessPolicyTest {
     }
 
     @Test
+    fun footballClubsExpireAfterTwentyFourHours() {
+        assertEquals(24.hours, FreshnessPolicy.nflTeamsMaxAge())
+    }
+
+    @Test
     fun openingNightExpiresAfterSevenDays() {
         assertEquals(7.days, FreshnessPolicy.openingNightMaxAge())
     }

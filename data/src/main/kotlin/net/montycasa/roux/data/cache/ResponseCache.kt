@@ -65,6 +65,9 @@ enum class CacheKind(
 
     /** The football table. One entry per request shape: the conference level, and each conference's divisions. */
     NflStandings(33, "nfl-standings"),
+
+    /** The football clubs. One entry, the whole league in a single payload; the cap is the next free number, not a need. */
+    NflTeams(34, "nfl-teams"),
 }
 
 data class CacheKey(

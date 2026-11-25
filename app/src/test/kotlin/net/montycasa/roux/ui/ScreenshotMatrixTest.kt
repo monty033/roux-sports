@@ -24,13 +24,18 @@ import net.montycasa.roux.data.net.EspnApi
 import net.montycasa.roux.data.repo.nflScoresRepository
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
+import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.NflConference
+import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.policy.ScoresOrdering
 import net.montycasa.roux.ui.common.LocalLeagueCrestArtwork
+import net.montycasa.roux.ui.scores.LocalTeamLogoArtwork
 import net.montycasa.roux.ui.scores.ScoresScreen
 import net.montycasa.roux.ui.scores.ScoresUiState
 import net.montycasa.roux.ui.standings.NflStandingsFixtures
 import net.montycasa.roux.ui.standings.NflStandingsTab
+import net.montycasa.roux.ui.teams.NflTeamsFixtures
+import net.montycasa.roux.ui.teams.TeamsScreen
 import net.montycasa.roux.ui.theme.RouxTheme
 import okio.Path.Companion.toPath
 import org.junit.Assert.assertEquals
@@ -347,6 +352,37 @@ class ScreenshotMatrixTest {
             }
         }
         assertEquals("one golden per football standings state and theme", states.size * 2, captured)
+    }
+
+    /**
+     * The football Teams list in both themes at 360 dp, with artwork off so the goldens show the abbreviation fallback
+     * rather than a network image. The clubs and their divisions are read through the real repository and adapter, so
+     * what is drawn is what the captured feed makes of them; one club is starred to show the star on a grouped row.
+     */
+    @Test
+    @Config(sdk = [35], qualifiers = "w360dp-h780dp-mdpi")
+    fun footballTeamsInBothThemes() {
+        val state = NflTeamsFixtures.state(favourites = setOf(TeamKey(League.NFL, "BUF")))
+        assertEquals("every football club is in the state", 32, state.rows.size)
+        assertEquals("eight divisions", 8, state.groups.size)
+
+        val dark = mutableStateOf(false)
+        rule.setContent {
+            RouxTheme(dark = dark.value) {
+                CompositionLocalProvider(LocalLeagueCrestArtwork provides false, LocalTeamLogoArtwork provides false) {
+                    TeamsScreen(state = state, onToggle = {}, onRetry = {})
+                }
+            }
+        }
+        var captured = 0
+        listOf(false, true).forEach { isDark ->
+            val theme = if (isDark) "dark" else "light"
+            rule.runOnIdle { dark.value = isDark }
+            rule.waitForIdle()
+            rule.onRoot().captureRoboImage("src/test/screenshots/matrix/nfl-teams-$theme.png")
+            captured++
+        }
+        assertEquals("one golden per theme", 2, captured)
     }
 
     /** The NFL scoreboards the football goldens load, keyed by the `dates` parameter ESPN is asked for. */
