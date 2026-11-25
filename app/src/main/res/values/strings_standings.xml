@@ -11,6 +11,14 @@
     <string name="standings_l">L</string>
     <string name="standings_otl">OTL</string>
     <string name="standings_pts">PTS</string>
+    <string name="nfl_standings_afc">AFC</string>
+    <string name="nfl_standings_nfc">NFC</string>
+    <string name="nfl_standings_t">T</string>
+    <string name="nfl_standings_pct">PCT</string>
+    <string name="nfl_standings_pf">PF</string>
+    <string name="nfl_standings_pa">PA</string>
+    <string name="nfl_standings_diff">DIFF</string>
+    <string name="nfl_standings_strk">STRK</string>
     <string name="standings_loading">Loading standings…</string>
     <string name="standings_empty">No table yet.</string>
     <string name="standings_conference_unknown">The feed did not name a conference for any team, so this page is empty. The league table still shows every team.</string>

@@ -22,10 +22,15 @@ import kotlinx.coroutines.runBlocking
 import net.montycasa.roux.data.cache.ResponseCache
 import net.montycasa.roux.data.net.EspnApi
 import net.montycasa.roux.data.repo.nflScoresRepository
+import net.montycasa.roux.domain.Freshness
+import net.montycasa.roux.domain.LoadError
+import net.montycasa.roux.domain.model.NflConference
 import net.montycasa.roux.domain.policy.ScoresOrdering
 import net.montycasa.roux.ui.common.LocalLeagueCrestArtwork
 import net.montycasa.roux.ui.scores.ScoresScreen
 import net.montycasa.roux.ui.scores.ScoresUiState
+import net.montycasa.roux.ui.standings.NflStandingsFixtures
+import net.montycasa.roux.ui.standings.NflStandingsTab
 import net.montycasa.roux.ui.theme.RouxTheme
 import okio.Path.Companion.toPath
 import org.junit.Assert.assertEquals
@@ -291,6 +296,57 @@ class ScreenshotMatrixTest {
             }
         }
         assertEquals("one golden per football state and theme", states.size * 2, captured)
+    }
+
+    /**
+     * The football table's states in both themes at 360 dp, the narrowest phone the layout promises: the tables are read
+     * through the real repository and adapter, so what is drawn is what the captured feed makes of it. The conference
+     * page is the NFC one, whose feed order puts the third and fourth seeds under the eighth and ninth.
+     */
+    @Test
+    @Config(sdk = [35], qualifiers = "w360dp-h780dp-mdpi")
+    fun footballStandingsStatesInBothThemes() {
+        val stale = Freshness.Stale(Instant.parse("2026-11-24T14:00:00Z"))
+        val states =
+            listOf(
+                "nfl-standings-division" to NflStandingsFixtures.state(NflStandingsTab.Division),
+                "nfl-standings-conference" to NflStandingsFixtures.state(NflStandingsTab.Conference, NflConference.NFC),
+                "nfl-standings-league" to NflStandingsFixtures.state(NflStandingsTab.League),
+                "nfl-standings-stale" to
+                    NflStandingsFixtures
+                        .state(NflStandingsTab.Conference, NflConference.AFC)
+                        .copy(stale = stale, error = LoadError.Http(503)),
+            )
+        assertEquals(
+            "football standings states",
+            listOf("nfl-standings-division", "nfl-standings-conference", "nfl-standings-league", "nfl-standings-stale"),
+            states.map { it.first },
+        )
+        assertTrue("every football table has rows", states.all { (_, state) -> state.tables.any { it.rows.isNotEmpty() } })
+
+        val index = mutableIntStateOf(0)
+        val dark = mutableStateOf(false)
+        rule.setContent {
+            RouxTheme(dark = dark.value) {
+                CompositionLocalProvider(LocalLeagueCrestArtwork provides false) {
+                    key(index.intValue) { NflStandingsFixtures.Page(states[index.intValue].second) }
+                }
+            }
+        }
+        var captured = 0
+        states.forEachIndexed { i, (name, _) ->
+            listOf(false, true).forEach { isDark ->
+                val theme = if (isDark) "dark" else "light"
+                rule.runOnIdle {
+                    index.intValue = i
+                    dark.value = isDark
+                }
+                rule.waitForIdle()
+                rule.onRoot().captureRoboImage("src/test/screenshots/matrix/$name-$theme.png")
+                captured++
+            }
+        }
+        assertEquals("one golden per football standings state and theme", states.size * 2, captured)
     }
 
     /** The NFL scoreboards the football goldens load, keyed by the `dates` parameter ESPN is asked for. */

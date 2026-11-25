@@ -125,6 +125,8 @@ import net.montycasa.roux.ui.scores.MY_TEAMS_LEAGUE
 import net.montycasa.roux.ui.scores.ScoresHeader
 import net.montycasa.roux.ui.scores.ScoresScreen
 import net.montycasa.roux.ui.scores.ScoresViewModel
+import net.montycasa.roux.ui.standings.NflStandingsScreen
+import net.montycasa.roux.ui.standings.NflStandingsViewModel
 import net.montycasa.roux.ui.standings.StandingsScreen
 import net.montycasa.roux.ui.standings.StandingsViewModel
 import net.montycasa.roux.ui.team.TeamDetailScreen
@@ -432,9 +434,17 @@ fun RouxNavHost(
                                 }
 
                                 TopLevelDestination.Standings -> {
-                                    StandingsDestination(
-                                        onTeamClick = { team -> navController.navigate(teamRoute(team)) },
-                                    )
+                                    // The table follows the league the drawer has selected. My Teams removes this page
+                                    // altogether, so anything but football is hockey's table, exactly as before.
+                                    if (drawerUi.selectedLeagueId == League.NFL.id) {
+                                        NflStandingsDestination(
+                                            onTeamClick = { team -> navController.navigate(teamRoute(team)) },
+                                        )
+                                    } else {
+                                        StandingsDestination(
+                                            onTeamClick = { team -> navController.navigate(teamRoute(team)) },
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -657,6 +667,30 @@ private fun StandingsDestination(onTeamClick: (TeamKey) -> Unit) {
         onRefresh = standings::refresh,
         onSelect = standings::select,
         // Standings and the Teams tab now open the same page, so a club is reachable from the table that ranks it.
+        onTeamClick = onTeamClick,
+    )
+}
+
+/** Football's table: its own view model over its own repository, so neither league's page can draw the other's rows. */
+@Composable
+private fun NflStandingsDestination(onTeamClick: (TeamKey) -> Unit) {
+    val appContext = LocalContext.current.applicationContext
+    val container = (appContext as RouxApp).container
+    val standings: NflStandingsViewModel =
+        viewModel(
+            factory =
+                viewModelFactory {
+                    initializer {
+                        NflStandingsViewModel(container.nflStandings)
+                    }
+                },
+        )
+    val state by standings.uiState.collectAsStateWithLifecycle()
+    NflStandingsScreen(
+        state = state,
+        onRefresh = standings::refresh,
+        onSelectTab = standings::selectTab,
+        onSelectConference = standings::selectConference,
         onTeamClick = onTeamClick,
     )
 }

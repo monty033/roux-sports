@@ -56,9 +56,7 @@ class NflStandingsRepositoryImplTest {
             ?: error("Fixture resource not found: $path")
     }
 
-    private fun harness(
-        responder: (suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData?)? = null,
-    ): Harness {
+    private fun harness(responder: (suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData?)? = null): Harness {
         val requests = mutableListOf<String?>()
         val engine =
             MockEngine { request ->

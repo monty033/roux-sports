@@ -21,6 +21,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import net.montycasa.roux.AppContainer
 import net.montycasa.roux.RouxApp
+import net.montycasa.roux.data.net.EspnHttpClientFactory
 import net.montycasa.roux.ui.networkFreeImageLoader
 import okio.Path.Companion.toPath
 import java.io.IOException
@@ -174,6 +175,33 @@ class ScoresIntegrationApp : RouxApp() {
                             )
                         }
 
+                        // Football: the standings the page reads, and an empty slate for the scores page the shell opens
+                        // on once football is chosen. Nothing else of ESPN's is part of what these tests exercise.
+                        EspnHttpClientFactory.DATA_HOST -> {
+                            respond(
+                                when {
+                                    request.url.encodedPath == "/apis/v2/sports/football/nfl/standings" -> {
+                                        when (request.url.parameters["group"]) {
+                                            null -> ScoreFixture.nfl("2026-11-18", "nfl-standings.json")
+                                            "8" -> ScoreFixture.nfl("2026-11-24", "nfl-standings-divisions-afc.json")
+                                            "7" -> ScoreFixture.nfl("2026-11-24", "nfl-standings-divisions-nfc.json")
+                                            else -> error("Unexpected standings group: ${request.url}")
+                                        }
+                                    }
+
+                                    request.url.encodedPath == "/apis/site/v2/sports/football/nfl/scoreboard" -> {
+                                        ScoreFixture.nfl("2026-11-18", "nfl-scoreboard-emptyday.json")
+                                    }
+
+                                    else -> {
+                                        error("Unexpected ESPN path: ${request.url}")
+                                    }
+                                },
+                                HttpStatusCode.OK,
+                                headersOf(HttpHeaders.ContentType, "application/json"),
+                            )
+                        }
+
                         "assets.nhle.com" -> {
                             respond(
                                 """<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><path fill="red" d="M0 0h32v32H0z"/></svg>""",
@@ -215,6 +243,15 @@ internal object ScoreFixture {
     fun capture(name: String): ByteArray =
         requireNotNull(javaClass.getResourceAsStream("/fx/2026-11-03/$name")) {
             "Missing captured fixture: $name"
+        }.use { it.readBytes() }
+
+    /** A football capture from the data module's corpus, which `:app` shares as a test resource. */
+    fun nfl(
+        day: String,
+        name: String,
+    ): ByteArray =
+        requireNotNull(javaClass.getResourceAsStream("/fx-nfl/$day/$name")) {
+            "Missing captured football fixture: $day/$name"
         }.use { it.readBytes() }
 
     val bytes = bytes("score-gameday.json")

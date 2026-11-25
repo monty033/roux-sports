@@ -86,13 +86,19 @@ internal class NflStandingsRepositoryImpl(
                             }
                         }
 
-                        is ParseResult.Failure -> fallBack(cached, LoadError.Parse)
+                        is ParseResult.Failure -> {
+                            fallBack(cached, LoadError.Parse)
+                        }
                     }
                 }
 
-                is ApiResult.HttpError -> fallBack(cached, LoadError.Http(result.status))
+                is ApiResult.HttpError -> {
+                    fallBack(cached, LoadError.Http(result.status))
+                }
 
-                is ApiResult.NetworkError -> fallBack(cached, LoadError.Network)
+                is ApiResult.NetworkError -> {
+                    fallBack(cached, LoadError.Network)
+                }
             }
         }
 
@@ -148,3 +154,16 @@ internal class NflStandingsRepositoryImpl(
                 }
     }
 }
+
+/**
+ * Builds the football standings repository.
+ *
+ * The implementation stays internal so the undocumented wire shape never becomes part of what `:data` publishes;
+ * callers depend on [NflStandingsRepository].
+ */
+fun nflStandingsRepository(
+    api: EspnApi,
+    cache: ResponseCache,
+    clock: Clock = Clock.System,
+    ioDispatcher: CoroutineContext = Dispatchers.IO,
+): NflStandingsRepository = NflStandingsRepositoryImpl(api, cache, clock, ioDispatcher)
