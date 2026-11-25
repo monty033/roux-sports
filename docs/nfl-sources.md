@@ -40,6 +40,27 @@ becomes a new decision with its own line here, not an extension of this one.
 | player profile | `/apis/common/v3/sports/football/nfl/athletes/{id}` | 200, 62 KB | `athlete` (incl. `headshot.href`), `season`, `standings` |
 | player game log | `/apis/common/v3/sports/football/nfl/athletes/{id}/gamelog` | 200, 70 KB | `seasonTypes[] → categories[] → events[]` with `stats[]` and `labels` |
 
+### Standings come in two shapes, and the divisions need a group id
+
+The same path answers at two levels, and the level is chosen by the `group` parameter rather than by `level` alone:
+
+| request | answers |
+|---|---|
+| `/standings` | two children, `American Football Conference` and `National Football Conference`, 16 entries each |
+| `/standings?level=3&group=8` | four children: `AFC East`, `AFC North`, `AFC South`, `AFC West`, 4 entries each |
+| `/standings?level=3&group=7` | four children: `NFC East`, `NFC North`, `NFC South`, `NFC West`, 4 entries each |
+| `/standings?level=3&group=9` | the two conference children, **zero** entries each |
+| `/standings?level=3&group=10` … `20` | no children |
+
+The NFC's group id is **7**, not 9, and a group id the feed does not publish is answered with an empty
+`standings.entries` rather than an error - which is why an adapter must treat a group with no rows as no table at all.
+`/apis/v2/sports/football/nfl/groups` is **404**.
+
+Two figures are stated only as display strings and must be read from `displayValue`, not `value`:
+`divisionRecord` carries `value: 0.0` beside `displayValue: "1-1"`, and `vs. Conf.` carries the conference record the
+same way. `wins`, `losses`, `ties`, `pointsFor`, `pointsAgainst`, `differential` and `playoffSeed` do carry numbers.
+A tied club states its tie in all three record strings (`2-1-1`, `3-3-1`) as well as in `ties`.
+
 Absent, so no screen may assume it:
 
 - **A league-leaders endpoint.** `/apis/site/v2/sports/football/nfl/leaders` returns **404**. Leaders exist per game
