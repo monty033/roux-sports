@@ -2,10 +2,13 @@
 
 package net.montycasa.roux.ui.common
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -49,6 +52,25 @@ internal fun leagueCrestUrl(
         else -> null
     }
 
+/** The tag on the artwork itself, where a league draws one; the slot carries [LEAGUE_CREST_TAG]. */
+internal const val LEAGUE_CREST_ART_TAG = "league.crest.art"
+
+/**
+ * How much larger than its slot a league's artwork is drawn.
+ *
+ * The two crests do not fill their canvases alike. Fitted to the same square slot, ESPN's NFL mark reaches 0.97 of
+ * the slot's height and the NHL shield only 0.67: its SVG is a 3:2 canvas with its own margin around the mark, so at
+ * one-to-one it reads about two-thirds the size of the mark beside it. Drawing the shield at 1.45x puts its ink at
+ * the same height as the NFL's without anyone having to redraw the artwork.
+ *
+ * The slot does not grow with it, so the league's name stays where it was and the row's height is untouched.
+ */
+internal fun leagueCrestScale(leagueId: String): Float =
+    when (leagueId) {
+        "nhl" -> 1.45f
+        else -> 1f
+    }
+
 /**
  * A league's crest at [size].
  *
@@ -67,10 +89,19 @@ internal fun LeagueCrest(
         return
     }
     val url = leagueCrestUrl(leagueId, dark = LocalRouxDark.current) ?: return
-    AsyncImage(
-        model = url,
-        contentDescription = null,
+    // The slot fixes the layout; the artwork is drawn larger inside it where its own margins would otherwise make
+    // it read smaller than the crest next to it. It overflows the slot rather than being clipped, which is what
+    // lets a shield with a wide canvas sit as tall as a square one.
+    Box(
         modifier = modifier.size(size).testTag(LEAGUE_CREST_TAG),
-        contentScale = ContentScale.Fit,
-    )
+        contentAlignment = Alignment.Center,
+    ) {
+        AsyncImage(
+            model = url,
+            contentDescription = null,
+            // requiredSize, not size: a child may not exceed the slot's constraints, and the scale is the point.
+            modifier = Modifier.requiredSize(size * leagueCrestScale(leagueId)).testTag(LEAGUE_CREST_ART_TAG),
+            contentScale = ContentScale.Fit,
+        )
+    }
 }

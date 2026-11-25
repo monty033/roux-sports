@@ -1,5 +1,6 @@
 package net.montycasa.roux.ui.common
 
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.Modifier
@@ -7,6 +8,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.unit.dp
 import net.montycasa.roux.ui.drawer.leagueCrestId
 import net.montycasa.roux.ui.scores.DrawerUi
 import net.montycasa.roux.ui.scores.ScoresHeader
@@ -64,6 +66,17 @@ class LeagueCrestUrlTest {
      * The favourites filter is not a league, so it borrows no league's crest: the chip marks it with a star.
      */
     @Test
+    fun theShieldIsDrawnLargerThanTheSquareMarkBesideIt() {
+        // Measured off both assets fitted to one slot: the NFL mark reaches 0.97 of the slot's height, the NHL
+        // shield 0.67, because the shield's canvas carries its own margin. 1.45x puts the two at the same height.
+        assert(leagueCrestScale("nhl") == 1.45f) { "the NHL shield is drawn at ${leagueCrestScale("nhl")}x" }
+        assert(leagueCrestScale("nfl") == 1f) { "the NFL mark is drawn at ${leagueCrestScale("nfl")}x" }
+        listOf("mlb", "myTeams", "").forEach { id ->
+            assert(leagueCrestScale(id) == 1f) { "$id would be drawn at ${leagueCrestScale(id)}x" }
+        }
+    }
+
+    @Test
     fun theFavouritesFilterIsNotALeagueWithACrest() {
         val filtered = DrawerUi(selectedLeagueId = "myTeams", favouritesOnly = true)
 
@@ -117,6 +130,34 @@ class LeagueCrestInHeaderTest {
         val crests = crestCount()
         assert(crests == 1) { "the chip drew $crests crests, expected exactly one" }
         assert(starCount() == 0) { "the league chip drew a star" }
+    }
+
+    @Test
+    fun theWiderCrestGrowsInsideItsSlotWithoutMovingTheRow() {
+        compose.setContent {
+            RouxTheme(dark = false) {
+                Row {
+                    LeagueCrest("nhl", 24.dp)
+                    LeagueCrest("nfl", 24.dp)
+                }
+            }
+        }
+
+        val slots =
+            compose
+                .onAllNodesWithTag(LEAGUE_CREST_TAG, useUnmergedTree = true)
+                .fetchSemanticsNodes()
+                .map { it.size.height }
+        val art =
+            compose
+                .onAllNodesWithTag(LEAGUE_CREST_ART_TAG, useUnmergedTree = true)
+                .fetchSemanticsNodes()
+                .map { it.size.height }
+
+        // Both slots are the same 24 dp: the name beside them cannot move because one crest is wider.
+        assert(slots.distinct().size == 1) { "the crest slots differ: $slots" }
+        // The shield is drawn taller than the mark it sits beside, which is the whole point of the scale.
+        assert(art[0] > art[1]) { "the shield was drawn at ${art[0]}px, the mark at ${art[1]}px" }
     }
 
     @Test
