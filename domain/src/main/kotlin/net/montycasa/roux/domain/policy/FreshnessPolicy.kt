@@ -59,6 +59,13 @@ object FreshnessPolicy {
     val seasonsAge: Duration = 24.hours
 
     /**
+     * The football clubs change on the scale of franchises, not games: a relocation or a rename is announced long
+     * before it takes effect. A day is a defensible window - a launch never asks twice in a day, and a change still
+     * shows by the next one.
+     */
+    val nflTeamsAge: Duration = 24.hours
+
+    /**
      * Opening night is a season fact, not a live result. A week is long enough that a launch does
      * not re-walk the schedule, while a correction or a late-published game is picked up quickly.
      */
@@ -147,6 +154,9 @@ object FreshnessPolicy {
 
     /** The season list changes once a season, so a daily check is sufficient. */
     fun seasonsMaxAge(): Duration = seasonsAge
+
+    /** The football club list's daily window. */
+    fun nflTeamsMaxAge(): Duration = nflTeamsAge
 
     /** The resolved opening night is cached for a week, so a launch does not re-walk the schedule. */
     fun openingNightMaxAge(): Duration = openingNightAge

@@ -42,6 +42,14 @@ class EspnApi(
             },
         )
 
+    /**
+     * The NFL clubs, all thirty-two in one payload.
+     *
+     * The feed states no division here and a `limit` parameter changes nothing, so neither is sent; the division
+     * grouping comes from [standings].
+     */
+    suspend fun teams(): ApiResult = get("/apis/site/v2/sports/football/nfl/teams")
+
     private suspend fun get(path: String): ApiResult =
         try {
             // prepareGet/execute rather than client.get: client.get buffers the whole body and

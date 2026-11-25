@@ -189,6 +189,10 @@ class ScoresIntegrationApp : RouxApp() {
                                         }
                                     }
 
+                                    request.url.encodedPath == "/apis/site/v2/sports/football/nfl/teams" -> {
+                                        ScoreFixture.nfl("2026-11-18", "nfl-teams.json")
+                                    }
+
                                     request.url.encodedPath == "/apis/site/v2/sports/football/nfl/scoreboard" -> {
                                         ScoreFixture.nfl("2026-11-18", "nfl-scoreboard-emptyday.json")
                                     }

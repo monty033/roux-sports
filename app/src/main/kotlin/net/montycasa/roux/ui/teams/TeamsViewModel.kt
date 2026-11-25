@@ -20,16 +20,64 @@ import kotlinx.coroutines.sync.withLock
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
 import net.montycasa.roux.domain.Loadable
-import net.montycasa.roux.domain.model.StandingRow
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
+import net.montycasa.roux.domain.repo.NflTeamsRepository
 import net.montycasa.roux.domain.repo.PreferencesRepository
 import net.montycasa.roux.domain.repo.StandingsRepository
 import net.montycasa.roux.domain.repo.TeamAlertPreferences
 import net.montycasa.roux.domain.repo.UpcomingLead
 
+/**
+ * One heading's clubs. [division] is null for hockey's single flat list, and for football's clubs no division table
+ * named; a null heading is drawn as no heading at all.
+ */
+data class TeamsGroup(
+    val division: String?,
+    val teams: List<TeamRef>,
+)
+
+/**
+ * Where the picker's clubs come from, so hockey's table and football's divisions share one view model: the stars,
+ * the alert sheet and the saved-selection handling are written once, and only the list differs.
+ */
+fun interface TeamsSource {
+    suspend fun load(): Loadable<List<TeamsGroup>>
+
+    companion object {
+        /** Hockey: every club in one list, favorites first, as the picker has always drawn it. */
+        fun hockey(standings: StandingsRepository): TeamsSource =
+            TeamsSource {
+                val loaded = standings.standings(anyGameLive = false)
+                Loadable(
+                    loaded.data?.let { rows -> listOf(TeamsGroup(division = null, teams = rows.map { it.team })) },
+                    loaded.freshness,
+                    loaded.error,
+                )
+            }
+
+        /** Football: the clubs under their divisions, in the order the feed states them. */
+        fun football(repository: NflTeamsRepository): TeamsSource =
+            TeamsSource {
+                val loaded = repository.groupedByDivision()
+                Loadable(
+                    loaded.data?.map { group -> TeamsGroup(group.division, group.teams.map { it.team }) },
+                    loaded.freshness,
+                    loaded.error,
+                )
+            }
+    }
+}
+
 data class TeamsUiState(
     val rows: List<TeamRef> = emptyList(),
+    /**
+     * The clubs under their headings, or empty for hockey's flat list. When present it holds the same clubs as
+     * [rows], in the order they are drawn, and the screen draws it instead of [rows].
+     */
+    val groups: List<TeamsGroup> = emptyList(),
+    /** True for a list that keeps its headings, from the first frame: the instructions differ while it is loading. */
+    val grouped: Boolean = false,
     val favourites: Set<TeamKey> = emptySet(),
     /** Teams whose saved alert controls have at least one switch on. Drives the row's bell and its spoken state. */
     val alerting: Set<TeamKey> = emptySet(),
@@ -88,7 +136,7 @@ data class TeamAlerts(
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TeamsViewModel(
-    private val standings: StandingsRepository,
+    private val source: TeamsSource,
     private val preferences: PreferencesRepository,
     /**
      * Called after an alert setting is saved, so the watches are brought in line with it.
@@ -97,7 +145,19 @@ class TeamsViewModel(
      * it knows is that the answer to "what should be watched" has changed.
      */
     private val alertsChanged: suspend () -> Unit = {},
+    /**
+     * Whether the list sorts favorites to the top. Football's does not: its clubs are grouped by division, and a
+     * sort across the groups would pull a starred club out of the division it is listed under.
+     */
+    private val favoritesFirst: Boolean = true,
 ) : ViewModel() {
+    /** Hockey's picker, which is what every caller before football's built. */
+    constructor(
+        standings: StandingsRepository,
+        preferences: PreferencesRepository,
+        alertsChanged: suspend () -> Unit = {},
+    ) : this(TeamsSource.hockey(standings), preferences, alertsChanged, favoritesFirst = true)
+
     private val favourites = MutableStateFlow<Set<TeamKey>>(emptySet())
     private val alerting = MutableStateFlow<Set<TeamKey>>(emptySet())
     private val editable = MutableStateFlow(true)
@@ -106,7 +166,7 @@ class TeamsViewModel(
     private val preferenceWrites = Mutex()
     private val alertWrites = Mutex()
     private val refreshTrigger = MutableStateFlow(0L)
-    private var retained = Loadable<List<StandingRow>>(null, Freshness.Missing, null)
+    private var retained = Loadable<List<TeamsGroup>>(null, Freshness.Missing, null)
 
     /**
      * The row order as last decided by a load, which is *not* recomputed when the selection changes.
@@ -117,7 +177,13 @@ class TeamsViewModel(
      * therefore a decision this view model makes when it has a reason to: a load, or an explicit retry. A
      * checkbox can change without rearranging the list around the finger that changed it.
      */
-    private val order = MutableStateFlow<List<TeamRef>>(emptyList())
+    private val order = MutableStateFlow(Layout())
+
+    /** What a load decided to draw: the flat order, and the headings when the list has any. */
+    private data class Layout(
+        val rows: List<TeamRef> = emptyList(),
+        val groups: List<TeamsGroup> = emptyList(),
+    )
 
     // Preferences has no Flow API. Read once on init; after each successful write the local copy
     // remains authoritative, including when the screen stops collecting and later returns.
@@ -170,12 +236,17 @@ class TeamsViewModel(
                 flow {
                     emit(TeamsLoad(retained, isRefreshing = true))
                     // The picker needs identities, not live rankings; it does not own a game poller.
-                    retained = standings.standings(anyGameLive = false)
-                    retained.data?.let { rows ->
+                    retained = source.load()
+                    retained.data?.let { loaded ->
                         // Decided here, once per load, for the reason in [order]'s comment.
                         favouritesReady.await()
-                        val teams = rows.map { it.team }
-                        order.value = ordered(teams, favourites.value)
+                        val teams = loaded.flatMap { it.teams }
+                        order.value =
+                            if (favoritesFirst) {
+                                Layout(rows = ordered(teams, favourites.value))
+                            } else {
+                                Layout(rows = teams, groups = loaded)
+                            }
                         alerting.value = readAlerting(teams)
                     }
                     emit(TeamsLoad(retained, isRefreshing = false))
@@ -190,7 +261,9 @@ class TeamsViewModel(
             extras,
         ) { load, selected, rowOrder, alertingTeams, extra ->
             TeamsUiState(
-                rows = rowOrder,
+                rows = rowOrder.rows,
+                groups = rowOrder.groups,
+                grouped = !favoritesFirst,
                 favourites = selected,
                 alerting = alertingTeams,
                 isRefreshing = load.isRefreshing,
@@ -202,7 +275,7 @@ class TeamsViewModel(
                 alerts = extra.sheet?.team,
                 alertsBusy = extra.sheet?.busy ?: false,
             )
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TeamsUiState())
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TeamsUiState(grouped = !favoritesFirst))
 
     /** Opens the alert sheet for [team], reading what is already saved before showing a switch as off. */
     fun openAlerts(team: TeamRef) {
@@ -342,7 +415,7 @@ class TeamsViewModel(
     ): List<TeamRef> = teams.sortedWith(compareBy<TeamRef> { it.key !in favourites }.thenBy { it.name ?: it.abbrev })
 
     private data class TeamsLoad(
-        val value: Loadable<List<StandingRow>>,
+        val value: Loadable<List<TeamsGroup>>,
         val isRefreshing: Boolean,
     )
 }

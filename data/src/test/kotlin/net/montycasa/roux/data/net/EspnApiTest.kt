@@ -35,6 +35,26 @@ class EspnApiTest {
         }
 
     @Test
+    fun theClubsRequestIsTheBareTeamsPathOnTheDataHost() =
+        runBlocking {
+            MockEngine { respond("{}", HttpStatusCode.OK) }.use { engine ->
+                EspnHttpClientFactory.create(engine, "test-version").use { client ->
+                    val result = EspnApi(client).teams()
+
+                    assertTrue("Expected Success, got $result", result is ApiResult.Success)
+                    // No `limit`: the feed answers all thirty-two either way, and a parameter that does nothing is noise.
+                    assertEquals(
+                        "https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams",
+                        engine.requestHistory
+                            .single()
+                            .url
+                            .toString(),
+                    )
+                }
+            }
+        }
+
+    @Test
     fun aNonIsoDateBuildsNoRequest() =
         runBlocking {
             MockEngine { respond("{}", HttpStatusCode.OK) }.use { engine ->

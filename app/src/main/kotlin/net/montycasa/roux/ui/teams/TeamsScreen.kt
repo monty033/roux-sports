@@ -36,6 +36,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
@@ -102,7 +103,11 @@ fun TeamsScreen(
             // leaves a picker that shows five of thirty-two teams under a large blank block, which is exactly
             // what an audit-only reading of this screen produced.
             Text(stringResource(R.string.teams_title), style = MaterialTheme.typography.headlineMedium)
-            Text(stringResource(R.string.teams_instructions), style = MaterialTheme.typography.bodyLarge)
+            Text(
+                // Grouped lists keep their divisions, so "favorites appear first" would be untrue of them.
+                stringResource(if (state.grouped) R.string.teams_instructions_grouped else R.string.teams_instructions),
+                style = MaterialTheme.typography.bodyLarge,
+            )
             when {
                 state.rows.isEmpty() && state.isRefreshing -> Text(stringResource(R.string.teams_loading))
                 state.rows.isEmpty() && state.error != null -> Text(stringResource(R.string.teams_load_error))
@@ -127,122 +132,17 @@ fun TeamsScreen(
                     .testTag("teams.list"),
                 verticalArrangement = Arrangement.spacedBy(ROW_GAP),
             ) {
-                state.rows.forEach { team ->
-                    val selected = team.key in state.favourites
-                    val label = stringResource(R.string.teams_toggle_label, team.name ?: team.abbrev)
-                    val description = stringResource(if (selected) R.string.teams_favourite else R.string.teams_not_favourite)
-                    val unknown = stringResource(R.string.teams_unknown_state)
-                    val alertsOn = team.key in state.alerting
-                    val alertState = stringResource(if (alertsOn) R.string.teams_alerts_on else R.string.teams_alerts_off)
-                    val openLabel = stringResource(R.string.teams_alerts_open, team.name ?: team.abbrev, alertState)
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            // 48 dp, the floor a target may have, rather than the 56 a primary control wants: a team
-                            // is a list entry reached by scrolling, and the extra 8 dp bought nothing but three fewer
-                            // teams on screen.
-                            .heightIn(min = ROW_HEIGHT)
-                            .testTag("teams.row.${team.abbrev}"),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(Reach.MIN_TARGET_GAP_DP.dp),
-                    ) {
-                        // The crest and the name are one body, and the body is the way into the club's page. It is
-                        // deliberately a sibling of the bell and star rather than the whole Row: a clickable Row
-                        // would merge those two controls into its own node and swallow their actions.
-                        val clubName = team.name?.takeIf { it.isNotBlank() } ?: team.abbrev
-                        Row(
-                            Modifier
-                                .weight(1f)
-                                .heightIn(min = ROW_HEIGHT)
-                                .listRow()
-                                .clickable(role = Role.Button) { onTeamClick(team.key) }
-                                .testTag("teams.row.body.${team.abbrev}")
-                                .semantics { contentDescription = clubName },
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(Reach.MIN_TARGET_GAP_DP.dp),
-                        ) {
-                            // The crest, as the standings table has: the same badge drawn from the same feed, so a
-                            // team looks the same wherever it appears.
-                            TeamLogo(team, TEAM_CREST_SIZE)
-                            Text(
-                                // The club's full name, city included: "Toronto Maple Leafs", not "Maple Leafs".
-                                // The row is scanned by club, but dropping the city made several rows ambiguous.
-                                clubName,
-                                Modifier.weight(1f),
-                                style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                        // The bell replaces the "Alerts" text button in the same slot. It is still a
-                        // separate target rather than part of a clickable row: a clickable row merges the
-                        // controls into one node, and the whole point of B1 is to make only the crest and
-                        // name tappable. Its spoken name comes from the same string the button used.
-                        Box(
-                            Modifier
-                                .size(ROW_HEIGHT)
-                                .listRow()
-                                .reachTarget("teams.alerts.open.${team.abbrev}")
-                                .testTag("teams.alerts.open.${team.abbrev}")
-                                .clickable { onOpenAlerts(team) }
-                                .semantics { contentDescription = openLabel },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                alertBellIcon(alertsOn),
-                                contentDescription = null,
-                                Modifier.size(24.dp),
-                                tint =
-                                    if (alertsOn) {
-                                        Roux.accents.signature
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                    },
-                            )
-                        }
-                        // The star is the same favourite toggle the checkbox was, in the same slot and
-                        // with the same tag. Filled means saved, outlined means not; the announcement is
-                        // the checkbox's own wording, so a screen reader hears the same state either way.
-                        val toggle =
-                            Modifier
-                                // The row height, not the 56 a primary control wants: the list gap supplies the
-                                // separation, so a 56 dp target would add 8 dp of nothing to every row of a
-                                // thirty-two item list.
-                                .size(ROW_HEIGHT)
-                                .listRow()
-                                .reachTarget("teams.toggle.${team.abbrev}")
-                        val star =
-                            if (state.selectionKnown && state.canEdit) {
-                                toggle
-                                    .toggleable(value = selected, role = Role.Checkbox) { onToggle(team.key) }
-                                    .semantics {
-                                        // The name is the team, not its state. "Favourite team: X" spoken over a team
-                                        // that is not a favourite reads as a lie, and saying whether it is one is
-                                        // what stateDescription is for.
-                                        contentDescription = label
-                                        stateDescription = description
-                                    }
-                            } else {
-                                // A null toggle removes the click action instead of setting a Disabled flag, so
-                                // a read-only store cannot be pressed and an unknown selection cannot claim a state.
-                                toggle.semantics {
-                                    contentDescription = label
-                                    stateDescription = if (state.selectionKnown) description else unknown
-                                    disabled()
-                                }
-                            }
-                        Box(star, contentAlignment = Alignment.Center) {
-                            Icon(
-                                if (selected) Icons.Filled.StarFilled else starOutline,
-                                contentDescription = null,
-                                Modifier.size(24.dp),
-                                tint =
-                                    if (selected) {
-                                        MaterialTheme.colorScheme.primary
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                    },
-                            )
+                if (state.groups.isEmpty()) {
+                    state.rows.forEach { team ->
+                        TeamRow(team, state, onToggle, onTeamClick, onOpenAlerts)
+                    }
+                } else {
+                    state.groups.forEach { group ->
+                        // A club no division table named follows the divisions under no heading; a heading made up
+                        // for it would be a division the feed never stated.
+                        group.division?.let { division -> DivisionHeader(division) }
+                        group.teams.forEach { team ->
+                            TeamRow(team, state, onToggle, onTeamClick, onOpenAlerts)
                         }
                     }
                 }
@@ -281,6 +181,149 @@ fun TeamsScreen(
                 onSetAlert = onSetAlert,
                 onSetReminder = onSetReminder,
                 onOpenSystemSettings = onOpenNotificationSettings,
+            )
+        }
+    }
+}
+
+/** A division's name above its clubs. Announced as a heading, so a screen reader can move between divisions. */
+@Composable
+private fun DivisionHeader(division: String) {
+    Text(
+        division,
+        Modifier
+            .fillMaxWidth()
+            .padding(top = Reach.MIN_TARGET_GAP_DP.dp)
+            .semantics { heading() }
+            .testTag("teams.group.$division"),
+        style = MaterialTheme.typography.titleMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+/** One club's row: crest and name as the way into its page, then the bell and the star. Hockey and football share it. */
+@Composable
+private fun TeamRow(
+    team: TeamRef,
+    state: TeamsUiState,
+    onToggle: (TeamKey) -> Unit,
+    onTeamClick: (TeamKey) -> Unit,
+    onOpenAlerts: (TeamRef) -> Unit,
+) {
+    val selected = team.key in state.favourites
+    val label = stringResource(R.string.teams_toggle_label, team.name ?: team.abbrev)
+    val description = stringResource(if (selected) R.string.teams_favourite else R.string.teams_not_favourite)
+    val unknown = stringResource(R.string.teams_unknown_state)
+    val alertsOn = team.key in state.alerting
+    val alertState = stringResource(if (alertsOn) R.string.teams_alerts_on else R.string.teams_alerts_off)
+    val openLabel = stringResource(R.string.teams_alerts_open, team.name ?: team.abbrev, alertState)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            // 48 dp, the floor a target may have, rather than the 56 a primary control wants: a team
+            // is a list entry reached by scrolling, and the extra 8 dp bought nothing but three fewer
+            // teams on screen.
+            .heightIn(min = ROW_HEIGHT)
+            .testTag("teams.row.${team.abbrev}"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Reach.MIN_TARGET_GAP_DP.dp),
+    ) {
+        // The crest and the name are one body, and the body is the way into the club's page. It is
+        // deliberately a sibling of the bell and star rather than the whole Row: a clickable Row
+        // would merge those two controls into its own node and swallow their actions.
+        val clubName = team.name?.takeIf { it.isNotBlank() } ?: team.abbrev
+        Row(
+            Modifier
+                .weight(1f)
+                .heightIn(min = ROW_HEIGHT)
+                .listRow()
+                .clickable(role = Role.Button) { onTeamClick(team.key) }
+                .testTag("teams.row.body.${team.abbrev}")
+                .semantics { contentDescription = clubName },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Reach.MIN_TARGET_GAP_DP.dp),
+        ) {
+            // The crest, as the standings table has: the same badge drawn from the same feed, so a
+            // team looks the same wherever it appears.
+            TeamLogo(team, TEAM_CREST_SIZE)
+            Text(
+                // The club's full name, city included: "Toronto Maple Leafs", not "Maple Leafs".
+                // The row is scanned by club, but dropping the city made several rows ambiguous.
+                clubName,
+                Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        // The bell replaces the "Alerts" text button in the same slot. It is still a
+        // separate target rather than part of a clickable row: a clickable row merges the
+        // controls into one node, and the whole point of B1 is to make only the crest and
+        // name tappable. Its spoken name comes from the same string the button used.
+        Box(
+            Modifier
+                .size(ROW_HEIGHT)
+                .listRow()
+                .reachTarget("teams.alerts.open.${team.abbrev}")
+                .testTag("teams.alerts.open.${team.abbrev}")
+                .clickable { onOpenAlerts(team) }
+                .semantics { contentDescription = openLabel },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                alertBellIcon(alertsOn),
+                contentDescription = null,
+                Modifier.size(24.dp),
+                tint =
+                    if (alertsOn) {
+                        Roux.accents.signature
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+            )
+        }
+        // The star is the same favourite toggle the checkbox was, in the same slot and
+        // with the same tag. Filled means saved, outlined means not; the announcement is
+        // the checkbox's own wording, so a screen reader hears the same state either way.
+        val toggle =
+            Modifier
+                // The row height, not the 56 a primary control wants: the list gap supplies the
+                // separation, so a 56 dp target would add 8 dp of nothing to every row of a
+                // thirty-two item list.
+                .size(ROW_HEIGHT)
+                .listRow()
+                .reachTarget("teams.toggle.${team.abbrev}")
+        val star =
+            if (state.selectionKnown && state.canEdit) {
+                toggle
+                    .toggleable(value = selected, role = Role.Checkbox) { onToggle(team.key) }
+                    .semantics {
+                        // The name is the team, not its state. "Favourite team: X" spoken over a team
+                        // that is not a favourite reads as a lie, and saying whether it is one is
+                        // what stateDescription is for.
+                        contentDescription = label
+                        stateDescription = description
+                    }
+            } else {
+                // A null toggle removes the click action instead of setting a Disabled flag, so
+                // a read-only store cannot be pressed and an unknown selection cannot claim a state.
+                toggle.semantics {
+                    contentDescription = label
+                    stateDescription = if (state.selectionKnown) description else unknown
+                    disabled()
+                }
+            }
+        Box(star, contentAlignment = Alignment.Center) {
+            Icon(
+                if (selected) Icons.Filled.StarFilled else starOutline,
+                contentDescription = null,
+                Modifier.size(24.dp),
+                tint =
+                    if (selected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
             )
         }
     }

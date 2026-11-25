@@ -1,6 +1,7 @@
 <resources>
     <string name="teams_title">Teams</string>
     <string name="teams_instructions">Choose your favorite teams. Favorites appear first.</string>
+    <string name="teams_instructions_grouped">Choose your favorite teams. Teams are listed by division.</string>
     <string name="teams_loading">Loading teams…</string>
     <string name="teams_load_error">Couldn’t load teams. Try again.</string>
     <string name="teams_stale">Showing saved teams. They may be out of date.</string>
