@@ -62,6 +62,9 @@ enum class CacheKind(
     // of a season, which a few dozen slots covers.
     NflScore(30, "nfl-score"),
     NflWeek(32, "nfl-week"),
+
+    /** The football table. One entry per request shape: the conference level, and each conference's divisions. */
+    NflStandings(33, "nfl-standings"),
 }
 
 data class CacheKey(
