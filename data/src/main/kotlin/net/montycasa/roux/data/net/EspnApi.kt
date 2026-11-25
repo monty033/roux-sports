@@ -50,6 +50,13 @@ class EspnApi(
      */
     suspend fun teams(): ApiResult = get("/apis/site/v2/sports/football/nfl/teams")
 
+    /**
+     * One club's season. The feed keys a club by its lowercase abbreviation here, not by the numeric id it uses
+     * elsewhere, so the caller passes the abbreviation it already holds.
+     */
+    suspend fun teamSchedule(abbreviation: String): ApiResult =
+        get("/apis/site/v2/sports/football/nfl/teams/${abbreviation.lowercase()}/schedule")
+
     private suspend fun get(path: String): ApiResult =
         try {
             // prepareGet/execute rather than client.get: client.get buffers the whole body and

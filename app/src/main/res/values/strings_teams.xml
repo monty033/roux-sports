@@ -45,4 +45,14 @@
     <string name="teams_alerts_prompt_body">Turn them on to be told when a followed team is about to play, starts, scores, reaches an intermission or finishes.</string>
     <string name="teams_alerts_prompt_enable">Turn on</string>
     <string name="teams_alerts_prompt_later">Not now</string>
+    <string name="nfl_team_back">Back</string>
+    <string name="nfl_team_loading">Loading the season…</string>
+    <string name="nfl_team_failed">The schedule could not be loaded.</string>
+    <string name="nfl_team_week">Week %1$d</string>
+    <string name="nfl_team_bye">Bye</string>
+    <string name="nfl_team_vs">vs %1$s</string>
+    <string name="nfl_team_at">at %1$s</string>
+    <string name="nfl_team_win">W %1$d–%2$d</string>
+    <string name="nfl_team_loss">L %1$d–%2$d</string>
+    <string name="nfl_team_tie">T %1$d–%2$d</string>
 </resources>

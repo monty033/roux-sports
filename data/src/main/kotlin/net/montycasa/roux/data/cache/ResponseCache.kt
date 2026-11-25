@@ -66,8 +66,11 @@ enum class CacheKind(
     /** The football table. One entry per request shape: the conference level, and each conference's divisions. */
     NflStandings(33, "nfl-standings"),
 
-    /** The football clubs. One entry, the whole league in a single payload; the cap is the next free number, not a need. */
+    /** The 32 clubs. They change when a club moves, not when a game ends. */
     NflTeams(34, "nfl-teams"),
+
+    /** One club's season, keyed by club. */
+    NflSchedule(35, "nfl-schedule"),
 }
 
 data class CacheKey(
