@@ -1,5 +1,11 @@
 package net.montycasa.roux.domain.model
 
+/** The two conferences. Which feed group answers for each is the data layer's business, not the domain's. */
+enum class NflConference {
+    AFC,
+    NFC,
+}
+
 /**
  * One table the football feed publishes.
  *

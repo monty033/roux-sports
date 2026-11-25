@@ -27,6 +27,21 @@ class EspnApi(
         return get("/apis/site/v2/sports/football/nfl/scoreboard?dates=${date.replace("-", "")}")
     }
 
+    /**
+     * The NFL standings: two conference tables, or - when [group] names one - that conference's four divisions.
+     *
+     * The group ids are not the conference numbering they resemble: the AFC answers **8** and the NFC **7**, while 9
+     * answers the conference level with no rows at all. `docs/nfl-sources.md` records the probe that found this.
+     */
+    suspend fun standings(group: Int? = null): ApiResult =
+        get(
+            if (group == null) {
+                "/apis/v2/sports/football/nfl/standings"
+            } else {
+                "/apis/v2/sports/football/nfl/standings?level=3&group=$group"
+            },
+        )
+
     private suspend fun get(path: String): ApiResult =
         try {
             // prepareGet/execute rather than client.get: client.get buffers the whole body and

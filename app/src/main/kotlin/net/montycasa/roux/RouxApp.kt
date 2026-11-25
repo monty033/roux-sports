@@ -31,6 +31,7 @@ import net.montycasa.roux.data.repo.clubStatsRepository
 import net.montycasa.roux.data.repo.gameDetailRepository
 import net.montycasa.roux.data.repo.leagueStatsRepository
 import net.montycasa.roux.data.repo.nflScoresRepository
+import net.montycasa.roux.data.repo.nflStandingsRepository
 import net.montycasa.roux.data.repo.playerProfileRepository
 import net.montycasa.roux.data.repo.scoresRepository
 import net.montycasa.roux.data.repo.standingsRepository
@@ -39,6 +40,7 @@ import net.montycasa.roux.domain.repo.ClubScheduleRepository
 import net.montycasa.roux.domain.repo.ClubStatsRepository
 import net.montycasa.roux.domain.repo.GameDetailRepository
 import net.montycasa.roux.domain.repo.LeagueStatsRepository
+import net.montycasa.roux.domain.repo.NflStandingsRepository
 import net.montycasa.roux.domain.repo.PlayerProfileRepository
 import net.montycasa.roux.domain.repo.PreferencesRepository
 import net.montycasa.roux.domain.repo.ScoresRepository
@@ -231,6 +233,9 @@ class AppContainer(
 
     /** NFL scores, on their own cache kind so an NHL day and an NFL day cannot evict or be read as each other. */
     val nflScores: ScoresRepository = nflScoresRepository(api = espnApi, cache = cache, clock = clock)
+
+    /** The NFL table, on its own cache kind so a hockey table and a football table can never be read as each other. */
+    val nflStandings: NflStandingsRepository = nflStandingsRepository(api = espnApi, cache = cache, clock = clock)
 
     val standings: StandingsRepository = standingsRepository(api = api, cache = cache, clock = clock)
 
