@@ -117,6 +117,47 @@ class NflClubScheduleAdapterTest {
     }
 
     @Test
+    fun aPlaceholderScoreOnAnUnplayedGameIsNotAScore() {
+        // The captures leave a scheduled game's score out entirely, so they cannot prove the guard that drops it. This
+        // payload states one anyway - the way a fixture can carry 0-0 before kickoff - and the season must not read it.
+        val json =
+            """
+            {"team":{"abbreviation":"BUF","displayName":"Buffalo Bills"},
+             "season":{"year":2026},"byeWeek":3,
+             "events":[
+               {"id":"1","date":"2026-09-13T17:00Z","week":{"number":1},
+                "competitions":[{"status":{"type":{"name":"STATUS_SCHEDULED","completed":false}},
+                  "competitors":[{"homeAway":"home","team":{"abbreviation":"HOU"},"score":{"value":0.0}},
+                                 {"homeAway":"away","team":{"abbreviation":"BUF"},"score":{"value":0.0}}]}]},
+               {"id":"2","date":"2026-09-20T17:00Z","week":{"number":2},
+                "competitions":[{"status":{"type":{"name":"STATUS_FINAL","completed":true}},
+                  "competitors":[{"homeAway":"home","team":{"abbreviation":"BUF"},"score":{"value":20.0}},
+                                 {"homeAway":"away","team":{"abbreviation":"MIA"},"score":{"value":20.0}}]}]}
+             ]}
+            """.trimIndent()
+
+        val season =
+            when (val result = NflClubScheduleAdapter.parse(json)) {
+                is ParseResult.Success -> result.value
+                is ParseResult.Failure -> error("Parse failed: ${result.reason}")
+            }
+
+        val scheduled = season.games().first { it.week == 1 }.game
+        assertNull("a placeholder 0 must not become a score", scheduled.homeScore)
+        assertNull(scheduled.awayScore)
+        assertEquals(FootballResult.Unplayed, scheduled.resultFor(TeamKey(League.NFL, "BUF")))
+        // The final beside it is level, and that IS a tie.
+        assertEquals(
+            FootballResult.Tie,
+            season
+                .games()
+                .first { it.week == 2 }
+                .game
+                .resultFor(TeamKey(League.NFL, "BUF")),
+        )
+    }
+
+    @Test
     fun aKickoffIsAnInstantAndTheDayIsItsOwnString() {
         val week1 = schedule("buf").games().first { it.week == 1 }
 
