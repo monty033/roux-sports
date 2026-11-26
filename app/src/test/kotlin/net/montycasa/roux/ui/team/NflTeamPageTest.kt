@@ -1,8 +1,14 @@
 package net.montycasa.roux.ui.team
 
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -40,6 +46,7 @@ class NflTeamPageTest {
     private fun show(
         state: NflTeamPageUiState,
         onRetry: () -> Unit = {},
+        onRosterRetry: () -> Unit = {},
     ) {
         rule.setContent {
             RouxTheme {
@@ -47,6 +54,7 @@ class NflTeamPageTest {
                     state = state,
                     onBack = {},
                     onRetry = onRetry,
+                    onRosterRetry = onRosterRetry,
                     zone = ZoneId.of("America/New_York"),
                     locale = Locale.US,
                 )
@@ -112,6 +120,73 @@ class NflTeamPageTest {
         show(NflTeamPageUiState(teamKey = bills, team = TeamRef(bills), loading = true))
 
         rule.onNodeWithTag("nflTeam.loading").assertIsDisplayed()
+    }
+
+    @Test
+    fun theScheduleIsTheTabThePageOpensOn() {
+        show(NflTeamPageFixtures.buffalo())
+
+        rule.onNodeWithTag("nflTeam.tab.Schedule").assertIsSelected()
+        rule.onNodeWithTag("nflTeam.schedule").assertIsDisplayed()
+        // The neighbouring page is composed ahead of a swipe, but it is not the page on screen.
+        rule.onNodeWithTag("nflTeam.roster").assertIsNotDisplayed()
+    }
+
+    @Test
+    fun theRosterTabRendersJerseyNamePositionAndStatus() {
+        show(NflTeamPageFixtures.buffalo())
+
+        rule.onNodeWithTag("nflTeam.tab.Roster").performClick()
+        rule.waitForIdle()
+
+        rule.onNodeWithTag("nflTeam.roster").assertIsDisplayed()
+        rule.onNodeWithTag("nflTeam.rosterRow.allen").assertIsDisplayed()
+        rule.onNodeWithText("Josh Allen").assertIsDisplayed()
+        rule.onNodeWithText("QB").assertIsDisplayed()
+        rule.onNodeWithTag("nflTeam.rosterJersey.allen").assertTextEquals("17")
+        rule.onNodeWithTag("nflTeam.rosterStatus.allen").assertTextEquals("Active")
+        rule.onNodeWithTag("nflTeam.rosterStatus.durant").assertTextEquals("Day-To-Day")
+    }
+
+    @Test
+    fun anUnnumberedPlayerLeavesTheJerseyColumnBlank() {
+        show(NflTeamPageFixtures.buffalo())
+
+        rule.onNodeWithTag("nflTeam.tab.Roster").performClick()
+        rule.waitForIdle()
+
+        rule.onNodeWithTag("nflTeam.rosterRow.kohou").assertIsDisplayed()
+        rule.onNodeWithTag("nflTeam.rosterJersey.kohou").assertTextEquals("")
+        // The feed stated no number, so "0" is not one of them.
+        rule.onAllNodesWithText("0").assertCountEquals(0)
+    }
+
+    @Test
+    fun aPlayerWithNoStatusPrintsNoStatus() {
+        show(NflTeamPageFixtures.buffalo())
+
+        rule.onNodeWithTag("nflTeam.tab.Roster").performClick()
+        rule.waitForIdle()
+
+        rule.onAllNodesWithTag("nflTeam.rosterStatus.kohou").assertCountEquals(0)
+        // The status column is not silently filled with the active wording for a player the feed never described.
+        rule.onAllNodesWithTag("nflTeam.rosterStatus.allen").assertCountEquals(1)
+    }
+
+    @Test
+    fun aFailedRosterOffersItsOwnRetryWithoutTakingTheScheduleAway() {
+        var retried = 0
+        show(
+            NflTeamPageFixtures.buffalo().copy(roster = null, rosterError = LoadError.Network),
+            onRosterRetry = { retried++ },
+        )
+
+        rule.onNodeWithTag("nflTeam.schedule").assertIsDisplayed()
+        rule.onNodeWithTag("nflTeam.tab.Roster").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithTag("nflTeam.rosterRetry").performClick()
+
+        assertEquals(1, retried)
     }
 
     @Test

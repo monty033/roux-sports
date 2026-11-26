@@ -54,6 +54,30 @@ class EspnApiTest {
             }
         }
 
+    /**
+     * Without `enable=roster` the feed answers 200 with an empty athlete list, which would read as a club with no
+     * players. The parameter is part of the request rather than something a future caller may forget.
+     */
+    @Test
+    fun theRosterRequestAlwaysAsksForTheRosterPayload() =
+        runBlocking {
+            MockEngine { respond("{}", HttpStatusCode.OK) }.use { engine ->
+                EspnHttpClientFactory.create(engine, "test-version").use { client ->
+                    val result = EspnApi(client).teamRoster("BUF")
+
+                    assertTrue("Expected Success, got $result", result is ApiResult.Success)
+                    // The club path, not `/roster`: that endpoint answers 200 with a different, much shorter payload.
+                    assertEquals(
+                        "https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/buf?enable=roster",
+                        engine.requestHistory
+                            .single()
+                            .url
+                            .toString(),
+                    )
+                }
+            }
+        }
+
     @Test
     fun aNonIsoDateBuildsNoRequest() =
         runBlocking {

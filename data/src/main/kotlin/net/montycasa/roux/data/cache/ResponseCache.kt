@@ -71,6 +71,9 @@ enum class CacheKind(
 
     /** One club's season, keyed by club. */
     NflSchedule(35, "nfl-schedule"),
+
+    /** One club's current roster, keyed by club and kept separate from that club's season. */
+    NflRoster(36, "nfl-roster"),
 }
 
 data class CacheKey(

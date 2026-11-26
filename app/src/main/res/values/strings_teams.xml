@@ -55,4 +55,8 @@
     <string name="nfl_team_win">W %1$d–%2$d</string>
     <string name="nfl_team_loss">L %1$d–%2$d</string>
     <string name="nfl_team_tie">T %1$d–%2$d</string>
+    <string name="nfl_team_tab_schedule">Schedule</string>
+    <string name="nfl_team_tab_roster">Roster</string>
+    <string name="nfl_team_roster_loading">Loading the roster…</string>
+    <string name="nfl_team_roster_failed">The roster could not be loaded.</string>
 </resources>

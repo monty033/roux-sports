@@ -9,6 +9,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -418,6 +419,28 @@ class ScreenshotMatrixTest {
             rule.runOnIdle { dark.value = isDark }
             rule.waitForIdle()
             rule.onRoot().captureRoboImage("src/test/screenshots/matrix/nfl-team-page-$theme.png")
+        }
+    }
+
+    /** The same page on its roster tab, so the second destination is photographed rather than only asserted. */
+    @Test
+    fun theFootballClubRosterInBothThemes() {
+        val state = NflTeamPageFixtures.buffalo()
+        val dark = mutableStateOf(false)
+        rule.setContent {
+            RouxTheme(dark = dark.value) {
+                CompositionLocalProvider(LocalLeagueCrestArtwork provides false, LocalTeamLogoArtwork provides false) {
+                    NflTeamPageScreen(state = state, onBack = {}, zone = java.time.ZoneId.of("America/New_York"))
+                }
+            }
+        }
+        rule.onNodeWithTag("nflTeam.tab.Roster").performClick()
+        rule.waitForIdle()
+        listOf(false, true).forEach { isDark ->
+            val theme = if (isDark) "dark" else "light"
+            rule.runOnIdle { dark.value = isDark }
+            rule.waitForIdle()
+            rule.onRoot().captureRoboImage("src/test/screenshots/matrix/nfl-team-roster-$theme.png")
         }
     }
 
