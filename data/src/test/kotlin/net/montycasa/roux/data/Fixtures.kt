@@ -18,6 +18,9 @@ object Fixtures {
     /** The Toronto season pair that proves the pre-season rollover, captured 9 November 2026. */
     const val ROLLOVER_CAPTURE = "2026-11-09"
 
+    /** The three football game summaries captured on 25 November 2026. */
+    const val NFL_GAME_CAPTURE = "2026-11-25"
+
     fun bytes(name: String): ByteArray = bytes(CURRENT, name)
 
     fun bytes(
@@ -50,4 +53,11 @@ object Fixtures {
 
     /** A rollover capture from [ROLLOVER_CAPTURE]: the empty upcoming season, or the season that has games. */
     fun rollover(name: String): String = text(ROLLOVER_CAPTURE, name)
+
+    /** One football game summary from the 25 November capture. */
+    fun nflGame(name: String): String {
+        val path = "/fx-nfl/$NFL_GAME_CAPTURE/$name"
+        val stream = Fixtures::class.java.getResourceAsStream(path) ?: error("Fixture resource not found: $path")
+        return stream.use { it.readBytes().toString(Charsets.UTF_8) }
+    }
 }

@@ -83,6 +83,19 @@ data class NflCompetitorDto(
     val score: String? = null,
     val winner: Boolean? = null,
     val team: NflTeamDto? = null,
+    /**
+     * The club's records: an overall row (`type == "total"`) plus home or road splits. Present in the summary payload;
+     * the scoreboard's competitor may omit it. The overall row is the line the game hero prints.
+     */
+    val record: List<NflRecordDto>? = null,
+)
+
+/** One record line. [displayValue] and [summary] are the same text in the captures, e.g. `4-6`. */
+@Serializable
+data class NflRecordDto(
+    val type: String? = null,
+    val summary: String? = null,
+    val displayValue: String? = null,
 )
 
 /** The team on one side of a game. */

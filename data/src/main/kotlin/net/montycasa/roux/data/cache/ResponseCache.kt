@@ -74,6 +74,12 @@ enum class CacheKind(
 
     /** One club's current roster, keyed by club and kept separate from that club's season. */
     NflRoster(36, "nfl-roster"),
+
+    /**
+     * One football game's summary, keyed by ESPN event id. Its own kind so a game page's refresh cannot evict a
+     * club's season or roster, and so the same id can never read an NHL detail entry.
+     */
+    NflGameDetail(20, "nfl-game-detail"),
 }
 
 data class CacheKey(

@@ -109,6 +109,8 @@ import net.montycasa.roux.notify.notificationsAllowed
 import net.montycasa.roux.notify.openNotificationSettings
 import net.montycasa.roux.ui.detail.GameDetailScreen
 import net.montycasa.roux.ui.detail.GameDetailViewModel
+import net.montycasa.roux.ui.detail.NflGameScreen
+import net.montycasa.roux.ui.detail.NflGameViewModel
 import net.montycasa.roux.ui.drawer.BottomLeaguesSheet
 import net.montycasa.roux.ui.drawer.LeaguesPanel
 import net.montycasa.roux.ui.drawer.LeaguesSheetState
@@ -466,6 +468,14 @@ fun RouxNavHost(
                         if (game == null) {
                             // A link we cannot read is not a crash; it is a dead end, so leave.
                             LaunchedEffect(Unit) { navController.popBackStack() }
+                        } else if (game.id.league == League.NFL) {
+                            // Football's game page: one summary endpoint and its own sections, so hockey's page can
+                            // never be handed an ESPN payload.
+                            NflGameDestination(
+                                container = container,
+                                game = game,
+                                onBack = { navController.popBackStack() },
+                            )
                         } else if (!leagueHasPages(game.id.league)) {
                             LeagueNotReady(onBack = { navController.popBackStack() })
                         } else {
@@ -825,8 +835,11 @@ internal fun leagueFromRouteArg(raw: String?): League? =
     if (raw.isNullOrBlank()) League.NHL else League.entries.firstOrNull { it.id == raw }
 
 /**
- * Whether a league's club and game pages exist yet. Only NHL does: its pages call NHL endpoints, so any other league
- * takes the placeholder instead. Remove a league from here only when its own pages are built.
+ * Whether a league's shared club and game pages exist yet. Only NHL does: those pages call NHL endpoints.
+ *
+ * Football is routed before this guard - its own club page and its own game page - so this remains the fallback for a
+ * league with no pages at all rather than a list of every page. Remove a league from here only when its own pages are
+ * built; add its route before this guard as football's were.
  */
 internal fun leagueHasPages(league: League): Boolean = league == League.NHL
 
@@ -1062,6 +1075,38 @@ private fun DetailDestination(
         onRetry = detail::refresh,
         onTeamClick = onTeamClick,
         onPlayerClick = onPlayerClick,
+    )
+}
+
+/** Football's game page: the back stack entry owns the summary; the app supplies the shared loader. */
+@Composable
+private fun NflGameDestination(
+    container: AppContainer,
+    game: Game,
+    onBack: () -> Unit,
+) {
+    // Keyed by the game and its state: a rotation from scheduled to live is a different polling contract.
+    val detail: NflGameViewModel =
+        viewModel(
+            key = "nfl-game:${game.id.value}:${encodeState(game.state)}",
+            factory =
+                viewModelFactory {
+                    initializer {
+                        NflGameViewModel(
+                            gameId = game.id,
+                            state = game.state,
+                            details = container.nflGameDetail,
+                            clock = container.clock,
+                        )
+                    }
+                },
+        )
+    val state by detail.uiState.collectAsStateWithLifecycle()
+    NflGameScreen(
+        game = game,
+        state = state,
+        onBack = onBack,
+        onRetry = detail::refresh,
     )
 }
 

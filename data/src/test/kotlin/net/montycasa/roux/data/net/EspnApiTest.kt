@@ -35,6 +35,25 @@ class EspnApiTest {
         }
 
     @Test
+    fun aGameSummaryRequestNamesTheEventInTheQuery() =
+        runBlocking {
+            MockEngine { respond("{}", HttpStatusCode.OK) }.use { engine ->
+                EspnHttpClientFactory.create(engine, "test-version").use { client ->
+                    val result = EspnApi(client).gameSummary("401872923")
+
+                    assertTrue("Expected Success, got $result", result is ApiResult.Success)
+                    assertEquals(
+                        "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401872923",
+                        engine.requestHistory
+                            .single()
+                            .url
+                            .toString(),
+                    )
+                }
+            }
+        }
+
+    @Test
     fun theClubsRequestIsTheBareTeamsPathOnTheDataHost() =
         runBlocking {
             MockEngine { respond("{}", HttpStatusCode.OK) }.use { engine ->
