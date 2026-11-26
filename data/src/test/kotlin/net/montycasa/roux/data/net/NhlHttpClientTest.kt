@@ -145,7 +145,7 @@ class NhlHttpClientTest {
                     client.get("https://api-web.nhle.com/v1/score/2026-10-26")
 
                     assertEquals(
-                        "RouxSports/2.3-test (+https://git.montycasa.net/patrick/roux-sports)",
+                        "RouxSports/2.3-test (Android)",
                         mockEngine.requestHistory.single().headers[HttpHeaders.UserAgent],
                     )
                 }
