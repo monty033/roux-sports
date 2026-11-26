@@ -437,3 +437,20 @@ settles it: each entry is an object with `market` as a plain string and `names` 
 Networks seen across the corpus: CBS, Fox, NBC, ESPN, NFL Net, Prime Video, Netflix. The `market` is `national` on
 every entry observed, so it does not distinguish one game from another. A DTO that expects `market` to be an object
 fails to decode the whole scoreboard rather than one game, so this is worth stating plainly.
+
+## The User-Agent is part of the contract
+
+ESPN's edge answers **403** to a request whose `User-Agent` carries `git.montycasa.net`. The app sent exactly that
+for its first football builds, so every football screen failed on a real device with "the score service is
+unavailable" while every test passed: the suite runs against a mock engine, and a mock engine never rejects a header.
+
+Probed against the three football endpoints the app uses, with the version the app was built at:
+
+| `User-Agent` | scoreboard | standings | teams |
+| --- | --- | --- | --- |
+| `RouxSports/<version> (Android)` | 200 | 200 | 200 |
+| `RouxSports/<version> (+https://git.montycasa.net/patrick/roux-sports)` | 403 | 403 | 403 |
+
+Two lessons, both now held by tests in `UserAgentTest`: the token carries no URL, and it names no internal host. A
+header-only rejection is invisible to a mock engine, so the shape of the token is asserted directly rather than
+inferred from a successful call.
