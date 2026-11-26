@@ -59,6 +59,8 @@ import net.montycasa.roux.ui.reach.primaryControl
 import net.montycasa.roux.ui.reach.reachTarget
 import net.montycasa.roux.ui.scores.TeamLogo
 import net.montycasa.roux.ui.theme.Roux
+import kotlin.time.Clock
+import kotlin.time.Instant
 
 /** The same touch floor the hockey table keeps: a row is a line of text, but it sits in a list a thumb scrolls. */
 private val ROW_HEIGHT = 48.dp
@@ -126,6 +128,11 @@ fun NflStandingsScreen(
     onSelectConference: (NflConference) -> Unit,
     modifier: Modifier = Modifier,
     onTeamClick: (TeamKey) -> Unit = {},
+    /**
+     * The instant the stale banner measures "today" against. It is a parameter so a screenshot can render the same
+     * label on any day; production takes the device clock.
+     */
+    now: Instant = Clock.System.now(),
 ) {
     Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp)) {
@@ -182,6 +189,7 @@ fun NflStandingsScreen(
                         isRefreshing = state.isRefreshing,
                         supportingText = if (state.error != null) stringResource(R.string.standings_refresh_error) else null,
                         retryTag = "nfl.standings.retry",
+                        now = now,
                     )
                 }
 

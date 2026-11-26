@@ -71,6 +71,18 @@ class EspnApi(
     suspend fun teamRoster(abbreviation: String): ApiResult =
         get("/apis/site/v2/sports/football/nfl/teams/${abbreviation.lowercase()}?enable=roster")
 
+    /**
+     * One football game's summary.
+     *
+     * The event id is the only identity the detail route carries, and it is validated rather than interpolated blindly
+     * so a malformed route cannot build a different request. The query parameter is part of the request, not a caller
+     * choice: this endpoint names its game as `?event=`.
+     */
+    suspend fun gameSummary(eventId: String): ApiResult {
+        require(EVENT_ID.matches(eventId)) { "ESPN event ids are non-empty tokens, got '$eventId'" }
+        return get("/apis/site/v2/sports/football/nfl/summary?event=$eventId")
+    }
+
     private suspend fun get(path: String): ApiResult =
         try {
             // prepareGet/execute rather than client.get: client.get buffers the whole body and
@@ -103,5 +115,6 @@ class EspnApi(
 
     private companion object {
         val ISO_DATE = Regex("""\d{4}-\d{2}-\d{2}""")
+        val EVENT_ID = Regex("[A-Za-z0-9._-]{1,64}")
     }
 }

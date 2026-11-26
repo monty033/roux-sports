@@ -25,11 +25,15 @@ import net.montycasa.roux.data.net.EspnApi
 import net.montycasa.roux.data.repo.nflScoresRepository
 import net.montycasa.roux.domain.Freshness
 import net.montycasa.roux.domain.LoadError
+import net.montycasa.roux.domain.Loadable
 import net.montycasa.roux.domain.model.League
 import net.montycasa.roux.domain.model.NflConference
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.policy.ScoresOrdering
 import net.montycasa.roux.ui.common.LocalLeagueCrestArtwork
+import net.montycasa.roux.ui.detail.NflGameFixtures
+import net.montycasa.roux.ui.detail.NflGameScreen
+import net.montycasa.roux.ui.detail.NflGameUiState
 import net.montycasa.roux.ui.scores.LocalTeamLogoArtwork
 import net.montycasa.roux.ui.scores.ScoresScreen
 import net.montycasa.roux.ui.scores.ScoresUiState
@@ -265,7 +269,56 @@ class ScreenshotMatrixTest {
     }
 
     /**
-     * The three football states in both themes, each drawn from the real NFL adapter: a golden of a hand-built day would
+     * Football's game page in both themes. The final is the captured DET 31 - NO 30 shape. The live and scheduled
+     * entries are **crafted** fixtures, not captures: no NFL game was in progress or scheduled when the corpus was
+     * taken, so their goldens prove layout and nothing about a live feed.
+     */
+    @Test
+    fun theFootballGamePageAndItsCraftedLiveAndScheduledStatesInBothThemes() {
+        val states =
+            listOf(
+                "nfl-game-final" to (NflGameFixtures.finalGame() to NflGameFixtures.finalDetail()),
+                "nfl-game-live" to (NflGameFixtures.liveGame() to NflGameFixtures.craftedLiveDetail()),
+                "nfl-game-scheduled" to (NflGameFixtures.scheduledGame() to NflGameFixtures.craftedScheduledDetail()),
+            )
+        assertEquals("football game states", listOf("nfl-game-final", "nfl-game-live", "nfl-game-scheduled"), states.map { it.first })
+
+        val index = mutableIntStateOf(0)
+        val dark = mutableStateOf(false)
+        rule.setContent {
+            RouxTheme(dark = dark.value) {
+                val (game, detail) = states[index.intValue].second
+                CompositionLocalProvider(LocalLeagueCrestArtwork provides false, LocalTeamLogoArtwork provides false) {
+                    key(index.intValue) {
+                        NflGameScreen(
+                            game = game,
+                            state = NflGameUiState(detail = Loadable(detail, Freshness.Fresh, null)),
+                            onBack = {},
+                            onRetry = {},
+                            zone = java.time.ZoneId.of("America/New_York"),
+                        )
+                    }
+                }
+            }
+        }
+        var captured = 0
+        states.forEachIndexed { i, (name, _) ->
+            listOf(false, true).forEach { isDark ->
+                val theme = if (isDark) "dark" else "light"
+                rule.runOnIdle {
+                    index.intValue = i
+                    dark.value = isDark
+                }
+                rule.waitForIdle()
+                rule.onRoot().captureRoboImage("src/test/screenshots/matrix/$name-$theme.png")
+                captured++
+            }
+        }
+        assertEquals("one golden per football game state and theme", states.size * 2, captured)
+    }
+
+    /**
+     * The football day list in both themes, each drawn from the real NFL adapter: a golden of a hand-built day would
      * show the screen, not whether what the adapter makes of the feed renders.
      */
     @Test
@@ -337,7 +390,9 @@ class ScreenshotMatrixTest {
         rule.setContent {
             RouxTheme(dark = dark.value) {
                 CompositionLocalProvider(LocalLeagueCrestArtwork provides false) {
-                    key(index.intValue) { NflStandingsFixtures.Page(states[index.intValue].second) }
+                    key(
+                        index.intValue,
+                    ) { NflStandingsFixtures.Page(states[index.intValue].second, now = NflStandingsFixtures.SCREENSHOT_NOW) }
                 }
             }
         }

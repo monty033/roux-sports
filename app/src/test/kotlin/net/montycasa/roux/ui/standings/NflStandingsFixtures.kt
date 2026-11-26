@@ -43,6 +43,9 @@ import kotlin.time.Instant
  * week apart, which is why the screen tests assert on the figures of one level at a time.
  */
 internal object NflStandingsFixtures {
+    /** A fixed instant for screenshot renders: the stale banner's "today" must not follow the suite's run date. */
+    val SCREENSHOT_NOW: Instant = Instant.parse("2026-11-25T20:00:00Z")
+
     val conferences: List<NflStandingTable> by lazy { load(group = null) }
 
     val divisions: Map<NflConference, List<NflStandingTable>> by lazy {
@@ -95,6 +98,7 @@ internal object NflStandingsFixtures {
         onSelectTab: (NflStandingsTab) -> Unit = {},
         onSelectConference: (NflConference) -> Unit = {},
         onTeamClick: (TeamKey) -> Unit = {},
+        now: Instant = SCREENSHOT_NOW,
     ) {
         Scaffold(bottomBar = {
             NavigationBar {
@@ -118,6 +122,7 @@ internal object NflStandingsFixtures {
                 onSelectConference = onSelectConference,
                 modifier = Modifier.padding(insets),
                 onTeamClick = onTeamClick,
+                now = now,
             )
         }
     }

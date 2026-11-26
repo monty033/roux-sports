@@ -1,6 +1,6 @@
 package net.montycasa.roux.ui.nav
 
-import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
@@ -23,8 +23,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * Drives the real nav host with route strings, the way a tap would. An NFL club or game must land on the placeholder
- * and never on an NHL page; an unknown league must open no page; a league-less route must still open the NHL club.
+ * Drives the real nav host with route strings, the way a tap would. An NFL club or game must land on football's own
+ * page and never on an NHL page; an unknown league must open no page; a league-less route must still open the NHL club.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = ScoresIntegrationApp::class, qualifiers = "w411dp-h923dp-420dpi")
@@ -61,6 +61,15 @@ class NflRouteGuardTest {
             away = TeamRef(TeamKey(League.NFL, "IND")),
         )
 
+    private fun nflOvertimeGame() =
+        Game(
+            id = GameId(League.NFL, "401872923"),
+            date = "2026-09-13",
+            state = GameState.Final,
+            home = TeamRef(TeamKey(League.NFL, "DET")),
+            away = TeamRef(TeamKey(League.NFL, "NO")),
+        )
+
     /**
      * A football club's route lands on football's page.
      *
@@ -77,14 +86,26 @@ class NflRouteGuardTest {
         assertTrue("the placeholder must not answer either", nodes("league.notReady.back").isEmpty())
     }
 
-    /** The guard also covers games: an NFL game route must not open the NHL game page. */
+    /** The guard also covers games: an NFL game route must open football's page, not hockey's. */
     @Test
-    fun anNflGameRouteLandsOnThePlaceholderNotTheGamePage() {
+    fun anNflGameRouteLandsOnFootballsGamePageNotTheNhlPage() {
         launch()
         navigate(detailRoute(nflGame()))
 
-        rule.onNodeWithTag("league.notReady.back").assertIsDisplayed()
-        assertTrue(nodes("detail.back").isEmpty())
+        rule.waitUntil(timeoutMillis = 10_000) { nodes("nflGame.hero").isNotEmpty() }
+        assertTrue("the hockey game page must not answer for a football game", nodes("detail.hero").isEmpty())
+        assertTrue("the hockey tab strip must not answer either", nodes("detail.tab.strip").isEmpty())
+        assertTrue("the placeholder must not answer either", nodes("league.notReady.back").isEmpty())
+    }
+
+    /** The route hands the event id to the summary request, and the feed's own final wording reaches the hero. */
+    @Test
+    fun anNflOvertimeGameRouteShowsTheFeedsFinalOt() {
+        launch()
+        navigate(detailRoute(nflOvertimeGame()))
+
+        rule.waitUntil(timeoutMillis = 10_000) { nodes("nflGame.status").isNotEmpty() }
+        rule.onNodeWithTag("nflGame.status").assertTextEquals("Final/OT")
     }
 
     @Test

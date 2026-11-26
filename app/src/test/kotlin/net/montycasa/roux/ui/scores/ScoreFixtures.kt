@@ -197,6 +197,15 @@ class ScoresIntegrationApp : RouxApp() {
                                         ScoreFixture.nfl("2026-11-18", "nfl-scoreboard-emptyday.json")
                                     }
 
+                                    // One game's summary, which football's game page reads. The event id is the
+                                    // fixture suffix, so a route naming a real capture loads that capture.
+                                    request.url.encodedPath == "/apis/site/v2/sports/football/nfl/summary" -> {
+                                        val event =
+                                            request.url.parameters["event"]?.takeIf { it.isNotBlank() }
+                                                ?: error("Summary without an event: ${request.url}")
+                                        ScoreFixture.nfl("2026-11-25", "nfl-game-$event.json")
+                                    }
+
                                     // One club's season, which the football club page reads.
                                     request.url.encodedPath.startsWith("/apis/site/v2/sports/football/nfl/teams/") &&
                                         request.url.encodedPath.endsWith("/schedule") -> {

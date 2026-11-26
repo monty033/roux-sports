@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nfl_game_status_final">Final</string>
+    <string name="nfl_game_status_live">Live</string>
+    <string name="nfl_game_status_scheduled">Scheduled</string>
+    <string name="nfl_game_loading">Loading the game…</string>
+    <string name="nfl_game_scoring_title">Scoring by quarter</string>
+    <string name="nfl_game_stats_title">Team stats</string>
+    <string name="nfl_game_leaders_title">Leaders</string>
+    <string name="nfl_game_quarter">Q%1$d</string>
+    <string name="nfl_game_overtime">OT</string>
+    <string name="nfl_game_overtime_numbered">OT%1$d</string>
+    <string name="nfl_game_live_with_clock">%1$s %2$s</string>
+    <string name="nfl_game_play_score">%1$s–%2$s</string>
+    <string name="nfl_game_leader_line">%1$s · %2$s</string>
+    <string name="nfl_game_failed">The game could not be loaded.</string>
+    <string name="nfl_game_stale">Showing the last saved version of this game.</string>
+    <string name="nfl_game_stat_first_downs">First downs</string>
+    <string name="nfl_game_stat_total_yards">Total yards</string>
+    <string name="nfl_game_stat_passing_yards">Passing yards</string>
+    <string name="nfl_game_stat_rushing_yards">Rushing yards</string>
+    <string name="nfl_game_stat_turnovers">Turnovers</string>
+    <string name="nfl_game_stat_third_down_efficiency">Third-down efficiency</string>
+    <string name="nfl_game_stat_time_of_possession">Time of possession</string>
+</resources>
