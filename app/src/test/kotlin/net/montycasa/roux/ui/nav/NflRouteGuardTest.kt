@@ -61,14 +61,20 @@ class NflRouteGuardTest {
             away = TeamRef(TeamKey(League.NFL, "IND")),
         )
 
-    /** The placeholder is the NFL landing; its back control is the only proof it is on screen. */
+    /**
+     * A football club's route lands on football's page.
+     *
+     * This used to assert the placeholder, which is what the route answered before football had a club page. The guard
+     * still holds: what must never happen is the *hockey* page answering for a football club.
+     */
     @Test
-    fun anNflClubRouteLandsOnThePlaceholderNotTheNhlPage() {
+    fun anNflClubRouteLandsOnFootballsPageNotTheNhlPage() {
         launch()
         navigate(teamRoute(TeamKey(League.NFL, "PHI")))
 
-        rule.onNodeWithTag("league.notReady.back").assertIsDisplayed()
-        assertTrue(nodes("team.page.PHI").isEmpty())
+        rule.waitUntil(timeoutMillis = 10_000) { nodes("nflTeam.name").isNotEmpty() }
+        assertTrue("the hockey page must not answer for a football club", nodes("team.page.PHI").isEmpty())
+        assertTrue("the placeholder must not answer either", nodes("league.notReady.back").isEmpty())
     }
 
     /** The guard also covers games: an NFL game route must not open the NHL game page. */

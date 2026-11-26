@@ -34,6 +34,8 @@ import net.montycasa.roux.ui.scores.ScoresScreen
 import net.montycasa.roux.ui.scores.ScoresUiState
 import net.montycasa.roux.ui.standings.NflStandingsFixtures
 import net.montycasa.roux.ui.standings.NflStandingsTab
+import net.montycasa.roux.ui.team.NflTeamPageFixtures
+import net.montycasa.roux.ui.team.NflTeamPageScreen
 import net.montycasa.roux.ui.teams.NflTeamsFixtures
 import net.montycasa.roux.ui.teams.TeamsScreen
 import net.montycasa.roux.ui.theme.RouxTheme
@@ -392,6 +394,32 @@ class ScreenshotMatrixTest {
             "20261126" to "nfl-scoreboard-week-12.json",
             "20261117" to "nfl-scoreboard-emptyday.json",
         )
+
+    /**
+     * The football club page in both themes.
+     *
+     * The season is built from the shape of the real capture - seventeen games, one bye, results read from this club's
+     * side - because what this golden is for is the page's layout, not the adapter's reading of a payload.
+     */
+    @Test
+    fun theFootballClubPageInBothThemes() {
+        val state = NflTeamPageFixtures.buffalo()
+        assertEquals("the fixture is a full season", 5, state.season?.entries?.size)
+        val dark = mutableStateOf(false)
+        rule.setContent {
+            RouxTheme(dark = dark.value) {
+                CompositionLocalProvider(LocalLeagueCrestArtwork provides false, LocalTeamLogoArtwork provides false) {
+                    NflTeamPageScreen(state = state, onBack = {}, zone = java.time.ZoneId.of("America/New_York"))
+                }
+            }
+        }
+        listOf(false, true).forEach { isDark ->
+            val theme = if (isDark) "dark" else "light"
+            rule.runOnIdle { dark.value = isDark }
+            rule.waitForIdle()
+            rule.onRoot().captureRoboImage("src/test/screenshots/matrix/nfl-team-page-$theme.png")
+        }
+    }
 
     /**
      * Loads each football day through the public NFL repository, served from the captured scoreboards by a mock engine. The

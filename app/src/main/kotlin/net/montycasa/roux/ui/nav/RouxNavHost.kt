@@ -129,6 +129,8 @@ import net.montycasa.roux.ui.standings.NflStandingsScreen
 import net.montycasa.roux.ui.standings.NflStandingsViewModel
 import net.montycasa.roux.ui.standings.StandingsScreen
 import net.montycasa.roux.ui.standings.StandingsViewModel
+import net.montycasa.roux.ui.team.NflTeamPageScreen
+import net.montycasa.roux.ui.team.NflTeamPageViewModel
 import net.montycasa.roux.ui.team.TeamDetailScreen
 import net.montycasa.roux.ui.team.TeamDetailViewModel
 import net.montycasa.roux.ui.teams.TeamsScreen
@@ -503,6 +505,14 @@ fun RouxNavHost(
                         if (teamKey == null) {
                             // A link that names no club is not a crash; it goes back to where it came from.
                             LaunchedEffect(Unit) { navController.popBackStack() }
+                        } else if (teamKey.league == League.NFL) {
+                            // Football's page: its own view model over its own season, so neither league's page can
+                            // draw the other's rows.
+                            NflTeamPageDestination(
+                                container = container,
+                                teamKey = teamKey,
+                                onBack = { navController.popBackStack() },
+                            )
                         } else if (!leagueHasPages(teamKey.league)) {
                             LeagueNotReady(onBack = { navController.popBackStack() })
                         } else {
@@ -669,7 +679,32 @@ private fun TeamsDestination(
     )
 }
 
-/** The back stack entry owns the table; the app supplies the shared repository and preferences. */
+/** Football's club page: the back stack entry owns the season; the app supplies the shared loader. */
+@Composable
+private fun NflTeamPageDestination(
+    container: AppContainer,
+    teamKey: TeamKey,
+    onBack: () -> Unit,
+) {
+    val page: NflTeamPageViewModel =
+        viewModel(
+            // Keyed by the club: two clubs in the same back stack are two pages, not one page re-used.
+            key = "nfl-team-${teamKey.league.id}-${teamKey.abbrev}",
+            factory =
+                viewModelFactory {
+                    initializer {
+                        NflTeamPageViewModel(container.nflSchedule, teamKey)
+                    }
+                },
+        )
+    val state by page.uiState.collectAsStateWithLifecycle()
+    NflTeamPageScreen(
+        state = state,
+        onBack = onBack,
+        onRetry = page::refresh,
+    )
+}
+
 @Composable
 private fun StandingsDestination(onTeamClick: (TeamKey) -> Unit) {
     val appContext = LocalContext.current.applicationContext

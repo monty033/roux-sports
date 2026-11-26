@@ -30,6 +30,7 @@ import net.montycasa.roux.data.repo.clubScheduleRepository
 import net.montycasa.roux.data.repo.clubStatsRepository
 import net.montycasa.roux.data.repo.gameDetailRepository
 import net.montycasa.roux.data.repo.leagueStatsRepository
+import net.montycasa.roux.data.repo.nflClubScheduleRepository
 import net.montycasa.roux.data.repo.nflScoresRepository
 import net.montycasa.roux.data.repo.nflStandingsRepository
 import net.montycasa.roux.data.repo.nflTeamsRepository
@@ -41,6 +42,7 @@ import net.montycasa.roux.domain.repo.ClubScheduleRepository
 import net.montycasa.roux.domain.repo.ClubStatsRepository
 import net.montycasa.roux.domain.repo.GameDetailRepository
 import net.montycasa.roux.domain.repo.LeagueStatsRepository
+import net.montycasa.roux.domain.repo.NflClubScheduleRepository
 import net.montycasa.roux.domain.repo.NflStandingsRepository
 import net.montycasa.roux.domain.repo.NflTeamsRepository
 import net.montycasa.roux.domain.repo.PlayerProfileRepository
@@ -245,6 +247,9 @@ class AppContainer(
      */
     val nflTeams: NflTeamsRepository =
         nflTeamsRepository(api = espnApi, cache = cache, standings = nflStandings, clock = clock)
+
+    /** One club's football season, cached per club. */
+    val nflSchedule: NflClubScheduleRepository = nflClubScheduleRepository(api = espnApi, cache = cache, clock = clock)
 
     val standings: StandingsRepository = standingsRepository(api = api, cache = cache, clock = clock)
 
