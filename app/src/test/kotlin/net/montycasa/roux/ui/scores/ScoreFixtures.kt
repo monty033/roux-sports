@@ -208,6 +208,23 @@ class ScoresIntegrationApp : RouxApp() {
                                         )
                                     }
 
+                                    // One club's roster, the second tab on that page. It is the club's own path with
+                                    // `enable=roster`, not `/roster` — the endpoint that answers 200 with six players.
+                                    request.url.encodedPath.startsWith("/apis/site/v2/sports/football/nfl/teams/") &&
+                                        request.url.encodedPath
+                                            .endsWith("/roster")
+                                            .not() &&
+                                        request.url.encodedPath
+                                            .endsWith("/schedule")
+                                            .not() &&
+                                        request.url.parameters["enable"] == "roster" -> {
+                                        ScoreFixture.nfl(
+                                            "2026-11-25",
+                                            "nfl-roster-${request.url.encodedPath.substringAfter("/teams/")
+                                                .trimEnd('/')}.json",
+                                        )
+                                    }
+
                                     else -> {
                                         error("Unexpected ESPN path: ${request.url}")
                                     }

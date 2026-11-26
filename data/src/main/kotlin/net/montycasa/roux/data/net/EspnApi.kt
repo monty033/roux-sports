@@ -57,6 +57,20 @@ class EspnApi(
     suspend fun teamSchedule(abbreviation: String): ApiResult =
         get("/apis/site/v2/sports/football/nfl/teams/${abbreviation.lowercase()}/schedule")
 
+    /**
+     * One club's current roster.
+     *
+     * `enable=roster` is not optional: without it the feed answers 200 with an empty `athletes` list, which is a
+     * different statement from "this club has no players". The parameter is part of the request, not a caller choice.
+     *
+     * The path is the club's own, not `/roster`. Asking for `/teams/buf/roster` also answers 200, and it is not this
+     * payload: that one carries a `coach`, a season block and a grouped athlete list of six entries where the club
+     * payload carries the seventy-two players the captured fixtures hold. A roster a tenth of the size would look
+     * like a thin roster rather than a wrong request.
+     */
+    suspend fun teamRoster(abbreviation: String): ApiResult =
+        get("/apis/site/v2/sports/football/nfl/teams/${abbreviation.lowercase()}?enable=roster")
+
     private suspend fun get(path: String): ApiResult =
         try {
             // prepareGet/execute rather than client.get: client.get buffers the whole body and

@@ -66,6 +66,12 @@ object FreshnessPolicy {
     val nflTeamsAge: Duration = 24.hours
 
     /**
+     * A football roster moves on the scale of trades and call-ups, not games. Six hours mirrors the club schedule, so
+     * switching between the Schedule and Roster tabs does not ask the feed twice for the same visit.
+     */
+    val nflRosterAge: Duration = 6.hours
+
+    /**
      * Opening night is a season fact, not a live result. A week is long enough that a launch does
      * not re-walk the schedule, while a correction or a late-published game is picked up quickly.
      */
@@ -157,6 +163,9 @@ object FreshnessPolicy {
 
     /** The football club list's daily window. */
     fun nflTeamsMaxAge(): Duration = nflTeamsAge
+
+    /** The football roster's six-hour window, matching the club schedule. */
+    fun nflRosterMaxAge(): Duration = nflRosterAge
 
     /** The resolved opening night is cached for a week, so a launch does not re-walk the schedule. */
     fun openingNightMaxAge(): Duration = openingNightAge

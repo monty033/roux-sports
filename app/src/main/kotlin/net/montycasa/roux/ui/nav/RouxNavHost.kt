@@ -693,7 +693,7 @@ private fun NflTeamPageDestination(
             factory =
                 viewModelFactory {
                     initializer {
-                        NflTeamPageViewModel(container.nflSchedule, teamKey)
+                        NflTeamPageViewModel(container.nflSchedule, container.nflRoster, teamKey)
                     }
                 },
         )
@@ -702,6 +702,7 @@ private fun NflTeamPageDestination(
         state = state,
         onBack = onBack,
         onRetry = page::refresh,
+        onRosterRetry = page::refreshRoster,
     )
 }
 
