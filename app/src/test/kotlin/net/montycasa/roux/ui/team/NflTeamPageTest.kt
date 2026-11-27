@@ -143,22 +143,25 @@ class NflTeamPageTest {
         rule.onNodeWithTag("nflTeam.rosterRow.allen").assertIsDisplayed()
         rule.onNodeWithText("Josh Allen").assertIsDisplayed()
         rule.onNodeWithText("QB").assertIsDisplayed()
-        rule.onNodeWithTag("nflTeam.rosterJersey.allen").assertTextEquals("17")
+        // The row leads with the photo; the number lives on the player's own page.
+        rule.onNodeWithTag("nflTeam.rosterHeadshot.allen").assertIsDisplayed()
         rule.onNodeWithTag("nflTeam.rosterStatus.allen").assertTextEquals("Active")
         rule.onNodeWithTag("nflTeam.rosterStatus.durant").assertTextEquals("Day-To-Day")
     }
 
     @Test
-    fun anUnnumberedPlayerLeavesTheJerseyColumnBlank() {
+    fun aPlayerWithNoHeadshotShowsHisInitialsAndNoNumber() {
         show(NflTeamPageFixtures.buffalo())
 
         rule.onNodeWithTag("nflTeam.tab.Roster").performClick()
         rule.waitForIdle()
 
         rule.onNodeWithTag("nflTeam.rosterRow.kohou").assertIsDisplayed()
-        rule.onNodeWithTag("nflTeam.rosterJersey.kohou").assertTextEquals("")
-        // The feed stated no number, so "0" is not one of them.
-        rule.onAllNodesWithText("0").assertCountEquals(0)
+        // The photo stands in for the number, so a player without one still has something in that space.
+        rule.onNodeWithTag("nflTeam.rosterHeadshot.kohou").assertIsDisplayed()
+        rule.onNodeWithText("KK").assertIsDisplayed()
+        // No number is printed on a roster row at all, whether or not the feed stated one.
+        rule.onAllNodesWithText("17").assertCountEquals(0)
     }
 
     @Test
