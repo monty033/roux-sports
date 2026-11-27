@@ -575,8 +575,24 @@ fun RouxNavHost(
                 onEditing = { editing = it },
                 onLeagueOrder = scores::setLeagueOrder,
                 onLeagueSelected = { id ->
+                    // Choosing a different sport shows that sport's scores, from wherever the reader is standing: a
+                    // team page or a game page belongs to the league it was opened under, and leaving it on screen
+                    // after the league changes would describe the wrong competition.
+                    val sportChanged = id != MY_TEAMS_LEAGUE && id != drawerUi.selectedLeagueId
                     scores.selectLeague(id)
                     closeLeagues()
+                    if (sportChanged) {
+                        // Scores is a page of the shell, not a destination of its own: leave a club or game page for
+                        // the shell, then turn the pager to Scores.
+                        if (currentRoute != HOME_ROUTE) {
+                            navController.navigate(HOME_ROUTE) { launchSingleTop = true }
+                        }
+                        scope.launch {
+                            pagerState.animateScrollToPage(
+                                pages.indexOf(TopLevelDestination.Scores).coerceAtLeast(0),
+                            )
+                        }
+                    }
                 },
                 onFavouritesOnly = { only ->
                     scores.setFavouritesOnly(only)
