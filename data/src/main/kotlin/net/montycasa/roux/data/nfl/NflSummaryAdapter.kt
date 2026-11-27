@@ -264,15 +264,20 @@ internal object NflSummaryAdapter {
         val heading = displayName?.trim()?.takeIf { it.isNotEmpty() } ?: categoryName
         val lines =
             leaders.orEmpty().mapNotNull { leader ->
-                val athlete = leader.athlete.toLeader() ?: return@mapNotNull null
+                val athlete = leader.athlete
+                val name = athlete.toLeaderName() ?: return@mapNotNull null
                 val value = leader.displayValue?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-                NflLeader(athleteName = athlete, displayValue = value)
+                NflLeader(
+                    athleteName = name,
+                    athleteId = athlete?.id?.trim()?.takeIf { it.isNotEmpty() },
+                    displayValue = value,
+                )
             }
         if (lines.isEmpty()) return null
         return NflLeaderCategory(name = categoryName, displayName = heading, leaders = lines)
     }
 
-    private fun NflLeaderAthleteDto?.toLeader(): String? = this?.displayName?.trim()?.takeIf { it.isNotEmpty() }
+    private fun NflLeaderAthleteDto?.toLeaderName(): String? = this?.displayName?.trim()?.takeIf { it.isNotEmpty() }
 
     /** The feed writes kickoffs without seconds; only the missing `:00` is supplied. */
     private fun String?.toInstantOrNull(): Instant? {

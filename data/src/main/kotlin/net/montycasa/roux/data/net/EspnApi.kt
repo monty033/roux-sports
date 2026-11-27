@@ -83,6 +83,24 @@ class EspnApi(
         return get("/apis/site/v2/sports/football/nfl/summary?event=$eventId")
     }
 
+    /**
+     * One football player's profile.
+     *
+     * This is the common v3 athlete path, not the site v2 one: `/apis/site/v2/.../athletes/{id}` answers 404. The host
+     * is the same authorized data host, and the athlete id is validated so a malformed route cannot request another
+     * path.
+     */
+    suspend fun playerProfile(playerId: String): ApiResult {
+        require(EVENT_ID.matches(playerId)) { "ESPN athlete ids are non-empty tokens, got '$playerId'" }
+        return get("/apis/common/v3/sports/football/nfl/athletes/$playerId")
+    }
+
+    /** One football player's game log, under the same player path and the same validation as [playerProfile]. */
+    suspend fun playerGameLog(playerId: String): ApiResult {
+        require(EVENT_ID.matches(playerId)) { "ESPN athlete ids are non-empty tokens, got '$playerId'" }
+        return get("/apis/common/v3/sports/football/nfl/athletes/$playerId/gamelog")
+    }
+
     private suspend fun get(path: String): ApiResult =
         try {
             // prepareGet/execute rather than client.get: client.get buffers the whole body and

@@ -117,4 +117,9 @@ data class NflLeaderCategory(
 data class NflLeader(
     val athleteName: String,
     val displayValue: String,
+    /**
+     * The feed's athlete id, when it stated one. It is what opens the player page; a leader without an id still prints
+     * its line but is not a tap target, rather than opening a page with no identity.
+     */
+    val athleteId: String? = null,
 )

@@ -33,6 +33,7 @@ data class NflTeamsEntryDto(
 data class NflTeamsTeamDto(
     val abbreviation: String? = null,
     val displayName: String? = null,
+    val shortDisplayName: String? = null,
     val nickname: String? = null,
     val name: String? = null,
     val location: String? = null,

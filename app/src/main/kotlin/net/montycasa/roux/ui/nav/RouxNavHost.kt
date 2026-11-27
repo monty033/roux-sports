@@ -98,6 +98,7 @@ import net.montycasa.roux.domain.model.Game
 import net.montycasa.roux.domain.model.GameId
 import net.montycasa.roux.domain.model.GameState
 import net.montycasa.roux.domain.model.League
+import net.montycasa.roux.domain.model.NflPlayerId
 import net.montycasa.roux.domain.model.PlayerGame
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
@@ -118,6 +119,8 @@ import net.montycasa.roux.ui.drawer.leagueChipLabel
 import net.montycasa.roux.ui.drawer.leagueCrestId
 import net.montycasa.roux.ui.drawer.rememberLeaguesSheetSettler
 import net.montycasa.roux.ui.league.LeagueNotReady
+import net.montycasa.roux.ui.player.NflPlayerScreen
+import net.montycasa.roux.ui.player.NflPlayerViewModel
 import net.montycasa.roux.ui.player.PlayerDetailScreen
 import net.montycasa.roux.ui.player.PlayerDetailViewModel
 import net.montycasa.roux.ui.reach.Reach
@@ -475,6 +478,7 @@ fun RouxNavHost(
                                 container = container,
                                 game = game,
                                 onBack = { navController.popBackStack() },
+                                onPlayerClick = { playerId -> navController.navigate(nflPlayerRoute(playerId)) },
                             )
                         } else if (!leagueHasPages(game.id.league)) {
                             LeagueNotReady(onBack = { navController.popBackStack() })
@@ -508,6 +512,23 @@ fun RouxNavHost(
                     }
 
                     composable(
+                        route = NFL_PLAYER_ROUTE,
+                        arguments = nflPlayerArguments(),
+                    ) { entry ->
+                        val playerId = nflPlayerIdFromRoute(entry)
+                        if (playerId == null) {
+                            // A link that names no player is not a crash; it goes back to where it came from.
+                            LaunchedEffect(Unit) { navController.popBackStack() }
+                        } else {
+                            NflPlayerDestination(
+                                container = container,
+                                playerId = playerId,
+                                onBack = { navController.popBackStack() },
+                            )
+                        }
+                    }
+
+                    composable(
                         route = TEAM_ROUTE,
                         arguments = teamArguments(),
                     ) { entry ->
@@ -522,6 +543,7 @@ fun RouxNavHost(
                                 container = container,
                                 teamKey = teamKey,
                                 onBack = { navController.popBackStack() },
+                                onPlayerClick = { playerId -> navController.navigate(nflPlayerRoute(playerId)) },
                             )
                         } else if (!leagueHasPages(teamKey.league)) {
                             LeagueNotReady(onBack = { navController.popBackStack() })
@@ -695,6 +717,7 @@ private fun NflTeamPageDestination(
     container: AppContainer,
     teamKey: TeamKey,
     onBack: () -> Unit,
+    onPlayerClick: (NflPlayerId) -> Unit,
 ) {
     val page: NflTeamPageViewModel =
         viewModel(
@@ -713,6 +736,7 @@ private fun NflTeamPageDestination(
         onBack = onBack,
         onRetry = page::refresh,
         onRosterRetry = page::refreshRoster,
+        onPlayerClick = onPlayerClick,
     )
 }
 
@@ -860,6 +884,25 @@ private fun playerArguments(): List<NamedNavArgument> = listOf(navArgument("play
 
 /** Null when the route carries no usable id, so the caller backs out rather than opening a page with no player. */
 internal fun playerIdFromRoute(entry: NavBackStackEntry): Long? = entry.arguments?.getLong("playerId")?.takeIf { it > 0 }
+
+/**
+ * A football player's page as a URL.
+ *
+ * It is a different route from [PLAYER_ROUTE], not a flag on it: the two leagues' player ids come from different feeds
+ * and one must never answer for the other. The id travels as the feed's token, wrapped in [NflPlayerId] when read back.
+ */
+internal const val NFL_PLAYER_ROUTE = "nfl-player/{playerId}"
+
+internal fun nflPlayerRoute(playerId: NflPlayerId): String = "nfl-player/${Uri.encode(playerId.value)}"
+
+private fun nflPlayerArguments(): List<NamedNavArgument> = listOf(navArgument("playerId") { type = NavType.StringType })
+
+/** Null when the route names no usable player, so the caller backs out rather than opening an empty page. */
+internal fun nflPlayerIdFromRoute(entry: NavBackStackEntry): NflPlayerId? =
+    entry.arguments
+        ?.getString("playerId")
+        ?.takeIf { it.isNotBlank() }
+        ?.let(::NflPlayerId)
 
 /** The three destinations share one route: they are pages of a single surface, not separate destinations. */
 internal const val HOME_ROUTE = "home"
@@ -1084,6 +1127,7 @@ private fun NflGameDestination(
     container: AppContainer,
     game: Game,
     onBack: () -> Unit,
+    onPlayerClick: (NflPlayerId) -> Unit,
 ) {
     // Keyed by the game and its state: a rotation from scheduled to live is a different polling contract.
     val detail: NflGameViewModel =
@@ -1107,6 +1151,33 @@ private fun NflGameDestination(
         state = state,
         onBack = onBack,
         onRetry = detail::refresh,
+        onPlayerClick = onPlayerClick,
+    )
+}
+
+/** Football's player page: its own view model over its own profile and log, never hockey's. */
+@Composable
+private fun NflPlayerDestination(
+    container: AppContainer,
+    playerId: NflPlayerId,
+    onBack: () -> Unit,
+) {
+    val page: NflPlayerViewModel =
+        viewModel(
+            // Keyed by the league-qualified id, so two football players in the back stack are two pages.
+            key = "nfl-player:${playerId.value}",
+            factory =
+                viewModelFactory {
+                    initializer {
+                        NflPlayerViewModel(playerId = playerId, repository = container.nflPlayer)
+                    }
+                },
+        )
+    val state by page.uiState.collectAsStateWithLifecycle()
+    NflPlayerScreen(
+        state = state,
+        onBack = onBack,
+        onRetry = page::refresh,
     )
 }
 

@@ -54,6 +54,44 @@ class EspnApiTest {
         }
 
     @Test
+    fun aPlayerProfileUsesTheCommonAthletesPath() =
+        runBlocking {
+            MockEngine { respond("{}", HttpStatusCode.OK) }.use { engine ->
+                EspnHttpClientFactory.create(engine, "test-version").use { client ->
+                    val result = EspnApi(client).playerProfile("3046779")
+
+                    assertTrue("Expected Success, got $result", result is ApiResult.Success)
+                    assertEquals(
+                        "https://site.api.espn.com/apis/common/v3/sports/football/nfl/athletes/3046779",
+                        engine.requestHistory
+                            .single()
+                            .url
+                            .toString(),
+                    )
+                }
+            }
+        }
+
+    @Test
+    fun aPlayerGameLogAddsTheGamelogSegmentToTheSameAthletesPath() =
+        runBlocking {
+            MockEngine { respond("{}", HttpStatusCode.OK) }.use { engine ->
+                EspnHttpClientFactory.create(engine, "test-version").use { client ->
+                    val result = EspnApi(client).playerGameLog("3046779")
+
+                    assertTrue("Expected Success, got $result", result is ApiResult.Success)
+                    assertEquals(
+                        "https://site.api.espn.com/apis/common/v3/sports/football/nfl/athletes/3046779/gamelog",
+                        engine.requestHistory
+                            .single()
+                            .url
+                            .toString(),
+                    )
+                }
+            }
+        }
+
+    @Test
     fun theClubsRequestIsTheBareTeamsPathOnTheDataHost() =
         runBlocking {
             MockEngine { respond("{}", HttpStatusCode.OK) }.use { engine ->

@@ -80,6 +80,15 @@ enum class CacheKind(
      * club's season or roster, and so the same id can never read an NHL detail entry.
      */
     NflGameDetail(20, "nfl-game-detail"),
+
+    /**
+     * One football player's profile, keyed by the league-qualified athlete id. Its own prefix, so an NFL player can
+     * never read an NHL player's profile entry even when the two ids have the same digits.
+     */
+    NflPlayer(32, "nfl-player"),
+
+    /** One football player's game log. Its own kind, so a log refresh cannot evict the profile beside it. */
+    NflPlayerGameLog(32, "nfl-gamelog"),
 }
 
 data class CacheKey(

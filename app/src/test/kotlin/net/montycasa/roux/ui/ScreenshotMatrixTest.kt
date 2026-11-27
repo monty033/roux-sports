@@ -489,7 +489,10 @@ class ScreenshotMatrixTest {
                 }
             }
         }
-        rule.onNodeWithTag("nflTeam.tab.Roster").performClick()
+        // The click action, not a touch: a touch starts a ripple on the tab, and its frames run on the wall clock, so
+        // the photograph differed between runs. Same rule the matrix's own tab handler follows.
+        rule.onNodeWithTag("nflTeam.tab.Roster").performSemanticsAction(SemanticsActions.OnClick)
+        rule.mainClock.advanceTimeBy(animationSettleMillis)
         rule.waitForIdle()
         listOf(false, true).forEach { isDark ->
             val theme = if (isDark) "dark" else "light"

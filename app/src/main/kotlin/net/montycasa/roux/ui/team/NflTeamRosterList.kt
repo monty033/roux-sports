@@ -2,6 +2,7 @@
 
 package net.montycasa.roux.ui.team
 
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,11 +17,17 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import net.montycasa.roux.domain.model.NflClubRoster
+import net.montycasa.roux.domain.model.NflPlayerId
 import net.montycasa.roux.domain.model.NflPlayerStatus
 import net.montycasa.roux.domain.model.NflRosterPlayer
 
@@ -29,27 +36,44 @@ import net.montycasa.roux.domain.model.NflRosterPlayer
  *
  * A player the feed gives no jersey keeps the column and prints nothing in it. A player the feed gives no status
  * prints no status at all: neither silence is filled with "0" or "Active".
+ *
+ * Every row opens its player's page. The row's id is wrapped in [NflPlayerId] immediately, so a football player can
+ * never be read as a hockey player of the same digits.
  */
 @Composable
 internal fun NflTeamRosterList(
     roster: NflClubRoster,
+    onPlayerClick: (NflPlayerId) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(modifier.testTag("nflTeam.roster")) {
         items(roster.players, key = { it.id }) { player ->
-            NflRosterRow(player)
+            NflRosterRow(player, onPlayerClick)
         }
     }
 }
 
 @Composable
-private fun NflRosterRow(player: NflRosterPlayer) {
+private fun NflRosterRow(
+    player: NflRosterPlayer,
+    onPlayerClick: (NflPlayerId) -> Unit,
+) {
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = MIN_ROW_HEIGHT)
-                .padding(horizontal = 16.dp, vertical = 8.dp)
+                // A tap and a screen reader's click both report the player. Not `clickable`: that merges the row's
+                // jersey, name and status into one semantics node, and those columns are asserted and read individually.
+                .pointerInput(player.id) {
+                    detectTapGestures { onPlayerClick(NflPlayerId(player.id)) }
+                }.semantics {
+                    role = Role.Button
+                    onClick(label = player.name) {
+                        onPlayerClick(NflPlayerId(player.id))
+                        true
+                    }
+                }.padding(horizontal = 16.dp, vertical = 8.dp)
                 .testTag("nflTeam.rosterRow.${player.id}"),
         verticalAlignment = Alignment.CenterVertically,
     ) {

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nfl_player_back">Back</string>
+    <string name="nfl_player_loading">Loading player…</string>
+    <string name="nfl_player_error">This player could not be loaded.</string>
+    <string name="nfl_player_age">Age %1$d</string>
+    <!-- Quoted so Android keeps the spaces: an unquoted resource loses its leading and trailing whitespace. -->
+    <string name="nfl_player_separator">" · "</string>
+    <string name="nfl_player_season_summary">Season stats</string>
+    <string name="nfl_player_game_log">Game log</string>
+    <string name="nfl_player_game_log_error">The game log could not be loaded.</string>
+    <string name="nfl_player_game_log_empty">No games yet</string>
+    <string name="nfl_player_game">Game</string>
+</resources>
