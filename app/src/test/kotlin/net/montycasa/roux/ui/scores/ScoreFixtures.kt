@@ -193,8 +193,27 @@ class ScoresIntegrationApp : RouxApp() {
                                         ScoreFixture.nfl("2026-11-18", "nfl-teams.json")
                                     }
 
-                                    request.url.encodedPath == "/apis/site/v2/sports/football/nfl/scoreboard" -> {
+                                    // A day the feed has no games for. A dated request is served from its own capture,
+                                    // because serving every date an empty day is how a screen with no rows passed the
+                                    // suite: the harness could not tell an empty league from a broken one.
+                                    request.url.encodedPath == "/apis/site/v2/sports/football/nfl/scoreboard" &&
+                                        request.url.parameters["dates"].isNullOrBlank() -> {
                                         ScoreFixture.nfl("2026-11-18", "nfl-scoreboard-emptyday.json")
+                                    }
+
+                                    request.url.encodedPath == "/apis/site/v2/sports/football/nfl/scoreboard" -> {
+                                        val day =
+                                            request.url.parameters["dates"]!!.let {
+                                                "${it.take(4)}-${it.substring(4, 6)}-${it.takeLast(2)}"
+                                            }
+                                        // A date without its own capture is the empty day, so a test asking for some
+                                        // other day reads as "no games" rather than failing to answer at all.
+                                        val name = "nfl-scoreboard-$day.json"
+                                        if (ScoreFixture.hasNfl(day, name)) {
+                                            ScoreFixture.nfl(day, name)
+                                        } else {
+                                            ScoreFixture.nfl("2026-11-18", "nfl-scoreboard-emptyday.json")
+                                        }
                                     }
 
                                     // One game's summary, which football's game page reads. The event id is the
@@ -294,6 +313,12 @@ internal object ScoreFixture {
         requireNotNull(javaClass.getResourceAsStream("/fx-nfl/$day/$name")) {
             "Missing captured football fixture: $day/$name"
         }.use { it.readBytes() }
+
+    /** Whether a football capture exists, so a router can fall back rather than fail to answer. */
+    fun hasNfl(
+        day: String,
+        name: String,
+    ): Boolean = javaClass.getResourceAsStream("/fx-nfl/$day/$name") != null
 
     val bytes = bytes("score-gameday.json")
     private val body = Json.parseToJsonElement(bytes.decodeToString()).jsonObject
