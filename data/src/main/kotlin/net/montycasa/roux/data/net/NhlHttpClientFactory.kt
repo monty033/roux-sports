@@ -52,7 +52,7 @@ object NhlHttpClientFactory {
         HttpClient(engine) {
             followRedirects = true
             defaultRequest {
-                headers.append(HttpHeaders.UserAgent, "RouxSports/$version (+https://git.montycasa.net/patrick/roux-sports)")
+                headers.append(HttpHeaders.UserAgent, UserAgent.of(version))
             }
             install(nhlBoundary)
         }
