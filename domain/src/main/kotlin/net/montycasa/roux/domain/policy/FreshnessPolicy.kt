@@ -72,6 +72,18 @@ object FreshnessPolicy {
     val nflRosterAge: Duration = 6.hours
 
     /**
+     * A football player's profile changes after a game, not during one, and the feed compiles its totals overnight. A
+     * day keeps a player page from asking twice in a visit while still picking up the next game's numbers.
+     */
+    val nflPlayerAge: Duration = 24.hours
+
+    /**
+     * A football player's game log gains a row after every game. The same day as the profile is enough: the log is
+     * refreshed whenever the profile is, and a tab switch must not spend a request learning nothing has changed.
+     */
+    val nflPlayerGameLogAge: Duration = 24.hours
+
+    /**
      * Opening night is a season fact, not a live result. A week is long enough that a launch does
      * not re-walk the schedule, while a correction or a late-published game is picked up quickly.
      */
@@ -166,6 +178,12 @@ object FreshnessPolicy {
 
     /** The football roster's six-hour window, matching the club schedule. */
     fun nflRosterMaxAge(): Duration = nflRosterAge
+
+    /** A football player's daily window. */
+    fun nflPlayerMaxAge(): Duration = nflPlayerAge
+
+    /** A football player's game log's daily window. */
+    fun nflPlayerGameLogMaxAge(): Duration = nflPlayerGameLogAge
 
     /** The resolved opening night is cached for a week, so a launch does not re-walk the schedule. */
     fun openingNightMaxAge(): Duration = openingNightAge

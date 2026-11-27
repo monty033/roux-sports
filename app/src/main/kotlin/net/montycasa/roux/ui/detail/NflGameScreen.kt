@@ -3,6 +3,7 @@
 package net.montycasa.roux.ui.detail
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -25,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -36,6 +38,7 @@ import net.montycasa.roux.domain.model.NflGameClub
 import net.montycasa.roux.domain.model.NflGameDetail
 import net.montycasa.roux.domain.model.NflGameStatus
 import net.montycasa.roux.domain.model.NflLeaderCategory
+import net.montycasa.roux.domain.model.NflPlayerId
 import net.montycasa.roux.domain.model.NflScoringPlay
 import net.montycasa.roux.domain.model.NflScoringQuarter
 import net.montycasa.roux.domain.model.NflTeamStatComparison
@@ -58,6 +61,7 @@ fun NflGameScreen(
     onBack: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
+    onPlayerClick: (NflPlayerId) -> Unit = {},
     zone: ZoneId = ZoneId.systemDefault(),
     locale: Locale = Locale.getDefault(),
 ) {
@@ -87,7 +91,7 @@ fun NflGameScreen(
                     TeamStats(detail = detail)
                 }
                 if (detail.leaders.any { it.categories.isNotEmpty() }) {
-                    Leaders(detail = detail)
+                    Leaders(detail = detail, onPlayerClick = onPlayerClick)
                 }
 
                 if (state.detail.freshness is Freshness.Stale) {
@@ -403,7 +407,10 @@ private fun statLabel(name: String): String =
     }
 
 @Composable
-private fun Leaders(detail: NflGameDetail) {
+private fun Leaders(
+    detail: NflGameDetail,
+    onPlayerClick: (NflPlayerId) -> Unit,
+) {
     GameSection(
         title = stringResource(R.string.nfl_game_leaders_title),
         tag = "nflGame.section.leaders",
@@ -422,7 +429,7 @@ private fun Leaders(detail: NflGameDetail) {
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
             )
-            club.categories.forEach { category -> LeaderLine(club.teamAbbrev, category) }
+            club.categories.forEach { category -> LeaderLine(club.teamAbbrev, category, onPlayerClick) }
         }
     }
 }
@@ -431,13 +438,21 @@ private fun Leaders(detail: NflGameDetail) {
 private fun LeaderLine(
     abbrev: String,
     category: NflLeaderCategory,
+    onPlayerClick: (NflPlayerId) -> Unit,
 ) {
     val leader = category.leaders.firstOrNull() ?: return
+    val playerId = leader.athleteId?.takeIf { it.isNotBlank() }?.let(::NflPlayerId)
     Row(
         Modifier
             .fillMaxWidth()
             .padding(top = 8.dp)
-            .testTag("nflGame.leaders.$abbrev.${category.name}"),
+            .then(
+                if (playerId != null) {
+                    Modifier.clickable(role = Role.Button) { onPlayerClick(playerId) }
+                } else {
+                    Modifier
+                },
+            ).testTag("nflGame.leaders.$abbrev.${category.name}"),
         verticalAlignment = Alignment.Top,
     ) {
         Text(

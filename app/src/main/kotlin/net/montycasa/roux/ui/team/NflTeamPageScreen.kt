@@ -39,6 +39,7 @@ import kotlinx.coroutines.launch
 import net.montycasa.roux.R
 import net.montycasa.roux.domain.model.FootballResult
 import net.montycasa.roux.domain.model.NflClubSchedule
+import net.montycasa.roux.domain.model.NflPlayerId
 import net.montycasa.roux.domain.model.NflSeasonEntry
 import net.montycasa.roux.domain.model.TeamKey
 import net.montycasa.roux.domain.model.TeamRef
@@ -67,6 +68,7 @@ fun NflTeamPageScreen(
     modifier: Modifier = Modifier,
     onRetry: () -> Unit = {},
     onRosterRetry: () -> Unit = {},
+    onPlayerClick: (NflPlayerId) -> Unit = {},
     zone: ZoneId = ZoneId.systemDefault(),
     locale: Locale = Locale.getDefault(),
 ) {
@@ -142,6 +144,7 @@ fun NflTeamPageScreen(
                         RosterTab(
                             state = state,
                             onRetry = onRosterRetry,
+                            onPlayerClick = onPlayerClick,
                         )
                     }
                 }
@@ -232,11 +235,12 @@ private fun ScheduleTab(
 private fun RosterTab(
     state: NflTeamPageUiState,
     onRetry: () -> Unit,
+    onPlayerClick: (NflPlayerId) -> Unit,
 ) {
     val roster = state.roster
     when {
         roster != null -> {
-            NflTeamRosterList(roster = roster, modifier = Modifier.fillMaxSize())
+            NflTeamRosterList(roster = roster, onPlayerClick = onPlayerClick, modifier = Modifier.fillMaxSize())
         }
 
         state.rosterLoading -> {
